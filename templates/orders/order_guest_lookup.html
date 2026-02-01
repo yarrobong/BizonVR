@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Проверить заказ — BizonVR{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-12 max-w-md">
+  <h1 class="text-2xl font-light text-white mb-2">Проверить заказ</h1>
+  <p class="text-gray-400 text-sm mb-6">Введите номер заказа и телефон, указанный при оформлении, чтобы отслеживать статус.</p>
+
+  <form method="post" class="space-y-4">
+    {% csrf_token %}
+    {% if error %}
+    <p class="text-red-400 text-sm">{{ error }}</p>
+    {% endif %}
+    <div>
+      <label for="id_order_id" class="block text-sm text-gray-400 mb-1">Номер заказа</label>
+      <input type="text" name="order_id" id="id_order_id" required
+             value="{{ order_id|default:'' }}"
+             placeholder="Например: 42"
+             class="w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent"
+             inputmode="numeric" pattern="[0-9]*">
+    </div>
+    <div>
+      <label for="id_phone" class="block text-sm text-gray-400 mb-1">Телефон</label>
+      <input type="tel" name="phone" id="id_phone" required
+             value="{{ phone|default:'' }}"
+             placeholder="+7 (999) 123-45-67"
+             class="w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent"
+             autocomplete="tel">
+    </div>
+    <button type="submit" class="w-full bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-4 rounded-full transition-colors">
+      Показать заказ
+    </button>
+  </form>
+
+  <p class="text-gray-500 text-xs mt-6">
+    <a href="{% url 'catalog:product_list' %}" class="text-accent hover:text-accent-hover">← Вернуться в каталог</a>
+  </p>
+</div>
+{% endblock %}

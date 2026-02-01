@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BizonVR</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'sans-serif'] },
+          colors: {
+            accent: '#00d4ff',
+            'accent-hover': '#00b4e6',
+            dark: { 900: '#111111', 800: '#1a1a1a', 700: '#252525', 600: '#333333' }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { background-color: #111111; color: #ffffff; }
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: #1a1a1a; }
+    ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #00d4ff; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  </style>
+</head>
+<body class="min-h-screen bg-dark-900 text-white font-sans">
+  <!-- Header -->
+  <header class="w-full bg-dark-800 text-white sticky top-0 z-50 shadow-md">
+    <div class="hidden md:flex justify-between items-center container mx-auto px-4 py-2 text-xs text-gray-400 border-b border-gray-800">
+      <div class="flex items-center space-x-6">
+        <div class="flex items-center space-x-1 hover:text-white cursor-pointer">
+          <i data-lucide="map-pin" class="w-3.5 h-3.5 text-accent inline-block"></i>
+          <span>Магазин в маркете</span>
+        </div>
+        <div class="flex items-center space-x-1 hover:text-white cursor-pointer">
+          <i data-lucide="map-pin" class="w-3.5 h-3.5 text-accent inline-block"></i>
+          <span>Магазин в Озоне</span>
+        </div>
+        <div class="flex items-center space-x-1 hover:text-white cursor-pointer">
+          <i data-lucide="map-pin" class="w-3.5 h-3.5 text-accent inline-block"></i>
+          <span>Магазин в вайлдберриз</span>
+        </div>
+      </div>
+      <div class="flex items-center space-x-6">
+        <div class="flex items-center space-x-2">
+          <i data-lucide="phone" class="w-3.5 h-3.5 text-accent inline-block"></i>
+          <span class="font-bold text-white">8 (800) 600-95-47</span>
+          <span class="text-gray-500 cursor-pointer hover:text-accent">ЗАКАЗАТЬ ЗВОНОК</span>
+        </div>
+        <div class="flex items-center space-x-2">
+          <span>129515, г. Москва, улица Академика Королева, 13с1</span>
+        </div>
+        <div class="flex items-center space-x-2 cursor-pointer hover:text-white">
+          <div class="w-2 h-2 rounded-full bg-gray-500"></div>
+          <span>ВОЙТИ</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="container mx-auto px-4 py-4">
+      <div class="flex items-center justify-between gap-4">
+        <div class="flex flex-col flex-shrink-0 cursor-pointer">
+          <h1 class="text-2xl font-bold tracking-wider leading-none">BizonVR</h1>
+          <span class="text-[10px] text-gray-500 tracking-widest uppercase">Будущее уже здесь!</span>
+        </div>
+
+        <div class="hidden lg:flex items-center space-x-2">
+          <div class="p-1.5 bg-gray-700 rounded hover:bg-accent transition-colors cursor-pointer"><i data-lucide="send" class="w-3.5 h-3.5 inline-block"></i></div>
+          <div class="p-1.5 bg-gray-700 rounded hover:bg-red-600 transition-colors cursor-pointer"><i data-lucide="youtube" class="w-3.5 h-3.5 inline-block"></i></div>
+          <div class="p-1.5 bg-gray-700 rounded hover:bg-blue-600 transition-colors cursor-pointer"><i data-lucide="monitor" class="w-3.5 h-3.5 inline-block"></i></div>
+        </div>
+
+        <div class="flex-1 max-w-2xl relative hidden md:block">
+          <input type="text" placeholder="Поиск" class="w-full bg-dark-700 text-white rounded-full py-2.5 px-5 pl-5 pr-12 focus:outline-none focus:ring-1 focus:ring-accent text-sm" />
+          <i data-lucide="search" class="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 cursor-pointer hover:text-white w-[18px] h-[18px] inline-block"></i>
+        </div>
+
+        <div class="flex items-center space-x-4 md:space-x-6">
+          <div class="flex flex-col items-center cursor-pointer group">
+            <div class="relative">
+              <i data-lucide="heart" class="text-white group-hover:text-accent transition-colors w-6 h-6 inline-block"></i>
+              <span class="absolute -top-1 -right-1 w-4 h-4 bg-dark-700 rounded-full text-[10px] flex items-center justify-center border border-dark-800">0</span>
+            </div>
+          </div>
+          <div class="flex flex-col items-center cursor-pointer group">
+            <div class="relative">
+              <i data-lucide="shopping-cart" class="text-white group-hover:text-accent transition-colors w-6 h-6 inline-block"></i>
+              <span class="absolute -top-1 -right-1 w-4 h-4 bg-dark-700 rounded-full text-[10px] flex items-center justify-center border border-dark-800">0</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-4 md:hidden relative">
+        <input type="text" placeholder="Поиск" class="w-full bg-dark-700 text-white rounded-lg py-2 px-4 focus:outline-none focus:ring-1 focus:ring-accent text-sm" />
+        <i data-lucide="search" class="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 inline-block"></i>
+      </div>
+    </div>
+
+    <div class="border-t border-gray-800 bg-dark-800">
+      <div class="container mx-auto px-4">
+        <nav class="flex items-center overflow-x-auto no-scrollbar py-3 space-x-8 text-xs font-bold uppercase tracking-wide">
+          <div class="flex items-center space-x-2 cursor-pointer hover:text-accent flex-shrink-0">
+            <i data-lucide="menu" class="w-4 h-4 inline-block"></i>
+            <span>КАТАЛОГ</span>
+          </div>
+          <a href="#" class="hover:text-accent whitespace-nowrap">БЛОГ</a>
+          <a href="#" class="hover:text-accent whitespace-nowrap">КЛУБЫ</a>
+          <a href="#" class="hover:text-accent whitespace-nowrap">АРЕНДА</a>
+          <a href="#" class="hover:text-accent whitespace-nowrap">ИНСТРУКЦИИ</a>
+          <a href="#" class="hover:text-accent whitespace-nowrap">УСЛУГИ</a>
+          <a href="#" class="hover:text-accent whitespace-nowrap">КОНТАКТЫ</a>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero -->
+  <div class="relative w-full h-[400px] md:h-[500px] bg-dark-900 overflow-hidden">
+    <div class="absolute inset-0 bg-cover bg-center z-0" style="background-image: url('https://images.unsplash.com/photo-1622979135225-d2ba269fb1bd?q=80&w=2070&auto=format&fit=crop')"></div>
+    <div class="absolute inset-0 bg-gradient-to-r from-dark-900 via-dark-900/80 to-transparent"></div>
+    <div class="container mx-auto px-4 h-full flex flex-col justify-center relative z-10">
+      <div class="max-w-xl">
+        <h2 class="text-3xl md:text-5xl font-light text-white mb-4">Портативные мониторы</h2>
+        <p class="text-gray-300 text-sm md:text-base mb-8 max-w-md">Играй везде - в дороге, дома или на работе</p>
+        <button class="bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-8 rounded-full transition-colors text-sm uppercase tracking-wide">Подробнее</button>
+      </div>
+    </div>
+    <div class="absolute bottom-6 left-1/2 transform -translate-x-1/2 flex space-x-3 z-20">
+      <div class="w-2 h-2 rounded-full bg-white cursor-pointer"></div>
+      <div class="w-2 h-2 rounded-full bg-gray-500 hover:bg-white cursor-pointer transition-colors"></div>
+      <div class="w-2 h-2 rounded-full bg-gray-500 hover:bg-white cursor-pointer transition-colors"></div>
+      <div class="w-2 h-2 rounded-full bg-gray-500 hover:bg-white cursor-pointer transition-colors"></div>
+    </div>
+  </div>
+
+  <!-- ProductSection -->
+  <div class="container mx-auto px-4 py-12">
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+      <h2 class="text-2xl md:text-3xl font-light text-white">Лучшие предложения</h2>
+      <div class="flex flex-wrap gap-2 text-xs md:text-sm font-medium">
+        <button type="button" data-tab="bestseller" class="product-tab px-4 py-1.5 rounded transition-colors bg-accent text-dark-900">Бестселлер</button>
+        <button type="button" data-tab="expert" class="product-tab px-4 py-1.5 rounded transition-colors bg-dark-700 text-gray-300 hover:text-white">Выбор экспертов</button>
+        <button type="button" data-tab="new" class="product-tab px-4 py-1.5 rounded transition-colors bg-dark-700 text-gray-300 hover:text-white">Новинка</button>
+        <button type="button" data-tab="sale" class="product-tab px-4 py-1.5 rounded transition-colors bg-dark-700 text-gray-300 hover:text-white">Акция</button>
+        <button type="button" class="hidden md:block text-gray-500 hover:text-white uppercase text-xs tracking-wider ml-4 self-center">Весь каталог</button>
+      </div>
+    </div>
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+      <!-- Product 1 -->
+      <div class="group bg-dark-900 md:bg-transparent md:hover:bg-dark-800 border border-transparent md:hover:border-dark-700 p-4 rounded-xl transition-all duration-300 relative flex flex-col h-full">
+        <div class="absolute top-4 left-4 z-10 flex flex-col space-y-1">
+          <span class="bg-[#00d4ff] text-white text-[10px] font-bold px-2 py-0.5 rounded-sm uppercase tracking-wider w-fit">Бестселлер</span>
+          <span class="bg-[#8b5cf6] text-white text-[10px] font-bold px-2 py-0.5 rounded-sm uppercase tracking-wider w-fit">Выбор экспертов</span>
+        </div>
+        <div class="absolute top-4 right-4 z-10 flex flex-col space-y-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div class="bg-dark-700 p-1.5 rounded-full hover:bg-accent hover:text-dark-900 cursor-pointer text-gray-400"><i data-lucide="heart" class="w-4 h-4 inline-block"></i></div>
+          <div class="bg-dark-700 p-1.5 rounded-full hover:bg-accent hover:text-dark-900 cursor-pointer text-gray-400"><i data-lucide="git-compare" class="w-4 h-4 inline-block"></i></div>
+        </div>
+        <div class="relative w-full aspect-square mb-4 overflow-hidden rounded-lg bg-white/5 flex items-center justify-center">
+          <img src="https://picsum.photos/seed/vr1/300/300" alt="Крепление BOBOVR M3 Pro" class="w-full h-full object-contain p-4 group-hover:scale-105 transition-transform duration-300" />
+        </div>
+        <div class="flex flex-col flex-grow">
+          <div class="flex items-center mb-2">
+            <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+            <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+            <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+            <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+            <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+          </div>
+          <h3 class="text-white text-sm font-medium leading-tight mb-2 flex-grow line-clamp-2 hover:text-accent cursor-pointer">Крепление BOBOVR M3 Pro Battery Head Strap для Oculus Quest 3</h3>
+          <div class="flex items-center justify-between text-[10px] text-gray-500 mb-3">
+            <div class="flex items-center space-x-1"><span class="w-1.5 h-1.5 rounded-full bg-green-500"></span><span>Много</span></div>
+            <span>Арт: XR-Q3S1</span>
+          </div>
+          <div class="text-xs text-gray-400 mb-1">Бренд: <span class="text-gray-300">BOBO VR</span></div>
+          <div class="mt-auto flex items-center justify-between"><span class="text-lg font-bold text-white">6 990 ₽</span></div>
+        </div>
+      </div>
+      <!-- Product 2 -->
+      <div class="group bg-dark-900 md:bg-transparent md:hover:bg-dark-800 border border-transparent md:hover:border-dark-700 p-4 rounded-xl transition-all duration-300 relative flex flex-col h-full">
+        <div class="absolute top-4 left-4 z-10 flex flex-col space-y-1">
+          <span class="bg-[#00d4ff] text-white text-[10px] font-bold px-2 py-0.5 rounded-sm uppercase tracking-wider w-fit">Бестселлер</span>
+          <span class="bg-[#8b5cf6] text-white text-[10px] font-bold px-2 py-0.5 rounded-sm uppercase tracking-wider w-fit">Выбор экспертов</span>
+          <span class="bg-[#84cc16] text-white text-[10px] font-bold px-2 py-0.5 rounded-sm uppercase tracking-wider w-fit">Новинка</span>
+        </div>
+        <div class="absolute top-4 right-4 z-10 flex flex-col space-y-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div class="bg-dark-700 p-1.5 rounded-full hover:bg-accent hover:text-dark-900 cursor-pointer text-gray-400"><i data-lucide="heart" class="w-4 h-4 inline-block"></i></div>
+          <div class="bg-dark-700 p-1.5 rounded-full hover:bg-accent hover:text-dark-900 cursor-pointer text-gray-400"><i data-lucide="git-compare" class="w-4 h-4 inline-block"></i></div>
+        </div>
+        <div class="relative w-full aspect-square mb-4 overflow-hidden rounded-lg bg-white/5 flex items-center justify-center">
+          <img src="https://picsum.photos/seed/cable1/300/300" alt="Кабель AMVR" class="w-full h-full object-contain p-4 group-hover:scale-105 transition-transform duration-300" />
+        </div>
+        <div class="flex flex-col flex-grow">
+          <div class="flex items-center mb-2">
+            <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+            <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+            <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+            <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+            <i data-lucide="star" class="w-3 h-3 text-gray-600 mr-0.5 inline-block"></i>
+          </div>
+          <h3 class="text-white text-sm font-medium leading-tight mb-2 flex-grow line-clamp-2 hover:text-accent cursor-pointer">Кабель AMVR Upgraded Oculus Link с зарядным портом</h3>
+          <div class="flex items-center justify-between text-[10px] text-gray-500 mb-3">
+            <div class="flex items-center space-x-1"><span class="w-1.5 h-1.5 rounded-full bg-green-500"></span><span>Много</span></div>
+            <span>Арт: XR-Q3S2</span>
+          </div>
+          <div class="text-xs text-gray-400 mb-1">Бренд: <span class="text-gray-300">AMVR</span></div>
+          <div class="mt-auto flex items-center justify-between"><span class="text-lg font-bold text-white">2 190 ₽</span></div>
+        </div>
+      </div>
+      <!-- Product 3 -->
+      <div class="group bg-dark-900 md:bg-transparent md:hover:bg-dark-800 border border-transparent md:hover:border-dark-700 p-4 rounded-xl transition-all duration-300 relative flex flex-col h-full">
+        <div class="absolute top-4 left-4 z-10 flex flex-col space-y-1">
+          <span class="bg-[#00d4ff] text-white text-[10px] font-bold px-2 py-0.5 rounded-sm uppercase tracking-wider w-fit">Бестселлер</span>
+        </div>
+        <div class="absolute top-4 right-4 z-10 flex flex-col space-y-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div class="bg-dark-700 p-1.5 rounded-full hover:bg-accent hover:text-dark-900 cursor-pointer text-gray-400"><i data-lucide="heart" class="w-4 h-4 inline-block"></i></div>
+          <div class="bg-dark-700 p-1.5 rounded-full hover:bg-accent hover:text-dark-900 cursor-pointer text-gray-400"><i data-lucide="git-compare" class="w-4 h-4 inline-block"></i></div>
+        </div>
+        <div class="relative w-full aspect-square mb-4 overflow-hidden rounded-lg bg-white/5 flex items-center justify-center">
+          <img src="https://picsum.photos/seed/mask1/300/300" alt="Маска AMVR" class="w-full h-full object-contain p-4 group-hover:scale-105 transition-transform duration-300" />
+        </div>
+        <div class="flex flex-col flex-grow">
+          <div class="flex items-center mb-2">
+            <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+            <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+            <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+            <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+            <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+          </div>
+          <h3 class="text-white text-sm font-medium leading-tight mb-2 flex-grow line-clamp-2 hover:text-accent cursor-pointer">Маска AMVR для Pico 4 экокожа</h3>
+          <div class="flex items-center justify-between text-[10px] text-gray-500 mb-3">
+            <div class="flex items-center space-x-1"><span class="w-1.5 h-1.5 rounded-full bg-green-500"></span><span>Много</span></div>
+            <span>Арт: XR-Q3S3</span>
+          </div>
+          <div class="text-xs text-gray-400 mb-1">Бренд: <span class="text-gray-300">AMVR</span></div>
+          <div class="mt-auto flex items-center justify-between"><span class="text-lg font-bold text-white">2 590 ₽</span></div>
+        </div>
+      </div>
+      <!-- Product 4 -->
+      <div class="group bg-dark-900 md:bg-transparent md:hover:bg-dark-800 border border-transparent md:hover:border-dark-700 p-4 rounded-xl transition-all duration-300 relative flex flex-col h-full">
+        <div class="absolute top-4 left-4 z-10 flex flex-col space-y-1">
+          <span class="bg-[#00d4ff] text-white text-[10px] font-bold px-2 py-0.5 rounded-sm uppercase tracking-wider w-fit">Бестселлер</span>
+          <span class="bg-[#84cc16] text-white text-[10px] font-bold px-2 py-0.5 rounded-sm uppercase tracking-wider w-fit">Новинка</span>
+        </div>
+        <div class="absolute top-4 right-4 z-10 flex flex-col space-y-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div class="bg-dark-700 p-1.5 rounded-full hover:bg-accent hover:text-dark-900 cursor-pointer text-gray-400"><i data-lucide="heart" class="w-4 h-4 inline-block"></i></div>
+          <div class="bg-dark-700 p-1.5 rounded-full hover:bg-accent hover:text-dark-900 cursor-pointer text-gray-400"><i data-lucide="git-compare" class="w-4 h-4 inline-block"></i></div>
+        </div>
+        <div class="relative w-full aspect-square mb-4 overflow-hidden rounded-lg bg-white/5 flex items-center justify-center">
+          <img src="https://picsum.photos/seed/face1/300/300" alt="Лицевой интерфейс AMVR" class="w-full h-full object-contain p-4 group-hover:scale-105 transition-transform duration-300" />
+        </div>
+        <div class="flex flex-col flex-grow">
+          <div class="flex items-center mb-2">
+            <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+            <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+            <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+            <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+            <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+          </div>
+          <h3 class="text-white text-sm font-medium leading-tight mb-2 flex-grow line-clamp-2 hover:text-accent cursor-pointer">Лицевой интерфейс / маска AMVR для Oculus Quest 3</h3>
+          <div class="flex items-center justify-between text-[10px] text-gray-500 mb-3">
+            <div class="flex items-center space-x-1"><span class="w-1.5 h-1.5 rounded-full bg-green-500"></span><span>Много</span></div>
+            <span>Арт: XR-Q3S4</span>
+          </div>
+          <div class="text-xs text-gray-400 mb-1">Бренд: <span class="text-gray-300">AMVR</span></div>
+          <div class="mt-auto flex items-center justify-between"><span class="text-lg font-bold text-white">2 290 ₽</span></div>
+        </div>
+      </div>
+      <!-- Products 5-8 (abbreviated blocks, same structure) -->
+      <div class="group bg-dark-900 md:bg-transparent md:hover:bg-dark-800 border border-transparent md:hover:border-dark-700 p-4 rounded-xl transition-all duration-300 relative flex flex-col h-full">
+        <div class="absolute top-4 left-4 z-10 flex flex-col space-y-1">
+          <span class="bg-[#00d4ff] text-white text-[10px] font-bold px-2 py-0.5 rounded-sm uppercase tracking-wider w-fit">Бестселлер</span>
+          <span class="bg-[#8b5cf6] text-white text-[10px] font-bold px-2 py-0.5 rounded-sm uppercase tracking-wider w-fit">Выбор экспертов</span>
+          <span class="bg-[#84cc16] text-white text-[10px] font-bold px-2 py-0.5 rounded-sm uppercase tracking-wider w-fit">Новинка</span>
+        </div>
+        <div class="absolute top-4 right-4 z-10 flex flex-col space-y-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div class="bg-dark-700 p-1.5 rounded-full hover:bg-accent hover:text-dark-900 cursor-pointer text-gray-400"><i data-lucide="heart" class="w-4 h-4 inline-block"></i></div>
+          <div class="bg-dark-700 p-1.5 rounded-full hover:bg-accent hover:text-dark-900 cursor-pointer text-gray-400"><i data-lucide="git-compare" class="w-4 h-4 inline-block"></i></div>
+        </div>
+        <div class="relative w-full aspect-square mb-4 overflow-hidden rounded-lg bg-white/5 flex items-center justify-center">
+          <img src="https://picsum.photos/seed/grip1/300/300" alt="Чехлы BizonVR XR" class="w-full h-full object-contain p-4 group-hover:scale-105 transition-transform duration-300" />
+        </div>
+        <div class="flex flex-col flex-grow">
+          <div class="flex items-center mb-2">
+            <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+            <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+            <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+            <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+            <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+          </div>
+          <h3 class="text-white text-sm font-medium leading-tight mb-2 flex-grow line-clamp-2 hover:text-accent cursor-pointer">Чехлы BizonVR XR Controller Grips Cover для Oculus Quest 3</h3>
+          <div class="flex items-center justify-between text-[10px] text-gray-500 mb-3">
+            <div class="flex items-center space-x-1"><span class="w-1.5 h-1.5 rounded-full bg-green-500"></span><span>Много</span></div>
+            <span>Арт: XR-Q3S5</span>
+          </div>
+          <div class="text-xs text-gray-400 mb-1">Бренд: <span class="text-gray-300">BizonVR XR</span></div>
+          <div class="mt-auto flex items-center justify-between"><span class="text-lg font-bold text-white">1 790 ₽</span></div>
+        </div>
+      </div>
+      <div class="group bg-dark-900 md:bg-transparent md:hover:bg-dark-800 border border-transparent md:hover:border-dark-700 p-4 rounded-xl transition-all duration-300 relative flex flex-col h-full">
+        <div class="absolute top-4 left-4 z-10 flex flex-col space-y-1">
+          <span class="bg-[#00d4ff] text-white text-[10px] font-bold px-2 py-0.5 rounded-sm uppercase tracking-wider w-fit">Бестселлер</span>
+          <span class="bg-[#84cc16] text-white text-[10px] font-bold px-2 py-0.5 rounded-sm uppercase tracking-wider w-fit">Новинка</span>
+        </div>
+        <div class="absolute top-4 right-4 z-10 flex flex-col space-y-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div class="bg-dark-700 p-1.5 rounded-full hover:bg-accent hover:text-dark-900 cursor-pointer text-gray-400"><i data-lucide="heart" class="w-4 h-4 inline-block"></i></div>
+          <div class="bg-dark-700 p-1.5 rounded-full hover:bg-accent hover:text-dark-900 cursor-pointer text-gray-400"><i data-lucide="git-compare" class="w-4 h-4 inline-block"></i></div>
+        </div>
+        <div class="relative w-full aspect-square mb-4 overflow-hidden rounded-lg bg-white/5 flex items-center justify-center">
+          <img src="https://picsum.photos/seed/grip2/300/300" alt="Чехлы на контроллеры AMVR" class="w-full h-full object-contain p-4 group-hover:scale-105 transition-transform duration-300" />
+        </div>
+        <div class="flex flex-col flex-grow">
+          <div class="flex items-center mb-2">
+            <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+            <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+            <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+            <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+            <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+          </div>
+          <h3 class="text-white text-sm font-medium leading-tight mb-2 flex-grow line-clamp-2 hover:text-accent cursor-pointer">Чехлы на контроллеры AMVR для Oculus Meta Quest 3</h3>
+          <div class="flex items-center justify-between text-[10px] text-gray-500 mb-3">
+            <div class="flex items-center space-x-1"><span class="w-1.5 h-1.5 rounded-full bg-green-500"></span><span>Много</span></div>
+            <span>Арт: XR-Q3S6</span>
+          </div>
+          <div class="text-xs text-gray-400 mb-1">Бренд: <span class="text-gray-300">AMVR</span></div>
+          <div class="mt-auto flex items-center justify-between"><span class="text-lg font-bold text-white">1 790 ₽</span></div>
+        </div>
+      </div>
+      <div class="group bg-dark-900 md:bg-transparent md:hover:bg-dark-800 border border-transparent md:hover:border-dark-700 p-4 rounded-xl transition-all duration-300 relative flex flex-col h-full">
+        <div class="absolute top-4 left-4 z-10 flex flex-col space-y-1">
+          <span class="bg-[#00d4ff] text-white text-[10px] font-bold px-2 py-0.5 rounded-sm uppercase tracking-wider w-fit">Бестселлер</span>
+          <span class="bg-[#84cc16] text-white text-[10px] font-bold px-2 py-0.5 rounded-sm uppercase tracking-wider w-fit">Новинка</span>
+        </div>
+        <div class="absolute top-4 right-4 z-10 flex flex-col space-y-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div class="bg-dark-700 p-1.5 rounded-full hover:bg-accent hover:text-dark-900 cursor-pointer text-gray-400"><i data-lucide="heart" class="w-4 h-4 inline-block"></i></div>
+          <div class="bg-dark-700 p-1.5 rounded-full hover:bg-accent hover:text-dark-900 cursor-pointer text-gray-400"><i data-lucide="git-compare" class="w-4 h-4 inline-block"></i></div>
+        </div>
+        <div class="relative w-full aspect-square mb-4 overflow-hidden rounded-lg bg-white/5 flex items-center justify-center">
+          <img src="https://picsum.photos/seed/cable2/300/300" alt="Кабель AMVR VR Link" class="w-full h-full object-contain p-4 group-hover:scale-105 transition-transform duration-300" />
+        </div>
+        <div class="flex flex-col flex-grow">
+          <div class="flex items-center mb-2">
+            <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+            <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+            <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+            <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+            <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+          </div>
+          <h3 class="text-white text-sm font-medium leading-tight mb-2 flex-grow line-clamp-2 hover:text-accent cursor-pointer">Кабель AMVR VR Link Cable для Oculus Quest 2/3/Pro</h3>
+          <div class="flex items-center justify-between text-[10px] text-gray-500 mb-3">
+            <div class="flex items-center space-x-1"><span class="w-1.5 h-1.5 rounded-full bg-green-500"></span><span>Много</span></div>
+            <span>Арт: XR-Q3S7</span>
+          </div>
+          <div class="text-xs text-gray-400 mb-1">Бренд: <span class="text-gray-300">AMVR</span></div>
+          <div class="mt-auto flex items-center justify-between"><span class="text-lg font-bold text-white">1 690 ₽</span></div>
+        </div>
+      </div>
+      <div class="group bg-dark-900 md:bg-transparent md:hover:bg-dark-800 border border-transparent md:hover:border-dark-700 p-4 rounded-xl transition-all duration-300 relative flex flex-col h-full">
+        <div class="absolute top-4 left-4 z-10 flex flex-col space-y-1">
+          <span class="bg-[#00d4ff] text-white text-[10px] font-bold px-2 py-0.5 rounded-sm uppercase tracking-wider w-fit">Бестселлер</span>
+        </div>
+        <div class="absolute top-4 right-4 z-10 flex flex-col space-y-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div class="bg-dark-700 p-1.5 rounded-full hover:bg-accent hover:text-dark-900 cursor-pointer text-gray-400"><i data-lucide="heart" class="w-4 h-4 inline-block"></i></div>
+          <div class="bg-dark-700 p-1.5 rounded-full hover:bg-accent hover:text-dark-900 cursor-pointer text-gray-400"><i data-lucide="git-compare" class="w-4 h-4 inline-block"></i></div>
+        </div>
+        <div class="relative w-full aspect-square mb-4 overflow-hidden rounded-lg bg-white/5 flex items-center justify-center">
+          <img src="https://picsum.photos/seed/cable3/300/300" alt="Кабель BizonVR XR VR Link" class="w-full h-full object-contain p-4 group-hover:scale-105 transition-transform duration-300" />
+        </div>
+        <div class="flex flex-col flex-grow">
+          <div class="flex items-center mb-2">
+            <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+            <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+            <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+            <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+            <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+          </div>
+          <h3 class="text-white text-sm font-medium leading-tight mb-2 flex-grow line-clamp-2 hover:text-accent cursor-pointer">Кабель BizonVR XR VR Link - Type-C (5 метров)</h3>
+          <div class="flex items-center justify-between text-[10px] text-gray-500 mb-3">
+            <div class="flex items-center space-x-1"><span class="w-1.5 h-1.5 rounded-full bg-green-500"></span><span>Много</span></div>
+            <span>Арт: XR-Q3S8</span>
+          </div>
+          <div class="text-xs text-gray-400 mb-1">Бренд: <span class="text-gray-300">BizonVR XR</span></div>
+          <div class="mt-auto flex items-center justify-between"><span class="text-lg font-bold text-white">1 990 ₽</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CategoryGrid -->
+  <div class="container mx-auto px-4 py-8">
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 h-auto md:h-[400px]">
+      <div class="lg:col-span-2 bg-[#1a2b4a] rounded-xl relative overflow-hidden group cursor-pointer h-64 md:h-auto">
+        <div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-105 opacity-60 mix-blend-overlay" style="background-image: url('https://picsum.photos/seed/tech1/600/600')"></div>
+        <img src="https://picsum.photos/seed/vrheadset/400/400" alt="Аксессуары" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-3/4 object-contain z-10" />
+        <div class="absolute bottom-6 left-6 z-20">
+          <div class="text-[10px] uppercase text-gray-400 mb-1">Удобно, стильно и практично</div>
+          <h3 class="text-xl font-medium text-white">Аксессуары для Oculus Quest 3</h3>
+        </div>
+      </div>
+      <div class="lg:col-span-1 bg-[#1a2b4a] rounded-xl relative overflow-hidden group cursor-pointer h-64 md:h-auto">
+        <div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-105 opacity-50" style="background-image: url('https://images.unsplash.com/photo-1485827404703-89b55fcc595e?auto=format&fit=crop&q=80&w=600')"></div>
+        <div class="absolute bottom-6 left-6 z-20">
+          <div class="text-[10px] uppercase text-gray-400 mb-1">Мировая премьера</div>
+          <h3 class="text-xl font-medium text-white leading-tight">Бионический робот Unitree Go2</h3>
+        </div>
+      </div>
+      <div class="lg:col-span-2 flex flex-col gap-4 h-full">
+        <div class="flex-1 bg-[#1e293b] rounded-xl relative overflow-hidden group cursor-pointer">
+          <div class="absolute right-0 top-0 bottom-0 w-1/2 bg-contain bg-no-repeat bg-center opacity-80" style="background-image: url('https://picsum.photos/seed/gamepad/300/300')"></div>
+          <div class="absolute bottom-6 left-6 z-20">
+            <div class="text-[10px] uppercase text-gray-400 mb-1">Яркие эмоции</div>
+            <h3 class="text-xl font-medium text-white">Геймпады</h3>
+          </div>
+        </div>
+        <div class="flex-1 grid grid-cols-2 gap-4">
+          <div class="bg-[#1e293b] rounded-xl relative overflow-hidden group cursor-pointer p-4">
+            <div class="absolute inset-0 bg-cover bg-center opacity-40 group-hover:opacity-50 transition-opacity" style="background-image: url('https://picsum.photos/seed/console/300/300')"></div>
+            <div class="relative z-10 mt-auto h-full flex flex-col justify-end">
+              <div class="text-[8px] uppercase text-gray-400">Инновации в каждом касании</div>
+              <h3 class="text-sm font-medium text-white leading-tight mt-1">Портативные консоли</h3>
+            </div>
+          </div>
+          <div class="bg-[#1e293b] rounded-xl relative overflow-hidden group cursor-pointer p-4">
+            <div class="absolute inset-0 bg-cover bg-center opacity-40 group-hover:opacity-50 transition-opacity" style="background-image: url('https://picsum.photos/seed/attract/300/300')"></div>
+            <div class="relative z-10 mt-auto h-full flex flex-col justify-end">
+              <div class="text-[8px] uppercase text-gray-400">Не забываемые приключения</div>
+              <h3 class="text-sm font-medium text-white leading-tight mt-1">VR аттракционы</h3>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="mt-4 bg-[#1a2b4a] rounded-xl relative overflow-hidden group cursor-pointer h-40 flex items-center justify-between px-8 md:px-16">
+      <div class="z-10">
+        <div class="text-xs uppercase text-gray-400 mb-2">Удобно, стильно и практично</div>
+        <h3 class="text-2xl font-medium text-white">Аксессуары для PICO 4</h3>
+      </div>
+      <img src="https://picsum.photos/seed/pico/300/200" class="h-32 object-contain relative z-10" alt="Pico 4" />
+    </div>
+  </div>
+
+  <!-- BlogSection -->
+  <div class="container mx-auto px-4 py-12">
+    <div class="flex justify-between items-center mb-6">
+      <h2 class="text-2xl font-light text-white flex items-center gap-3">
+        Блог
+        <button type="button" class="text-xs font-normal text-gray-400 flex items-center gap-1 hover:text-white transition-colors">
+          <i data-lucide="send" class="w-3 h-3 inline-block"></i> ПОДПИСАТЬСЯ
+        </button>
+      </h2>
+      <a href="#" class="text-xs text-gray-500 hover:text-white uppercase tracking-wider">Все статьи</a>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div class="group relative overflow-hidden rounded-xl bg-dark-800 border border-dark-700 hover:border-accent/30 transition-all md:col-span-2 md:row-span-1">
+        <div class="w-full h-64 overflow-hidden relative">
+          <div class="absolute inset-0 bg-gradient-to-t from-dark-900 via-transparent to-transparent z-10"></div>
+          <img src="https://picsum.photos/seed/blog1/400/300" alt="Стоит ли покупать Meta Quest 3/3S" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
+          <div class="absolute top-4 left-4 z-20 bg-accent text-dark-900 text-[10px] font-bold px-2 py-0.5 uppercase">QUEST 3/3S</div>
+        </div>
+        <div class="p-5 relative z-20 -mt-10">
+          <div class="text-[10px] text-gray-400 uppercase mb-1">Статьи</div>
+          <h3 class="font-medium text-white mb-2 leading-snug group-hover:text-accent transition-colors text-xl">Стоит ли покупать Meta Quest 3/3S в 2026 году</h3>
+          <div class="text-[10px] text-gray-600">27 января 2026</div>
+        </div>
+      </div>
+      <div class="group relative overflow-hidden rounded-xl bg-dark-800 border border-dark-700 hover:border-accent/30 transition-all col-span-1">
+        <div class="w-full h-40 overflow-hidden relative">
+          <div class="absolute inset-0 bg-gradient-to-t from-dark-900 via-transparent to-transparent z-10"></div>
+          <img src="https://picsum.photos/seed/blog2/400/300" alt="Обзор CES 2026" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
+        </div>
+        <div class="p-5 relative z-20 -mt-10">
+          <div class="text-[10px] text-gray-400 uppercase mb-1">Новости</div>
+          <h3 class="font-medium text-white mb-2 leading-snug group-hover:text-accent transition-colors text-sm">Обзор CES 2026: все новинки VR/AR устройств</h3>
+          <div class="text-[10px] text-gray-600">15 января 2026</div>
+        </div>
+      </div>
+      <div class="group relative overflow-hidden rounded-xl bg-dark-800 border border-dark-700 hover:border-accent/30 transition-all col-span-1">
+        <div class="w-full h-40 overflow-hidden relative">
+          <div class="absolute inset-0 bg-gradient-to-t from-dark-900 via-transparent to-transparent z-10"></div>
+          <img src="https://picsum.photos/seed/blog3/400/300" alt="ASUS и XREAL ROG XREAL R1" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
+        </div>
+        <div class="p-5 relative z-20 -mt-10">
+          <div class="text-[10px] text-gray-400 uppercase mb-1">Новости</div>
+          <h3 class="font-medium text-white mb-2 leading-snug group-hover:text-accent transition-colors text-sm">ASUS и XREAL представили ROG XREAL R1</h3>
+          <div class="text-[10px] text-gray-600">07 января 2026</div>
+        </div>
+      </div>
+      <div class="group relative overflow-hidden rounded-xl bg-dark-800 border border-dark-700 hover:border-accent/30 transition-all col-span-1">
+        <div class="w-full h-40 overflow-hidden relative">
+          <div class="absolute inset-0 bg-gradient-to-t from-dark-900 via-transparent to-transparent z-10"></div>
+          <img src="https://picsum.photos/seed/blog4/400/300" alt="Лучшие аксессуары для Quest 3" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
+        </div>
+        <div class="p-5 relative z-20 -mt-10">
+          <div class="text-[10px] text-gray-400 uppercase mb-1">Статьи</div>
+          <h3 class="font-medium text-white mb-2 leading-snug group-hover:text-accent transition-colors text-sm">Лучшие аксессуары для Quest 3/Quest 3S в 2026 году</h3>
+          <div class="text-[10px] text-gray-600">26 декабря 2025</div>
+        </div>
+      </div>
+    </div>
+    <div class="flex justify-center mt-8">
+      <button type="button" class="text-xs text-gray-400 border border-gray-700 rounded-full px-6 py-2 hover:border-white hover:text-white transition-colors">Загрузить еще</button>
+    </div>
+  </div>
+
+  <!-- FeatureRow -->
+  <div class="container mx-auto px-4 py-8">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div class="bg-dark-800 rounded-xl overflow-hidden flex items-center p-6 md:p-8 h-64 border border-dark-700 hover:border-dark-600 transition-colors group">
+        <div class="flex flex-col justify-center w-1/2 pr-4">
+          <span class="text-[10px] text-gray-500 uppercase tracking-widest mb-2">BizonVR XR</span>
+          <h3 class="text-lg font-medium text-white mb-3 leading-snug group-hover:text-accent transition-colors">Крепление BizonVR XR Battery Head Strap для Oculus Quest 3/3S</h3>
+          <p class="text-xs text-gray-400 leading-relaxed">Значительно улучшает комфорт, увеличивает время игры за счет встроенного аккумулятора 8 000 mAh</p>
+        </div>
+        <div class="w-1/2 h-full flex items-center justify-center">
+          <img src="https://picsum.photos/seed/feat1/500/300" alt="Крепление BizonVR XR" class="max-h-full max-w-full object-contain drop-shadow-2xl" />
+        </div>
+      </div>
+      <div class="bg-dark-800 rounded-xl overflow-hidden flex items-center p-6 md:p-8 h-64 border border-dark-700 hover:border-dark-600 transition-colors group">
+        <div class="flex flex-col justify-center w-1/2 pr-4">
+          <span class="text-[10px] text-gray-500 uppercase tracking-widest mb-2">BizonVR XR</span>
+          <h3 class="text-lg font-medium text-white mb-3 leading-snug group-hover:text-accent transition-colors">Чехлы BizonVR XR Controller Grips Cover для Oculus Quest 3/3S</h3>
+          <p class="text-xs text-gray-400 leading-relaxed">Беспрерывный гейминг с быстрой заменой АКБ. Премиум материалы и эргономичный дизайн</p>
+        </div>
+        <div class="w-1/2 h-full flex items-center justify-center">
+          <img src="https://picsum.photos/seed/feat2/500/300" alt="Чехлы BizonVR XR" class="max-h-full max-w-full object-contain drop-shadow-2xl" />
+        </div>
+      </div>
+      <div class="bg-dark-800 rounded-xl overflow-hidden flex items-center p-6 md:p-8 h-64 border border-dark-700 hover:border-dark-600 transition-colors group">
+        <div class="flex flex-col justify-center w-1/2 pr-4">
+          <span class="text-[10px] text-gray-500 uppercase tracking-widest mb-2">BizonVR XR</span>
+          <h3 class="text-lg font-medium text-white mb-3 leading-snug group-hover:text-accent transition-colors">Лицевой интерфейс / маска BizonVR XR для Oculus Quest 3</h3>
+          <p class="text-xs text-gray-400 leading-relaxed">Комфорт и удобство с обновленной вентиляцией. Сменные гипоаллергенные накладки</p>
+        </div>
+        <div class="w-1/2 h-full flex items-center justify-center">
+          <img src="https://picsum.photos/seed/feat3/500/300" alt="Маска BizonVR XR" class="max-h-full max-w-full object-contain drop-shadow-2xl" />
+        </div>
+      </div>
+      <div class="bg-dark-800 rounded-xl overflow-hidden flex items-center p-6 md:p-8 h-64 border border-dark-700 hover:border-dark-600 transition-colors group">
+        <div class="flex flex-col justify-center w-1/2 pr-4">
+          <span class="text-[10px] text-gray-500 uppercase tracking-widest mb-2">BizonVR XR</span>
+          <h3 class="text-lg font-medium text-white mb-3 leading-snug group-hover:text-accent transition-colors">Кейс чехол BizonVR XR для Oculus Quest 2/3 PICO 4</h3>
+          <p class="text-xs text-gray-400 leading-relaxed">Надежная защита и идеальная совместимость со любыми сторонними аксессуарами</p>
+        </div>
+        <div class="w-1/2 h-full flex items-center justify-center">
+          <img src="https://picsum.photos/seed/feat4/500/300" alt="Кейс BizonVR XR" class="max-h-full max-w-full object-contain drop-shadow-2xl" />
+        </div>
+      </div>
+      <div class="bg-dark-800 rounded-xl overflow-hidden flex items-center p-6 md:p-8 h-64 border border-dark-700 hover:border-dark-600 transition-colors group">
+        <div class="flex flex-col justify-center w-1/2 pr-4">
+          <span class="text-[10px] text-gray-500 uppercase tracking-widest mb-2">BizonVR XR</span>
+          <h3 class="text-lg font-medium text-white mb-3 leading-snug group-hover:text-accent transition-colors">Кабель с адаптером BizonVR XR VR Link Extra для Quest 2/3 PICO 4</h3>
+          <p class="text-xs text-gray-400 leading-relaxed">Прочная конструкция и стабильное соединение</p>
+        </div>
+        <div class="w-1/2 h-full flex items-center justify-center">
+          <img src="https://picsum.photos/seed/feat5/500/300" alt="Кабель BizonVR XR VR Link Extra" class="max-h-full max-w-full object-contain drop-shadow-2xl" />
+        </div>
+      </div>
+      <div class="bg-dark-800 rounded-xl overflow-hidden flex items-center p-6 md:p-8 h-64 border border-dark-700 hover:border-dark-600 transition-colors group">
+        <div class="flex flex-col justify-center w-1/2 pr-4">
+          <span class="text-[10px] text-gray-500 uppercase tracking-widest mb-2">BizonVR XR</span>
+          <h3 class="text-lg font-medium text-white mb-3 leading-snug group-hover:text-accent transition-colors">Кабель BizonVR XR VR Link для Oculus Quest 2/3 PICO 4</h3>
+          <p class="text-xs text-gray-400 leading-relaxed">Разработан для VR. Стабильное соединение и улучшенная передача данных до 5 Гбит/с</p>
+        </div>
+        <div class="w-1/2 h-full flex items-center justify-center">
+          <img src="https://picsum.photos/seed/feat6/500/300" alt="Кабель BizonVR XR VR Link" class="max-h-full max-w-full object-contain drop-shadow-2xl" />
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- NewsBanner -->
+  <div class="bg-dark-800 py-12 md:py-20 mt-12 relative overflow-hidden">
+    <div class="absolute inset-0 z-0 opacity-10" style="background-image: url('https://www.transparenttextures.com/patterns/cubes.png')"></div>
+    <div class="container mx-auto px-4 relative z-10 flex flex-col md:flex-row items-center justify-between">
+      <div class="max-w-xl">
+        <div class="text-[10px] text-gray-500 uppercase tracking-widest mb-2">О КОМПАНИИ</div>
+        <h2 class="text-3xl md:text-5xl font-bold text-white mb-6">BizonVR NEWS</h2>
+        <p class="text-sm text-gray-400 leading-relaxed mb-8 max-w-lg">Подписывайтесь на наш YouTube канал. Мы делаем видеообзоры шлемов виртуальной реальности, гайды, руководства, обсуждаем актуальные новости мира VR/AR/MR и многое другое!</p>
+        <button type="button" class="bg-accent hover:bg-accent-hover text-dark-900 font-bold py-2.5 px-6 rounded-full text-xs uppercase tracking-wide transition-colors">Смотреть на YouTube</button>
+      </div>
+      <div class="mt-8 md:mt-0 relative">
+        <div class="relative w-64 h-32 md:w-96 md:h-48">
+          <div class="absolute inset-0 bg-red-600 transform -skew-x-12 rounded-lg flex items-center justify-center shadow-2xl">
+            <span class="text-4xl md:text-6xl font-black text-white italic">BizonVR <br/> NEWS</span>
+          </div>
+          <div class="absolute -right-6 -top-6 bg-dark-900 p-2 rounded-full border-4 border-red-600">
+            <div class="w-0 h-0 border-t-[10px] border-t-transparent border-l-[20px] border-l-white border-b-[10px] border-b-transparent ml-1"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="bg-dark-900 text-white pt-12 pb-6 border-t border-dark-700">
+    <div class="container mx-auto px-4">
+      <div class="flex flex-col md:flex-row justify-between mb-12">
+        <div class="flex items-center justify-between w-full mb-8 md:mb-0">
+          <h2 class="text-2xl font-light">Контакты</h2>
+          <span class="text-[10px] text-gray-600 uppercase tracking-widest cursor-pointer hover:text-white">Перейти в раздел</span>
+        </div>
+      </div>
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
+        <div class="space-y-6">
+          <div>
+            <h3 class="text-sm font-bold text-white mb-2 max-w-xs">г. Москва, улица Академика Королева, 13с1</h3>
+            <div class="flex items-center space-x-2 mt-4">
+              <span class="text-[10px] text-gray-500 uppercase">Метро</span>
+            </div>
+            <p class="text-sm text-gray-300">ВДНХ</p>
+          </div>
+          <div>
+            <div class="text-[10px] text-gray-500 uppercase mb-1">Режим работы</div>
+            <p class="text-sm text-gray-300">с 10:00 до 19:00</p>
+          </div>
+          <div>
+            <div class="text-[10px] text-gray-500 uppercase mb-1">Телефон</div>
+            <p class="text-lg font-bold hover:text-accent cursor-pointer">+7 (800) 600-95-47</p>
+          </div>
+          <div>
+            <div class="text-[10px] text-gray-500 uppercase mb-1">E-mail</div>
+            <p class="text-sm text-gray-300 hover:text-accent cursor-pointer">info@bizonvr.com</p>
+          </div>
+          <div class="pt-4">
+            <h4 class="text-xl mb-4">Поиск</h4>
+            <div class="relative border-b border-gray-600 pb-2 flex items-center">
+              <input type="text" class="bg-transparent w-full focus:outline-none text-sm" placeholder="Введите запрос" />
+              <button type="button" class="bg-accent text-dark-900 text-xs font-bold px-3 py-1 rounded-full ml-2">Найти</button>
+              <i data-lucide="x" class="w-4 h-4 text-gray-500 ml-2 cursor-pointer inline-block"></i>
+            </div>
+          </div>
+        </div>
+        <div class="lg:col-span-2 relative h-80 bg-gray-800 rounded-xl overflow-hidden grayscale opacity-90">
+          <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Map_of_Moscow_center.svg/2560px-Map_of_Moscow_center.svg.png" alt="Карта" class="w-full h-full object-cover opacity-50" />
+          <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+            <i data-lucide="map-pin" class="w-10 h-10 text-accent drop-shadow-lg inline-block" style="fill: currentColor;"></i>
+          </div>
+          <div class="absolute bottom-4 right-4 bg-white text-black text-xs px-2 py-1 rounded shadow">© Яндекс Условия использования</div>
+        </div>
+      </div>
+      <hr class="border-gray-800 my-8" />
+      <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-8 text-xs text-gray-400 mb-8">
+        <div class="col-span-2 lg:col-span-1">
+          <div class="flex flex-col space-y-2">
+            <h1 class="text-xl font-bold tracking-wider text-white mb-2">BizonVR</h1>
+            <p>Быстрая доставка</p>
+            <p class="text-gray-600 text-[10px]">Доставка посылок по Москве. Бережная доставка по России и СНГ</p>
+          </div>
+        </div>
+        <div>
+          <h4 class="text-white font-bold mb-4 uppercase">Каталог</h4>
+          <ul class="space-y-2">
+            <li class="hover:text-white cursor-pointer">VR шлемы</li>
+            <li class="hover:text-white cursor-pointer">Аксессуары</li>
+            <li class="hover:text-white cursor-pointer">Игры</li>
+          </ul>
+        </div>
+        <div>
+          <h4 class="text-white font-bold mb-4 uppercase">Блог</h4>
+          <ul class="space-y-2">
+            <li class="hover:text-white cursor-pointer">Новости</li>
+            <li class="hover:text-white cursor-pointer">Обзоры</li>
+          </ul>
+        </div>
+        <div>
+          <h4 class="text-white font-bold mb-4 uppercase">Клубы</h4>
+        </div>
+        <div>
+          <h4 class="text-white font-bold mb-4 uppercase">Аренда</h4>
+        </div>
+        <div>
+          <h4 class="text-white font-bold mb-4 uppercase">Клиентский сервис</h4>
+          <p class="text-gray-600 text-[10px]">Техническая поддержка и сопровождение после покупки</p>
+        </div>
+      </div>
+      <div class="flex flex-col md:flex-row justify-between items-center pt-8 border-t border-gray-800 text-[10px] text-gray-600">
+        <div class="mb-4 md:mb-0">
+          <h3 class="text-white text-lg mb-2">Мы ВКонтакте</h3>
+          <div class="bg-dark-800 p-4 rounded-lg border border-dark-700 w-full max-w-sm">
+            <div class="flex items-center gap-2 mb-2">
+              <div class="w-8 h-8 bg-blue-600 rounded-full"></div>
+              <div class="text-white font-bold text-xs">BizonVR</div>
+            </div>
+            <div class="flex gap-2 overflow-x-auto no-scrollbar">
+              <img src="https://picsum.photos/seed/vk1/100/100" class="w-20 h-20 rounded object-cover" alt="" />
+              <img src="https://picsum.photos/seed/vk2/100/100" class="w-20 h-20 rounded object-cover" alt="" />
+              <img src="https://picsum.photos/seed/vk3/100/100" class="w-20 h-20 rounded object-cover" alt="" />
+            </div>
+          </div>
+        </div>
+        <div class="flex space-x-4">
+          <i data-lucide="send" class="w-4 h-4 hover:text-accent cursor-pointer inline-block"></i>
+          <span class="hover:text-white cursor-pointer">ВСЕ ПУБЛИКАЦИИ</span>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+  <script>
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  </script>
+  <script>
+    // Табы «Лучшие предложения»
+    document.querySelectorAll('.product-tab').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var tab = this.getAttribute('data-tab');
+        document.querySelectorAll('.product-tab').forEach(function(b) {
+          b.className = 'product-tab px-4 py-1.5 rounded transition-colors bg-dark-700 text-gray-300 hover:text-white';
+        });
+        var c = 'product-tab px-4 py-1.5 rounded transition-colors ';
+        if (tab === 'bestseller') c += 'bg-accent text-dark-900';
+        else if (tab === 'expert') c += 'bg-[#8b5cf6] text-white';
+        else if (tab === 'new') c += 'bg-[#84cc16] text-dark-900';
+        else if (tab === 'sale') c += 'bg-[#eab308] text-dark-900';
+        this.className = c;
+      });
+    });
+  </script>
+</body>
+</html>

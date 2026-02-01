@@ -1,0 +1,31 @@
+{% load catalog_tags %}
+{% if cart_error %}
+  <p class="text-red-400 text-sm mb-2">{{ cart_error }}</p>
+{% endif %}
+{% if cart_items %}
+  <ul class="space-y-4">
+    {% for item in cart_items %}
+      <li class="flex gap-4 p-3 bg-dark-700/50 rounded-lg">
+        <div class="w-16 h-16 rounded bg-dark-600 flex-shrink-0 flex items-center justify-center overflow-hidden">
+          {% if item.image_url %}
+            <img src="{{ item.image_url|absolute_uri:request }}" alt="" class="w-full h-full object-cover" />
+          {% else %}
+            <i data-lucide="package" class="w-8 h-8 text-gray-500"></i>
+          {% endif %}
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-medium text-white line-clamp-2">{{ item.name }}</p>
+          <p class="text-xs text-gray-400 mt-0.5">{{ item.quantity }} × {{ item.price }} ₽</p>
+        </div>
+        <div class="text-sm font-bold text-white">{{ item.subtotal }} ₽</div>
+      </li>
+    {% endfor %}
+  </ul>
+  <p class="mt-4 text-right font-bold text-white">Итого: {{ total|floatformat:0 }} ₽</p>
+{% else %}
+  <div class="flex flex-col items-center justify-center py-12 text-gray-400">
+    <i data-lucide="shopping-cart" class="w-16 h-16 mb-4 opacity-50"></i>
+    <p class="text-sm">Корзина пуста</p>
+    <a href="{% url 'catalog:product_list' %}" class="mt-4 text-accent hover:text-accent-hover text-sm font-medium">Перейти в каталог</a>
+  </div>
+{% endif %}

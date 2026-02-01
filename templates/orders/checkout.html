@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}Оформление заказа — BizonVR{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8 max-w-4xl">
+  <nav class="mb-6">
+    <a href="{% url 'catalog:product_list' %}" class="text-gray-400 hover:text-accent text-sm flex items-center gap-1">
+      <i data-lucide="arrow-left" class="w-4 h-4 inline-block"></i>
+      В каталог
+    </a>
+  </nav>
+
+  <h1 class="text-2xl font-light text-white mb-8">Оформление заказа</h1>
+
+  {% if cart_empty %}
+    <div class="bg-dark-800 border border-dark-600 rounded-xl p-8 text-center text-gray-400">
+      <p class="mb-4">Корзина пуста. Добавьте товары, чтобы оформить заказ.</p>
+      <a href="{% url 'catalog:product_list' %}" class="inline-flex items-center gap-2 bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-6 rounded-full text-sm uppercase tracking-wide transition-colors">
+        Перейти в каталог
+        <i data-lucide="arrow-right" class="w-4 h-4 inline-block"></i>
+      </a>
+    </div>
+  {% else %}
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div class="space-y-6">
+        <div class="bg-dark-800 border border-dark-600 rounded-xl p-6">
+          <h2 class="text-lg font-medium text-white mb-4">Состав заказа</h2>
+          <ul class="space-y-3">
+            {% for item in cart_items %}
+            <li class="flex justify-between items-start gap-2 text-sm">
+              <span class="text-gray-300">{{ item.name }} × {{ item.quantity }}</span>
+              <span class="text-white font-medium whitespace-nowrap">{{ item.subtotal|floatformat:0 }} ₽</span>
+            </li>
+            {% endfor %}
+          </ul>
+          <p class="mt-4 pt-4 border-t border-dark-600 text-gray-300 text-sm">Сумма: {{ cart_subtotal|floatformat:0 }} ₽</p>
+          {% if cart_discount and cart_discount > 0 %}
+          <p class="text-green-400 text-sm">Скидка по промокоду: −{{ cart_discount|floatformat:0 }} ₽</p>
+          {% endif %}
+          <p class="text-white font-bold text-lg">К оплате: {{ cart_total_to_pay|floatformat:0 }} ₽</p>
+        </div>
+      </div>
+
+      <div class="bg-dark-800 border border-dark-600 rounded-xl p-6">
+        <h2 class="text-lg font-medium text-white mb-4">Контактные данные и доставка</h2>
+        {% if selected_city %}
+        <p class="text-sm text-gray-400 mb-4">Город: <span class="text-white font-medium">{{ selected_city.name }}</span> (можно изменить в шапке)</p>
+        {% else %}
+        <p class="text-sm text-gray-500 mb-4">Выберите город в шапке сайта для отображения наличия и точек выдачи.</p>
+        {% endif %}
+        <form method="post" action="{% url 'orders:checkout' %}" class="space-y-4">
+          {% csrf_token %}
+          {% if form.non_field_errors %}
+          <div class="text-red-400 text-sm">{{ form.non_field_errors }}</div>
+          {% endif %}
+          <div>
+            <label for="id_promo_code" class="block text-sm font-medium text-gray-300 mb-1">{{ form.promo_code.label }}</label>
+            {{ form.promo_code }}
+            {% if form.promo_code.errors %}<p class="text-red-400 text-xs mt-1">{{ form.promo_code.errors.0 }}</p>{% endif %}
+          </div>
+          <div>
+            <label for="id_phone" class="block text-sm font-medium text-gray-300 mb-1">{{ form.phone.label }} *</label>
+            {{ form.phone }}
+            {% if form.phone.errors %}<p class="text-red-400 text-xs mt-1">{{ form.phone.errors.0 }}</p>{% endif %}
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label for="id_first_name" class="block text-sm font-medium text-gray-300 mb-1">{{ form.first_name.label }} *</label>
+              {{ form.first_name }}
+              {% if form.first_name.errors %}<p class="text-red-400 text-xs mt-1">{{ form.first_name.errors.0 }}</p>{% endif %}
+            </div>
+            <div>
+              <label for="id_last_name" class="block text-sm font-medium text-gray-300 mb-1">{{ form.last_name.label }}</label>
+              {{ form.last_name }}
+            </div>
+          </div>
+          <div>
+            <label for="id_email" class="block text-sm font-medium text-gray-300 mb-1">{{ form.email.label }}</label>
+            {{ form.email }}
+            {% if form.email.errors %}<p class="text-red-400 text-xs mt-1">{{ form.email.errors.0 }}</p>{% endif %}
+          </div>
+          <div>
+            <label for="id_delivery_type" class="block text-sm font-medium text-gray-300 mb-1">{{ form.delivery_type.label }} *</label>
+            {{ form.delivery_type }}
+          </div>
+          {% if pickup_points %}
+          <div id="pickup-point-field">
+            <label for="id_pickup_point" class="block text-sm font-medium text-gray-300 mb-1">{{ form.pickup_point.label }} (для самовывоза)</label>
+            {{ form.pickup_point }}
+            {% if form.pickup_point.errors %}<p class="text-red-400 text-xs mt-1">{{ form.pickup_point.errors.0 }}</p>{% endif %}
+          </div>
+          {% endif %}
+          <div>
+            <label for="id_address" class="block text-sm font-medium text-gray-300 mb-1">{{ form.address.label }} *</label>
+            {{ form.address }}
+            {% if form.address.errors %}<p class="text-red-400 text-xs mt-1">{{ form.address.errors.0 }}</p>{% endif %}
+          </div>
+          <div>
+            <label for="id_comment" class="block text-sm font-medium text-gray-300 mb-1">{{ form.comment.label }}</label>
+            {{ form.comment }}
+          </div>
+          <button type="submit" class="w-full bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-6 rounded-full text-sm uppercase tracking-wide transition-colors">
+            Оформить заказ
+          </button>
+        </form>
+      </div>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% load catalog_tags %}
+
+{% block title %}Каталог — BizonVR{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+  <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+    <h2 class="text-2xl md:text-3xl font-light text-white">
+      {% if search_query %}Результаты поиска по запросу «{{ search_query }}»{% else %}Каталог{% endif %}
+    </h2>
+    <div class="flex flex-wrap gap-2 text-xs md:text-sm font-medium items-center">
+      <span class="text-gray-400 mr-2">Категория:</span>
+      <a href="{% url 'catalog:product_list' %}?sort={{ current_sort }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}"
+         class="px-4 py-1.5 rounded transition-colors {% if not current_category %}bg-accent text-dark-900{% else %}bg-dark-700 text-gray-300 hover:text-white{% endif %}">
+        Все
+      </a>
+      {% for cat in categories %}
+        <a href="{% url 'catalog:product_list' %}?category={{ cat.slug }}&sort={{ current_sort }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}"
+           class="px-4 py-1.5 rounded transition-colors {% if current_category == cat.slug %}bg-accent text-dark-900{% else %}bg-dark-700 text-gray-300 hover:text-white{% endif %}">
+          {{ cat.name }}
+        </a>
+      {% endfor %}
+      <span class="text-gray-400 ml-4 mr-2">Сортировка:</span>
+      <select onchange="window.location.href='?category={{ current_category }}&sort='+this.value+'{% if search_query %}&q={{ search_query|urlencode }}{% endif %}'"
+              class="bg-dark-700 text-white rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-accent">
+        <option value="newest" {% if current_sort == 'newest' %}selected{% endif %}>Сначала новые</option>
+        <option value="price_asc" {% if current_sort == 'price_asc' %}selected{% endif %}>Цена: по возрастанию</option>
+        <option value="price_desc" {% if current_sort == 'price_desc' %}selected{% endif %}>Цена: по убыванию</option>
+        <option value="name" {% if current_sort == 'name' %}selected{% endif %}>По названию</option>
+      </select>
+    </div>
+  </div>
+
+  {% if products %}
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+      {% for product in products %}
+        <article class="group bg-dark-900 md:bg-transparent md:hover:bg-dark-800 border border-transparent md:hover:border-dark-700 p-4 rounded-xl transition-all duration-300 relative flex flex-col h-full">
+          <div class="absolute top-4 right-4 z-10 flex flex-col space-y-2 opacity-0 group-hover:opacity-100 transition-opacity">
+            {% if user.is_authenticated %}
+            <form action="{% url 'catalog:toggle_favorite' product.pk %}" method="post" class="inline">
+              {% csrf_token %}
+              <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+              <button type="submit" class="bg-dark-700 p-1.5 rounded-full hover:bg-accent hover:text-dark-900 cursor-pointer text-gray-400 {% if product.id in favorite_product_ids %}text-red-400{% endif %}" title="{% if product.id in favorite_product_ids %}Убрать из избранного{% else %}В избранное{% endif %}">
+                <i data-lucide="heart" class="w-4 h-4 inline-block {% if product.id in favorite_product_ids %}fill-current{% endif %}"></i>
+              </button>
+            </form>
+            {% else %}
+            <a href="{% url 'accounts:login' %}?next={{ request.get_full_path }}" class="bg-dark-700 p-1.5 rounded-full hover:bg-accent hover:text-dark-900 cursor-pointer text-gray-400 inline-block" title="Войдите, чтобы добавить в избранное"><i data-lucide="heart" class="w-4 h-4 inline-block"></i></a>
+            {% endif %}
+            <div class="bg-dark-700 p-1.5 rounded-full hover:bg-accent hover:text-dark-900 cursor-pointer text-gray-400"><i data-lucide="git-compare" class="w-4 h-4 inline-block"></i></div>
+          </div>
+          <a href="{% url 'catalog:product_detail' product.slug %}" class="block relative w-full aspect-square mb-4 overflow-hidden rounded-lg bg-white/5 flex items-center justify-center">
+            {% if product.image %}
+              <img src="{{ product.image.url|absolute_uri:request }}" alt="{{ product.name }}" class="w-full h-full object-contain p-4 group-hover:scale-105 transition-transform duration-300" />
+            {% else %}
+              <div class="w-full h-full flex items-center justify-center text-gray-500">
+                <i data-lucide="image-off" class="w-16 h-16 inline-block"></i>
+              </div>
+            {% endif %}
+          </a>
+          <div class="flex flex-col flex-grow">
+            <div class="flex items-center mb-2">
+              <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+              <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+              <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+              <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+              <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
+            </div>
+            <h3 class="text-white text-sm font-medium leading-tight mb-2 flex-grow line-clamp-2 hover:text-accent">
+              <a href="{% url 'catalog:product_detail' product.slug %}">{{ product.name }}</a>
+            </h3>
+            <div class="text-xs text-gray-400 mb-1">Категория: <span class="text-gray-300">{{ product.category.name }}</span></div>
+            {% if selected_city %}
+            <p class="text-xs text-gray-400 mb-1">В наличии ({{ selected_city.name }}): <span class="text-gray-300">{{ product_stock_in_city|get_item:product.id }} шт.</span></p>
+            {% else %}
+            <p class="text-xs text-gray-400 mb-1">Выберите город для отображения наличия</p>
+            {% endif %}
+            <div class="mt-auto flex items-center justify-between">
+              <span class="text-lg font-bold text-white">{{ product.price|floatformat:0 }} ₽</span>
+            </div>
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+
+    {% if page_obj.has_other_pages %}
+      <nav class="flex justify-center gap-2 mt-12 flex-wrap">
+        {% if page_obj.has_previous %}
+          <a href="?page={{ page_obj.previous_page_number }}{% if current_category %}&category={{ current_category }}{% endif %}{% if current_sort != 'newest' %}&sort={{ current_sort }}{% endif %}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}"
+             class="px-4 py-2 rounded-lg bg-dark-700 text-gray-300 hover:text-white hover:bg-dark-600 transition-colors text-sm">← Назад</a>
+        {% endif %}
+        <span class="px-4 py-2 text-gray-400 text-sm self-center">Стр. {{ page_obj.number }} из {{ page_obj.paginator.num_pages }}</span>
+        {% if page_obj.has_next %}
+          <a href="?page={{ page_obj.next_page_number }}{% if current_category %}&category={{ current_category }}{% endif %}{% if current_sort != 'newest' %}&sort={{ current_sort }}{% endif %}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}"
+             class="px-4 py-2 rounded-lg bg-dark-700 text-gray-300 hover:text-white hover:bg-dark-600 transition-colors text-sm">Вперёд →</a>
+        {% endif %}
+      </nav>
+    {% endif %}
+  {% else %}
+    <div class="text-center py-16 text-gray-400">
+      <i data-lucide="package-x" class="w-16 h-16 mx-auto mb-4 opacity-50"></i>
+      <p>Товаров пока нет.</p>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

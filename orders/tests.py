@@ -1,0 +1,115 @@
+"""Базовые тесты заказов (Фаза 6)."""
+from decimal import Decimal
+
+from django.contrib.auth import get_user_model
+from django.test import Client, TestCase
+from django.urls import reverse
+
+from catalog.models import Category, Product
+
+from .models import Order, OrderItem
+
+User = get_user_model()
+
+
+class OrderViewsTest(TestCase):
+    """Список заказов доступен только авторизованным."""
+
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(username='79991234567', password='testpass')
+
+    def test_order_list_requires_login(self):
+        resp = self.client.get(reverse('orders:order_list'))
+        self.assertEqual(resp.status_code, 302)
+        self.assertTrue(resp.url.startswith(reverse('accounts:login')))
+
+    def test_order_list_authenticated_returns_200(self):
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse('orders:order_list'))
+        self.assertEqual(resp.status_code, 200)
+
+
+class CheckoutTest(TestCase):
+    """Checkout создаёт заказ и очищает корзину (Фаза 6)."""
+
+    def setUp(self):
+        self.client = Client()
+        cat = Category.objects.create(name='Тест', slug='test')
+        self.product = Product.objects.create(
+            category=cat,
+            name='Товар',
+            slug='product',
+            price=Decimal('100.00'),
+            is_active=True,
+        )
+
+    def test_checkout_creates_order_and_clears_cart(self):
+        # Добавляем товар в корзину через view, чтобы сессия точно содержала cart_items
+        add_url = reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk})
+        self.client.post(add_url, {'quantity': 2})
+        url = reverse('orders:checkout')
+        resp = self.client.post(url, {
+            'phone': '+7 999 123 45 67',
+            'first_name': 'Иван',
+            'last_name': 'Иванов',
+            'email': 'guest@example.com',
+            'address': 'Москва, ул. Тестовая, 1',
+            'delivery_type': 'courier',
+            'comment': '',
+        })
+        self.assertEqual(resp.status_code, 302, msg=f'Got {resp.status_code}. URL: {getattr(resp, "url", "")}. Content: {resp.content.decode()[:300] if resp.content else ""}')
+        self.assertIn('/orders/created/', resp.url, msg=f'Expected redirect to order_created, got {resp.url}')
+        order = Order.objects.first()
+        self.assertIsNotNone(order, msg=f'Order was not created. Redirect URL: {resp.url}')
+        self.assertEqual(resp.url, reverse('orders:order_created', kwargs={'order_id': order.pk}))
+        self.assertIsNone(order.user_id)
+        self.assertEqual(order.total, Decimal('200.00'))
+        self.assertEqual(order.phone, '+7 999 123 45 67')
+        self.assertEqual(OrderItem.objects.filter(order=order).count(), 1)
+        # После оформления корзина в сессии должна быть пуста
+        self.client.get(resp.url)  # следовать редиректу, чтобы обновить сессию на клиенте
+        self.assertEqual(self.client.session.get('cart_items', []), [])
+
+
+class GuestOrderTest(TestCase):
+    """Гостевой заказ: доступ по номеру заказа + телефон (Фаза 6)."""
+
+    def setUp(self):
+        self.client = Client()
+        cat = Category.objects.create(name='Тест', slug='test')
+        self.product = Product.objects.create(
+            category=cat,
+            name='Товар',
+            slug='product',
+            price=Decimal('100.00'),
+            is_active=True,
+        )
+        self.order = Order.objects.create(
+            user=None,
+            status=Order.STATUS_NEW,
+            total=Decimal('100.00'),
+            phone='+7 999 111 22 33',
+            email='guest@test.com',
+            first_name='Гость',
+            last_name='',
+            address='Адрес',
+        )
+        OrderItem.objects.create(order=self.order, product=self.product, quantity=1, price=Decimal('100.00'))
+
+    def test_guest_lookup_requires_phone_match(self):
+        url = reverse('orders:order_guest_lookup')
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 200)
+        resp = self.client.post(url, {'order_id': self.order.pk, 'phone': '+7 999 000 00 00'})
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Телефон не совпадает')
+
+    def test_guest_lookup_success_redirects_to_order(self):
+        url = reverse('orders:order_guest_lookup')
+        resp = self.client.post(url, {'order_id': self.order.pk, 'phone': '+7 999 111 22 33'})
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.url, reverse('orders:order_guest', kwargs={'order_id': self.order.pk}))
+        resp = self.client.get(resp.url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, f'Заказ #{self.order.pk}')

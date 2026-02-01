@@ -1,0 +1,44 @@
+# Пример конфигурации Nginx для продакшена.
+# Домен: bizonvr.ru. Замените пути к сертификатам/статике/медиа при необходимости.
+# Вариант 1: статику и медиа отдаёт Django (WhiteNoise) — тогда location /static/ и /media/ не нужны, всё идёт в proxy_pass.
+# Вариант 2: статику/медиа отдаёт Nginx — укажите alias на volume (см. Mountpoint: docker volume inspect ..._static_volume).
+
+upstream bizonvr_app {
+    server 127.0.0.1:8000;
+}
+
+server {
+    listen 80;
+    server_name bizonvr.ru www.bizonvr.ru;
+    return 301 https://$server_name$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name bizonvr.ru www.bizonvr.ru;
+
+    ssl_certificate     /etc/letsencrypt/live/bizonvr.ru/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/bizonvr.ru/privkey.pem;
+
+    client_max_body_size 20M;
+
+    location /static/ {
+        alias /path/to/bizonvr/staticfiles/;
+    }
+
+    location /media/ {
+        alias /path/to/bizonvr/media/;
+    }
+
+    location / {
+        proxy_pass http://bizonvr_app;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_redirect off;
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+}

@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}Вход — BizonVR{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-12 max-w-md">
+  <h1 class="text-2xl font-light text-white mb-6">Вход по номеру телефона</h1>
+  <p class="text-gray-400 text-sm mb-6">Введите номер — мы отправим код подтверждения в SMS.</p>
+
+  <form id="phone-form" method="post" action="{% url 'accounts:send_code' %}" class="space-y-4"
+        x-data="{ loading: false, error: '' }"
+        @submit.prevent="
+          loading = true; error = '';
+          fetch($el.action, {
+            method: 'POST',
+            body: new FormData($el),
+            headers: { 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value, 'X-Requested-With': 'XMLHttpRequest' }
+          })
+          .then(r => r.json())
+          .then(data => {
+            loading = false;
+            if (data.ok) {
+              var params = 'phone=' + encodeURIComponent(data.phone);
+              if (window.location.search) params += '&' + window.location.search.slice(1);
+              window.location.href = '{% url 'accounts:verify_code' %}?' + params;
+            } else { error = data.error || 'Ошибка отправки'; }
+          })
+          .catch(() => { loading = false; error = 'Ошибка сети'; });
+        ">
+    {% csrf_token %}
+    <div>
+      <label for="id_phone" class="block text-sm text-gray-400 mb-1">Телефон</label>
+      <input type="tel" name="phone" id="id_phone" required
+             placeholder="+7 (999) 123-45-67"
+             class="w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent"
+             autocomplete="tel">
+      <p x-show="error" x-text="error" class="text-red-400 text-sm mt-1"></p>
+    </div>
+    <button type="submit" :disabled="loading"
+            class="w-full bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-4 rounded-full transition-colors disabled:opacity-50">
+      <span x-show="!loading">Получить код</span>
+      <span x-show="loading" x-cloak>Отправка…</span>
+    </button>
+  </form>
+
+  <p class="text-gray-500 text-xs mt-6">
+    В режиме разработки без SMS-провайдера код выводится в консоль сервера.
+  </p>
+  <p class="text-gray-500 text-xs mt-4">
+    Оформили заказ без входа? <a href="{% url 'orders:order_guest_lookup' %}" class="text-accent hover:text-accent-hover">Проверить статус заказа</a>
+  </p>
+</div>
+{% endblock %}

@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}Введите код — BizonVR{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-12 max-w-md">
+  <h1 class="text-2xl font-light text-white mb-2">Введите код из SMS</h1>
+  <p class="text-gray-400 text-sm mb-6">Код отправлен на номер <strong class="text-white">{{ phone }}</strong></p>
+
+  {% if error %}
+  <p class="text-red-400 text-sm mb-4 p-3 bg-red-900/20 rounded-lg">{{ error }}</p>
+  {% endif %}
+  <form method="post" action="{% url 'accounts:verify_code' %}" class="space-y-4">
+    {% csrf_token %}
+    <input type="hidden" name="phone" value="{{ phone }}">
+    {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}
+    {% if form.code.errors %}
+      <p class="text-red-400 text-sm">{{ form.code.errors.0 }}</p>
+    {% endif %}
+    <div>
+      <label for="id_code" class="block text-sm text-gray-400 mb-1">Код</label>
+      <input type="text" name="code" id="id_code" required
+             placeholder="123456" inputmode="numeric" pattern="[0-9]*" maxlength="10"
+             class="w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent text-center text-lg tracking-widest"
+             autocomplete="one-time-code">
+    </div>
+    <button type="submit" class="w-full bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-4 rounded-full transition-colors">
+      Войти
+    </button>
+  </form>
+
+  <p class="text-gray-500 text-sm mt-6">
+    <a href="{% url 'accounts:login' %}" class="text-accent hover:text-accent-hover">Указать другой номер</a>
+  </p>
+  <p class="text-gray-500 text-xs mt-4 p-3 bg-dark-800 rounded-lg">
+    В режиме разработки SMS не отправляется — код выводится в <strong>терминале, где запущен сервер</strong> (runserver или gunicorn). Найдите строку вида «SMS (dev): код XXXXXX для номера …» и введите этот код выше.
+  </p>
+</div>
+{% endblock %}

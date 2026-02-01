@@ -1,0 +1,58 @@
+# BizonVR — поднятие приложения и PostgreSQL
+# Запуск: docker compose up -d
+# Миграции (локально к контейнеру db): python manage.py migrate
+# Миграции (внутри web): docker compose exec web python manage.py migrate
+# Если меняли DB_USER в .env — пересоздайте том БД: docker compose down -v && docker compose up -d
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${DB_NAME:-bizon}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # 5434 на хосте — чтобы не конфликтовать с локальным PostgreSQL (5432/5433)
+    ports:
+      - "5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-bizon}"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  web:
+    build: .
+    entrypoint: ["./entrypoint.sh"]
+    environment:
+      DEBUG: "False"
+      SERVE_MEDIA: "1"
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      ALLOWED_HOSTS: "*"
+      USE_HTTPS: "0"
+      DB_ENGINE: django.db.backends.postgresql
+      DB_NAME: ${DB_NAME:-bizon}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_HOST: db
+      DB_PORT: "5432"
+    volumes:
+      - .:/app
+      - static_volume:/app/staticfiles
+    ports:
+      - "0.0.0.0:8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/', timeout=5)\" || exit 1"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  postgres_data:
+  static_volume:

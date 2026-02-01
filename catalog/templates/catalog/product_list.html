@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Каталог — BizonVR</title>
+    <style>
+        body { font-family: system-ui, sans-serif; max-width: 1200px; margin: 0 auto; padding: 1rem; }
+        h1 { margin-bottom: 1rem; }
+        .filters { display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; align-items: center; }
+        .filters a, .filters select { padding: 0.5rem 0.75rem; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1.5rem; }
+        .card { border: 1px solid #ddd; border-radius: 8px; overflow: hidden; }
+        .card img { width: 100%; height: 180px; object-fit: cover; }
+        .card-body { padding: 1rem; }
+        .card h3 { margin: 0 0 0.5rem; font-size: 1rem; }
+        .card .price { font-weight: bold; color: #333; }
+        .pagination { margin-top: 2rem; display: flex; gap: 0.5rem; flex-wrap: wrap; }
+        .pagination a, .pagination span { padding: 0.5rem 0.75rem; }
+        .pagination .current { font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>Каталог</h1>
+
+    <div class="filters">
+        <span>Категория:</span>
+        <a href="?sort={{ current_sort }}"{% if not current_category %} style="font-weight: bold"{% endif %}>Все</a>
+        {% for cat in categories %}
+            <a href="?category={{ cat.slug }}&sort={{ current_sort }}"{% if current_category == cat.slug %} style="font-weight: bold"{% endif %}>{{ cat.name }}</a>
+        {% endfor %}
+        <span style="margin-left: 1rem;">Сортировка:</span>
+        <select onchange="location.href='?category={{ current_category }}&sort='+this.value">
+            <option value="newest" {% if current_sort == 'newest' %}selected{% endif %}>Сначала новые</option>
+            <option value="price_asc" {% if current_sort == 'price_asc' %}selected{% endif %}>Цена: по возрастанию</option>
+            <option value="price_desc" {% if current_sort == 'price_desc' %}selected{% endif %}>Цена: по убыванию</option>
+            <option value="name" {% if current_sort == 'name' %}selected{% endif %}>По названию</option>
+        </select>
+    </div>
+
+    {% if products %}
+        <div class="grid">
+            {% for product in products %}
+                <article class="card">
+                    {% if product.image %}
+                        <img src="{{ product.image.url }}" alt="{{ product.name }}">
+                    {% else %}
+                        <div style="height: 180px; background: #eee; display: flex; align-items: center; justify-content: center; color: #999;">Нет фото</div>
+                    {% endif %}
+                    <div class="card-body">
+                        <h3><a href="{% url 'catalog:product_detail' product.slug %}">{{ product.name }}</a></h3>
+                        <p class="price">{{ product.price }} ₽</p>
+                    </div>
+                </article>
+            {% endfor %}
+        </div>
+
+        {% if page_obj.has_other_pages %}
+            <nav class="pagination">
+                {% if page_obj.has_previous %}
+                    <a href="?page={{ page_obj.previous_page_number }}{% if current_category %}&category={{ current_category }}{% endif %}{% if current_sort != 'newest' %}&sort={{ current_sort }}{% endif %}">← Назад</a>
+                {% endif %}
+                <span class="current">Стр. {{ page_obj.number }} из {{ page_obj.paginator.num_pages }}</span>
+                {% if page_obj.has_next %}
+                    <a href="?page={{ page_obj.next_page_number }}{% if current_category %}&category={{ current_category }}{% endif %}{% if current_sort != 'newest' %}&sort={{ current_sort }}{% endif %}">Вперёд →</a>
+                {% endif %}
+            </nav>
+        {% endif %}
+    {% else %}
+        <p>Товаров пока нет.</p>
+    {% endif %}
+</body>
+</html>

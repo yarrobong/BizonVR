@@ -1,0 +1,17 @@
+.git
+.gitignore
+.env
+*.pyc
+__pycache__
+*.sqlite3
+venv
+.venv
+env
+.env.local
+*.md
+.pytest_cache
+.coverage
+htmlcov
+staticfiles
+node_modules
+tailwindcss

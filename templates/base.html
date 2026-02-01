@@ -1,0 +1,467 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% block title %}BizonVR{% endblock %}</title>
+  <link href="{% static 'css/tailwind.css' %}" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    /* scroll-padding-top: браузер учитывает шапку при прокрутке к началу/к якорям */
+    html { scroll-padding-top: 166px; }
+    body { background-color: #111111; color: #ffffff; }
+    #main-content { padding-top: 0 !important; }
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: #1a1a1a; }
+    ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #00d4ff; }
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    [x-cloak] { display: none !important; }
+    /* Плавная шапка: контент уезжает вверх (translateY), затем ряд схлопывается */
+    .header-top-row { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+    .header-top-row.collapsed { grid-template-rows: 0fr; }
+    .header-top-row > * { min-height: 0; overflow: hidden; transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+    .header-top-row.collapsed > * { transform: translateY(-100%); }
+  </style>
+  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+  <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script>
+    function initHtmxHandlers() {
+      if (!document.body) return;
+      document.body.addEventListener('htmx:afterRequest', function(ev) {
+        if (ev.detail.successful === false && ev.detail.target.id === 'cart-modal-content') {
+          ev.detail.target.innerHTML = '<p class="text-gray-400 text-sm">Не удалось загрузить корзину. Запустите сервер и обновите страницу.</p>';
+        }
+      });
+      document.body.addEventListener('htmx:timeout', function(ev) {
+        if (ev.detail.target.id === 'cart-modal-content') {
+          ev.detail.target.innerHTML = '<p class="text-gray-400 text-sm">Превышено время ожидания. Проверьте, что сервер запущен на порту 8000.</p>';
+        }
+      });
+    }
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initHtmxHandlers);
+    } else {
+      initHtmxHandlers();
+    }
+  </script>
+</head>
+<body class="min-h-screen bg-dark-900 text-white font-sans"
+      id="main-body"
+      hx-boost="true"
+      hx-target="#main-content"
+      hx-select="#main-content"
+      hx-swap="innerHTML"
+      hx-push-url="true"
+      hx-timeout="15000"
+      x-data="{ cartOpen: false, scrolled: false, cartCount: {{ cart_count|default:0 }} }"
+     @open-cart.window="cartOpen = true"
+     @cart-updated.window="cartCount = $event.detail.count"
+     @scroll.window="scrolled = window.scrollY > 50"
+     x-init="scrolled = window.scrollY > 50">
+  <!-- Header: при скролле скрывается верхняя полоса (телефон, вход), остаётся логотип, поиск, каталог -->
+  <header class="w-full bg-dark-800 text-white sticky top-0 z-40 shadow-md transition-shadow duration-300"
+          :class="scrolled && 'shadow-lg'">
+    <div class="hidden md:block header-top-row"
+         :class="scrolled && 'collapsed'">
+      <div class="flex justify-between items-center container mx-auto px-4 py-2 text-xs text-gray-400 border-b border-gray-800">
+      <div class="flex items-center space-x-6">
+        <div class="flex items-center space-x-1 hover:text-white cursor-pointer">
+          <i data-lucide="map-pin" class="w-3.5 h-3.5 text-accent inline-block"></i>
+          <span>Магазин в маркете</span>
+        </div>
+        <div class="flex items-center space-x-1 hover:text-white cursor-pointer">
+          <i data-lucide="map-pin" class="w-3.5 h-3.5 text-accent inline-block"></i>
+          <span>Магазин в Озоне</span>
+        </div>
+        <div class="flex items-center space-x-1 hover:text-white cursor-pointer">
+          <i data-lucide="map-pin" class="w-3.5 h-3.5 text-accent inline-block"></i>
+          <span>Магазин в вайлдберриз</span>
+        </div>
+      </div>
+      <div class="flex items-center space-x-6">
+        <div class="flex items-center space-x-2">
+          <i data-lucide="phone" class="w-3.5 h-3.5 text-accent inline-block"></i>
+          <span class="font-bold text-white">8 (800) 600-95-47</span>
+          <span class="text-gray-500 cursor-pointer hover:text-accent">ЗАКАЗАТЬ ЗВОНОК</span>
+        </div>
+        <div class="flex items-center space-x-2">
+          <span>129515, г. Москва, улица Академика Королева, 13с1</span>
+        </div>
+        {% if user.is_authenticated %}
+          <a href="{% url 'accounts:profile' %}" class="flex items-center space-x-2 hover:text-accent">
+            <div class="w-2 h-2 rounded-full bg-accent"></div>
+            <span>ЛИЧНЫЙ КАБИНЕТ</span>
+          </a>
+          <a href="{% url 'accounts:logout' %}" class="hover:text-accent">ВЫЙТИ</a>
+        {% else %}
+          <a href="{% url 'accounts:login' %}" class="flex items-center space-x-2 hover:text-accent">
+            <div class="w-2 h-2 rounded-full bg-gray-500"></div>
+            <span>ВОЙТИ</span>
+          </a>
+        {% endif %}
+      </div>
+    </div>
+    </div>
+
+    <div class="container mx-auto px-4 transition-[padding] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]"
+         :class="scrolled ? 'py-2' : 'py-4'">
+      <div class="flex items-center justify-between gap-4">
+        <a href="{% url 'home' %}" class="flex flex-col flex-shrink-0 cursor-pointer">
+          <h1 class="text-2xl font-bold tracking-wider leading-none">BizonVR</h1>
+          <span class="text-[10px] text-gray-500 tracking-widest uppercase">Будущее уже здесь!</span>
+        </a>
+
+        <div class="hidden lg:flex items-center space-x-2">
+          <div class="p-1.5 bg-gray-700 rounded hover:bg-accent transition-colors cursor-pointer"><i data-lucide="send" class="w-3.5 h-3.5 inline-block"></i></div>
+          <div class="p-1.5 bg-gray-700 rounded hover:bg-red-600 transition-colors cursor-pointer"><i data-lucide="youtube" class="w-3.5 h-3.5 inline-block"></i></div>
+          <div class="p-1.5 bg-gray-700 rounded hover:bg-blue-600 transition-colors cursor-pointer"><i data-lucide="monitor" class="w-3.5 h-3.5 inline-block"></i></div>
+        </div>
+
+        <form action="{% url 'catalog:product_list' %}" method="get" class="flex-1 max-w-2xl relative hidden md:block">
+          <input type="search" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Поиск по товарам" class="w-full bg-dark-700 text-white rounded-full py-2.5 px-5 pl-5 pr-12 focus:outline-none focus:ring-1 focus:ring-accent text-sm" />
+          <button type="submit" class="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white w-[18px] h-[18px] inline-flex items-center justify-center focus:outline-none">
+            <i data-lucide="search" class="w-[18px] h-[18px] inline-block"></i>
+          </button>
+        </form>
+
+        <div class="flex items-center space-x-4 md:space-x-6">
+          {% if user.is_authenticated %}
+            <a href="{% url 'accounts:profile' %}" class="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-gray-400 hover:text-accent md:hidden">
+              <i data-lucide="user" class="w-5 h-5 inline-block"></i>
+              <span>ЛК</span>
+            </a>
+            <a href="{% url 'accounts:logout' %}" class="text-xs font-bold uppercase tracking-wide text-gray-400 hover:text-accent md:hidden">Выйти</a>
+          {% else %}
+            <a href="{% url 'accounts:login' %}" class="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-gray-400 hover:text-accent md:hidden">
+              <i data-lucide="log-in" class="w-5 h-5 inline-block"></i>
+              <span>Войти</span>
+            </a>
+          {% endif %}
+          {% if user.is_authenticated %}
+          <a href="{% url 'catalog:favorites' %}" class="flex flex-col items-center group" title="Избранное">
+            <div class="relative">
+              <i data-lucide="heart" class="text-white group-hover:text-accent transition-colors w-6 h-6 inline-block"></i>
+              <span id="favorites-count" class="absolute -top-1 -right-1 w-4 h-4 bg-dark-700 rounded-full text-[10px] flex items-center justify-center border border-dark-800">{{ favorites_count|default:0 }}</span>
+            </div>
+          </a>
+          {% else %}
+          <a href="{% url 'accounts:login' %}?next={{ request.path }}" class="flex flex-col items-center group" title="Войдите, чтобы видеть избранное">
+            <div class="relative">
+              <i data-lucide="heart" class="text-white group-hover:text-accent transition-colors w-6 h-6 inline-block"></i>
+              <span class="absolute -top-1 -right-1 w-4 h-4 bg-dark-700 rounded-full text-[10px] flex items-center justify-center border border-dark-800">0</span>
+            </div>
+          </a>
+          {% endif %}
+          {% if cities %}
+          <form method="post" action="{% url 'catalog:set_city' %}" class="flex items-center" id="header-city-form">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+            <label for="header-city-select" class="sr-only">Город</label>
+            <select name="city_id" id="header-city-select" onchange="this.form.submit()"
+                    class="bg-dark-700 text-white text-sm rounded-lg py-1.5 pl-2 pr-8 border border-dark-600 focus:outline-none focus:ring-1 focus:ring-accent max-w-[140px]">
+              <option value="">Город</option>
+              {% for city in cities %}
+              <option value="{{ city.pk }}" {% if selected_city and selected_city.pk == city.pk %}selected{% endif %}>{{ city.name }}</option>
+              {% endfor %}
+            </select>
+          </form>
+          {% endif %}
+          <a href="{% url 'catalog:cart' %}"
+             class="flex flex-col items-center group focus:outline-none">
+            <div class="relative">
+              <i data-lucide="shopping-cart" class="text-white group-hover:text-accent transition-colors w-6 h-6 inline-block"></i>
+              <span id="cart-count" class="absolute -top-1 -right-1 w-4 h-4 bg-dark-700 rounded-full text-[10px] flex items-center justify-center border border-dark-800" x-text="cartCount">{{ cart_count|default:0 }}</span>
+            </div>
+          </a>
+        </div>
+      </div>
+
+      <form action="{% url 'catalog:product_list' %}" method="get" class="mt-4 md:hidden relative">
+        <input type="search" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Поиск по товарам" class="w-full bg-dark-700 text-white rounded-lg py-2 px-4 pr-10 focus:outline-none focus:ring-1 focus:ring-accent text-sm" />
+        <button type="submit" class="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 inline-flex items-center justify-center focus:outline-none">
+          <i data-lucide="search" class="w-4 h-4 inline-block"></i>
+        </button>
+      </form>
+    </div>
+
+    <div class="border-t border-gray-800 bg-dark-800 transition-[padding] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]"
+         :class="scrolled ? 'py-0' : ''">
+      <div class="container mx-auto px-4">
+        <nav class="flex items-center text-xs font-bold uppercase tracking-wide transition-[padding] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]"
+             :class="scrolled ? 'py-2' : 'py-3'"
+             x-data="{ catalogOpen: false }"
+             @keydown.escape.window="catalogOpen = false">
+          <!-- КАТАЛОГ с выпадающим меню (вне overflow, чтобы dropdown не обрезался) -->
+          <div class="relative flex-shrink-0 mr-6 md:mr-8"
+               @mouseenter="catalogOpen = true"
+               @mouseleave="catalogOpen = false"
+               @click.outside="catalogOpen = false">
+            <a href="{% url 'catalog:product_list' %}"
+               class="flex items-center space-x-2 hover:text-accent md:inline-flex"
+               @click="if (window.innerWidth < 768) { catalogOpen = !catalogOpen; $event.preventDefault() }"
+               :class="{ 'text-accent': catalogOpen }">
+              <i data-lucide="menu" class="w-4 h-4 inline-block"></i>
+              <span>КАТАЛОГ</span>
+              <i data-lucide="chevron-down" class="w-3.5 h-3.5 inline-block transition-transform"
+                 :class="catalogOpen && 'rotate-180'"></i>
+            </a>
+            <div x-show="catalogOpen"
+                 x-cloak
+                 x-transition:enter="transition ease-out duration-150"
+                 x-transition:enter-start="opacity-0"
+                 x-transition:enter-end="opacity-100"
+                 x-transition:leave="transition ease-in duration-100"
+                 x-transition:leave-start="opacity-100"
+                 x-transition:leave-end="opacity-0"
+                 class="absolute left-0 top-full pt-1 z-50 min-w-[240px]">
+              <div class="bg-dark-700 border border-dark-600 rounded-lg shadow-xl py-2">
+                {% for section in catalog_sections %}
+                <div class="px-3 py-1.5">
+                  <div class="text-gray-400 text-[10px] uppercase tracking-wider mb-1">{{ section.name }}</div>
+                  <ul class="space-y-0.5">
+                    {% for cat in section.categories.all %}
+                    <li>
+                      <a href="{% url 'catalog:product_list' %}?category={{ cat.slug }}"
+                         class="block py-1 text-white hover:text-accent transition-colors">
+                        {{ cat.name }}
+                      </a>
+                    </li>
+                    {% empty %}
+                    <li><a href="{% url 'catalog:product_list' %}" class="block py-1 text-gray-400 hover:text-accent">Весь раздел</a></li>
+                    {% endfor %}
+                  </ul>
+                </div>
+                {% if not forloop.last %}<hr class="border-dark-600 my-1" />{% endif %}
+                {% endfor %}
+                <div class="border-t border-dark-600 mt-2 pt-2 px-3">
+                  <a href="{% url 'catalog:product_list' %}" class="text-accent hover:underline">Весь каталог</a>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="flex items-center overflow-x-auto no-scrollbar space-x-6 md:space-x-8 flex-1 min-w-0">
+            <a href="#" class="hover:text-accent whitespace-nowrap flex-shrink-0">БЛОГ</a>
+            <a href="#" class="hover:text-accent whitespace-nowrap flex-shrink-0">КЛУБЫ</a>
+            <a href="#" class="hover:text-accent whitespace-nowrap flex-shrink-0">АРЕНДА</a>
+            <a href="#" class="hover:text-accent whitespace-nowrap flex-shrink-0">ИНСТРУКЦИИ</a>
+            <a href="#" class="hover:text-accent whitespace-nowrap flex-shrink-0">УСЛУГИ</a>
+            <a href="#" class="hover:text-accent whitespace-nowrap flex-shrink-0">КОНТАКТЫ</a>
+          </div>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <main id="main-content">
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- Cart Modal -->
+  <div x-show="cartOpen"
+       x-cloak
+       x-transition:enter="transition ease-out duration-200"
+       x-transition:enter-start="opacity-0"
+       x-transition:enter-end="opacity-100"
+       x-transition:leave="transition ease-in duration-150"
+       x-transition:leave-start="opacity-100"
+       x-transition:leave-end="opacity-0"
+       @keydown.escape.window="cartOpen = false"
+       class="fixed inset-0 z-50 overflow-y-auto"
+       aria-modal="true"
+       role="dialog">
+    <div class="fixed inset-0 bg-black/60" @click="cartOpen = false"></div>
+    <div class="flex min-h-full items-center justify-center p-4">
+      <div x-show="cartOpen"
+           x-transition:enter="transition ease-out duration-200"
+           x-transition:enter-start="opacity-0 scale-95"
+           x-transition:enter-end="opacity-100 scale-100"
+           x-transition:leave="transition ease-in duration-150"
+           x-transition:leave-start="opacity-100 scale-100"
+           x-transition:leave-end="opacity-0 scale-95"
+           class="relative w-full max-w-lg bg-dark-800 border border-dark-600 rounded-xl shadow-xl max-h-[90vh] flex flex-col">
+        <div class="flex items-center justify-between p-4 border-b border-dark-600">
+          <h2 class="text-lg font-bold text-white">Корзина</h2>
+          <button type="button" @click="cartOpen = false" class="p-2 rounded-lg hover:bg-dark-700 text-gray-400 hover:text-white focus:outline-none">
+            <i data-lucide="x" class="w-5 h-5 inline-block"></i>
+          </button>
+        </div>
+        <div id="cart-modal-content"
+             class="flex-1 overflow-y-auto p-4"
+             hx-get="{% url 'catalog:cart_partial' %}"
+             hx-trigger="reveal"
+             hx-swap="innerHTML"
+             hx-timeout="10000">
+          <p class="text-gray-400 text-sm">Загрузка...</p>
+        </div>
+        <div class="p-4 border-t border-dark-600">
+          <a href="{% url 'orders:checkout' %}" class="block w-full bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-4 rounded-full text-center text-sm uppercase tracking-wide transition-colors" :class="cartCount === 0 && 'pointer-events-none opacity-50'">Оформить заказ</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="bg-dark-900 text-white pt-12 pb-6 border-t border-dark-700">
+    <div class="container mx-auto px-4">
+      <div class="flex flex-col md:flex-row justify-between mb-12">
+        <div class="flex items-center justify-between w-full mb-8 md:mb-0">
+          <h2 class="text-2xl font-light">Контакты</h2>
+          <span class="text-[10px] text-gray-600 uppercase tracking-widest cursor-pointer hover:text-white">Перейти в раздел</span>
+        </div>
+      </div>
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
+        <div class="space-y-6">
+          <div>
+            <h3 class="text-sm font-bold text-white mb-2 max-w-xs">г. Москва, улица Академика Королева, 13с1</h3>
+            <div class="flex items-center space-x-2 mt-4">
+              <span class="text-[10px] text-gray-500 uppercase">Метро</span>
+            </div>
+            <p class="text-sm text-gray-300">ВДНХ</p>
+          </div>
+          <div>
+            <div class="text-[10px] text-gray-500 uppercase mb-1">Режим работы</div>
+            <p class="text-sm text-gray-300">с 10:00 до 19:00</p>
+          </div>
+          <div>
+            <div class="text-[10px] text-gray-500 uppercase mb-1">Телефон</div>
+            <p class="text-lg font-bold hover:text-accent cursor-pointer">+7 (800) 600-95-47</p>
+          </div>
+          <div>
+            <div class="text-[10px] text-gray-500 uppercase mb-1">E-mail</div>
+            <p class="text-sm text-gray-300 hover:text-accent cursor-pointer">info@bizon-shop.com</p>
+          </div>
+          <div class="pt-4">
+            <h4 class="text-xl mb-4">Поиск</h4>
+            <form action="{% url 'catalog:product_list' %}" method="get" class="relative border-b border-gray-600 pb-2 flex items-center gap-2">
+              <input type="search" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Введите запрос" class="bg-transparent w-full focus:outline-none text-sm flex-1" />
+              <button type="submit" class="bg-accent text-dark-900 text-xs font-bold px-3 py-1 rounded-full shrink-0">Найти</button>
+            </form>
+          </div>
+        </div>
+        <div class="lg:col-span-2 relative h-80 bg-gray-800 rounded-xl overflow-hidden grayscale opacity-90">
+          <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Map_of_Moscow_center.svg/2560px-Map_of_Moscow_center.svg.png" alt="Карта" class="w-full h-full object-cover opacity-50" />
+          <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+            <i data-lucide="map-pin" class="w-10 h-10 text-accent drop-shadow-lg inline-block" style="fill: currentColor;"></i>
+          </div>
+          <div class="absolute bottom-4 right-4 bg-white text-black text-xs px-2 py-1 rounded shadow">© Яндекс Условия использования</div>
+        </div>
+      </div>
+      <hr class="border-gray-800 my-8" />
+      <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-8 text-xs text-gray-400 mb-8">
+        <div class="col-span-2 lg:col-span-1">
+          <div class="flex flex-col space-y-2">
+            <h1 class="text-xl font-bold tracking-wider text-white mb-2">BizonVR</h1>
+            <p>Быстрая доставка</p>
+            <p class="text-gray-600 text-[10px]">Доставка посылок по Москве. Бережная доставка по России и СНГ</p>
+          </div>
+        </div>
+        <div>
+          <h4 class="text-white font-bold mb-4 uppercase">Каталог</h4>
+          <ul class="space-y-2">
+            <li><a href="{% url 'catalog:product_list' %}" class="hover:text-white cursor-pointer">VR шлемы</a></li>
+            <li class="hover:text-white cursor-pointer">Аксессуары</li>
+            <li class="hover:text-white cursor-pointer">Игры</li>
+          </ul>
+        </div>
+        <div>
+          <h4 class="text-white font-bold mb-4 uppercase">Блог</h4>
+          <ul class="space-y-2">
+            <li class="hover:text-white cursor-pointer">Новости</li>
+            <li class="hover:text-white cursor-pointer">Обзоры</li>
+          </ul>
+        </div>
+        <div>
+          <h4 class="text-white font-bold mb-4 uppercase">Клубы</h4>
+        </div>
+        <div>
+          <h4 class="text-white font-bold mb-4 uppercase">Аренда</h4>
+        </div>
+        <div>
+          <h4 class="text-white font-bold mb-4 uppercase">Клиентский сервис</h4>
+          <p class="text-gray-600 text-[10px]">Техническая поддержка и сопровождение после покупки</p>
+        </div>
+      </div>
+      <div class="flex flex-col md:flex-row justify-between items-center pt-8 border-t border-gray-800 text-[10px] text-gray-600">
+        <div class="mb-4 md:mb-0">
+          <h3 class="text-white text-lg mb-2">Мы ВКонтакте</h3>
+          <div class="bg-dark-800 p-4 rounded-lg border border-dark-700 w-full max-w-sm">
+            <div class="flex items-center gap-2 mb-2">
+              <div class="w-8 h-8 bg-blue-600 rounded-full"></div>
+              <div class="text-white font-bold text-xs">BizonVR</div>
+            </div>
+            <div class="flex gap-2 overflow-x-auto no-scrollbar">
+              <img src="https://picsum.photos/seed/vk1/100/100" class="w-20 h-20 rounded object-cover" alt="" />
+              <img src="https://picsum.photos/seed/vk2/100/100" class="w-20 h-20 rounded object-cover" alt="" />
+              <img src="https://picsum.photos/seed/vk3/100/100" class="w-20 h-20 rounded object-cover" alt="" />
+            </div>
+          </div>
+        </div>
+        <div class="flex space-x-4">
+          <i data-lucide="send" class="w-4 h-4 hover:text-accent cursor-pointer inline-block"></i>
+          <span class="hover:text-white cursor-pointer">ВСЕ ПУБЛИКАЦИИ</span>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Переопределения после Tailwind, чтобы применялись -->
+  <style>
+    .flex-shrink-0 { flex-shrink: 0 !important; }
+    .w-1\/4 { width: 25% !important; }
+    .box-border { box-sizing: border-box !important; }
+    .px-2 { padding-left: 1.5rem !important; padding-right: 0.5rem !important; }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+  <script>
+    // Отключаем scrollRestoration сразу
+    if ('scrollRestoration' in history) {
+      history.scrollRestoration = 'manual';
+    }
+
+    function initLucide() { if (typeof lucide !== 'undefined') lucide.createIcons(); }
+    initLucide();
+
+    document.body.addEventListener('htmx:afterSwap', function(ev) {
+      initLucide();
+      if (ev.detail?.target?.id === 'main-content') {
+        console.log('htmx:afterSwap - Scroll position before scrollTo:', window.pageYOffset || document.documentElement.scrollTop);
+
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
+        window.scrollTo({ top: 0, left: 0 });
+
+        setTimeout(function() {
+          document.documentElement.scrollTop = 0;
+          document.body.scrollTop = 0;
+          window.scrollTo(0, 0);
+          console.log('htmx:afterSwap - Scroll position after scrollTo (timeout):', window.pageYOffset || document.documentElement.scrollTop);
+
+          var mainContent = document.getElementById('main-content');
+          if (mainContent) {
+            // mainContent.scrollIntoView({ block: 'start', behavior: 'auto' });
+          }
+
+          var header = document.querySelector('header');
+          if (header) {
+            console.log('Header offsetHeight:', header.offsetHeight);
+            console.log('Header computed - position:', getComputedStyle(header).position, 'top:', getComputedStyle(header).top, 'height:', getComputedStyle(header).height);
+          }
+        }, 10);
+      }
+    });
+
+    document.body.addEventListener('htmx:afterSettle', function(ev) {
+      if (document.querySelector('#main-content')) {
+        setTimeout(function() {
+          console.log('htmx:afterSettle - Scroll position before final scrollTo:', window.pageYOffset || document.documentElement.scrollTop);
+          window.scrollTo(0, 0);
+          console.log('htmx:afterSettle - Scroll position after final scrollTo:', window.pageYOffset || document.documentElement.scrollTop);
+        }, 10);
+      }
+    });
+  </script>
+</body>
+</html>
