@@ -86,7 +86,7 @@ nano .env
 **Обязательные переменные для продакшена:**
 
 ```env
-SECRET_KEY=сгенерируйте-или-вставьте-ключ-из-локальной-команды
+SECRET_KEY=0TN7p13vbV1M6rywLTNSbguOWrAN_Qpwcd61FVALevMdkwk4t9mSvWzVHr7OPKFmf5M
 DEBUG=False
 ALLOWED_HOSTS=bizonvr.ru,www.bizonvr.ru
 CSRF_TRUSTED_ORIGINS=https://bizonvr.ru,https://www.bizonvr.ru
