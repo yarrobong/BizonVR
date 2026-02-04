@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.utils.html import format_html
 
-from .models import CatalogSection, Category, City, Favorite, PickupPoint, Product, ProductCharacteristic, ProductStock
+from .models import CatalogSection, Category, City, Favorite, PickupPoint, Product, ProductCharacteristic, ProductStock, ProductTag
 
 
 @admin.register(CatalogSection)
@@ -64,17 +64,25 @@ class CategoryAdmin(admin.ModelAdmin):
     search_fields = ('name',)
 
 
+@admin.register(ProductTag)
+class ProductTagAdmin(admin.ModelAdmin):
+    list_display = ('name', 'slug', 'order')
+    list_editable = ('order',)
+    prepopulated_fields = {'slug': ('name',)}
+
+
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
     list_display = ('name', 'category', 'price', 'is_active', 'allow_order_on_request', 'created_at')
-    list_filter = ('category', 'is_active')
+    list_filter = ('category', 'is_active', 'tags')
     search_fields = ('name', 'description')
     prepopulated_fields = {'slug': ('name',)}
     inlines = (ProductCharacteristicInline, ProductStockInlineForProduct)
     readonly_fields = ('created_at', 'updated_at')
+    filter_horizontal = ('tags',)
 
     def get_queryset(self, request):
-        return super().get_queryset(request).select_related('category')
+        return super().get_queryset(request).select_related('category').prefetch_related('tags')
 
 
 @admin.register(Favorite)

@@ -25,6 +25,18 @@
 
     <div>
       <p class="text-[10px] text-gray-500 uppercase tracking-widest mb-2">{{ product.category.name }}</p>
+      {% if product.tags.all %}
+      <div class="flex flex-wrap gap-2 mb-3">
+        {% for tag in product.tags.all %}
+        <span class="px-3 py-1 text-xs font-medium rounded-full
+          {% if tag.slug == 'bestseller' %}bg-amber-500/90 text-dark-900
+          {% elif tag.slug == 'expert-choice' %}bg-emerald-500/90 text-dark-900
+          {% elif tag.slug == 'new' %}bg-blue-500/90 text-white
+          {% elif tag.slug == 'sale' %}bg-red-500/90 text-white
+          {% else %}bg-dark-600 text-gray-300{% endif %}">{{ tag.name }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
       <h1 class="text-2xl md:text-3xl font-medium text-white mb-4 leading-tight">{{ product.name }}</h1>
       <div class="text-2xl font-bold text-white mb-6">{{ product.price|price_format }} ₽</div>
 

@@ -51,6 +51,21 @@ class Category(models.Model):
         super().save(*args, **kwargs)
 
 
+class ProductTag(models.Model):
+    """Тег товара: Бестселлер, Выбор экспертов, Новинка, Акция."""
+    name = models.CharField('Название', max_length=100)
+    slug = models.SlugField('Slug', max_length=100, unique=True)
+    order = models.PositiveIntegerField('Порядок отображения', default=0)
+
+    class Meta:
+        verbose_name = 'Тег товара'
+        verbose_name_plural = 'Теги товаров'
+        ordering = ('order', 'name')
+
+    def __str__(self):
+        return self.name
+
+
 class Product(models.Model):
     """Товар в каталоге."""
     category = models.ForeignKey(
@@ -69,6 +84,13 @@ class Product(models.Model):
         'Доступен под заказ',
         default=True,
         help_text='Если товара нет в наличии, покупатель может оформить заказ под заказ',
+    )
+    tags = models.ManyToManyField(
+        ProductTag,
+        related_name='products',
+        verbose_name='Теги',
+        blank=True,
+        help_text='Бестселлер, Выбор экспертов, Новинка, Акция',
     )
     created_at = models.DateTimeField('Создан', auto_now_add=True)
     updated_at = models.DateTimeField('Обновлён', auto_now=True)

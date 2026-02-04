@@ -51,6 +51,18 @@
             <div class="bg-dark-700 p-1.5 rounded-full hover:bg-accent hover:text-dark-900 cursor-pointer text-gray-400"><i data-lucide="git-compare" class="w-4 h-4 inline-block"></i></div>
           </div>
           <a href="{% url 'catalog:product_detail' product.slug %}" class="block relative w-full aspect-square mb-4 overflow-hidden rounded-lg bg-white/5 flex items-center justify-center">
+            {% if product.tags.all %}
+            <div class="absolute top-2 left-2 z-10 flex flex-wrap gap-1">
+              {% for tag in product.tags.all %}
+              <span class="px-2 py-0.5 text-[10px] font-medium rounded-full
+                {% if tag.slug == 'bestseller' %}bg-amber-500/90 text-dark-900
+                {% elif tag.slug == 'expert-choice' %}bg-emerald-500/90 text-dark-900
+                {% elif tag.slug == 'new' %}bg-blue-500/90 text-white
+                {% elif tag.slug == 'sale' %}bg-red-500/90 text-white
+                {% else %}bg-dark-600 text-gray-300{% endif %}">{{ tag.name }}</span>
+              {% endfor %}
+            </div>
+            {% endif %}
             {% if product.image %}
               <img src="{{ product.image.url|absolute_uri:request }}" alt="{{ product.name }}" class="w-full h-full object-contain p-4 group-hover:scale-105 transition-transform duration-300" />
             {% else %}
