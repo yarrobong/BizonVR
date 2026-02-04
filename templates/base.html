@@ -8,22 +8,91 @@
   <link href="{% static 'css/tailwind.css' %}" rel="stylesheet">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
+    :root {
+      --accent-electric-blue: #00d4ff;
+      --header-height: 140px;
+    }
     /* scroll-padding-top: браузер учитывает шапку при прокрутке к началу/к якорям */
-    html { scroll-padding-top: 166px; }
-    body { background-color: #111111; color: #ffffff; }
+    html { scroll-padding-top: var(--header-height); }
+    body {
+      background: #0d0f17;
+      background-image: radial-gradient(circle at 15px 15px, rgba(0, 212, 255, 0.10) 2px, transparent 1.5px);
+      background-size: 60px 60px;
+      color: #ffffff;
+      padding-top: var(--header-height);
+    }
     #main-content { padding-top: 0 !important; }
     ::-webkit-scrollbar { width: 8px; }
-    ::-webkit-scrollbar-track { background: #1a1a1a; }
+    ::-webkit-scrollbar-track { background: #0d0f17; }
     ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
     ::-webkit-scrollbar-thumb:hover { background: #00d4ff; }
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
     [x-cloak] { display: none !important; }
-    /* Плавная шапка: контент уезжает вверх (translateY), затем ряд схлопывается */
-    .header-top-row { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
-    .header-top-row.collapsed { grid-template-rows: 0fr; }
-    .header-top-row > * { min-height: 0; overflow: hidden; transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
-    .header-top-row.collapsed > * { transform: translateY(-100%); }
+    /* ОПТИМИЗИРОВАННАЯ ШАПКА: fixed — контент не прыгает при скролле */
+    header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 50;
+      background: rgba(7, 8, 11, 0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(4px);
+      transition: background 0.3s ease, box-shadow 0.3s ease;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+      box-sizing: border-box;
+      transform: translate3d(0, 0, 0);
+      will-change: transform;
+      overflow: visible;
+      width: 100%;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      backface-visibility: hidden;
+    }
+
+    /* Плавная шапка через Grid */
+    .header-top-row {
+      display: grid;
+      grid-template-rows: 1fr;
+      transition: grid-template-rows 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+      will-change: grid-template-rows;
+    }
+    .header-top-row.collapsed {
+      grid-template-rows: 0fr;
+    }
+    .header-top-row > * {
+      min-height: 0;
+      overflow: hidden;
+      opacity: 1;
+      transition: opacity 0.2s ease, transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .header-top-row.collapsed > * {
+      transform: translateY(-20px);
+      opacity: 0;
+    }
+    /* Скобка ( появляется только когда введена хотя бы одна цифра */
+    .phone-prefix-bracket { opacity: 0; transition: opacity 0.15s; margin-left: 0.25em; }
+    .phone-input-wrapper.has-digits .phone-prefix-bracket { opacity: 1; }
+    /* Выбор города: размытый фон */
+    .city-select-glass {
+      background: rgba(7, 8, 11, 0.3);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(4px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .city-dropdown-panel {
+      background: rgba(7, 8, 11, 0.85);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+    }
+    /* Поле поиска: размытый фон */
+    .search-input-glass {
+      background: rgba(7, 8, 11, 0.3);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(4px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
   </style>
   <script src="https://unpkg.com/htmx.org@1.9.10"></script>
   <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
@@ -59,27 +128,22 @@
       x-data="{ cartOpen: false, scrolled: false, cartCount: {{ cart_count|default:0 }} }"
      @open-cart.window="cartOpen = true"
      @cart-updated.window="cartCount = $event.detail.count"
-     @scroll.window="scrolled = window.scrollY > 50"
-     x-init="scrolled = window.scrollY > 50">
+     @scroll.window.passive.throttle.20ms="const y = window.scrollY; if (y > 100) scrolled = true; else if (y < 50) scrolled = false"
+     x-init="scrolled = window.scrollY > 100">
   <!-- Header: при скролле скрывается верхняя полоса (телефон, вход), остаётся логотип, поиск, каталог -->
-  <header class="w-full bg-dark-800 text-white sticky top-0 z-40 shadow-md transition-shadow duration-300"
-          :class="scrolled && 'shadow-lg'">
+  <header class="w-full text-white">
     <div class="hidden md:block header-top-row"
          :class="scrolled && 'collapsed'">
-      <div class="flex justify-between items-center container mx-auto px-4 py-2 text-xs text-gray-400 border-b border-gray-800">
+      <div class="flex justify-between items-center container mx-auto px-4 py-2 text-xs text-gray-400 border-gray-800">
       <div class="flex items-center space-x-6">
-        <div class="flex items-center space-x-1 hover:text-white cursor-pointer">
-          <i data-lucide="map-pin" class="w-3.5 h-3.5 text-accent inline-block"></i>
-          <span>Магазин в маркете</span>
-        </div>
-        <div class="flex items-center space-x-1 hover:text-white cursor-pointer">
-          <i data-lucide="map-pin" class="w-3.5 h-3.5 text-accent inline-block"></i>
-          <span>Магазин в Озоне</span>
-        </div>
-        <div class="flex items-center space-x-1 hover:text-white cursor-pointer">
-          <i data-lucide="map-pin" class="w-3.5 h-3.5 text-accent inline-block"></i>
-          <span>Магазин в вайлдберриз</span>
-        </div>
+        <a href="https://www.avito.ru/user/bizonvr" target="_blank" rel="noopener noreferrer" class="flex items-center space-x-1 hover:text-white text-gray-400 transition-colors">
+          <i data-lucide="shopping-bag" class="w-3.5 h-3.5 text-accent inline-block"></i>
+          <span>Авито</span>
+        </a>
+        <a href="https://t.me/bizonvr" target="_blank" rel="noopener noreferrer" class="flex items-center space-x-1 hover:text-white text-gray-400 transition-colors">
+          <i data-lucide="send" class="w-3.5 h-3.5 text-accent inline-block"></i>
+          <span>Telegram</span>
+        </a>
       </div>
       <div class="flex items-center space-x-6">
         <div class="flex items-center space-x-2">
@@ -95,9 +159,9 @@
             <div class="w-2 h-2 rounded-full bg-accent"></div>
             <span>ЛИЧНЫЙ КАБИНЕТ</span>
           </a>
-          <a href="{% url 'accounts:logout' %}" class="hover:text-accent">ВЫЙТИ</a>
+          <a href="{% url 'accounts:logout' %}" class="hover:text-accent" hx-boost="false">ВЫЙТИ</a>
         {% else %}
-          <a href="{% url 'accounts:login' %}" class="flex items-center space-x-2 hover:text-accent">
+          <a href="{% url 'accounts:login' %}" class="flex items-center space-x-2 hover:text-accent" hx-boost="false">
             <div class="w-2 h-2 rounded-full bg-gray-500"></div>
             <span>ВОЙТИ</span>
           </a>
@@ -107,11 +171,11 @@
     </div>
 
     <div class="container mx-auto px-4 transition-[padding] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]"
-         :class="scrolled ? 'py-2' : 'py-4'">
+         :class="scrolled ? 'py-1' : 'py-4'">
       <div class="flex items-center justify-between gap-4">
         <a href="{% url 'home' %}" class="flex flex-col flex-shrink-0 cursor-pointer">
-          <h1 class="text-2xl font-bold tracking-wider leading-none">BizonVR</h1>
-          <span class="text-[10px] text-gray-500 tracking-widest uppercase">Будущее уже здесь!</span>
+          <h1 class="font-bold tracking-wider leading-none transition-[font-size] duration-300" :class="scrolled ? 'text-lg' : 'text-2xl'">BizonVR</h1>
+          <span class="block text-[10px] text-gray-500 tracking-widest uppercase transition-all duration-300 overflow-hidden" :class="scrolled ? 'max-h-0 opacity-0 leading-none' : 'max-h-5 opacity-100'">Будущее уже здесь!</span>
         </a>
 
         <div class="hidden lg:flex items-center space-x-2">
@@ -121,7 +185,7 @@
         </div>
 
         <form action="{% url 'catalog:product_list' %}" method="get" class="flex-1 max-w-2xl relative hidden md:block">
-          <input type="search" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Поиск по товарам" class="w-full bg-dark-700 text-white rounded-full py-2.5 px-5 pl-5 pr-12 focus:outline-none focus:ring-1 focus:ring-accent text-sm" />
+          <input type="search" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Поиск по товарам" class="search-input-glass w-full text-white rounded-full px-5 pl-5 pr-12 focus:outline-none focus:ring-1 focus:ring-accent text-sm transition-[padding] duration-300" :class="scrolled ? 'py-1.5' : 'py-2.5'" />
           <button type="submit" class="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white w-[18px] h-[18px] inline-flex items-center justify-center focus:outline-none">
             <i data-lucide="search" class="w-[18px] h-[18px] inline-block"></i>
           </button>
@@ -133,9 +197,9 @@
               <i data-lucide="user" class="w-5 h-5 inline-block"></i>
               <span>ЛК</span>
             </a>
-            <a href="{% url 'accounts:logout' %}" class="text-xs font-bold uppercase tracking-wide text-gray-400 hover:text-accent md:hidden">Выйти</a>
+            <a href="{% url 'accounts:logout' %}" class="text-xs font-bold uppercase tracking-wide text-gray-400 hover:text-accent md:hidden" hx-boost="false">Выйти</a>
           {% else %}
-            <a href="{% url 'accounts:login' %}" class="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-gray-400 hover:text-accent md:hidden">
+            <a href="{% url 'accounts:login' %}" class="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-gray-400 hover:text-accent md:hidden" hx-boost="false">
               <i data-lucide="log-in" class="w-5 h-5 inline-block"></i>
               <span>Войти</span>
             </a>
@@ -148,7 +212,7 @@
             </div>
           </a>
           {% else %}
-          <a href="{% url 'accounts:login' %}?next={{ request.path }}" class="flex flex-col items-center group" title="Войдите, чтобы видеть избранное">
+          <a href="{% url 'accounts:login' %}?next={{ request.path }}" class="flex flex-col items-center group" title="Войдите, чтобы видеть избранное" hx-boost="false">
             <div class="relative">
               <i data-lucide="heart" class="text-white group-hover:text-accent transition-colors w-6 h-6 inline-block"></i>
               <span class="absolute -top-1 -right-1 w-4 h-4 bg-dark-700 rounded-full text-[10px] flex items-center justify-center border border-dark-800">0</span>
@@ -156,18 +220,45 @@
           </a>
           {% endif %}
           {% if cities %}
-          <form method="post" action="{% url 'catalog:set_city' %}" class="flex items-center" id="header-city-form">
-            {% csrf_token %}
-            <input type="hidden" name="next" value="{{ request.get_full_path }}" />
-            <label for="header-city-select" class="sr-only">Город</label>
-            <select name="city_id" id="header-city-select" onchange="this.form.submit()"
-                    class="bg-dark-700 text-white text-sm rounded-lg py-1.5 pl-2 pr-8 border border-dark-600 focus:outline-none focus:ring-1 focus:ring-accent max-w-[140px]">
-              <option value="">Город</option>
-              {% for city in cities %}
-              <option value="{{ city.pk }}" {% if selected_city and selected_city.pk == city.pk %}selected{% endif %}>{{ city.name }}</option>
-              {% endfor %}
-            </select>
-          </form>
+          <div class="relative" x-data="{ cityOpen: false }" @click.outside="cityOpen = false">
+            <button type="button" @click="cityOpen = !cityOpen"
+                    class="city-select-glass flex items-center justify-between gap-2 text-white text-sm rounded-xl px-4 focus:outline-none focus:ring-1 focus:ring-accent hover:border-white/20 transition-all duration-300 min-w-[160px] h-10">
+              <div class="flex items-center gap-2 min-w-0">
+                <i data-lucide="map-pin" class="w-4 h-4 text-accent flex-shrink-0"></i>
+                <span class="truncate pt-0.5">{% if selected_city %}{{ selected_city.name }}{% else %}Город{% endif %}</span>
+              </div>
+              <i data-lucide="chevron-down" class="w-4 h-4 text-gray-400 flex-shrink-0 transition-transform" :class="cityOpen && 'rotate-180'"></i>
+            </button>
+            <div x-show="cityOpen" x-cloak
+                 x-transition:enter="transition ease-out duration-150"
+                 x-transition:enter-start="opacity-0 -translate-y-1"
+                 x-transition:enter-end="opacity-100 translate-y-0"
+                 x-transition:leave="transition ease-in duration-100"
+                 x-transition:leave-start="opacity-100 translate-y-0"
+                 x-transition:leave-end="opacity-0 -translate-y-1"
+                 class="absolute right-0 top-full mt-2 z-50 min-w-[220px] city-dropdown-panel rounded-xl shadow-xl overflow-hidden py-2">
+              <form method="post" action="{% url 'catalog:set_city' %}" id="header-city-form">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+                <div class="px-4 py-2 text-[10px] uppercase tracking-wider text-gray-500">
+                  <span>Город</span>
+                </div>
+                <button type="submit" name="city_id" value="" @click="cityOpen = false"
+                        class="w-full flex items-center gap-3 px-4 py-3 text-left text-sm text-gray-400 hover:bg-white/5 hover:text-white transition-colors {% if not selected_city %}bg-white/5 text-accent{% endif %}">
+                  <i data-lucide="map-pin" class="w-4 h-4 flex-shrink-0 opacity-60"></i>
+                  <span>Все города</span>
+                </button>
+                <div class="my-1 border-t border-white/10"></div>
+                {% for city in cities %}
+                <button type="submit" name="city_id" value="{{ city.pk }}" @click="cityOpen = false"
+                        class="w-full flex items-center gap-3 px-4 py-3 text-left text-sm transition-colors {% if selected_city and selected_city.pk == city.pk %}bg-white/10 text-accent{% else %}text-gray-300 hover:bg-white/5 hover:text-white{% endif %}">
+                  <i data-lucide="map-pin" class="w-4 h-4 flex-shrink-0 {% if selected_city and selected_city.pk == city.pk %}text-accent{% else %}opacity-60{% endif %}"></i>
+                  <span>{{ city.name }}</span>
+                </button>
+                {% endfor %}
+              </form>
+            </div>
+          </div>
           {% endif %}
           <a href="{% url 'catalog:cart' %}"
              class="flex flex-col items-center group focus:outline-none">
@@ -180,18 +271,18 @@
       </div>
 
       <form action="{% url 'catalog:product_list' %}" method="get" class="mt-4 md:hidden relative">
-        <input type="search" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Поиск по товарам" class="w-full bg-dark-700 text-white rounded-lg py-2 px-4 pr-10 focus:outline-none focus:ring-1 focus:ring-accent text-sm" />
+        <input type="search" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Поиск по товарам" class="search-input-glass w-full text-white rounded-lg py-2 px-4 pr-10 focus:outline-none focus:ring-1 focus:ring-accent text-sm" />
         <button type="submit" class="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 inline-flex items-center justify-center focus:outline-none">
           <i data-lucide="search" class="w-4 h-4 inline-block"></i>
         </button>
       </form>
     </div>
 
-    <div class="border-t border-gray-800 bg-dark-800 transition-[padding] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]"
-         :class="scrolled ? 'py-0' : ''">
+    <div class="header-nav transition-[padding] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]"
+         :class="scrolled ? 'py-1' : 'py-4'">
       <div class="container mx-auto px-4">
         <nav class="flex items-center text-xs font-bold uppercase tracking-wide transition-[padding] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]"
-             :class="scrolled ? 'py-2' : 'py-3'"
+             :class="scrolled ? 'py-1' : 'py-3'"
              x-data="{ catalogOpen: false }"
              @keydown.escape.window="catalogOpen = false">
           <!-- КАТАЛОГ с выпадающим меню (вне overflow, чтобы dropdown не обрезался) -->
@@ -297,7 +388,7 @@
           <p class="text-gray-400 text-sm">Загрузка...</p>
         </div>
         <div class="p-4 border-t border-dark-600">
-          <a href="{% url 'orders:checkout' %}" class="block w-full bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-4 rounded-full text-center text-sm uppercase tracking-wide transition-colors" :class="cartCount === 0 && 'pointer-events-none opacity-50'">Оформить заказ</a>
+          <a href="{% url 'orders:checkout' %}" class="block w-full bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-4 rounded-full text-center text-sm uppercase tracking-wide transition-colors" :class="cartCount === 0 && 'pointer-events-none opacity-50'">Оставить заявку</a>
         </div>
       </div>
     </div>
@@ -382,9 +473,11 @@
         <div>
           <h4 class="text-white font-bold mb-4 uppercase">Клиентский сервис</h4>
           <p class="text-gray-600 text-[10px]">Техническая поддержка и сопровождение после покупки</p>
+          <a href="{% url 'privacy' %}" class="text-accent hover:text-accent-hover text-xs mt-2 inline-block">Политика конфиденциальности</a>
         </div>
       </div>
-      <div class="flex flex-col md:flex-row justify-between items-center pt-8 border-t border-gray-800 text-[10px] text-gray-600">
+      <div class="flex flex-col md:flex-row justify-between items-center pt-8 border-t border-gray-800 text-[10px] text-gray-600 gap-4">
+        <a href="{% url 'privacy' %}" class="hover:text-white">Политика конфиденциальности</a>
         <div class="mb-4 md:mb-0">
           <h3 class="text-white text-lg mb-2">Мы ВКонтакте</h3>
           <div class="bg-dark-800 p-4 rounded-lg border border-dark-700 w-full max-w-sm">
@@ -461,7 +554,86 @@
           console.log('htmx:afterSettle - Scroll position after final scrollTo:', window.pageYOffset || document.documentElement.scrollTop);
         }, 10);
       }
+      initPhoneMask();
     });
+
+    function initPhoneMask() {
+      document.querySelectorAll('.js-phone-mask').forEach(function(input) {
+        if (input.dataset.phoneMaskInit) return;
+        input.dataset.phoneMaskInit = '1';
+
+        input.addEventListener('keypress', function(e) {
+          if (!/[\d]/.test(e.key) && !e.ctrlKey && !e.metaKey && e.key !== 'Backspace') {
+            e.preventDefault();
+          }
+        });
+
+        function updateBracketVisibility() {
+          var v = input.value.replace(/\D/g, '');
+          var wrapper = input.closest('.phone-input-wrapper');
+          if (wrapper) wrapper.classList.toggle('has-digits', v.length > 0);
+        }
+
+        input.addEventListener('input', function(e) {
+          var pos = this.selectionStart;
+          var oldLen = this.value.length;
+          var v = this.value.replace(/\D/g, '');
+          if (v.startsWith('8')) v = v.slice(1);
+          if (v.startsWith('7')) v = v.slice(1);
+          v = v.slice(0, 10);
+          this.value = formatPhoneRest(v);
+          var newLen = this.value.length;
+          var newPos = Math.min(pos + (newLen - oldLen), this.value.length);
+          this.setSelectionRange(newPos, newPos);
+          updateBracketVisibility();
+        });
+
+        input.addEventListener('paste', function(e) {
+          e.preventDefault();
+          var pasted = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '');
+          if (pasted.startsWith('8')) pasted = pasted.slice(1);
+          if (pasted.startsWith('7')) pasted = pasted.slice(1);
+          pasted = pasted.slice(0, 10);
+          this.value = formatPhoneRest(pasted);
+          updateBracketVisibility();
+        });
+
+        if (input.value) {
+          var v = input.value.replace(/\D/g, '');
+          if (v.startsWith('8')) v = v.slice(1);
+          if (v.startsWith('7')) v = v.slice(1);
+          input.value = formatPhoneRest(v.slice(0, 10));
+        }
+        updateBracketVisibility();
+      });
+
+      document.querySelectorAll('form').forEach(function(form) {
+        if (form.dataset.phoneSyncInit) return;
+        form.dataset.phoneSyncInit = '1';
+        form.addEventListener('submit', function() {
+          form.querySelectorAll('.js-phone-mask').forEach(function(input) {
+            var v = input.value.replace(/\D/g, '');
+            if (v.startsWith('8')) v = v.slice(1);
+            if (v.startsWith('7')) v = v.slice(1);
+            v = v.slice(0, 10);
+            input.value = v ? '+7 (' + formatPhoneRest(v) : '';
+          });
+        }, true);
+      });
+    }
+
+    function formatPhoneRest(digits) {
+      if (!digits) return '';
+      var s = digits.slice(0, 3);
+      if (digits.length > 3) {
+        s += ') ' + digits.slice(3, 6);
+        if (digits.length > 6) s += '-' + digits.slice(6, 8);
+        if (digits.length > 8) s += '-' + digits.slice(8, 10);
+      }
+      return s;
+    }
+
+    initPhoneMask();
   </script>
 </body>
 </html>

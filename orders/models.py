@@ -1,11 +1,41 @@
 """
 Модели заказа (Фаза 3–4). Order, OrderItem. Промокоды (скидка + бонус партнёру).
+Временно: PurchaseRequest — заявка на покупку (телефон + Telegram).
 """
 from decimal import Decimal
 from django.db import models
 from django.conf import settings
 
 from catalog.models import Product
+
+
+class PurchaseRequest(models.Model):
+    """Временная заявка на покупку: клиент оставляет контакты, мы связываемся."""
+    STATUS_NEW = 'new'
+    STATUS_CONTACTED = 'contacted'
+    STATUS_PROCESSED = 'processed'
+    STATUS_CANCELLED = 'cancelled'
+    STATUS_CHOICES = [
+        (STATUS_NEW, 'Новая'),
+        (STATUS_CONTACTED, 'Связались'),
+        (STATUS_PROCESSED, 'Обработана'),
+        (STATUS_CANCELLED, 'Отменена'),
+    ]
+    phone = models.CharField('Телефон', max_length=20)
+    telegram = models.CharField('Telegram', max_length=100, help_text='@username или ссылка')
+    items = models.JSONField('Товары', default=list)  # [{"product_id", "name", "price", "quantity", "subtotal"}]
+    total = models.DecimalField('Сумма', max_digits=12, decimal_places=2, default=Decimal('0'))
+    status = models.CharField('Статус', max_length=20, choices=STATUS_CHOICES, default=STATUS_NEW, db_index=True)
+    comment = models.TextField('Комментарий (админ)', blank=True)
+    created_at = models.DateTimeField('Создана', auto_now_add=True, db_index=True)
+
+    class Meta:
+        verbose_name = 'Заявка на покупку'
+        verbose_name_plural = 'Заявки на покупку'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'Заявка #{self.pk} от {self.created_at.strftime("%d.%m.%Y %H:%M")} — {self.phone}'
 
 
 class PromoCode(models.Model):
@@ -185,6 +215,11 @@ class OrderItem(models.Model):
         'Цена за единицу',
         max_digits=12,
         decimal_places=2,
+    )
+    is_on_request = models.BooleanField(
+        'Под заказ',
+        default=False,
+        help_text='Товар был заказан при отсутствии на складе',
     )
 
     class Meta:

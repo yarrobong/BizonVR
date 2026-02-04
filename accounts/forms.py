@@ -6,7 +6,7 @@ from .services import normalize_phone
 
 
 class PhoneRequestForm(forms.Form):
-    """Форма запроса кода: ввод телефона."""
+    """Форма запроса кода: ввод телефона и согласие с политикой конфиденциальности."""
     phone = forms.CharField(
         label='Номер телефона',
         max_length=20,
@@ -15,6 +15,11 @@ class PhoneRequestForm(forms.Form):
             'autocomplete': 'tel',
             'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
         }),
+    )
+    agree_privacy = forms.BooleanField(
+        label='Согласен с политикой конфиденциальности',
+        required=True,
+        error_messages={'required': 'Необходимо согласие с политикой конфиденциальности.'},
     )
 
     def clean_phone(self):
@@ -45,3 +50,21 @@ class CodeVerifyForm(forms.Form):
         if not code or not code.isdigit():
             raise forms.ValidationError('Введите цифровой код из SMS.')
         return code
+
+
+class CompleteRegistrationForm(forms.Form):
+    """Форма завершения регистрации: ФИО и согласие на обработку ПД."""
+    contact_name = forms.CharField(
+        label='Контактное лицо (ФИО)',
+        max_length=255,
+        widget=forms.TextInput(attrs={
+            'placeholder': 'Иванов Иван Иванович',
+            'autocomplete': 'name',
+            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
+        }),
+    )
+    agree_privacy = forms.BooleanField(
+        label='',
+        required=True,
+        error_messages={'required': 'Необходимо согласие на обработку персональных данных.'},
+    )

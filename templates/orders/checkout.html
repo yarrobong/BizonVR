@@ -1,6 +1,7 @@
 {% extends "base.html" %}
+{% load catalog_tags %}
 
-{% block title %}Оформление заказа — BizonVR{% endblock %}
+{% block title %}{% if request_mode %}Заявка на покупку{% else %}Оформление заказа{% endif %} — BizonVR{% endblock %}
 
 {% block content %}
 <div class="container mx-auto px-4 py-8 max-w-4xl">
@@ -11,11 +12,11 @@
     </a>
   </nav>
 
-  <h1 class="text-2xl font-light text-white mb-8">Оформление заказа</h1>
+  <h1 class="text-2xl font-light text-white mb-8">{% if request_mode %}Заявка на покупку{% else %}Оформление заказа{% endif %}</h1>
 
   {% if cart_empty %}
     <div class="bg-dark-800 border border-dark-600 rounded-xl p-8 text-center text-gray-400">
-      <p class="mb-4">Корзина пуста. Добавьте товары, чтобы оформить заказ.</p>
+      <p class="mb-4">Корзина пуста. Добавьте товары, чтобы оставить заявку.</p>
       <a href="{% url 'catalog:product_list' %}" class="inline-flex items-center gap-2 bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-6 rounded-full text-sm uppercase tracking-wide transition-colors">
         Перейти в каталог
         <i data-lucide="arrow-right" class="w-4 h-4 inline-block"></i>
@@ -30,19 +31,46 @@
             {% for item in cart_items %}
             <li class="flex justify-between items-start gap-2 text-sm">
               <span class="text-gray-300">{{ item.name }} × {{ item.quantity }}</span>
-              <span class="text-white font-medium whitespace-nowrap">{{ item.subtotal|floatformat:0 }} ₽</span>
+              <span class="text-white font-medium whitespace-nowrap">{{ item.subtotal|price_format }} ₽</span>
             </li>
             {% endfor %}
           </ul>
-          <p class="mt-4 pt-4 border-t border-dark-600 text-gray-300 text-sm">Сумма: {{ cart_subtotal|floatformat:0 }} ₽</p>
-          {% if cart_discount and cart_discount > 0 %}
-          <p class="text-green-400 text-sm">Скидка по промокоду: −{{ cart_discount|floatformat:0 }} ₽</p>
-          {% endif %}
-          <p class="text-white font-bold text-lg">К оплате: {{ cart_total_to_pay|floatformat:0 }} ₽</p>
+          <p class="mt-4 pt-4 border-t border-dark-600 text-white font-bold text-lg">Итого: {{ cart_total|price_format }} ₽</p>
         </div>
       </div>
 
       <div class="bg-dark-800 border border-dark-600 rounded-xl p-6">
+        {% if request_mode %}
+        <h2 class="text-lg font-medium text-white mb-2">Оставьте контакты</h2>
+        <p class="text-sm text-gray-400 mb-6">Мы свяжемся с вами по телефону или в Telegram для оформления заказа.</p>
+        <form method="post" action="{% url 'orders:checkout' %}" class="space-y-4">
+          {% csrf_token %}
+          {% if form.non_field_errors %}
+          <div class="text-red-400 text-sm">{{ form.non_field_errors }}</div>
+          {% endif %}
+          <div>
+            <label for="id_phone" class="block text-sm font-medium text-gray-300 mb-1">{{ form.phone.label }} *</label>
+            <div class="phone-input-wrapper flex items-center w-full bg-dark-700 rounded-lg overflow-hidden focus-within:ring-1 focus-within:ring-accent pl-5">
+              <span class="phone-prefix text-white font-medium py-2.5 flex-shrink-0 select-none">+7</span>
+              <span class="phone-prefix-bracket text-white font-medium py-2.5 flex-shrink-0 select-none">&nbsp;(</span>
+              <input type="tel" name="phone" id="id_phone" required
+                     value="{{ form.phone.value|default:'' }}"
+                     placeholder="999 123-45-67"
+                     class="js-phone-mask flex-1 min-w-0 bg-transparent text-white py-2.5 pl-1 pr-4 focus:outline-none focus:ring-0 border-0"
+                     autocomplete="tel" inputmode="tel">
+            </div>
+            {% if form.phone.errors %}<p class="text-red-400 text-xs mt-1">{{ form.phone.errors.0 }}</p>{% endif %}
+          </div>
+          <div>
+            <label for="id_telegram" class="block text-sm font-medium text-gray-300 mb-1">{{ form.telegram.label }} *</label>
+            {{ form.telegram }}
+            {% if form.telegram.errors %}<p class="text-red-400 text-xs mt-1">{{ form.telegram.errors.0 }}</p>{% endif %}
+          </div>
+          <button type="submit" class="w-full bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-6 rounded-full text-sm uppercase tracking-wide transition-colors">
+            Отправить заявку
+          </button>
+        </form>
+        {% else %}
         <h2 class="text-lg font-medium text-white mb-4">Контактные данные и доставка</h2>
         {% if selected_city %}
         <p class="text-sm text-gray-400 mb-4">Город: <span class="text-white font-medium">{{ selected_city.name }}</span> (можно изменить в шапке)</p>
@@ -61,7 +89,15 @@
           </div>
           <div>
             <label for="id_phone" class="block text-sm font-medium text-gray-300 mb-1">{{ form.phone.label }} *</label>
-            {{ form.phone }}
+            <div class="phone-input-wrapper flex items-center w-full bg-dark-700 rounded-lg overflow-hidden focus-within:ring-1 focus-within:ring-accent pl-5">
+              <span class="phone-prefix text-white font-medium py-2.5 flex-shrink-0 select-none">+7</span>
+              <span class="phone-prefix-bracket text-white font-medium py-2.5 flex-shrink-0 select-none">&nbsp;(</span>
+              <input type="tel" name="phone" id="id_phone" required
+                     value="{{ form.phone.value|default:'' }}"
+                     placeholder="999 123-45-67"
+                     class="js-phone-mask flex-1 min-w-0 bg-transparent text-white py-2.5 pl-1 pr-4 focus:outline-none focus:ring-0 border-0"
+                     autocomplete="tel" inputmode="tel">
+            </div>
             {% if form.phone.errors %}<p class="text-red-400 text-xs mt-1">{{ form.phone.errors.0 }}</p>{% endif %}
           </div>
           <div class="grid grid-cols-2 gap-4">
@@ -104,6 +140,7 @@
             Оформить заказ
           </button>
         </form>
+        {% endif %}
       </div>
     </div>
   {% endif %}

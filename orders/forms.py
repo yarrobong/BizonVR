@@ -1,10 +1,48 @@
 """
 Формы оформления заказа (Фаза 4).
+Временно: PurchaseRequestForm — заявка на покупку (телефон + Telegram).
 """
 import re
 from django import forms
 
 from catalog.models import PickupPoint
+
+
+class PurchaseRequestForm(forms.Form):
+    """Форма заявки на покупку: телефон и Telegram."""
+    phone = forms.CharField(
+        label='Телефон',
+        max_length=20,
+        required=True,
+        widget=forms.TextInput(attrs={
+            'class': 'js-phone-mask w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
+            'placeholder': '+7 (999) 999-99-99',
+            'inputmode': 'tel',
+            'autocomplete': 'tel',
+        }),
+    )
+    telegram = forms.CharField(
+        label='Telegram',
+        max_length=100,
+        required=True,
+        widget=forms.TextInput(attrs={
+            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
+            'placeholder': '@username или ссылка t.me/username',
+        }),
+    )
+
+    def clean_phone(self):
+        value = (self.cleaned_data.get('phone') or '').strip()
+        digits = re.sub(r'\D', '', value)
+        if len(digits) < 10:
+            raise forms.ValidationError('Введите корректный номер телефона.')
+        return value
+
+    def clean_telegram(self):
+        value = (self.cleaned_data.get('telegram') or '').strip()
+        if not value:
+            raise forms.ValidationError('Укажите ваш Telegram.')
+        return value
 
 
 class CheckoutForm(forms.Form):
@@ -14,8 +52,10 @@ class CheckoutForm(forms.Form):
         max_length=20,
         required=True,
         widget=forms.TextInput(attrs={
-            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
-            'placeholder': '+7 (999) 123-45-67',
+            'class': 'js-phone-mask w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
+            'placeholder': '+7 (999) 999-99-99',
+            'inputmode': 'tel',
+            'autocomplete': 'tel',
         }),
     )
     first_name = forms.CharField(

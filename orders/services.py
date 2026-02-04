@@ -62,6 +62,8 @@ def decrease_stock_for_order(order):
         if order.stock_decreased:
             return
         for item in order.items.select_related('product').all():
+            if item.is_on_request:
+                continue
             product_id = item.product_id
             qty = item.quantity
             if order.pickup_point_id:

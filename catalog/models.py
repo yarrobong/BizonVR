@@ -65,6 +65,11 @@ class Product(models.Model):
     price = models.DecimalField('Цена', max_digits=12, decimal_places=2)
     image = models.ImageField('Изображение', upload_to='products/', blank=True, null=True)
     is_active = models.BooleanField('Активен', default=True)
+    allow_order_on_request = models.BooleanField(
+        'Доступен под заказ',
+        default=True,
+        help_text='Если товара нет в наличии, покупатель может оформить заказ под заказ',
+    )
     created_at = models.DateTimeField('Создан', auto_now_add=True)
     updated_at = models.DateTimeField('Обновлён', auto_now=True)
 

@@ -10,7 +10,7 @@
   {% if error %}
   <p class="text-red-400 text-sm mb-4 p-3 bg-red-900/20 rounded-lg">{{ error }}</p>
   {% endif %}
-  <form method="post" action="{% url 'accounts:verify_code' %}" class="space-y-4">
+  <form method="post" action="{% url 'accounts:verify_code' %}" class="space-y-4" hx-boost="false">
     {% csrf_token %}
     <input type="hidden" name="phone" value="{{ phone }}">
     {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}

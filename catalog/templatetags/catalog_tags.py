@@ -5,6 +5,18 @@ register = template.Library()
 
 
 @register.filter
+def price_format(value):
+    """Форматирует число как цену: 100000 → «100 000» (пробел как разделитель тысяч)."""
+    if value is None:
+        return '0'
+    try:
+        num = int(round(float(value)))
+        return f'{num:,}'.replace(',', ' ')
+    except (TypeError, ValueError):
+        return str(value)
+
+
+@register.filter
 def absolute_uri(url, request):
     """Превращает относительный URL в абсолютный (чтобы фото грузились при любом контексте)."""
     if not url:

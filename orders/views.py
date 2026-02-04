@@ -21,8 +21,8 @@ from django.db.models import Sum
 
 from catalog.models import City, PickupPoint, Product, ProductStock
 
-from .forms import CheckoutForm
-from .models import Order, OrderItem, PromoCode
+from .forms import CheckoutForm, PurchaseRequestForm
+from .models import Order, OrderItem, PromoCode, PurchaseRequest
 
 
 def _get_stock_in_city(city_id, product_id):
@@ -48,6 +48,16 @@ def _get_stock_at_pickup_point(pickup_point_id, product_id):
     return stock.quantity if stock else 0
 
 
+def _get_stock_total(product_id):
+    """Суммарный остаток товара по всей России."""
+    total = (
+        ProductStock.objects
+        .filter(product_id=product_id)
+        .aggregate(s=Sum('quantity'))
+    )
+    return total['s'] or 0
+
+
 def _normalize_phone(phone):
     """Оставляем только цифры для сравнения."""
     if not phone:
@@ -70,24 +80,19 @@ def _discount_for_promo(subtotal, promo):
 @ratelimit(key='ip', rate='15/m', method='POST')
 def checkout_view(request):
     """
-    Страница оформления заказа. GET — форма, POST — создание заказа из корзины.
-    Для авторизованных подставляются контакты из профиля.
+    ВРЕМЕННО: Заявка на покупку. Клиент оставляет телефон и Telegram,
+    мы связываемся для оформления заказа.
     """
     cart_items = _get_cart_from_session(request)
-
-    selected_city_id = request.session.get('selected_city_id')
-    selected_city = City.objects.filter(pk=selected_city_id).first() if selected_city_id else None
-    pickup_points = list(PickupPoint.objects.filter(city=selected_city).order_by('order', 'name')) if selected_city else []
 
     if request.method == 'GET':
         if not cart_items:
             return render(request, 'orders/checkout.html', {
                 'cart_items': [],
                 'cart_total': 0,
-                'form': CheckoutForm(),
+                'form': PurchaseRequestForm(),
                 'cart_empty': True,
-                'selected_city': selected_city,
-                'pickup_points': pickup_points,
+                'request_mode': True,
             })
         initial = {}
         if request.user.is_authenticated:
@@ -96,159 +101,63 @@ def checkout_view(request):
                 initial['phone'] = profile.phone or ''
             except Exception:
                 pass
-            initial['first_name'] = request.user.first_name or ''
-            initial['last_name'] = request.user.last_name or ''
-            initial['email'] = request.user.email or ''
-        form = CheckoutForm(initial=initial, selected_city=selected_city)
-        cart_subtotal = sum(Decimal(str(item.get('subtotal', 0))) for item in cart_items)
-        cart_discount = Decimal('0')
-        cart_total_to_pay = cart_subtotal
+        form = PurchaseRequestForm(initial=initial)
+        cart_total = sum(Decimal(str(item.get('subtotal', 0))) for item in cart_items)
         return render(request, 'orders/checkout.html', {
             'cart_items': cart_items,
-            'cart_subtotal': cart_subtotal,
-            'cart_discount': cart_discount,
-            'cart_total_to_pay': cart_total_to_pay,
+            'cart_total': cart_total,
             'form': form,
             'cart_empty': False,
-            'selected_city': selected_city,
-            'pickup_points': pickup_points,
+            'request_mode': True,
         })
 
     # POST
-    form = CheckoutForm(request.POST, selected_city=selected_city)
+    form = PurchaseRequestForm(request.POST)
     cart_items = _get_cart_from_session(request)
     if not cart_items:
         return redirect('orders:checkout')
 
     if not form.is_valid():
-        cart_subtotal = sum(Decimal(str(item.get('subtotal', 0))) for item in cart_items)
-        promo_code_str = (request.POST.get('promo_code') or '').strip()
-        promo = PromoCode.objects.filter(code__iexact=promo_code_str, is_active=True).first() if promo_code_str else None
-        cart_discount = _discount_for_promo(cart_subtotal, promo)
-        cart_total_to_pay = cart_subtotal - cart_discount
+        cart_total = sum(Decimal(str(item.get('subtotal', 0))) for item in cart_items)
         return render(request, 'orders/checkout.html', {
             'cart_items': cart_items,
-            'cart_subtotal': cart_subtotal,
-            'cart_discount': cart_discount,
-            'cart_total_to_pay': cart_total_to_pay,
+            'cart_total': cart_total,
             'form': form,
             'cart_empty': False,
-            'selected_city': selected_city,
-            'pickup_points': pickup_points,
+            'request_mode': True,
         })
 
-    # Для гостя email обязателен для связи
-    if not request.user.is_authenticated and not (form.cleaned_data.get('email') or '').strip():
-        form.add_error('email', 'Укажите email для связи с вами.')
-        cart_subtotal = sum(Decimal(str(item.get('subtotal', 0))) for item in cart_items)
-        promo_code_str = form.cleaned_data.get('promo_code') or ''
-        promo = PromoCode.objects.filter(code__iexact=promo_code_str, is_active=True).first() if promo_code_str else None
-        cart_discount = _discount_for_promo(cart_subtotal, promo)
-        cart_total_to_pay = cart_subtotal - cart_discount
-        return render(request, 'orders/checkout.html', {
-            'cart_items': cart_items,
-            'cart_subtotal': cart_subtotal,
-            'cart_discount': cart_discount,
-            'cart_total_to_pay': cart_total_to_pay,
-            'form': form,
-            'cart_empty': False,
-            'selected_city': selected_city,
-            'pickup_points': pickup_points,
-        })
-
-    # Проверка остатков по городу или точке выдачи
-    pickup_point = form.cleaned_data.get('pickup_point')
-    stock_errors = []
-    for item in cart_items:
-        product_id = item.get('product_id')
-        quantity = item.get('quantity', 1)
-        if pickup_point:
-            stock = _get_stock_at_pickup_point(pickup_point.pk, product_id)
-        elif selected_city_id:
-            stock = _get_stock_in_city(selected_city_id, product_id)
-        else:
-            stock = None
-        if stock is not None and quantity > stock:
-            product = Product.objects.filter(pk=product_id).first()
-            name = product.name if product else f'Товар #{product_id}'
-            stock_errors.append(f'{name}: в наличии {stock} шт., в заказе {quantity}.')
-    if stock_errors:
-        form.add_error(None, 'Недостаточно товара в выбранном городе/точке: ' + ' '.join(stock_errors))
-        cart_subtotal = sum(Decimal(str(item.get('subtotal', 0))) for item in cart_items)
-        promo_code_str = form.cleaned_data.get('promo_code') or ''
-        promo = PromoCode.objects.filter(code__iexact=promo_code_str, is_active=True).first() if promo_code_str else None
-        cart_discount = _discount_for_promo(cart_subtotal, promo)
-        cart_total_to_pay = cart_subtotal - cart_discount
-        return render(request, 'orders/checkout.html', {
-            'cart_items': cart_items,
-            'cart_subtotal': cart_subtotal,
-            'cart_discount': cart_discount,
-            'cart_total_to_pay': cart_total_to_pay,
-            'form': form,
-            'cart_empty': False,
-            'selected_city': selected_city,
-            'pickup_points': pickup_points,
-        })
-
-    # Создаём заказ: цены берём из БД для актуальности
-    total = Decimal('0')
-    order_items_data = []
-    for item in cart_items:
-        product_id = item.get('product_id')
-        quantity = item.get('quantity', 1)
-        product = Product.objects.filter(pk=product_id, is_active=True).first()
-        if not product:
-            continue
-        price = product.price
-        subtotal = price * quantity
-        total += subtotal
-        order_items_data.append({'product': product, 'quantity': quantity, 'price': price})
-
-    if not order_items_data:
-        return redirect('orders:checkout')
-
-    promo_code_str = (form.cleaned_data.get('promo_code') or '').strip()
-    promo = PromoCode.objects.filter(code__iexact=promo_code_str, is_active=True).first() if promo_code_str else None
-    promo_discount = _discount_for_promo(total, promo)
-
-    order = Order.objects.create(
-        user=request.user if request.user.is_authenticated else None,
-        status=Order.STATUS_NEW,
-        total=total,
-        promo_code=promo,
-        promo_discount=promo_discount,
-        city=selected_city,
-        pickup_point=pickup_point,
+    # Сохраняем заявку
+    cart_total = sum(Decimal(str(item.get('subtotal', 0))) for item in cart_items)
+    items_data = [
+        {
+            'product_id': item.get('product_id'),
+            'name': item.get('name', ''),
+            'price': float(item.get('price', 0)),
+            'quantity': item.get('quantity', 1),
+            'subtotal': float(item.get('subtotal', 0)),
+        }
+        for item in cart_items
+    ]
+    req = PurchaseRequest.objects.create(
         phone=form.cleaned_data['phone'].strip(),
-        email=(form.cleaned_data.get('email') or '').strip(),
-        first_name=(form.cleaned_data.get('first_name') or '').strip(),
-        last_name=(form.cleaned_data.get('last_name') or '').strip(),
-        address=(form.cleaned_data.get('address') or '').strip(),
-        delivery_type=form.cleaned_data.get('delivery_type') or Order.DELIVERY_COURIER,
-        comment=(form.cleaned_data.get('comment') or '').strip(),
+        telegram=form.cleaned_data['telegram'].strip(),
+        items=items_data,
+        total=cart_total,
     )
-    for data in order_items_data:
-        OrderItem.objects.create(
-            order=order,
-            product=data['product'],
-            quantity=data['quantity'],
-            price=data['price'],
-        )
 
     request.session['cart_items'] = []
     request.session.modified = True
 
-    # Тестовый режим: заказ сразу «Оплачен», бонус партнёру и списание остатков
-    if getattr(settings, 'TEST_ORDER_NO_PAYMENT', False):
-        order.status = Order.STATUS_PAID
-        order.save(update_fields=['status'])
-        from .services import apply_partner_bonus_for_order, decrease_stock_for_order
-        apply_partner_bonus_for_order(order)
-        decrease_stock_for_order(order)
+    return redirect('orders:request_created', request_id=req.pk)
 
-    if request.user.is_authenticated:
-        return redirect('orders:order_detail', pk=order.pk)
-    return redirect('orders:order_created', order_id=order.pk)
+
+def request_created_view(request, request_id):
+    """Страница «Заявка отправлена»."""
+    req = PurchaseRequest.objects.filter(pk=request_id).first()
+    if not req:
+        return redirect('catalog:product_list')
+    return render(request, 'orders/request_created.html', {'request': req})
 
 
 def order_created_view(request, order_id):

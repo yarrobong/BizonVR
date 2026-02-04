@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.utils.html import format_html
 
-from .models import Order, OrderItem, PromoCode
+from .models import Order, OrderItem, PromoCode, PurchaseRequest
 
 
 @admin.register(PromoCode)
@@ -37,10 +37,18 @@ class OrderAdmin(admin.ModelAdmin):
 
 @admin.register(OrderItem)
 class OrderItemAdmin(admin.ModelAdmin):
-    list_display = ('order', 'product', 'quantity', 'price', 'subtotal_display')
+    list_display = ('order', 'product', 'quantity', 'price', 'is_on_request', 'subtotal_display')
     list_filter = ('order',)
     raw_id_fields = ('order', 'product')
 
     def subtotal_display(self, obj):
         return f'{obj.subtotal} ₽'
     subtotal_display.short_description = 'Сумма'
+
+
+@admin.register(PurchaseRequest)
+class PurchaseRequestAdmin(admin.ModelAdmin):
+    list_display = ('id', 'phone', 'telegram', 'total', 'status', 'created_at')
+    list_filter = ('status',)
+    search_fields = ('phone', 'telegram')
+    readonly_fields = ('created_at',)

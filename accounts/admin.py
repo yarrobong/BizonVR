@@ -8,8 +8,8 @@ User = get_user_model()
 
 @admin.register(Profile)
 class ProfileAdmin(admin.ModelAdmin):
-    list_display = ('phone', 'user')
-    search_fields = ('phone', 'user__username')
+    list_display = ('phone', 'contact_name', 'privacy_agreed_at', 'user')
+    search_fields = ('phone', 'contact_name', 'user__username')
 
 
 @admin.register(PhoneVerificationCode)

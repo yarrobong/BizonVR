@@ -72,12 +72,16 @@
             </h3>
             <div class="text-xs text-gray-400 mb-1">Категория: <span class="text-gray-300">{{ product.category.name }}</span></div>
             {% if selected_city %}
-            <p class="text-xs text-gray-400 mb-1">В наличии ({{ selected_city.name }}): <span class="text-gray-300">{{ product_stock_in_city|get_item:product.id }} шт.</span></p>
+              {% with stock=product_stock_in_city|get_item:product.id stock_total=product_stock_total|get_item:product.id %}
+            <p class="text-xs text-gray-400 mb-1">{% if stock %}В наличии ({{ selected_city.name }}): {{ stock }} шт.{% elif stock_total %}В наличии, доставка{% else %}<span class="text-accent">Под заказ</span>{% endif %}</p>
+              {% endwith %}
             {% else %}
-            <p class="text-xs text-gray-400 mb-1">Выберите город для отображения наличия</p>
+              {% with stock=product_stock_total|get_item:product.id|default:0 %}
+            <p class="text-xs text-gray-400 mb-1">{% if stock %}Доступно к отправке: {{ stock }} шт.{% else %}<span class="text-accent">Под заказ</span>{% endif %}</p>
+              {% endwith %}
             {% endif %}
             <div class="mt-auto flex items-center justify-between">
-              <span class="text-lg font-bold text-white">{{ product.price|floatformat:0 }} ₽</span>
+              <span class="text-lg font-bold text-white">{{ product.price|price_format }} ₽</span>
             </div>
           </div>
         </article>

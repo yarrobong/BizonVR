@@ -19,13 +19,15 @@ def normalize_phone(raw: str) -> str:
 
 
 class Profile(models.Model):
-    """Профиль пользователя: телефон, баланс."""
+    """Профиль пользователя: телефон, баланс, контактное лицо."""
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name='profile',
     )
     phone = models.CharField('Телефон', max_length=20, unique=True, db_index=True)
+    contact_name = models.CharField('Контактное лицо (ФИО)', max_length=255, blank=True)
+    privacy_agreed_at = models.DateTimeField('Согласие на обработку ПД', null=True, blank=True)
     balance = models.DecimalField(
         'Баланс',
         max_digits=12,

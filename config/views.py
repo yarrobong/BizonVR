@@ -35,6 +35,11 @@ def serve_media(request, path):
     )
 
 
+def privacy_view(request):
+    """Страница политики конфиденциальности."""
+    return render(request, 'privacy.html')
+
+
 def home_view(request):
     """Главная страница: hero, лучшие предложения (товары из каталога), сетка категорий, баннер."""
     featured = Product.objects.filter(is_active=True).select_related('category').order_by('-created_at')[:8]

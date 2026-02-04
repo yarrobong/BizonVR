@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}Завершение регистрации — BizonVR{% endblock %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-12 max-w-md">
+  <h1 class="text-2xl font-light text-white mb-2">Завершите регистрацию</h1>
+  <p class="text-gray-400 text-sm mb-6">Укажите контактные данные для оформления заказов.</p>
+
+  <form method="post" action="{% url 'accounts:complete_registration' %}" class="space-y-4">
+    {% csrf_token %}
+    {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}
+    <div>
+      <label for="id_contact_name" class="block text-sm text-gray-400 mb-1">{{ form.contact_name.label }}</label>
+      <input type="text" name="contact_name" id="id_contact_name" required
+             value="{{ form.contact_name.value|default:'' }}"
+             placeholder="Иванов Иван Иванович"
+             class="w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent"
+             autocomplete="name">
+      {% if form.contact_name.errors %}
+        <p class="text-red-400 text-sm mt-1">{{ form.contact_name.errors.0 }}</p>
+      {% endif %}
+    </div>
+    <div>
+      <label class="block text-sm text-gray-400 mb-1">Контактный номер</label>
+      <div class="w-full bg-dark-800 text-gray-400 rounded-lg py-2.5 px-4 border border-dark-600 cursor-not-allowed">
+        {{ phone }}
+      </div>
+      <p class="text-gray-500 text-xs mt-1">Номер подтверждён, изменить нельзя</p>
+    </div>
+    <div class="flex items-start gap-3">
+      <input type="checkbox" name="agree_privacy" id="id_agree_privacy" required
+             class="mt-1 w-4 h-4 rounded border-gray-600 bg-dark-700 text-accent focus:ring-accent focus:ring-offset-0">
+      <label for="id_agree_privacy" class="text-sm text-gray-400">
+        Настоящим подтверждаю, что я ознакомлен и согласен с условиями <a href="{% url 'oferta' %}" target="_blank" rel="noopener noreferrer" class="text-accent hover:text-accent-hover underline">политики конфиденциальности</a>
+      </label>
+    </div>
+    {% if form.agree_privacy.errors %}
+      <p class="text-red-400 text-sm">{{ form.agree_privacy.errors.0 }}</p>
+    {% endif %}
+    <button type="submit" class="w-full bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-4 rounded-full transition-colors">
+      Завершить регистрацию
+    </button>
+  </form>
+</div>
+{% endblock %}

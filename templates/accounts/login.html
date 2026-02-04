@@ -7,7 +7,7 @@
   <h1 class="text-2xl font-light text-white mb-6">Вход по номеру телефона</h1>
   <p class="text-gray-400 text-sm mb-6">Введите номер — мы отправим код подтверждения в SMS.</p>
 
-  <form id="phone-form" method="post" action="{% url 'accounts:send_code' %}" class="space-y-4"
+    <form id="phone-form" method="post" action="{% url 'accounts:send_code' %}" class="space-y-4"
         x-data="{ loading: false, error: '' }"
         @submit.prevent="
           loading = true; error = '';
@@ -30,11 +30,22 @@
     {% csrf_token %}
     <div>
       <label for="id_phone" class="block text-sm text-gray-400 mb-1">Телефон</label>
-      <input type="tel" name="phone" id="id_phone" required
-             placeholder="+7 (999) 123-45-67"
-             class="w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent"
-             autocomplete="tel">
+      <div class="phone-input-wrapper flex items-center w-full bg-dark-700 rounded-lg overflow-hidden focus-within:ring-1 focus-within:ring-accent pl-5">
+        <span class="phone-prefix text-white font-medium py-2.5 flex-shrink-0 select-none">+7</span>
+        <span class="phone-prefix-bracket text-white font-medium py-2.5 flex-shrink-0 select-none">&nbsp;(</span>
+        <input type="tel" name="phone" id="id_phone" required
+               placeholder="999 123-45-67"
+               class="js-phone-mask flex-1 min-w-0 bg-transparent text-white py-2.5 pl-1 pr-4 focus:outline-none focus:ring-0 border-0"
+               autocomplete="tel" inputmode="tel">
+      </div>
       <p x-show="error" x-text="error" class="text-red-400 text-sm mt-1"></p>
+    </div>
+    <div class="flex items-start gap-3">
+      <input type="checkbox" name="agree_privacy" id="id_agree_privacy" required
+             class="mt-1 w-4 h-4 rounded border-gray-600 bg-dark-700 text-accent focus:ring-accent focus:ring-offset-0">
+      <label for="id_agree_privacy" class="text-sm text-gray-400">
+        Я согласен с <a href="{% url 'privacy' %}" target="_blank" rel="noopener noreferrer" class="text-accent hover:text-accent-hover underline">политикой конфиденциальности</a>
+      </label>
     </div>
     <button type="submit" :disabled="loading"
             class="w-full bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-4 rounded-full transition-colors disabled:opacity-50">

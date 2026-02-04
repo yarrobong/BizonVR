@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load catalog_tags %}
 
 {% block title %}Личный кабинет — BizonVR{% endblock %}
 
@@ -10,7 +11,7 @@
 
     <div>
       <h2 class="text-lg font-medium text-white mb-2">Баланс</h2>
-      <p class="text-2xl font-light text-white mb-1">{% if profile %}{{ profile.balance }}{% else %}0{% endif %} ₽</p>
+      <p class="text-2xl font-light text-white mb-1">{% if profile %}{{ profile.balance|price_format }}{% else %}0{% endif %} ₽</p>
       <a href="{% url 'accounts:balance_history' %}" class="text-accent hover:text-accent-hover text-sm">История операций</a>
     </div>
 
