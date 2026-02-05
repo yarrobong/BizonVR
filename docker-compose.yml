@@ -7,6 +7,8 @@
 services:
   db:
     image: postgres:16-alpine
+    networks:
+      - app
     environment:
       POSTGRES_DB: ${DB_NAME:-bizon}
       POSTGRES_USER: ${DB_USER:-postgres}
@@ -25,6 +27,8 @@ services:
 
   web:
     build: .
+    networks:
+      - app
     entrypoint: ["./entrypoint.sh"]
     environment:
       DEBUG: "False"
@@ -53,6 +57,10 @@ services:
       timeout: 10s
       retries: 5
       start_period: 30s
+
+networks:
+  app:
+    driver: bridge
 
 volumes:
   postgres_data:

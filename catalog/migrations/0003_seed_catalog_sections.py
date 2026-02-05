@@ -1,4 +1,4 @@
-# Data migration: создать разделы каталога из upgrade.md
+# Data migration: создать разделы каталога
 
 from django.db import migrations
 

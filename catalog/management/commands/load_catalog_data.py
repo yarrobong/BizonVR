@@ -1,29 +1,47 @@
 """
-Синтетические данные для каталога: 2 категории (VR-Шлема, VR-Аттракционы)
-и товары с названиями из landing.html; остальные поля заполнены логичными значениями.
+Синтетические данные для каталога: разделы, категории, товары, города, точки выдачи, остатки, теги.
 Запуск: python manage.py load_catalog_data
+В Docker: docker compose exec web python manage.py load_catalog_data
 """
+import random
 from decimal import Decimal
 
 from django.core.management.base import BaseCommand
 
-from catalog.models import Category, Product, ProductCharacteristic
+from catalog.models import (
+    CatalogSection,
+    Category,
+    City,
+    PickupPoint,
+    Product,
+    ProductCharacteristic,
+    ProductStock,
+    ProductTag,
+)
 
 
-# Категории (ровно две)
-CATEGORIES = [
-    {'name': 'VR-Шлема'},
-    {'name': 'VR-Аттракционы'},
+# Разделы каталога (если нет — создаются)
+SECTIONS = [
+    {'name': 'Решения для VR бизнеса', 'slug': 'resheniya-dlya-vr-biznesa', 'order': 1},
+    {'name': 'VR-аттракционы', 'slug': 'vr-attrakciony', 'order': 2},
+    {'name': 'VR-оборудование', 'slug': 'vr-oborudovanie', 'order': 3},
 ]
 
-# Товары: названия с landing.html, цена с лендинга или логичная; категория — VR-Шлема (аксессуары) или VR-Аттракционы
-# (slug заполняется автоматически в модели)
+# Категории: name, section_slug (или None)
+CATEGORIES = [
+    {'name': 'VR-Шлема', 'section_slug': 'vr-oborudovanie'},
+    {'name': 'VR-Аттракционы', 'section_slug': 'vr-attrakciony'},
+]
+
+# Товары: категория — VR-Шлема (0) или VR-Аттракционы (1)
+# tag_slugs: bestseller, expert-choice, new, sale (опционально)
 PRODUCTS = [
     # --- Из блока «Лучшие предложения» (карточки), категория VR-Шлема ---
     {
         'name': 'Крепление BOBOVR M3 Pro Battery Head Strap для Oculus Quest 3',
         'category_index': 0,
         'price': Decimal('6990.00'),
+        'tag_slugs': ['bestseller', 'new'],
         'description': 'Удобное крепление с встроенной батареей для Meta Quest 3. Увеличивает время автономной работы и улучшает распределение веса.',
         'characteristics': [
             ('Бренд', 'BOBOVR'),
@@ -35,6 +53,7 @@ PRODUCTS = [
         'name': 'Кабель AMVR Upgraded Oculus Link с зарядным портом',
         'category_index': 0,
         'price': Decimal('2190.00'),
+        'tag_slugs': ['sale'],
         'description': 'Кабель для подключения шлема к ПК с поддержкой одновременной зарядки. Стабильная передача данных и питания.',
         'characteristics': [
             ('Бренд', 'AMVR'),
@@ -44,6 +63,7 @@ PRODUCTS = [
     },
     {
         'name': 'Маска AMVR для Pico 4 экокожа',
+        'tag_slugs': [],
         'category_index': 0,
         'price': Decimal('2590.00'),
         'description': 'Запасная маска из экокожи для Pico 4. Повышает комфорт и гигиену при длительном использовании.',
@@ -110,6 +130,7 @@ PRODUCTS = [
         'name': 'Крепление BizonVR XR Battery Head Strap для Oculus Quest 3/3S',
         'category_index': 0,
         'price': Decimal('7490.00'),
+        'tag_slugs': ['bestseller', 'expert-choice'],
         'description': 'Значительно улучшает комфорт, увеличивает время игры за счёт встроенного аккумулятора 8 000 mAh.',
         'characteristics': [
             ('Бренд', 'BizonVR XR'),
@@ -173,6 +194,7 @@ PRODUCTS = [
         'name': 'VR-аттракцион «Космическая станция»',
         'category_index': 1,
         'price': Decimal('125000.00'),
+        'tag_slugs': ['expert-choice', 'new'],
         'description': 'Коммерческий VR-аттракцион для торговых центров и парков развлечений. Сценарий полёта на МКС.',
         'characteristics': [
             ('Тип', 'Стационарный аттракцион'),
@@ -216,33 +238,63 @@ PRODUCTS = [
 ]
 
 
+# Города и точки выдачи
+CITIES = [
+    {'name': 'Москва', 'slug': 'moscow', 'pickup_points': [
+        {'name': 'Пункт выдачи на Арбате', 'address': 'ул. Арбат, 1'},
+        {'name': 'Склад на Тверской', 'address': 'ул. Тверская, 10'},
+    ]},
+    {'name': 'Санкт-Петербург', 'slug': 'spb', 'pickup_points': [
+        {'name': 'Пункт на Невском', 'address': 'Невский пр., 50'},
+    ]},
+]
+
+
 class Command(BaseCommand):
-    help = 'Загружает синтетические категории и товары (названия с landing.html + логичные поля).'
+    help = 'Загружает синтетические данные: разделы, категории, товары, города, точки выдачи, остатки, теги.'
 
     def add_arguments(self, parser):
         parser.add_argument(
             '--clear',
             action='store_true',
-            help='Перед загрузкой удалить все товары и категории каталога.',
+            help='Перед загрузкой удалить все данные каталога (товары, категории, остатки, точки, города).',
         )
 
     def handle(self, *args, **options):
         if options['clear']:
+            ProductStock.objects.all().delete()
             ProductCharacteristic.objects.all().delete()
             Product.objects.all().delete()
+            PickupPoint.objects.all().delete()
+            City.objects.all().delete()
             Category.objects.all().delete()
             self.stdout.write(self.style.WARNING('Каталог очищен.'))
 
+        # Разделы
+        sections = {}
+        for s in SECTIONS:
+            sec, _ = CatalogSection.objects.get_or_create(
+                slug=s['slug'],
+                defaults={'name': s['name'], 'order': s['order']},
+            )
+            sections[s['slug']] = sec
+
+        # Категории
         categories = []
         for cat_data in CATEGORIES:
+            section = sections.get(cat_data['section_slug']) if cat_data.get('section_slug') else None
             cat, created = Category.objects.get_or_create(
                 name=cat_data['name'],
-                defaults={'name': cat_data['name']},
+                defaults={'name': cat_data['name'], 'section': section},
             )
+            if section and not cat.section_id:
+                cat.section = section
+                cat.save()
             categories.append(cat)
             if created:
                 self.stdout.write(f'  Категория: {cat.name}')
 
+        # Товары
         for p_data in PRODUCTS:
             product, created = Product.objects.update_or_create(
                 name=p_data['name'],
@@ -260,8 +312,39 @@ class Command(BaseCommand):
                     name=ch_name,
                     value=ch_value,
                 )
+            # Теги
+            tag_slugs = p_data.get('tag_slugs', [])
+            if tag_slugs:
+                tags = list(ProductTag.objects.filter(slug__in=tag_slugs))
+                product.tags.set(tags)
             self.stdout.write(f'  Товар: {product.name} ({product.price} ₽)')
 
+        # Города, точки выдачи, остатки
+        products = list(Product.objects.all())
+        pickup_points = []
+        for city_data in CITIES:
+            city, _ = City.objects.get_or_create(
+                slug=city_data['slug'],
+                defaults={'name': city_data['name']},
+            )
+            for pp_data in city_data['pickup_points']:
+                pp, _ = PickupPoint.objects.get_or_create(
+                    city=city,
+                    name=pp_data['name'],
+                    defaults={'address': pp_data.get('address', '')},
+                )
+                pickup_points.append(pp)
+
+        # Остатки: случайное количество для каждого товара в каждой точке
+        for product in products:
+            for pp in pickup_points:
+                ProductStock.objects.update_or_create(
+                    product=product,
+                    pickup_point=pp,
+                    defaults={'quantity': random.randint(0, 15)},
+                )
+        self.stdout.write(f'  Города: {len(CITIES)}, точек: {len(pickup_points)}, остатки заполнены')
+
         self.stdout.write(self.style.SUCCESS(
-            f'Готово: {len(categories)} категорий, {len(PRODUCTS)} товаров.'
+            f'Готово: {len(categories)} категорий, {len(PRODUCTS)} товаров, {len(pickup_points)} точек выдачи.'
         ))

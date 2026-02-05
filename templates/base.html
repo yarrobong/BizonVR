@@ -10,7 +10,9 @@
   <style>
     :root {
       --accent-electric-blue: #00d4ff;
-      --header-height: 140px;
+      --header-height: 180px;       /* полная шапка */
+      --header-height-compact: 80px; /* компактная шапка */
+      --header-scrolled: 0;         /* 0 — подробная, 1 — компактная */
     }
     /* scroll-padding-top: браузер учитывает шапку при прокрутке к началу/к якорям */
     html { scroll-padding-top: var(--header-height); }
@@ -20,6 +22,7 @@
       background-size: 60px 60px;
       color: #ffffff;
       padding-top: var(--header-height);
+      transition: padding-top 0.35s cubic-bezier(0.4, 0, 0.2, 1);
     }
     #main-content { padding-top: 0 !important; }
     ::-webkit-scrollbar { width: 8px; }
@@ -29,7 +32,7 @@
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
     [x-cloak] { display: none !important; }
-    /* ОПТИМИЗИРОВАННАЯ ШАПКА: fixed — контент не прыгает при скролле */
+    /* Шапка: fixed, высота по контенту, body padding синхронизирован через --header-height */
     header {
       position: fixed;
       top: 0;
@@ -42,23 +45,17 @@
       transition: background 0.3s ease, box-shadow 0.3s ease;
       box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
       box-sizing: border-box;
-      transform: translate3d(0, 0, 0);
-      will-change: transform;
-      overflow: visible;
       width: 100%;
       border-bottom: 1px solid rgba(255, 255, 255, 0.05);
       backface-visibility: hidden;
     }
 
-    /* Плавная шапка через Grid */
+    /* Плавная шапка через Grid (--header-scrolled задаёт состояние до Alpine) */
     .header-top-row {
       display: grid;
-      grid-template-rows: 1fr;
+      grid-template-rows: calc(1fr * (1 - var(--header-scrolled)));
       transition: grid-template-rows 0.35s cubic-bezier(0.4, 0, 0.2, 1);
       will-change: grid-template-rows;
-    }
-    .header-top-row.collapsed {
-      grid-template-rows: 0fr;
     }
     .header-top-row > * {
       min-height: 0;
@@ -66,7 +63,8 @@
       opacity: 1;
       transition: opacity 0.2s ease, transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
     }
-    .header-top-row.collapsed > * {
+    .header-top-row.collapsed > *,
+    :root[style*="--header-scrolled: 1"] .header-top-row > * {
       transform: translateY(-20px);
       opacity: 0;
     }
@@ -93,7 +91,19 @@
       -webkit-backdrop-filter: blur(4px);
       border: 1px solid rgba(255, 255, 255, 0.1);
     }
+    /* Preload: отключаем анимации до стабилизации страницы (убирает мерцание шапки) */
+    .preload * {
+      transition: none !important;
+      -webkit-transition: none !important;
+      animation: none !important;
+    }
   </style>
+  <script>
+    /* Жёстко отключаем восстановление скролла и сбрасываем наверх */
+    if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+    window.scrollTo(0, 0);
+    document.addEventListener('DOMContentLoaded', function() { window.scrollTo(0, 0); });
+  </script>
   <script src="https://unpkg.com/htmx.org@1.9.10"></script>
   <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
   <script>
@@ -109,6 +119,12 @@
           ev.detail.target.innerHTML = '<p class="text-gray-400 text-sm">Превышено время ожидания. Проверьте, что сервер запущен на порту 8000.</p>';
         }
       });
+      document.body.addEventListener('htmx:afterSwap', function(ev) {
+        if (ev.detail.target.id === 'main-content') {
+          window.scrollTo(0, 0);
+          window.dispatchEvent(new CustomEvent('header-expand'));
+        }
+      });
     }
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', initHtmxHandlers);
@@ -117,7 +133,7 @@
     }
   </script>
 </head>
-<body class="min-h-screen bg-dark-900 text-white font-sans"
+<body class="min-h-screen bg-dark-900 text-white font-sans preload"
       id="main-body"
       hx-boost="true"
       hx-target="#main-content"
@@ -125,12 +141,24 @@
       hx-swap="innerHTML"
       hx-push-url="true"
       hx-timeout="15000"
-      x-data="{ cartOpen: false, scrolled: false, cartCount: {{ cart_count|default:0 }} }"
+      x-data="{ cartOpen: false, scrolled: false, ready: false, cartCount: {{ cart_count|default:0 }} }"
      @open-cart.window="cartOpen = true"
      @cart-updated.window="cartCount = $event.detail.count"
-     @scroll.window.passive.throttle.20ms="const y = window.scrollY; if (y > 100) scrolled = true; else if (y < 50) scrolled = false"
-     x-init="scrolled = window.scrollY > 100">
-  <!-- Header: при скролле скрывается верхняя полоса (телефон, вход), остаётся логотип, поиск, каталог -->
+     @scroll.window.passive.throttle.20ms="if (ready) { const y = window.scrollY; if (y > 80) { scrolled = true; document.documentElement.style.setProperty('--header-scrolled', '1'); document.documentElement.style.setProperty('--header-height', '100px') } else if (y < 30) { scrolled = false; document.documentElement.style.setProperty('--header-scrolled', '0'); document.documentElement.style.setProperty('--header-height', '180px') } }"
+     @header-expand.window="scrolled = false; document.documentElement.style.setProperty('--header-scrolled', '0'); document.documentElement.style.setProperty('--header-height', '180px')"
+     x-init="
+       window.scrollTo(0, 0);
+       scrolled = false;
+       document.documentElement.style.setProperty('--header-scrolled', '0');
+       document.documentElement.style.setProperty('--header-height', '180px');
+       setTimeout(() => { ready = true; document.body.classList.remove('preload'); }, 150);
+     ">
+  <script>
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+    window.scrollTo(0, 0);
+  </script>
+  <!-- Header: большая у верха, компактная при скролле вниз -->
   <header class="w-full text-white">
     <div class="hidden md:block header-top-row"
          :class="scrolled && 'collapsed'">
@@ -140,7 +168,7 @@
           <i data-lucide="shopping-bag" class="w-3.5 h-3.5 text-accent inline-block"></i>
           <span>Авито</span>
         </a>
-        <a href="https://t.me/bizonvr" target="_blank" rel="noopener noreferrer" class="flex items-center space-x-1 hover:text-white text-gray-400 transition-colors">
+        <a href="https://t.me/bizon_order_manager" target="_blank" rel="noopener noreferrer" class="flex items-center space-x-1 hover:text-white text-gray-400 transition-colors">
           <i data-lucide="send" class="w-3.5 h-3.5 text-accent inline-block"></i>
           <span>Telegram</span>
         </a>
@@ -148,7 +176,7 @@
       <div class="flex items-center space-x-6">
         <div class="flex items-center space-x-2">
           <i data-lucide="phone" class="w-3.5 h-3.5 text-accent inline-block"></i>
-          <span class="font-bold text-white">8 (800) 600-95-47</span>
+          <a href="tel:+79324910482" class="font-bold text-white hover:text-accent">+7 (932) 491-04-82</a>
           <span class="text-gray-500 cursor-pointer hover:text-accent">ЗАКАЗАТЬ ЗВОНОК</span>
         </div>
         <div class="flex items-center space-x-2">
@@ -170,12 +198,12 @@
     </div>
     </div>
 
-    <div class="container mx-auto px-4 transition-[padding] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]"
-         :class="scrolled ? 'py-1' : 'py-4'">
+    <div class="container mx-auto px-4 transition-[padding] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] py-4"
+         :class="scrolled && '!py-1'">
       <div class="flex items-center justify-between gap-4">
         <a href="{% url 'home' %}" class="flex flex-col flex-shrink-0 cursor-pointer">
-          <h1 class="font-bold tracking-wider leading-none transition-[font-size] duration-300" :class="scrolled ? 'text-lg' : 'text-2xl'">BizonVR</h1>
-          <span class="block text-[10px] text-gray-500 tracking-widest uppercase transition-all duration-300 overflow-hidden" :class="scrolled ? 'max-h-0 opacity-0 leading-none' : 'max-h-5 opacity-100'">Будущее уже здесь!</span>
+          <h1 class="font-bold tracking-wider leading-none transition-[font-size] duration-300 text-2xl" :class="scrolled && '!text-lg'">BizonVR</h1>
+          <span class="block text-[10px] text-gray-500 tracking-widest uppercase transition-all duration-300 overflow-hidden max-h-5 opacity-100" :class="scrolled && '!max-h-0 !opacity-0 leading-none'">Будущее уже здесь!</span>
         </a>
 
         <div class="hidden lg:flex items-center space-x-2">
@@ -185,7 +213,7 @@
         </div>
 
         <form action="{% url 'catalog:product_list' %}" method="get" class="flex-1 max-w-2xl relative hidden md:block">
-          <input type="search" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Поиск по товарам" class="search-input-glass w-full text-white rounded-full px-5 pl-5 pr-12 focus:outline-none focus:ring-1 focus:ring-accent text-sm transition-[padding] duration-300" :class="scrolled ? 'py-1.5' : 'py-2.5'" />
+          <input type="search" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Поиск по товарам" class="search-input-glass w-full text-white rounded-full px-5 pl-5 pr-12 focus:outline-none focus:ring-1 focus:ring-accent text-sm transition-[padding] duration-300 py-2.5" :class="scrolled && '!py-1.5'" />
           <button type="submit" class="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white w-[18px] h-[18px] inline-flex items-center justify-center focus:outline-none">
             <i data-lucide="search" class="w-[18px] h-[18px] inline-block"></i>
           </button>
@@ -278,11 +306,11 @@
       </form>
     </div>
 
-    <div class="header-nav transition-[padding] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]"
-         :class="scrolled ? 'py-1' : 'py-4'">
+    <div class="header-nav transition-[padding] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] py-4"
+         :class="scrolled && '!py-1'">
       <div class="container mx-auto px-4">
-        <nav class="flex items-center text-xs font-bold uppercase tracking-wide transition-[padding] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]"
-             :class="scrolled ? 'py-1' : 'py-3'"
+        <nav class="flex items-center text-xs font-bold uppercase tracking-wide transition-[padding] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] py-3"
+             :class="scrolled && '!py-1'"
              x-data="{ catalogOpen: false }"
              @keydown.escape.window="catalogOpen = false">
           <!-- КАТАЛОГ с выпадающим меню (вне overflow, чтобы dropdown не обрезался) -->
@@ -418,11 +446,15 @@
           </div>
           <div>
             <div class="text-[10px] text-gray-500 uppercase mb-1">Телефон</div>
-            <p class="text-lg font-bold hover:text-accent cursor-pointer">+7 (800) 600-95-47</p>
+            <a href="tel:+79324910482" class="text-lg font-bold hover:text-accent cursor-pointer">+7 (932) 491-04-82</a>
           </div>
           <div>
             <div class="text-[10px] text-gray-500 uppercase mb-1">E-mail</div>
-            <p class="text-sm text-gray-300 hover:text-accent cursor-pointer">info@bizon-shop.com</p>
+            <a href="mailto:info@bizon-business.ru" class="text-sm text-gray-300 hover:text-accent cursor-pointer">info@bizon-business.ru</a>
+          </div>
+          <div>
+            <div class="text-[10px] text-gray-500 uppercase mb-1">Telegram</div>
+            <a href="https://t.me/bizon_order_manager" target="_blank" rel="noopener noreferrer" class="text-sm text-gray-300 hover:text-accent cursor-pointer">@bizon_order_manager</a>
           </div>
           <div class="pt-4">
             <h4 class="text-xl mb-4">Поиск</h4>

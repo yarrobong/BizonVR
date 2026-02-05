@@ -1,72 +1,72 @@
-# BizonVR — управление Docker (prod: docker-compose + docker-compose.prod)
-# Использование: make up, make ps, make logs и т.д. (из корня проекта)
+# BizonVR — управление Docker
+# Локальная разработка: make dev
+# Продакшен (сервер): make up
 
-COMPOSE_FILES = -f docker-compose.yml -f docker-compose.prod.yml
-COMPOSE = docker compose $(COMPOSE_FILES)
+COMPOSE_BASE = docker compose -f docker-compose.yml
+COMPOSE_PROD = docker compose -f docker-compose.yml -f docker-compose.prod.yml
 
-.PHONY: up down ps logs restart build pull migrate shell superuser collectstatic
+.PHONY: dev up down ps logs logs-f restart build migrate load-data load-data-clear shell superuser collectstatic
 
-# Поднять контейнеры (prod)
-up:
-	$(COMPOSE) up -d
+# ========== Локальная разработка (код монтируется, порт 8000) ==========
+# make или make dev — запуск для разработки
+dev:
+	$(COMPOSE_BASE) up -d
 
-# Остановить и удалить контейнеры
-down:
-	$(COMPOSE) down
-
-# Статус контейнеров
-ps:
-	$(COMPOSE) ps
-
-# Логи web (последние 100 строк)
-logs:
-	$(COMPOSE) logs web --tail 100
-
-# Логи web в реальном времени
-logs-f:
-	$(COMPOSE) logs -f web
-
-# Перезапустить web
-restart:
-	$(COMPOSE) restart web
-
-# Собрать образ и поднять (после изменений кода)
-build:
-	$(COMPOSE) build --no-cache
-	$(COMPOSE) up -d
-
-# Обновление: git pull + пересборка + up
-pull:
-	git pull
-	$(COMPOSE) build --no-cache
-	$(COMPOSE) up -d
-
-# Миграции Django
-migrate:
-	$(COMPOSE) exec web python manage.py migrate
-
-# Django shell
-shell:
-	$(COMPOSE) exec web python manage.py shell
-
-# Создать суперпользователя
-superuser:
-	$(COMPOSE) exec web python manage.py createsuperuser
-
-# Собрать статику
-collectstatic:
-	$(COMPOSE) exec web python manage.py collectstatic --noinput
-
-# Пересоздать web (после смены .env)
-recreate-web:
-	$(COMPOSE) up -d --force-recreate web
-
-# Только dev (локально, без prod-файла)
-dev-up:
-	docker compose -f docker-compose.yml up -d
+# Алиас: make = make dev
+.DEFAULT_GOAL := dev
 
 dev-down:
-	docker compose -f docker-compose.yml down
+	$(COMPOSE_BASE) down
 
 dev-ps:
-	docker compose -f docker-compose.yml ps
+	$(COMPOSE_BASE) ps
+
+# ========== Продакшен (образ, порт из .env PORT, по умолчанию 8001) ==========
+up:
+	$(COMPOSE_PROD) up -d
+
+down:
+	$(COMPOSE_PROD) down
+
+ps:
+	$(COMPOSE_PROD) ps
+
+logs:
+	$(COMPOSE_PROD) logs web --tail 100
+
+logs-f:
+	$(COMPOSE_PROD) logs -f web
+
+restart:
+	$(COMPOSE_PROD) restart web
+
+build:
+	$(COMPOSE_PROD) build --no-cache
+	$(COMPOSE_PROD) up -d
+
+pull:
+	git pull
+	$(COMPOSE_PROD) build --no-cache
+	$(COMPOSE_PROD) up -d
+
+# ========== Django (работает с dev или prod — тот же проект) ==========
+migrate:
+	$(COMPOSE_BASE) exec web python manage.py migrate
+
+load-data:
+	$(COMPOSE_BASE) exec web python manage.py load_catalog_data
+
+load-data-clear:
+	$(COMPOSE_BASE) exec web python manage.py load_catalog_data --clear
+
+shell:
+	$(COMPOSE_BASE) exec web python manage.py shell
+
+superuser:
+	$(COMPOSE_BASE) exec web python manage.py createsuperuser
+
+collectstatic:
+	$(COMPOSE_BASE) exec web python manage.py collectstatic --noinput
+
+recreate-web:
+	$(COMPOSE_PROD) up -d --force-recreate web

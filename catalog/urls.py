@@ -1,4 +1,4 @@
-from django.urls import path
+from django.urls import path, re_path
 
 from . import views
 
@@ -8,7 +8,8 @@ urlpatterns = [
     path('', views.ProductListView.as_view(), name='product_list'),
     path('set-city/', views.set_city_view, name='set_city'),
     path('favorites/', views.favorite_list_view, name='favorites'),
-    path('product/<slug:slug>/', views.ProductDetailView.as_view(), name='product_detail'),
+    # slug с кириллицей: [\w-]+ вместо path slug (только ASCII)
+    re_path(r'product/(?P<slug>[\w-]+)/', views.ProductDetailView.as_view(), name='product_detail'),
     path('cart/', views.cart_page_view, name='cart'),
     path('cart/partial/', views.cart_partial, name='cart_partial'),
     path('cart/add/<int:product_id>/', views.add_to_cart_view, name='add_to_cart'),

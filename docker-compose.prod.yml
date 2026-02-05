@@ -5,13 +5,15 @@
 services:
   web:
     image: portal-shop:latest
+    networks:
+      - app
     build:
       context: .
       dockerfile: Dockerfile
     env_file: .env
     environment:
-      DEBUG: "False"
-      USE_HTTPS: "1"
+      DEBUG: "${DEBUG:-False}"
+      USE_HTTPS: "${USE_HTTPS:-1}"
       ALLOWED_HOSTS: ${ALLOWED_HOSTS}
       SECRET_KEY: ${SECRET_KEY}
       DB_HOST: db
@@ -26,10 +28,12 @@ services:
     restart: unless-stopped
     # Слушаем только localhost — снаружи доступ через Nginx
     ports:
-      - "127.0.0.1:8000:8000"
+      - "127.0.0.1:${PORT:-8001}:8000"
 
   db:
     image: postgres:16-alpine
+    networks:
+      - app
     env_file: .env
     environment:
       POSTGRES_DB: ${DB_NAME:-bizon}
