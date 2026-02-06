@@ -143,9 +143,9 @@
       hx-swap="innerHTML"
       hx-push-url="true"
       hx-timeout="15000"
-      x-data="{ cartOpen: false, scrolled: false, ready: false, cartCount: {{ cart_count|default:0 }} }"
+      x-data="{ cartOpen: false, scrolled: false, ready: false, cartCount: {{ cart_count|default:0 }}, miniCartOpen: false, miniCartData: null }"
      @open-cart.window="cartOpen = true"
-     @cart-updated.window="cartCount = $event.detail.count"
+     @cart-updated.window="cartCount = $event.detail.count; if ($event.detail.added_item) { miniCartData = $event.detail; miniCartOpen = true; cartOpen = false; setTimeout(() => miniCartOpen = false, 6000) }"
      @scroll.window.passive.throttle.20ms="
        if (!ready) return;
        const y = window.scrollY;
@@ -167,6 +167,7 @@
        document.documentElement.style.setProperty('--header-scrolled', '0');
        document.documentElement.style.setProperty('--header-height', '165px');
        setTimeout(() => { ready = true; document.body.classList.remove('preload'); }, 150);
+       $watch('miniCartOpen', v => { if (v) $nextTick(() => setTimeout(() => typeof initLucide === 'function' && initLucide(), 80)) });
      ">
   <script>
     document.documentElement.scrollTop = 0;
@@ -303,13 +304,59 @@
             </div>
           </div>
           {% endif %}
-          <a href="{% url 'catalog:cart' %}"
-             class="flex flex-col items-center group focus:outline-none">
-            <div class="relative">
-              <i data-lucide="shopping-cart" class="text-white group-hover:text-accent transition-colors w-6 h-6 inline-block"></i>
-              <span id="cart-count" class="absolute -top-1 -right-1 w-4 h-4 bg-dark-700 rounded-full text-[10px] flex items-center justify-center border border-dark-800" x-text="cartCount">{{ cart_count|default:0 }}</span>
+          <div class="relative">
+            <a href="{% url 'catalog:cart' %}"
+               class="flex flex-col items-center group focus:outline-none">
+              <div class="relative">
+                <i data-lucide="shopping-cart" class="text-white group-hover:text-accent transition-colors w-6 h-6 inline-block"></i>
+                <span id="cart-count" class="absolute -top-1 -right-1 w-4 h-4 bg-dark-700 rounded-full text-[10px] flex items-center justify-center border border-dark-800" x-text="cartCount">{{ cart_count|default:0 }}</span>
+              </div>
+            </a>
+            <!-- Мини-корзина: выезжает от иконки при добавлении товара -->
+            <div x-show="miniCartOpen"
+                 x-cloak
+                 @click.outside="miniCartOpen = false"
+                 x-transition:enter="transition ease-out duration-200"
+                 x-transition:enter-start="opacity-0 scale-95 -translate-y-2"
+                 x-transition:enter-end="opacity-100 scale-100 translate-y-0"
+                 x-transition:leave="transition ease-in duration-150"
+                 x-transition:leave-start="opacity-100 scale-100"
+                 x-transition:leave-end="opacity-0 scale-95 -translate-y-2"
+                 style="transform-origin: top right"
+                 class="absolute right-0 top-full mt-2 z-[60] w-80 max-w-[calc(100vw-2rem)] bg-dark-800 border border-dark-600 rounded-xl shadow-2xl overflow-hidden">
+              <div class="p-4">
+                <template x-if="miniCartData && miniCartData.items && miniCartData.items.length">
+                  <div class="mb-3">
+                    <p class="text-[10px] text-gray-500 uppercase tracking-wider mb-2">В корзине</p>
+                    <ul class="space-y-2 max-h-32 overflow-y-auto">
+                      <template x-for="(item, i) in miniCartData.items" :key="i">
+                        <li class="flex gap-2 text-sm">
+                          <div class="w-8 h-8 rounded bg-dark-700 flex-shrink-0 overflow-hidden flex items-center justify-center">
+                            <template x-if="item.image_url">
+                              <img :src="item.image_url" alt="" class="w-full h-full object-cover" />
+                            </template>
+                            <template x-if="!item.image_url">
+                              <i data-lucide="package" class="w-4 h-4 text-gray-500"></i>
+                            </template>
+                          </div>
+                          <span class="flex-1 min-w-0 text-gray-300 truncate" x-text="item.name"></span>
+                          <span class="text-gray-400" x-text="item.quantity + ' шт.'"></span>
+                          <span class="font-medium text-white" x-text="Math.round(item.subtotal).toLocaleString('ru-RU') + ' ₽'"></span>
+                        </li>
+                      </template>
+                    </ul>
+                  </div>
+                </template>
+                <div class="flex items-center justify-between pt-2 border-t border-dark-600">
+                  <span class="text-sm text-gray-400">Итого: <span class="font-bold text-white" x-text="miniCartData ? Math.round(miniCartData.total).toLocaleString('ru-RU') + ' ₽' : ''"></span></span>
+                  <div class="flex gap-2">
+                    <a href="{% url 'catalog:cart' %}" @click="miniCartOpen = false" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-dark-700 text-gray-300 hover:text-white transition-colors">В корзину</a>
+                    <a href="{% url 'orders:checkout' %}" @click="miniCartOpen = false" class="px-3 py-1.5 text-xs font-bold rounded-lg bg-accent text-dark-900 hover:bg-accent-hover transition-colors">Оформить</a>
+                  </div>
+                </div>
+              </div>
             </div>
-          </a>
+          </div>
         </div>
       </div>
 

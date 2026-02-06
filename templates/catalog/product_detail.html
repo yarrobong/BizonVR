@@ -78,8 +78,7 @@
         <form action="{% url 'catalog:add_to_cart' product.pk %}" method="post" class="inline"
               hx-post="{% url 'catalog:add_to_cart' product.pk %}"
               hx-target="#cart-modal-content"
-              hx-swap="innerHTML"
-              hx-on::after-request="if (event.detail.success) { $dispatch('open-cart') }">
+              hx-swap="innerHTML">
           {% csrf_token %}
           <input type="hidden" name="quantity" value="1" />
           <button type="submit" class="bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-8 rounded-full transition-colors text-sm uppercase tracking-wide">

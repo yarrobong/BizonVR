@@ -206,11 +206,29 @@ def add_to_cart_view(request, product_id):
 
     if request.headers.get('HX-Request'):
         total = sum(i.get('subtotal', 0) for i in cart_items)
+        added_item = {
+            'name': product.name,
+            'quantity': quantity,
+            'price': float(product.price),
+            'subtotal': float(product.price) * quantity,
+            'image_url': request.build_absolute_uri(product.image.url) if product.image else '',
+        }
+        items_preview = [
+            {'name': i['name'], 'quantity': i['quantity'], 'subtotal': i['subtotal'], 'image_url': request.build_absolute_uri(i['image_url']) if i.get('image_url') else ''}
+            for i in reversed(cart_items[-5:])
+        ]
         resp = render(request, 'catalog/partials/cart_content.html', {
             'cart_items': cart_items,
             'total': total,
         })
-        resp['HX-Trigger'] = json.dumps({'cart-updated': {'count': cart_count}})
+        resp['HX-Trigger'] = json.dumps({
+            'cart-updated': {
+                'count': cart_count,
+                'total': total,
+                'added_item': added_item,
+                'items': items_preview,
+            }
+        })
         return resp
 
     next_url = request.POST.get('next') or request.GET.get('next') or product.get_absolute_url()
