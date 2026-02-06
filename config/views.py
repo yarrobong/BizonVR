@@ -21,10 +21,13 @@ _HERO_DEFAULT_BG = [
 
 
 def serve_media(request, path):
-    """Раздача медиа при SERVE_MEDIA=1 (встроенный serve при DEBUG=False отдаёт 404)."""
-    path = os.path.normpath(path).lstrip('/')
-    full_path = os.path.normpath(os.path.join(settings.MEDIA_ROOT, path))
-    if not full_path.startswith(os.path.realpath(settings.MEDIA_ROOT)):
+    """Раздача медиа при DEBUG или SERVE_MEDIA=1."""
+    path = os.path.normpath(path).lstrip('/').lstrip('\\')
+    if '..' in path or path.startswith('/'):
+        raise Http404()
+    media_root = os.path.abspath(os.path.realpath(str(settings.MEDIA_ROOT)))
+    full_path = os.path.abspath(os.path.join(media_root, path))
+    if not full_path.startswith(media_root):
         raise Http404()
     if os.path.isdir(full_path):
         raise Http404()

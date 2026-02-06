@@ -4,7 +4,34 @@
 {% block title %}{{ product.name }} — BizonVR{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 py-8">
+<div class="container mx-auto px-4 py-8"
+     x-data="{
+       selectedVariant: null,
+       variants: [
+         {% for v in product.variants.all %}
+         { id: {{ v.pk }}, name: '{{ v.name|escapejs }}', price: {{ v.price|js_number }}, imageUrl: '{% if v.image %}{{ v.image.url|absolute_uri:request }}{% endif %}' }{% if not forloop.last %},{% endif %}
+         {% endfor %}
+       ],
+       productImage: '{% if product.image %}{{ product.image.url|absolute_uri:request }}{% endif %}',
+       productPrice: {{ product.price|js_number }},
+       productGallery: [{% for url in product_gallery %}'{{ url|escapejs }}'{% if not forloop.last %}, {% endif %}{% endfor %}],
+       selectedImageIndex: 0,
+       get displayImages() {
+         if (this.selectedVariant && this.selectedVariant.imageUrl) {
+           return [this.selectedVariant.imageUrl, ...this.productGallery];
+         }
+         return this.productGallery;
+       },
+       get currentImage() {
+         const imgs = this.displayImages;
+         if (imgs.length === 0) return '';
+         return imgs[this.selectedImageIndex] || imgs[0];
+       }
+     }"
+     x-init="
+       if (variants.length) selectedVariant = variants[0];
+       $watch('selectedVariant', () => { selectedImageIndex = 0; });
+     ">
   <nav class="mb-6">
     <a href="{% url 'catalog:product_list' %}" class="text-gray-400 hover:text-accent text-sm flex items-center gap-1">
       <i data-lucide="arrow-left" class="w-4 h-4 inline-block"></i>
@@ -13,14 +40,33 @@
   </nav>
 
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12">
-    <div class="rounded-xl overflow-hidden bg-dark-800 border border-dark-700 aspect-square max-h-[500px] flex items-center justify-center">
-      {% if product.image %}
-        <img src="{{ product.image.url|absolute_uri:request }}" alt="{{ product.name }}" class="w-full h-full object-contain p-8" />
-      {% else %}
-        <div class="text-gray-500">
-          <i data-lucide="image-off" class="w-24 h-24 inline-block"></i>
+    <div class="space-y-4">
+      <div class="rounded-xl overflow-hidden bg-dark-800/50 border border-dark-600 aspect-square min-h-[280px] md:min-h-[380px] flex items-center justify-center p-4 md:p-6">
+        <template x-if="currentImage">
+          <img :src="currentImage"
+               alt="{{ product.name|escapejs }}"
+               loading="eager"
+               class="max-w-full max-h-full object-contain" />
+        </template>
+        <template x-if="!currentImage">
+          <div class="text-gray-500 flex flex-col items-center gap-2">
+            <i data-lucide="image-off" class="w-20 h-20 md:w-24 md:h-24 inline-block"></i>
+            <span class="text-sm">Нет фото</span>
+          </div>
+        </template>
+      </div>
+      <template x-if="displayImages.length > 1">
+        <div class="flex gap-2 overflow-x-auto pb-1">
+          <template x-for="(img, i) in displayImages" :key="i">
+            <button type="button"
+                    @click="selectedImageIndex = i"
+                    :class="selectedImageIndex === i ? 'ring-2 ring-accent ring-offset-2 ring-offset-dark-900' : 'hover:border-dark-500'"
+                    class="flex-shrink-0 w-16 h-16 md:w-20 md:h-20 rounded-lg overflow-hidden bg-dark-700 border-2 border-dark-600 transition-all duration-200">
+              <img :src="img" alt="" class="w-full h-full object-cover" loading="lazy" />
+            </button>
+          </template>
         </div>
-      {% endif %}
+      </template>
     </div>
 
     <div>
@@ -38,7 +84,27 @@
       </div>
       {% endif %}
       <h1 class="text-2xl md:text-3xl font-medium text-white mb-4 leading-tight">{{ product.name }}</h1>
-      <div class="text-2xl font-bold text-white mb-6">{{ product.price|price_format }} ₽</div>
+
+      {% if product.variants.all %}
+      <div class="mb-4">
+        <p class="text-[10px] text-gray-500 uppercase tracking-wider mb-2">{{ product.option_label|default:"Вариант" }}</p>
+        <div class="flex flex-wrap gap-2">
+          {% for v in product.variants.all %}
+          <button type="button"
+                  @click="selectedVariant = variants.find(x => x.id === {{ v.pk }})"
+                  :class="selectedVariant && selectedVariant.id === {{ v.pk }} ? 'border-accent text-accent bg-accent/10' : 'border-dark-600 text-gray-300 hover:border-dark-500'"
+                  class="flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors">
+            {% if v.image %}
+            <img src="{{ v.image.url|absolute_uri:request }}" alt="" class="w-6 h-6 rounded object-cover" />
+            {% endif %}
+            <span>{{ v.name }}</span>
+          </button>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      <div class="text-2xl font-bold text-white mb-6" x-text="(selectedVariant ? selectedVariant.price : productPrice).toLocaleString('ru-RU') + ' ₽'"></div>
 
       {% if selected_city %}
         {% if stock_in_city > 0 %}
@@ -74,6 +140,85 @@
         </div>
       {% endif %}
 
+      {% if bundles or compatible_from_category %}
+      <div class="mb-8 pt-8 border-t border-dark-600">
+        <h2 class="text-sm font-bold text-white mb-4 uppercase tracking-wide">{% if bundles %}Купить набором{% else %}Дополните покупку{% endif %}</h2>
+
+        {% if bundles %}
+        <div class="space-y-4 mb-6">
+          {% for bundle in bundles %}
+          <div class="bg-dark-800 border border-dark-600 rounded-xl p-4">
+            {% if bundle.name %}
+            <p class="text-sm text-gray-400 mb-2">{{ bundle.name }}</p>
+            {% endif %}
+            <div class="flex flex-wrap gap-3 items-center mb-3">
+              {% for item in bundle.items.all %}
+                <span class="flex items-center gap-2 p-2 rounded-lg bg-dark-700 min-w-0">
+                  {% if item.product.image %}
+                  <img src="{{ item.product.image.url|absolute_uri:request }}" alt="" class="w-12 h-12 rounded object-contain flex-shrink-0" />
+                  {% else %}
+                  <div class="w-12 h-12 rounded bg-dark-600 flex items-center justify-center flex-shrink-0">
+                    <i data-lucide="package" class="w-6 h-6 text-gray-500"></i>
+                  </div>
+                  {% endif %}
+                  <span class="text-sm text-white truncate">{{ item.product.name }}{% if item.quantity > 1 %} × {{ item.quantity }}{% endif %}</span>
+                  <span class="text-sm text-accent font-medium flex-shrink-0">{{ item.price|price_format }} ₽</span>
+                </span>
+              {% endfor %}
+            </div>
+            <form action="{% url 'catalog:add_bundle_to_cart' %}" method="post" class="inline"
+                  hx-post="{% url 'catalog:add_bundle_to_cart' %}"
+                  hx-target="#cart-modal-content"
+                  hx-swap="innerHTML">
+              {% csrf_token %}
+              <input type="hidden" name="bundle_id" value="{{ bundle.pk }}" />
+              <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+              <button type="submit" class="bg-accent hover:bg-accent-hover text-dark-900 font-bold py-2 px-5 rounded-full text-sm uppercase tracking-wide">
+                Купить набор — {{ bundle.total_price|price_format }} ₽
+              </button>
+            </form>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if compatible_from_category %}
+        <div class="bg-dark-800 border border-dark-600 rounded-xl p-4">
+          <p class="text-sm text-gray-400 mb-3">Товары из категории «{{ product.category.name }}»</p>
+          <form action="{% url 'catalog:add_bundle_to_cart' %}" method="post" id="bundle-category-form"
+                hx-post="{% url 'catalog:add_bundle_to_cart' %}"
+                hx-target="#cart-modal-content"
+                hx-swap="innerHTML">
+            {% csrf_token %}
+            <input type="hidden" name="product_id" value="{{ product.pk }}" />
+            <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+            <div class="flex flex-wrap gap-3 mb-4">
+              {% for p in compatible_from_category %}
+              <label class="flex items-center gap-2 p-3 rounded-lg border border-dark-600 hover:border-dark-500 cursor-pointer transition-colors has-[:checked]:border-accent has-[:checked]:bg-accent/10">
+                <input type="checkbox" name="product_ids" value="{{ p.pk }}" class="rounded border-dark-500 text-accent focus:ring-accent" />
+                <span class="flex items-center gap-2 min-w-0 flex-1">
+                  {% if p.image %}
+                  <img src="{{ p.image.url|absolute_uri:request }}" alt="" class="w-10 h-10 rounded object-contain flex-shrink-0" />
+                  {% else %}
+                  <div class="w-10 h-10 rounded bg-dark-600 flex items-center justify-center flex-shrink-0">
+                    <i data-lucide="package" class="w-5 h-5 text-gray-500"></i>
+                  </div>
+                  {% endif %}
+                  <span class="text-sm text-white truncate">{{ p.name }}</span>
+                  <span class="text-sm text-gray-400 flex-shrink-0">{{ p.price|price_format }} ₽</span>
+                </span>
+              </label>
+              {% endfor %}
+            </div>
+            <button type="submit" class="bg-accent hover:bg-accent-hover text-dark-900 font-bold py-2 px-5 rounded-full text-sm uppercase tracking-wide">
+              Купить набором
+            </button>
+          </form>
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+
       <div class="flex flex-wrap gap-4 items-center">
         <form action="{% url 'catalog:add_to_cart' product.pk %}" method="post" class="inline"
               hx-post="{% url 'catalog:add_to_cart' product.pk %}"
@@ -81,9 +226,16 @@
               hx-swap="innerHTML">
           {% csrf_token %}
           <input type="hidden" name="quantity" value="1" />
+          {% if product.variants.all %}
+          <input type="hidden" name="variant_id" :value="selectedVariant ? selectedVariant.id : ''" />
+          <button type="submit" :disabled="!selectedVariant" class="bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-8 rounded-full transition-colors text-sm uppercase tracking-wide disabled:opacity-50 disabled:cursor-not-allowed">
+            {% if stock_total == 0 %}Купить под заказ{% else %}Добавить в корзину{% endif %}
+          </button>
+          {% else %}
           <button type="submit" class="bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-8 rounded-full transition-colors text-sm uppercase tracking-wide">
             {% if stock_total == 0 %}Купить под заказ{% else %}Добавить в корзину{% endif %}
           </button>
+          {% endif %}
         </form>
         {% if user.is_authenticated %}
         <form action="{% url 'catalog:toggle_favorite' product.pk %}" method="post" class="inline">

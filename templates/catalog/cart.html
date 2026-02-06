@@ -62,6 +62,7 @@
               <form action="{% url 'catalog:cart_update' %}" method="post" class="inline">
                 {% csrf_token %}
                 <input type="hidden" name="product_id" value="{{ item.product_id }}" />
+                {% if item.variant_id %}<input type="hidden" name="variant_id" value="{{ item.variant_id }}" />{% endif %}
                 <input type="hidden" name="quantity" value="0" />
                 <input type="hidden" name="next" value="{% url 'catalog:cart' %}" />
                 <button type="submit" class="text-red-400 hover:text-red-300 text-sm">Удалить</button>

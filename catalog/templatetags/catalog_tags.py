@@ -83,6 +83,19 @@ def absolute_uri(url, request):
 
 
 @register.filter
+def js_number(value):
+    """Число для JavaScript: всегда точка как разделитель дробной части (500.00, не 500,00)."""
+    if value is None:
+        return '0'
+    s = str(value).strip().replace(',', '.')
+    try:
+        float(s)
+        return s
+    except (TypeError, ValueError):
+        return '0'
+
+
+@register.filter
 def get_item(d, key):
     """Вернуть d.get(key, 0) для доступа к значению в словаре по ключу (остаток по товару)."""
     if not isinstance(d, dict):

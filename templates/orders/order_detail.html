@@ -31,7 +31,7 @@
       <ul class="space-y-2">
         {% for item in order.items.all %}
         <li class="flex justify-between text-sm">
-          <span class="text-gray-300">{{ item.product.name }} × {{ item.quantity }}{% if item.is_on_request %} <span class="text-accent text-xs">(под заказ)</span>{% endif %}</span>
+          <span class="text-gray-300">{% if item.variant_name %}{{ item.product.name }} ({{ item.variant_name }}){% else %}{{ item.product.name }}{% endif %} × {{ item.quantity }}{% if item.is_on_request %} <span class="text-accent text-xs">(под заказ)</span>{% endif %}</span>
           <span class="text-white">{{ item.subtotal|price_format }} ₽</span>
         </li>
         {% endfor %}

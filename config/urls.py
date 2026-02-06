@@ -33,9 +33,6 @@ urlpatterns = [
     path('', home_view, name='home'),
 ]
 
-# Медиа: в DEBUG — встроенный static(); при SERVE_MEDIA=1 — свой view (serve при DEBUG=False отдаёт 404)
-if settings.DEBUG:
-    from django.conf.urls.static import static
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
-elif config('SERVE_MEDIA', default=False, cast=bool):
-    urlpatterns += [re_path(r'^media/(?P<path>.*)$', serve_media)]
+# Медиа: в DEBUG или SERVE_MEDIA=1 — раздаём через serve_media
+if settings.DEBUG or config('SERVE_MEDIA', default=False, cast=bool):
+    urlpatterns = [re_path(r'^media/(?P<path>.*)$', serve_media)] + urlpatterns

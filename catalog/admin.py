@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.utils.html import format_html
 
-from .models import CatalogSection, Category, City, ContactRequest, Favorite, PickupPoint, Product, ProductCharacteristic, ProductStock, ProductTag
+from .models import CatalogSection, Category, City, ContactRequest, Favorite, PickupPoint, Product, ProductBundle, ProductBundleItem, ProductCharacteristic, ProductImage, ProductStock, ProductTag, ProductVariant
 
 
 @admin.register(CatalogSection)
@@ -15,6 +15,40 @@ class CatalogSectionAdmin(admin.ModelAdmin):
 class ProductCharacteristicInline(admin.TabularInline):
     model = ProductCharacteristic
     extra = 1
+
+
+def _admin_image_preview(obj, width=60, height=60):
+    """Превью изображения для админки."""
+    if obj and getattr(obj, 'image', None) and obj.image:
+        return format_html(
+            '<img src="{}" width="{}" height="{}" style="object-fit: cover; border-radius: 4px;" />',
+            obj.image.url, width, height
+        )
+    return '—'
+
+
+class ProductVariantInline(admin.TabularInline):
+    model = ProductVariant
+    extra = 1
+    fields = ('image_preview', 'name', 'image', 'price_override', 'order')
+    readonly_fields = ('image_preview',)
+
+    def image_preview(self, obj):
+        return _admin_image_preview(obj)
+
+    image_preview.short_description = 'Превью'
+
+
+class ProductImageInline(admin.TabularInline):
+    model = ProductImage
+    extra = 1
+    fields = ('image_preview', 'image', 'order')
+    readonly_fields = ('image_preview',)
+
+    def image_preview(self, obj):
+        return _admin_image_preview(obj)
+
+    image_preview.short_description = 'Превью'
 
 
 class ProductStockInlineForProduct(admin.TabularInline):
@@ -64,6 +98,32 @@ class CategoryAdmin(admin.ModelAdmin):
     search_fields = ('name',)
 
 
+class ProductBundleItemInline(admin.TabularInline):
+    model = ProductBundleItem
+    extra = 1
+    autocomplete_fields = ('product',)
+
+
+@admin.register(ProductBundle)
+class ProductBundleAdmin(admin.ModelAdmin):
+    list_display = ('name', 'items_count', 'bundle_total')
+    inlines = (ProductBundleItemInline,)
+    search_fields = ('name',)
+
+    def items_count(self, obj):
+        return obj.items.count() if obj.pk else 0
+
+    items_count.short_description = 'Позиций'
+
+    def bundle_total(self, obj):
+        if obj.pk:
+            total = sum(float(i.price) * i.quantity for i in obj.items.all())
+            return f'{total:,.0f} ₽'.replace(',', ' ')
+        return '—'
+
+    bundle_total.short_description = 'Сумма набора'
+
+
 @admin.register(ProductTag)
 class ProductTagAdmin(admin.ModelAdmin):
     list_display = ('name', 'slug', 'order')
@@ -73,16 +133,26 @@ class ProductTagAdmin(admin.ModelAdmin):
 
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
-    list_display = ('name', 'category', 'price', 'is_active', 'allow_order_on_request', 'created_at')
+    list_display = ('name', 'image_preview', 'category', 'price', 'option_label', 'is_active', 'allow_order_on_request', 'created_at')
     list_filter = ('category', 'is_active', 'tags')
     search_fields = ('name', 'description')
     prepopulated_fields = {'slug': ('name',)}
-    inlines = (ProductCharacteristicInline, ProductStockInlineForProduct)
-    readonly_fields = ('created_at', 'updated_at')
+    inlines = (ProductVariantInline, ProductImageInline, ProductCharacteristicInline, ProductStockInlineForProduct)
+    readonly_fields = ('created_at', 'updated_at', 'image_preview')
     filter_horizontal = ('tags',)
+    fieldsets = (
+        (None, {
+            'fields': ('name', 'slug', 'category', 'price', 'description', 'image_preview', 'image', 'is_active', 'allow_order_on_request', 'option_label', 'tags', 'created_at', 'updated_at'),
+        }),
+    )
+
+    def image_preview(self, obj):
+        return _admin_image_preview(obj, width=80, height=80)
+
+    image_preview.short_description = 'Превью'
 
     def get_queryset(self, request):
-        return super().get_queryset(request).select_related('category').prefetch_related('tags')
+        return super().get_queryset(request).select_related('category').prefetch_related('tags', 'variants')
 
 
 @admin.register(ContactRequest)

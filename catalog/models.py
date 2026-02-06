@@ -92,6 +92,12 @@ class Product(models.Model):
         blank=True,
         help_text='Бестселлер, Выбор экспертов, Новинка, Акция',
     )
+    option_label = models.CharField(
+        'Подпись к вариантам',
+        max_length=100,
+        blank=True,
+        help_text='Например: Цвет, Размер, Модель. Показывается над выбором варианта.',
+    )
     created_at = models.DateTimeField('Создан', auto_now_add=True)
     updated_at = models.DateTimeField('Обновлён', auto_now=True)
 
@@ -117,6 +123,59 @@ class Product(models.Model):
         return reverse('catalog:product_detail', kwargs={'slug': self.slug})
 
 
+class ProductVariant(models.Model):
+    """Вариант товара: цвет, размер, модель и т.п. Своё фото и цена (опционально)."""
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name='variants',
+        verbose_name='Товар',
+    )
+    name = models.CharField('Название', max_length=100)
+    image = models.ImageField('Изображение', upload_to='products/', blank=True, null=True)
+    price_override = models.DecimalField(
+        'Цена (переопределение)',
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text='Пусто — использовать цену товара',
+    )
+    order = models.PositiveIntegerField('Порядок', default=0)
+
+    class Meta:
+        verbose_name = 'Вариант товара'
+        verbose_name_plural = 'Варианты товара'
+        ordering = ('order', 'name')
+
+    def __str__(self):
+        return f'{self.product.name} — {self.name}'
+
+    @property
+    def price(self):
+        return self.price_override if self.price_override is not None else self.product.price
+
+
+class ProductImage(models.Model):
+    """Дополнительное фото товара для галереи."""
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name='images',
+        verbose_name='Товар',
+    )
+    image = models.ImageField('Изображение', upload_to='products/')
+    order = models.PositiveIntegerField('Порядок', default=0)
+
+    class Meta:
+        verbose_name = 'Фото товара'
+        verbose_name_plural = 'Фото товара'
+        ordering = ('order', 'id')
+
+    def __str__(self):
+        return f'{self.product.name} — фото #{self.order}'
+
+
 class ProductCharacteristic(models.Model):
     """Характеристика товара (название — значение)."""
     product = models.ForeignKey(
@@ -135,6 +194,71 @@ class ProductCharacteristic(models.Model):
 
     def __str__(self):
         return f'{self.name}: {self.value}'
+
+
+class ProductBundle(models.Model):
+    """Набор товаров. Состав и цены задаются вручную через ProductBundleItem."""
+    name = models.CharField(
+        'Название набора',
+        max_length=200,
+        blank=True,
+        help_text='Для отображения в админке и на странице товара',
+    )
+
+    class Meta:
+        verbose_name = 'Набор товаров'
+        verbose_name_plural = 'Наборы товаров'
+
+    def __str__(self):
+        if self.name:
+            return self.name
+        items = self.items.select_related('product').all()[:3]
+        names = [f'{i.product.name} ({i.price} ₽)' for i in items]
+        return ' + '.join(names) if names else f'Набор #{self.pk}'
+
+    @property
+    def total_price(self):
+        """Сумма цен всех позиций набора (price × quantity по каждой позиции)."""
+        total = sum(float(i.price) * i.quantity for i in self.items.all())
+        return total
+
+
+class ProductBundleItem(models.Model):
+    """Позиция в наборе: товар, количество и цена в наборе."""
+    bundle = models.ForeignKey(
+        ProductBundle,
+        on_delete=models.CASCADE,
+        related_name='items',
+        verbose_name='Набор',
+    )
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name='bundle_items',
+        limit_choices_to={'is_active': True},
+        verbose_name='Товар',
+    )
+    quantity = models.PositiveIntegerField('Количество', default=1)
+    price = models.DecimalField(
+        'Цена в наборе (₽)',
+        max_digits=12,
+        decimal_places=2,
+        help_text='Цена за единицу при покупке в составе набора',
+    )
+
+    class Meta:
+        verbose_name = 'Позиция набора'
+        verbose_name_plural = 'Позиции набора'
+        ordering = ('bundle', 'id')
+        constraints = [
+            models.UniqueConstraint(
+                fields=['bundle', 'product'],
+                name='catalog_bundleitem_bundle_product_unique',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.product.name} × {self.quantity} — {self.price} ₽'
 
 
 class City(models.Model):

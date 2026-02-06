@@ -1,0 +1,5 @@
+# Локальная разработка: DEBUG=True (увидите traceback при 500)
+services:
+  web:
+    environment:
+      DEBUG: "True"

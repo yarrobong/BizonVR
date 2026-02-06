@@ -3,6 +3,7 @@ from urllib.parse import urlparse
 
 from django.contrib.auth.decorators import login_required
 from django.db.models import Q, Sum
+from django.db.utils import ProgrammingError
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -11,7 +12,7 @@ from django.views.decorators.http import require_GET, require_POST
 from django.views.generic import DetailView, ListView
 from django_ratelimit.decorators import ratelimit
 
-from .models import CatalogSection, Category, City, Favorite, Product, ProductCharacteristic, ProductStock, ProductTag
+from .models import CatalogSection, Category, City, Favorite, Product, ProductBundle, ProductBundleItem, ProductCharacteristic, ProductStock, ProductTag, ProductVariant
 
 
 def _get_cart_count(request):
@@ -113,21 +114,58 @@ def cart_partial(request):
     return render(request, 'catalog/partials/cart_content.html', {'cart_items': cart_items, 'total': total})
 
 
+def _cart_item_matches(item, product_id, variant_id=None):
+    """Позиция корзины совпадает с product_id + variant_id."""
+    if item.get('product_id') != product_id:
+        return False
+    item_vid = item.get('variant_id')
+    if variant_id is None and item_vid is None:
+        return True
+    return item_vid == variant_id
+
+
 @ratelimit(key='ip', rate='60/m', method='POST')
 @require_POST
 def add_to_cart_view(request, product_id):
     """
     Добавить товар в корзину (сессия). quantity из POST или 1.
+    variant_id из POST — вариант товара (цвет, размер и т.п.).
     Если выбран город — ограничиваем количество доступным остатком по городу.
     """
     product = get_object_or_404(Product, pk=product_id, is_active=True)
+    variant_id = request.POST.get('variant_id')
+    variant = None
+    if variant_id:
+        try:
+            variant_id = int(variant_id)
+            variant = ProductVariant.objects.filter(product_id=product_id, pk=variant_id).first()
+            if not variant:
+                variant_id = None
+                variant = None
+        except (TypeError, ValueError):
+            variant_id = None
+    if product.variants.exists() and not variant:
+        if request.headers.get('HX-Request'):
+            total = sum(i.get('subtotal', 0) for i in request.session.get('cart_items', []) or [])
+            resp = render(request, 'catalog/partials/cart_content.html', {
+                'cart_items': request.session.get('cart_items', []) or [],
+                'total': total,
+                'cart_error': 'Выберите вариант товара.',
+            })
+            resp['HX-Trigger'] = json.dumps({'cart-updated': {'count': _get_cart_count(request)}})
+            return resp
+        next_url = request.POST.get('next') or request.GET.get('next') or product.get_absolute_url()
+        return redirect(next_url + '?cart_error=1')
     try:
         quantity = max(1, int(request.POST.get('quantity', 1)))
     except (TypeError, ValueError):
         quantity = 1
 
     cart_items = request.session.get('cart_items', []) or []
-    current_in_cart = sum(i.get('quantity', 0) for i in cart_items if i.get('product_id') == product_id)
+    current_in_cart = sum(
+        i.get('quantity', 0) for i in cart_items
+        if _cart_item_matches(i, product_id, variant_id)
+    )
     selected_city_id = request.session.get('selected_city_id')
     if selected_city_id:
         stock = _get_stock_in_city(selected_city_id, product_id)
@@ -183,20 +221,30 @@ def add_to_cart_view(request, product_id):
                     next_url = request.POST.get('next') or request.GET.get('next') or product.get_absolute_url()
                     return redirect(next_url + '?cart_error=1')
 
-    image_url = product.image.url if product.image else ''
+    if variant:
+        display_name = f'{product.name} ({variant.name})'
+        price = float(variant.price)
+        image_url = variant.image.url if variant.image else (product.image.url if product.image else '')
+    else:
+        display_name = product.name
+        price = float(product.price)
+        image_url = product.image.url if product.image else ''
+
     for item in cart_items:
-        if item.get('product_id') == product_id:
+        if _cart_item_matches(item, product_id, variant_id):
             item['quantity'] = item.get('quantity', 0) + quantity
             item['subtotal'] = item['price'] * item['quantity']
             break
     else:
         cart_items.append({
             'product_id': product.pk,
-            'name': product.name,
-            'price': float(product.price),
+            'variant_id': variant_id,
+            'variant_name': variant.name if variant else None,
+            'name': display_name,
+            'price': price,
             'quantity': quantity,
             'image_url': image_url,
-            'subtotal': float(product.price) * quantity,
+            'subtotal': price * quantity,
         })
 
     request.session['cart_items'] = cart_items
@@ -207,11 +255,11 @@ def add_to_cart_view(request, product_id):
     if request.headers.get('HX-Request'):
         total = sum(i.get('subtotal', 0) for i in cart_items)
         added_item = {
-            'name': product.name,
+            'name': display_name,
             'quantity': quantity,
-            'price': float(product.price),
-            'subtotal': float(product.price) * quantity,
-            'image_url': request.build_absolute_uri(product.image.url) if product.image else '',
+            'price': price,
+            'subtotal': price * quantity,
+            'image_url': request.build_absolute_uri(image_url) if image_url else '',
         }
         items_preview = [
             {'name': i['name'], 'quantity': i['quantity'], 'subtotal': i['subtotal'], 'image_url': request.build_absolute_uri(i['image_url']) if i.get('image_url') else ''}
@@ -239,22 +287,33 @@ def add_to_cart_view(request, product_id):
 def cart_update_view(request):
     """
     Обновить количество или удалить позицию (quantity=0). Для HTMX возвращает фрагмент корзины.
-    POST: product_id, quantity (0 = удалить). Если выбран город — ограничиваем количество остатком.
+    POST: product_id, quantity (0 = удалить), variant_id (опционально).
+    Если выбран город — ограничиваем количество остатком.
     """
     product_id = request.POST.get('product_id')
+    variant_id = request.POST.get('variant_id')
     try:
         product_id = int(product_id)
         quantity = int(request.POST.get('quantity', 0))
+        if variant_id:
+            variant_id = int(variant_id)
+        else:
+            variant_id = None
     except (TypeError, ValueError):
         if request.headers.get('HX-Request'):
             return cart_partial(request)
         return redirect('catalog:product_list')
 
     cart_items = request.session.get('cart_items', []) or []
-    cart_items = [i for i in cart_items if i.get('product_id') != product_id]
+    cart_items = [i for i in cart_items if not _cart_item_matches(i, product_id, variant_id)]
     if quantity > 0:
         product = Product.objects.filter(pk=product_id, is_active=True).first()
         if product:
+            variant = None
+            if variant_id:
+                variant = ProductVariant.objects.filter(product_id=product_id, pk=variant_id).first()
+                if not variant:
+                    variant_id = None
             selected_city_id = request.session.get('selected_city_id')
             if selected_city_id:
                 stock = _get_stock_in_city(selected_city_id, product_id)
@@ -265,15 +324,24 @@ def cart_update_view(request):
                     if stock_total > 0:
                         quantity = min(quantity, stock_total)
                     # иначе stock_total == 0 — под заказ, quantity не ограничиваем
-            image_url = product.image.url if product.image else ''
+            if variant:
+                display_name = f'{product.name} ({variant.name})'
+                price = float(variant.price)
+                image_url = variant.image.url if variant.image else (product.image.url if product.image else '')
+            else:
+                display_name = product.name
+                price = float(product.price)
+                image_url = product.image.url if product.image else ''
             if quantity > 0:
                 cart_items.append({
                     'product_id': product.pk,
-                    'name': product.name,
-                    'price': float(product.price),
+                    'variant_id': variant_id,
+                    'variant_name': variant.name if variant else None,
+                    'name': display_name,
+                    'price': price,
                     'quantity': quantity,
                     'image_url': image_url,
-                    'subtotal': float(product.price) * quantity,
+                    'subtotal': price * quantity,
                 })
     request.session['cart_items'] = cart_items
     request.session.modified = True
@@ -288,6 +356,183 @@ def cart_update_view(request):
         return resp
     next_url = request.POST.get('next') or request.GET.get('next')
     return redirect(next_url or reverse('catalog:cart'))
+
+
+def _add_product_to_cart_items(cart_items, product, variant_id, variant, quantity, price_override=None):
+    """Добавить или обновить позицию товара в cart_items. Возвращает (cart_items, added_item_dict)."""
+    display_name = f'{product.name} ({variant.name})' if variant else product.name
+    price = float(variant.price) if variant else float(product.price)
+    if price_override is not None:
+        price = float(price_override)
+    image_url = (variant.image.url if variant and variant.image else product.image.url) if product.image else ''
+    if not image_url and variant and variant.image:
+        image_url = variant.image.url
+    for item in cart_items:
+        if _cart_item_matches(item, product.pk, variant_id):
+            item['quantity'] = item.get('quantity', 0) + quantity
+            item['price'] = price
+            item['subtotal'] = price * item['quantity']
+            return cart_items, {
+                'product_id': product.pk,
+                'variant_id': variant_id,
+                'variant_name': variant.name if variant else None,
+                'name': display_name,
+                'price': price,
+                'quantity': quantity,
+                'image_url': image_url,
+                'subtotal': price * quantity,
+            }
+    cart_items.append({
+        'product_id': product.pk,
+        'variant_id': variant_id,
+        'variant_name': variant.name if variant else None,
+        'name': display_name,
+        'price': price,
+        'quantity': quantity,
+        'image_url': image_url,
+        'subtotal': price * quantity,
+    })
+    return cart_items, {
+        'product_id': product.pk,
+        'variant_id': variant_id,
+        'variant_name': variant.name if variant else None,
+        'name': display_name,
+        'price': price,
+        'quantity': quantity,
+        'image_url': image_url,
+        'subtotal': price * quantity,
+    }
+
+
+@ratelimit(key='ip', rate='30/m', method='POST')
+@require_POST
+def add_bundle_to_cart_view(request):
+    """
+    Добавить набор товаров в корзину.
+    POST: bundle_id — добавить все товары набора со скидкой.
+    POST: product_id + product_ids — добавить текущий товар + выбранные из категории (без скидки).
+    """
+    cart_items = request.session.get('cart_items', []) or []
+    bundle_id = request.POST.get('bundle_id')
+    product_id = request.POST.get('product_id')
+    product_ids_raw = request.POST.getlist('product_ids') or request.POST.getlist('product_ids[]')
+
+    if bundle_id:
+        try:
+            bundle_id = int(bundle_id)
+        except (TypeError, ValueError):
+            bundle_id = None
+        bundle = ProductBundle.objects.filter(pk=bundle_id).prefetch_related('items__product', 'items__product__variants').first()
+        items = list(bundle.items.select_related('product').all()) if bundle else []
+        if not bundle or len(items) < 2:
+            if request.headers.get('HX-Request'):
+                total = sum(i.get('subtotal', 0) for i in cart_items)
+                resp = render(request, 'catalog/partials/cart_content.html', {
+                    'cart_items': cart_items,
+                    'total': total,
+                    'cart_error': 'Набор не найден или содержит менее 2 позиций.',
+                })
+                resp['HX-Trigger'] = json.dumps({'cart-updated': {'count': _get_cart_count(request)}})
+                return resp
+            return redirect('catalog:product_list')
+
+        for item in items:
+            product = item.product
+            if not product.is_active:
+                continue
+            variant = product.variants.first()
+            variant_id = variant.pk if variant else None
+            price_in_bundle = float(item.price)
+            qty = item.quantity
+            cart_items, _ = _add_product_to_cart_items(
+                cart_items, product, variant_id, variant, qty, price_override=price_in_bundle
+            )
+
+        request.session['cart_items'] = cart_items
+        request.session.modified = True
+
+        if request.headers.get('HX-Request'):
+            total = sum(i.get('subtotal', 0) for i in cart_items)
+            resp = render(request, 'catalog/partials/cart_content.html', {
+                'cart_items': cart_items,
+                'total': total,
+            })
+            resp['HX-Trigger'] = json.dumps({
+                'cart-updated': {
+                    'count': _get_cart_count(request),
+                    'total': total,
+                }
+            })
+            return resp
+        next_url = request.POST.get('next') or request.GET.get('next') or reverse('catalog:product_list')
+        return redirect(next_url)
+
+    # Режим: product_id + product_ids (из категории, без скидки)
+    try:
+        product_id = int(product_id)
+    except (TypeError, ValueError):
+        product_id = None
+    product_ids = []
+    for pid in product_ids_raw:
+        try:
+            product_ids.append(int(pid))
+        except (TypeError, ValueError):
+            pass
+    product_ids = list(dict.fromkeys(product_ids))
+
+    if not product_id:
+        if request.headers.get('HX-Request'):
+            total = sum(i.get('subtotal', 0) for i in cart_items)
+            resp = render(request, 'catalog/partials/cart_content.html', {
+                'cart_items': cart_items,
+                'total': total,
+                'cart_error': 'Укажите товар.',
+            })
+            resp['HX-Trigger'] = json.dumps({'cart-updated': {'count': _get_cart_count(request)}})
+            return resp
+        return redirect('catalog:product_list')
+
+    current_product = Product.objects.filter(pk=product_id, is_active=True).select_related('category').prefetch_related('variants').first()
+    if not current_product:
+        if request.headers.get('HX-Request'):
+            total = sum(i.get('subtotal', 0) for i in cart_items)
+            resp = render(request, 'catalog/partials/cart_content.html', {
+                'cart_items': cart_items,
+                'total': total,
+                'cart_error': 'Товар не найден.',
+            })
+            resp['HX-Trigger'] = json.dumps({'cart-updated': {'count': _get_cart_count(request)}})
+            return resp
+        return redirect('catalog:product_list')
+
+    to_add = [current_product]
+    if product_ids:
+        others = list(Product.objects.filter(pk__in=product_ids, is_active=True, category=current_product.category).prefetch_related('variants'))
+        to_add.extend(others)
+
+    for product in to_add:
+        variant = product.variants.first()
+        variant_id = variant.pk if variant else None
+        cart_items, _ = _add_product_to_cart_items(cart_items, product, variant_id, variant, 1)
+
+    request.session['cart_items'] = cart_items
+    request.session.modified = True
+
+    if request.headers.get('HX-Request'):
+        total = sum(i.get('subtotal', 0) for i in cart_items)
+        resp = render(request, 'catalog/partials/cart_content.html', {
+            'cart_items': cart_items,
+            'total': total,
+        })
+        resp['HX-Trigger'] = json.dumps({
+            'cart-updated': {
+                'count': _get_cart_count(request),
+                'total': total,
+            }
+        })
+        return resp
+    next_url = request.POST.get('next') or request.GET.get('next') or current_product.get_absolute_url()
+    return redirect(next_url)
 
 
 class ProductListView(ListView):
@@ -439,7 +684,7 @@ class ProductDetailView(DetailView):
     template_name = 'catalog/product_detail.html'
 
     def get_queryset(self):
-        return Product.objects.filter(is_active=True).prefetch_related('characteristics', 'tags').select_related('category')
+        return Product.objects.filter(is_active=True).prefetch_related('characteristics', 'tags', 'variants', 'images').select_related('category')
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -455,6 +700,43 @@ class ProductDetailView(DetailView):
             context['stock_in_city'] = _get_stock_in_city(selected_city_id, self.object.pk)
         else:
             context['stock_in_city'] = None
+
+        # Наборы с текущим товаром (через ProductBundleItem)
+        try:
+            bundles = list(
+                ProductBundle.objects
+                .filter(items__product=self.object)
+                .prefetch_related('items__product', 'items__product__variants')
+                .distinct()
+            )
+            # Оставляем только наборы с 2+ позициями
+            context['bundles'] = [b for b in bundles if b.items.count() >= 2]
+        except ProgrammingError:
+            # Защита от устаревшей схемы (catalog_productbundle_products)
+            context['bundles'] = []
+
+        # Товары из категории (если наборов мало или нет)
+        bundle_product_ids = set()
+        for b in context['bundles']:
+            bundle_product_ids.update(b.items.values_list('product_id', flat=True))
+        category_products = (
+            Product.objects
+            .filter(category=self.object.category, is_active=True)
+            .exclude(pk=self.object.pk)
+            .exclude(pk__in=bundle_product_ids)
+            .select_related('category')
+            .prefetch_related('variants', 'tags')[:6]
+        )
+        context['compatible_from_category'] = list(category_products)
+
+        # Галерея фото: основное + дополнительные
+        gallery = []
+        if self.object.image:
+            gallery.append(self.request.build_absolute_uri(self.object.image.url))
+        for img in self.object.images.all():
+            gallery.append(self.request.build_absolute_uri(img.image.url))
+        context['product_gallery'] = gallery
+
         return context
 
 

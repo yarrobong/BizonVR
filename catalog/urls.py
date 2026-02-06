@@ -12,6 +12,7 @@ urlpatterns = [
     re_path(r'product/(?P<slug>[\w-]+)/', views.ProductDetailView.as_view(), name='product_detail'),
     path('cart/', views.cart_page_view, name='cart'),
     path('cart/partial/', views.cart_partial, name='cart_partial'),
+    path('cart/add-bundle/', views.add_bundle_to_cart_view, name='add_bundle_to_cart'),
     path('cart/add/<int:product_id>/', views.add_to_cart_view, name='add_to_cart'),
     path('cart/update/', views.cart_update_view, name='cart_update'),
     path('favorite/<int:product_id>/', views.toggle_favorite_view, name='toggle_favorite'),
