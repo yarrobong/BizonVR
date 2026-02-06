@@ -10,19 +10,23 @@
          x-data="{
            current: 0,
            total: {{ hero_slides|length }},
-           bgUrls: [{% for s in hero_slides %}'{{ s.bg_url|escapejs }}'{% if not forloop.last %}, {% endif %}{% endfor %}]
+           bgConfigs: [{% for s in hero_slides %}{url: '{{ s.bg_url|escapejs }}', position: '{{ s.bg_position|default:"center center"|escapejs }}', size: '{{ s.bg_size|default:"auto 100%"|escapejs }}', repeat: '{{ s.bg_repeat|default:"repeat-x"|escapejs }}'}{% if not forloop.last %}, {% endif %}{% endfor %}],
+           timeId: null,
+           scheduleNext() {
+             if (this.timeId) clearTimeout(this.timeId);
+             this.timeId = setTimeout(() => { this.current = (this.current + 1) % this.total }, 6000);
+           }
          }"
-         x-init="setInterval(() => { current = (current + 1) % total }, 6000)">
+         x-init="scheduleNext(); $watch('current', () => scheduleNext())">
   <div class="absolute inset-0 overflow-hidden">
     <!-- Первый фон сразу из HTML, чтобы не мелькали все слайды до Alpine -->
-    <div class="absolute inset-0 z-0 bg-cover bg-center bg-no-repeat"
-         style="background-image: url('{{ hero_slides.0.bg_url|escapejs }}');"></div>
+    <div class="absolute inset-0 z-0"
+         style="background-image: url('{{ hero_slides.0.bg_url|escapejs }}'); background-position: center center; background-size: auto 100%; background-repeat: repeat-x;"></div>
     <div class="absolute inset-0 z-0 overflow-hidden" x-show="true">
-      <template x-for="(url, index) in bgUrls" :key="index">
+      <template x-for="(cfg, index) in bgConfigs" :key="index">
         <div class="absolute inset-0 transition-opacity duration-700"
              :class="current === index ? 'opacity-100' : 'opacity-0'"
-             style="background-size: cover; background-position: center; background-repeat: no-repeat;"
-             :style="'background-image: url(' + url + ')'"></div>
+             :style="'background-image: url(\'' + cfg.url + '\'); background-position: ' + cfg.position + '; background-size: ' + cfg.size + '; background-repeat: ' + cfg.repeat"></div>
       </template>
     </div>
     <div class="absolute inset-0 bg-gradient-to-r from-dark-900 via-dark-900/80 to-transparent z-[1] pointer-events-none"></div>
@@ -33,7 +37,7 @@
            style="width: 400%; transform: translateX(0); transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);"
            :style="'width: ' + (total * 100) + '%; transform: translateX(-' + (current * (100 / total)) + '%); transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1)'">
         <!-- 1. Цифровой магазин -->
-        <div class="flex-shrink-0 px-2 box-border" style="width: {{ hero_slide_width_pct }}%;">
+        <div class="flex-shrink-0 px-2 box-border w-1/4">
           <div class="max-w-xl">
             <h2 class="text-3xl md:text-5xl font-light text-white mb-4">Цифровой магазин</h2>
             <p class="text-gray-300 text-sm md:text-base mb-8 max-w-md">Цифровые товары и контент для VR. Ключи, подписки и лицензии в одном месте.</p>
@@ -41,7 +45,7 @@
           </div>
         </div>
         <!-- 2. Трейд-ин (фон из media/hero/tradein.webp) -->
-        <div class="flex-shrink-0 px-2 box-border" style="width: {{ hero_slide_width_pct }}%;">
+        <div class="flex-shrink-0 px-2 box-border w-1/4">
           <div class="max-w-xl">
             <h2 class="text-3xl md:text-5xl font-light text-white mb-4">Трейд-ин</h2>
             <p class="text-gray-300 text-sm md:text-base mb-8 max-w-md">Сдайте старый шлем и получите скидку на новое оборудование. Выгодный обмен и быстрая оценка.</p>
@@ -49,7 +53,7 @@
           </div>
         </div>
         <!-- 3. Решения для VR бизнеса -->
-        <div class="flex-shrink-0 px-2 box-border" style="width: {{ hero_slide_width_pct }}%;">
+        <div class="flex-shrink-0 px-2 box-border w-1/4">
           <div class="max-w-xl">
             <h2 class="text-3xl md:text-5xl font-light text-white mb-4">Решения для VR бизнеса</h2>
             <p class="text-gray-300 text-sm md:text-base mb-8 max-w-md">Готовые решения для парков развлечений, торговых центров и квестов. Симуляторы, аттракционы и контент.</p>
@@ -57,7 +61,7 @@
           </div>
         </div>
         <!-- 4. VR Аттракционы -->
-        <div class="flex-shrink-0 px-2 box-border" style="width: {{ hero_slide_width_pct }}%;">
+        <div class="flex-shrink-0 px-2 box-border w-1/4">
           <div class="max-w-xl">
             <h2 class="text-3xl md:text-5xl font-light text-white mb-4">VR Аттракционы</h2>
             <p class="text-gray-300 text-sm md:text-base mb-8 max-w-md">Коммерческие VR-аттракционы: гонки 5D, хоррор-комнаты, сферические симуляторы для парков и ТЦ.</p>
@@ -103,20 +107,29 @@
   <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
     <h2 class="text-2xl md:text-3xl font-light text-white">Лучшие предложения</h2>
     <div class="flex flex-wrap gap-2 text-xs md:text-sm font-medium items-center">
-      <span class="product-tab px-4 py-1.5 rounded transition-colors bg-accent text-dark-900">Бестселлер</span>
-      <span class="product-tab px-4 py-1.5 rounded transition-colors bg-dark-700 text-gray-300">Выбор экспертов</span>
-      <span class="product-tab px-4 py-1.5 rounded transition-colors bg-dark-700 text-gray-300">Новинка</span>
-      <span class="product-tab px-4 py-1.5 rounded transition-colors bg-dark-700 text-gray-300">Акция</span>
-      <a href="{% url 'catalog:product_list' %}" class="hidden md:inline text-gray-500 hover:text-white uppercase text-xs tracking-wider ml-4 self-center">Весь каталог</a>
+      <a href="{% url 'home' %}" class="px-4 py-1.5 rounded transition-colors {% if not current_tag %}bg-accent text-dark-900{% else %}bg-dark-700 text-gray-300 hover:text-white{% endif %}">Все</a>
+      {% for tag in product_tags %}
+      <a href="{% url 'home' %}?tag={{ tag.slug }}" class="px-4 py-1.5 rounded transition-colors {% if current_tag == tag.slug %}bg-accent text-dark-900{% else %}bg-dark-700 text-gray-300 hover:text-white{% endif %}">{{ tag.name }}</a>
+      {% endfor %}
+      <a href="{% url 'catalog:product_list' %}{% if current_tag %}?tag={{ current_tag }}{% endif %}" class="hidden md:inline text-gray-500 hover:text-white uppercase text-xs tracking-wider ml-4 self-center">Весь каталог</a>
     </div>
   </div>
   {% if featured_products %}
     <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
       {% for product in featured_products %}
         <article class="group bg-dark-900 md:bg-transparent md:hover:bg-dark-800 border border-transparent md:hover:border-dark-700 p-4 rounded-xl transition-all duration-300 relative flex flex-col h-full">
-          <div class="absolute top-4 left-4 z-10 flex flex-col space-y-1">
-            <span class="bg-[#00d4ff] text-white text-[10px] font-bold px-2 py-0.5 rounded-sm uppercase tracking-wider w-fit">Бестселлер</span>
+          {% if product.tags.all %}
+          <div class="absolute top-4 left-4 z-10 flex flex-wrap gap-1">
+            {% for tag in product.tags.all %}
+            <span class="px-2 py-0.5 text-[10px] font-medium rounded-full
+              {% if tag.slug == 'bestseller' %}bg-amber-500/90 text-dark-900
+              {% elif tag.slug == 'expert-choice' %}bg-emerald-500/90 text-dark-900
+              {% elif tag.slug == 'new' %}bg-blue-500/90 text-white
+              {% elif tag.slug == 'sale' %}bg-red-500/90 text-white
+              {% else %}bg-dark-600 text-gray-300{% endif %}">{{ tag.name }}</span>
+            {% endfor %}
           </div>
+          {% endif %}
           <div class="absolute top-4 right-4 z-10 flex flex-col space-y-2 opacity-0 group-hover:opacity-100 transition-opacity">
             <div class="bg-dark-700 p-1.5 rounded-full hover:bg-accent hover:text-dark-900 cursor-pointer text-gray-400"><i data-lucide="heart" class="w-4 h-4 inline-block"></i></div>
             <div class="bg-dark-700 p-1.5 rounded-full hover:bg-accent hover:text-dark-900 cursor-pointer text-gray-400"><i data-lucide="git-compare" class="w-4 h-4 inline-block"></i></div>
@@ -150,7 +163,7 @@
       {% endfor %}
     </div>
     <div class="flex justify-center mt-8">
-      <a href="{% url 'catalog:product_list' %}" class="text-xs text-gray-400 border border-gray-700 rounded-full px-6 py-2 hover:border-white hover:text-white transition-colors">Весь каталог</a>
+      <a href="{% url 'catalog:product_list' %}{% if current_tag %}?tag={{ current_tag }}{% endif %}" class="text-xs text-gray-400 border border-gray-700 rounded-full px-6 py-2 hover:border-white hover:text-white transition-colors">Весь каталог</a>
     </div>
   {% else %}
     <div class="text-center py-12 text-gray-400">

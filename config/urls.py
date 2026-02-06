@@ -19,10 +19,11 @@ from decouple import config
 from django.contrib import admin
 from django.urls import path, include, re_path
 
-from config.views import home_view, privacy_view, serve_media
+from config.views import contacts_view, home_view, privacy_view, serve_media
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('contacts/', contacts_view, name='contacts'),
     path('privacy/', privacy_view, name='privacy'),
     path('page/oferta/', privacy_view, name='oferta'),
     path('accounts/', include('accounts.urls')),

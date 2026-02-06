@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.utils.html import format_html
 
-from .models import CatalogSection, Category, City, Favorite, PickupPoint, Product, ProductCharacteristic, ProductStock, ProductTag
+from .models import CatalogSection, Category, City, ContactRequest, Favorite, PickupPoint, Product, ProductCharacteristic, ProductStock, ProductTag
 
 
 @admin.register(CatalogSection)
@@ -83,6 +83,14 @@ class ProductAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         return super().get_queryset(request).select_related('category').prefetch_related('tags')
+
+
+@admin.register(ContactRequest)
+class ContactRequestAdmin(admin.ModelAdmin):
+    list_display = ('name', 'email', 'phone', 'created_at')
+    list_filter = ('created_at',)
+    search_fields = ('name', 'email', 'message')
+    readonly_fields = ('name', 'email', 'phone', 'message', 'created_at')
 
 
 @admin.register(Favorite)

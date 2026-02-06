@@ -2,11 +2,14 @@ import mimetypes
 import os
 
 from django.conf import settings
+from django.contrib import messages
 from django.http import FileResponse, Http404
-from django.shortcuts import render
+from django.shortcuts import redirect, render
 from django.urls import reverse
 
-from catalog.models import Category, Product
+from catalog.models import Category, ContactRequest, Product, ProductTag
+
+from .forms import ContactForm
 
 # Фоны hero по умолчанию (Unsplash), если нет своих в static
 _HERO_DEFAULT_BG = [
@@ -40,9 +43,36 @@ def privacy_view(request):
     return render(request, 'privacy.html')
 
 
+def contacts_view(request):
+    """Страница контактов: форма обратной связи и контактная информация."""
+    form = ContactForm()
+    if request.method == 'POST':
+        form = ContactForm(request.POST)
+        if form.is_valid():
+            ContactRequest.objects.create(
+                name=form.cleaned_data['name'],
+                email=form.cleaned_data['email'],
+                phone=form.cleaned_data.get('phone', ''),
+                message=form.cleaned_data['message'],
+            )
+            messages.success(request, 'Спасибо! Ваше сообщение отправлено. Мы свяжемся с вами в ближайшее время.')
+            return redirect('contacts')
+    return render(request, 'contacts.html', {'form': form})
+
+
 def home_view(request):
     """Главная страница: hero, лучшие предложения (товары из каталога), сетка категорий, баннер."""
-    featured = Product.objects.filter(is_active=True).select_related('category').order_by('-created_at')[:8]
+    featured_qs = (
+        Product.objects.filter(is_active=True)
+        .select_related('category')
+        .prefetch_related('tags')
+        .order_by('-created_at')
+    )
+    tag_slug = (request.GET.get('tag') or '').strip()
+    if tag_slug:
+        featured_qs = featured_qs.filter(tags__slug=tag_slug).distinct()
+    featured = list(featured_qs[:8])
+    product_tags = list(ProductTag.objects.order_by('order', 'name'))
     categories = Category.objects.all()
 
     # Фоны: свои из static или дефолтные; слайд «Трейд-ин» — всегда media/hero/tradein.webp
@@ -53,7 +83,10 @@ def home_view(request):
     else:
         base_bg = _HERO_DEFAULT_BG.copy()
     media_url = (settings.MEDIA_URL or '/media/').rstrip('/') + '/'
-    tradein_bg = request.build_absolute_uri(media_url + 'hero/tradein.webp')
+    # Относительные пути — корректно работают локально и за прокси
+    mart_bg = media_url + 'hero/mart.webp'
+    tradein_bg = media_url + 'hero/tradein.webp'
+    attractions_bg = media_url + 'hero/attractions.webp'
     catalog_url = reverse('catalog:product_list')
 
     # Ровно 4 слайда: Цифровой магазин, Трейд-ин (фон tradein.webp), Решения для VR бизнеса, VR Аттракционы
@@ -63,7 +96,10 @@ def home_view(request):
             'description': 'Цифровые товары и контент для VR. Ключи, подписки и лицензии в одном месте.',
             'url': f'{catalog_url}?section=cifrovye-tovary',
             'btn': 'В каталог',
-            'bg_url': base_bg[0],
+            'bg_url': mart_bg,  # фон: media/hero/mart.webp
+            'bg_position': 'center center',
+            'bg_size': 'auto 100%',
+            'bg_repeat': 'repeat-x',
         },
         {
             'title': 'Трейд-ин',
@@ -71,6 +107,9 @@ def home_view(request):
             'url': catalog_url,
             'btn': 'Подробнее',
             'bg_url': tradein_bg,  # фон: media/hero/tradein.webp
+            'bg_position': 'center center',
+            'bg_size': 'auto 100%',
+            'bg_repeat': 'repeat-x',
         },
         {
             'title': 'Решения для VR бизнеса',
@@ -78,18 +117,26 @@ def home_view(request):
             'url': f'{catalog_url}?section=resheniya-dlya-vr-biznesa',
             'btn': 'Смотреть решения',
             'bg_url': base_bg[2],
+            'bg_position': 'center center',
+            'bg_size': 'auto 100%',
+            'bg_repeat': 'repeat-x',
         },
         {
             'title': 'VR Аттракционы',
             'description': 'Коммерческие VR-аттракционы: гонки 5D, хоррор-комнаты, сферические симуляторы для парков и ТЦ.',
             'url': f'{catalog_url}?section=vr-attrakciony',
             'btn': 'Аттракционы',
-            'bg_url': base_bg[3],
+            'bg_url': attractions_bg,  # фон: media/hero/attractions.webp 5760×1800
+            'bg_position': '60% center',  # сдвиг вправо
+            'bg_size': 'auto 100%',
+            'bg_repeat': 'repeat-x',
         },
     ]
     hero_slide_width_pct = (100 // len(hero_slides)) if hero_slides else 25
     return render(request, 'home.html', {
         'featured_products': featured,
+        'product_tags': product_tags,
+        'current_tag': tag_slug,
         'categories': categories,
         'hero_slides': hero_slides,
         'hero_slide_width_pct': hero_slide_width_pct,

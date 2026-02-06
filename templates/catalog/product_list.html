@@ -4,25 +4,97 @@
 {% block title %}Каталог — BizonVR{% endblock %}
 
 {% block content %}
+<style>
+  .catalog-layout { display: flex; flex-direction: column; gap: 2rem; }
+  @media (min-width: 1024px) {
+    .catalog-layout { flex-direction: row; }
+    .catalog-filters { width: 244px; flex-shrink: 0; }
+  }
+</style>
 <div class="container mx-auto px-4 py-8">
+  <div class="catalog-layout">
+    <!-- Левая панель фильтров -->
+    <aside class="catalog-filters w-full">
+      <div class="bg-dark-800 rounded-xl p-4 space-y-6 sticky top-24">
+        <h3 class="text-sm font-bold text-white uppercase tracking-wider">Фильтры</h3>
+
+        <div>
+          <div class="text-[10px] text-gray-500 uppercase mb-2">Категория</div>
+          <div class="space-y-1">
+            <a href="{% url 'catalog:product_list' %}{% filter_url category=filter_clear section=current_section tag=current_tag sort=current_sort q=search_query price_min=price_min_filter price_max=price_max_filter %}"
+               class="block text-sm py-1.5 rounded px-2 transition-colors {% if not current_category %}text-accent font-medium{% else %}text-gray-400 hover:text-white{% endif %}">Все</a>
+            {% for cat in categories %}
+            <a href="{% url 'catalog:product_list' %}?category={{ cat.slug }}{% if current_section %}&section={{ current_section }}{% endif %}{% if current_tag %}&tag={{ current_tag }}{% endif %}&sort={{ current_sort }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if price_min_filter %}&price_min={{ price_min_filter }}{% endif %}{% if price_max_filter %}&price_max={{ price_max_filter }}{% endif %}"
+               class="block text-sm py-1.5 rounded px-2 transition-colors {% if current_category == cat.slug %}text-accent font-medium{% else %}text-gray-400 hover:text-white{% endif %}">{{ cat.name }}</a>
+            {% endfor %}
+          </div>
+        </div>
+
+        {% if filter_price_min is not None and filter_price_max is not None and filter_price_max > filter_price_min %}
+        <div>
+          <div class="text-[10px] text-gray-500 uppercase mb-2">Цена, ₽</div>
+          <form method="get" class="space-y-2">
+            <input type="hidden" name="category" value="{{ current_category }}">
+            <input type="hidden" name="section" value="{{ current_section }}">
+            <input type="hidden" name="tag" value="{{ current_tag }}">
+            <input type="hidden" name="sort" value="{{ current_sort }}">
+            <input type="hidden" name="q" value="{{ search_query }}">
+            {% for k, v in char_filters.items %}
+            <input type="hidden" name="char_{{ k }}" value="{{ v }}">
+            {% endfor %}
+            <div class="flex gap-2">
+              <input type="number" name="price_min" value="{{ price_min_filter }}" placeholder="{{ filter_price_min }}" min="{{ filter_price_min }}" max="{{ filter_price_max }}"
+                     class="w-full bg-dark-700 text-white text-sm rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-accent">
+              <span class="text-gray-500 self-center">–</span>
+              <input type="number" name="price_max" value="{{ price_max_filter }}" placeholder="{{ filter_price_max }}" min="{{ filter_price_min }}" max="{{ filter_price_max }}"
+                     class="w-full bg-dark-700 text-white text-sm rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-accent">
+            </div>
+            <button type="submit" class="w-full bg-accent hover:bg-accent-hover text-dark-900 font-bold py-2 rounded text-sm">Применить</button>
+          </form>
+        </div>
+        {% endif %}
+
+        {% if product_tags %}
+        <div>
+          <div class="text-[10px] text-gray-500 uppercase mb-2">Тег</div>
+          <div class="space-y-1">
+            <a href="{% url 'catalog:product_list' %}{% filter_url tag=filter_clear category=current_category section=current_section sort=current_sort q=search_query price_min=price_min_filter price_max=price_max_filter %}"
+               class="block text-sm py-1.5 rounded px-2 transition-colors {% if not current_tag %}text-accent font-medium{% else %}text-gray-400 hover:text-white{% endif %}">Все</a>
+            {% for tag in product_tags %}
+            <a href="{% url 'catalog:product_list' %}?tag={{ tag.slug }}{% if current_category %}&category={{ current_category }}{% endif %}{% if current_section %}&section={{ current_section }}{% endif %}&sort={{ current_sort }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if price_min_filter %}&price_min={{ price_min_filter }}{% endif %}{% if price_max_filter %}&price_max={{ price_max_filter }}{% endif %}"
+               class="block text-sm py-1.5 rounded px-2 transition-colors {% if current_tag == tag.slug %}text-accent font-medium{% else %}text-gray-400 hover:text-white{% endif %}">{{ tag.name }}</a>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+
+        {% for ch_name, ch_values in filter_characteristics.items %}
+        {% with char_key="char_"|add:ch_name %}
+        <div>
+          <div class="text-[10px] text-gray-500 uppercase mb-2">{{ ch_name }}</div>
+          <div class="space-y-1">
+            <a href="{% url 'catalog:product_list' %}{% filter_url_unset char_key %}"
+               class="block text-sm py-1.5 rounded px-2 transition-colors {% if not char_filters|get_item:ch_name %}text-accent font-medium{% else %}text-gray-400 hover:text-white{% endif %}">Все</a>
+            {% for val in ch_values %}
+            <a href="{% url 'catalog:product_list' %}{% filter_url_set char_key val %}"
+               class="block text-sm py-1.5 rounded px-2 transition-colors {% if char_filters|get_item:ch_name == val %}text-accent font-medium{% else %}text-gray-400 hover:text-white{% endif %}">{{ val }}</a>
+            {% endfor %}
+          </div>
+        </div>
+        {% endwith %}
+        {% endfor %}
+      </div>
+    </aside>
+
+    <!-- Основной контент -->
+    <div class="flex-1 min-w-0">
   <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
     <h2 class="text-2xl md:text-3xl font-light text-white">
       {% if search_query %}Результаты поиска по запросу «{{ search_query }}»{% else %}Каталог{% endif %}
     </h2>
     <div class="flex flex-wrap gap-2 text-xs md:text-sm font-medium items-center">
-      <span class="text-gray-400 mr-2">Категория:</span>
-      <a href="{% url 'catalog:product_list' %}?sort={{ current_sort }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}"
-         class="px-4 py-1.5 rounded transition-colors {% if not current_category %}bg-accent text-dark-900{% else %}bg-dark-700 text-gray-300 hover:text-white{% endif %}">
-        Все
-      </a>
-      {% for cat in categories %}
-        <a href="{% url 'catalog:product_list' %}?category={{ cat.slug }}&sort={{ current_sort }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}"
-           class="px-4 py-1.5 rounded transition-colors {% if current_category == cat.slug %}bg-accent text-dark-900{% else %}bg-dark-700 text-gray-300 hover:text-white{% endif %}">
-          {{ cat.name }}
-        </a>
-      {% endfor %}
-      <span class="text-gray-400 ml-4 mr-2">Сортировка:</span>
-      <select onchange="window.location.href='?category={{ current_category }}&sort='+this.value+'{% if search_query %}&q={{ search_query|urlencode }}{% endif %}'"
+      <span class="text-gray-400 mr-2">Сортировка:</span>
+      <select onchange="var u=new URL(location.href); u.searchParams.set('sort', this.value); u.searchParams.delete('page'); location.href=u.toString();"
               class="bg-dark-700 text-white rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-accent">
         <option value="newest" {% if current_sort == 'newest' %}selected{% endif %}>Сначала новые</option>
         <option value="price_asc" {% if current_sort == 'price_asc' %}selected{% endif %}>Цена: по возрастанию</option>
@@ -103,12 +175,12 @@
     {% if page_obj.has_other_pages %}
       <nav class="flex justify-center gap-2 mt-12 flex-wrap">
         {% if page_obj.has_previous %}
-          <a href="?page={{ page_obj.previous_page_number }}{% if current_category %}&category={{ current_category }}{% endif %}{% if current_sort != 'newest' %}&sort={{ current_sort }}{% endif %}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}"
+          <a href="{% url 'catalog:product_list' %}{% filter_url_pagination page_obj.previous_page_number %}"
              class="px-4 py-2 rounded-lg bg-dark-700 text-gray-300 hover:text-white hover:bg-dark-600 transition-colors text-sm">← Назад</a>
         {% endif %}
         <span class="px-4 py-2 text-gray-400 text-sm self-center">Стр. {{ page_obj.number }} из {{ page_obj.paginator.num_pages }}</span>
         {% if page_obj.has_next %}
-          <a href="?page={{ page_obj.next_page_number }}{% if current_category %}&category={{ current_category }}{% endif %}{% if current_sort != 'newest' %}&sort={{ current_sort }}{% endif %}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}"
+          <a href="{% url 'catalog:product_list' %}{% filter_url_pagination page_obj.next_page_number %}"
              class="px-4 py-2 rounded-lg bg-dark-700 text-gray-300 hover:text-white hover:bg-dark-600 transition-colors text-sm">Вперёд →</a>
         {% endif %}
       </nav>
@@ -119,5 +191,7 @@
       <p>Товаров пока нет.</p>
     </div>
   {% endif %}
+    </div>
+  </div>
 </div>
 {% endblock %}

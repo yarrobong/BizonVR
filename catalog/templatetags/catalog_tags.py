@@ -4,6 +4,61 @@ from django import template
 register = template.Library()
 
 
+@register.simple_tag(takes_context=True)
+def filter_url(context, **kwargs):
+    """Строит query string с обновлёнными GET-параметрами. Удалить: param=None."""
+    request = context.get('request')
+    if not request:
+        return ''
+    params = request.GET.copy()
+    for key, val in kwargs.items():
+        if val is None or val == '':
+            params.pop(key, None)
+        else:
+            params[key] = str(val)
+    qs = params.urlencode()
+    return ('?' + qs) if qs else ''
+
+
+@register.simple_tag(takes_context=True)
+def filter_url_set(context, key, value):
+    """Строит query string с установленным/удалённым параметром (value='' удаляет)."""
+    request = context.get('request')
+    if not request:
+        return ''
+    params = request.GET.copy()
+    if value:
+        params[key] = str(value)
+    else:
+        params.pop(key, None)
+    qs = params.urlencode()
+    return ('?' + qs) if qs else '?'
+
+
+@register.simple_tag(takes_context=True)
+def filter_url_unset(context, key):
+    """Строит query string без указанного параметра."""
+    request = context.get('request')
+    if not request:
+        return ''
+    params = request.GET.copy()
+    params.pop(key, None)
+    qs = params.urlencode()
+    return ('?' + qs) if qs else '?'
+
+
+@register.simple_tag(takes_context=True)
+def filter_url_pagination(context, page):
+    """Query string для пагинации с сохранением всех фильтров."""
+    request = context.get('request')
+    if not request:
+        return '?page=' + str(page)
+    params = request.GET.copy()
+    params['page'] = str(page)
+    qs = params.urlencode()
+    return '?' + qs
+
+
 @register.filter
 def price_format(value):
     """Форматирует число как цену: 100000 → «100 000» (пробел как разделитель тысяч)."""

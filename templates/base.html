@@ -10,8 +10,8 @@
   <style>
     :root {
       --accent-electric-blue: #00d4ff;
-      --header-height: 180px;       /* полная шапка */
-      --header-height-compact: 80px; /* компактная шапка */
+      --header-height: 165px;       /* полная шапка */
+      --header-height-compact: 88px; /* компактная шапка */
       --header-scrolled: 0;         /* 0 — подробная, 1 — компактная */
     }
     /* scroll-padding-top: браузер учитывает шапку при прокрутке к началу/к якорям */
@@ -30,7 +30,7 @@
     ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
     ::-webkit-scrollbar-thumb:hover { background: #00d4ff; }
     .no-scrollbar::-webkit-scrollbar { display: none; }
-    .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
     [x-cloak] { display: none !important; }
     /* Шапка: fixed, высота по контенту, body padding синхронизирован через --header-height */
     header {
@@ -50,23 +50,25 @@
       backface-visibility: hidden;
     }
 
-    /* Плавная шапка через Grid (--header-scrolled задаёт состояние до Alpine) */
+    /* Верхняя строка: схлопывается полностью, не занимает высоту */
     .header-top-row {
-      display: grid;
-      grid-template-rows: calc(1fr * (1 - var(--header-scrolled)));
-      transition: grid-template-rows 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-      will-change: grid-template-rows;
-    }
-    .header-top-row > * {
-      min-height: 0;
       overflow: hidden;
-      opacity: 1;
-      transition: opacity 0.2s ease, transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+      max-height: 48px;
+      transition:
+        max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+        opacity 0.25s ease,
+        transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
     }
-    .header-top-row.collapsed > *,
-    :root[style*="--header-scrolled: 1"] .header-top-row > * {
-      transform: translateY(-20px);
+    .header-top-row.collapsed {
+      max-height: 0;
       opacity: 0;
+      transform: translateY(-16px);
+      pointer-events: none;
+    }
+    /* Основной ряд шапки: компактный режим — верхний отступ, без нижнего */
+    .header-main-row.compact {
+      padding-top: 0.75rem;
+      padding-bottom: 0;
     }
     /* Скобка ( появляется только когда введена хотя бы одна цифра */
     .phone-prefix-bracket { opacity: 0; transition: opacity 0.15s; margin-left: 0.25em; }
@@ -144,13 +146,26 @@
       x-data="{ cartOpen: false, scrolled: false, ready: false, cartCount: {{ cart_count|default:0 }} }"
      @open-cart.window="cartOpen = true"
      @cart-updated.window="cartCount = $event.detail.count"
-     @scroll.window.passive.throttle.20ms="if (ready) { const y = window.scrollY; if (y > 80) { scrolled = true; document.documentElement.style.setProperty('--header-scrolled', '1'); document.documentElement.style.setProperty('--header-height', '100px') } else if (y < 30) { scrolled = false; document.documentElement.style.setProperty('--header-scrolled', '0'); document.documentElement.style.setProperty('--header-height', '180px') } }"
-     @header-expand.window="scrolled = false; document.documentElement.style.setProperty('--header-scrolled', '0'); document.documentElement.style.setProperty('--header-height', '180px')"
+     @scroll.window.passive.throttle.20ms="
+       if (!ready) return;
+       const y = window.scrollY;
+       if (y > 80 && !scrolled) {
+         scrolled = true;
+         document.documentElement.style.setProperty('--header-scrolled', '1');
+         document.documentElement.style.setProperty('--header-height', '88px');
+       }
+       if (y < 30 && scrolled) {
+         scrolled = false;
+         document.documentElement.style.setProperty('--header-scrolled', '0');
+         document.documentElement.style.setProperty('--header-height', '165px');
+       }
+     "
+     @header-expand.window="scrolled = false; document.documentElement.style.setProperty('--header-scrolled', '0'); document.documentElement.style.setProperty('--header-height', '165px')"
      x-init="
        window.scrollTo(0, 0);
        scrolled = false;
        document.documentElement.style.setProperty('--header-scrolled', '0');
-       document.documentElement.style.setProperty('--header-height', '180px');
+       document.documentElement.style.setProperty('--header-height', '165px');
        setTimeout(() => { ready = true; document.body.classList.remove('preload'); }, 150);
      ">
   <script>
@@ -162,7 +177,7 @@
   <header class="w-full text-white">
     <div class="hidden md:block header-top-row"
          :class="scrolled && 'collapsed'">
-      <div class="flex justify-between items-center container mx-auto px-4 py-2 text-xs text-gray-400 border-gray-800">
+      <div class="flex justify-between items-center container mx-auto px-4 py-1.5 text-xs text-gray-400 border-gray-800">
       <div class="flex items-center space-x-6">
         <a href="https://www.avito.ru/user/bizonvr" target="_blank" rel="noopener noreferrer" class="flex items-center space-x-1 hover:text-white text-gray-400 transition-colors">
           <i data-lucide="shopping-bag" class="w-3.5 h-3.5 text-accent inline-block"></i>
@@ -198,12 +213,12 @@
     </div>
     </div>
 
-    <div class="container mx-auto px-4 transition-[padding] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] py-4"
-         :class="scrolled && '!py-1'">
+    <div class="header-main-row container mx-auto px-4 transition-[padding] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] py-3"
+         :class="scrolled && 'compact'">
       <div class="flex items-center justify-between gap-4">
         <a href="{% url 'home' %}" class="flex flex-col flex-shrink-0 cursor-pointer">
           <h1 class="font-bold tracking-wider leading-none transition-[font-size] duration-300 text-2xl" :class="scrolled && '!text-lg'">BizonVR</h1>
-          <span class="block text-[10px] text-gray-500 tracking-widest uppercase transition-all duration-300 overflow-hidden max-h-5 opacity-100" :class="scrolled && '!max-h-0 !opacity-0 leading-none'">Будущее уже здесь!</span>
+          
         </a>
 
         <div class="hidden lg:flex items-center space-x-2">
@@ -213,7 +228,7 @@
         </div>
 
         <form action="{% url 'catalog:product_list' %}" method="get" class="flex-1 max-w-2xl relative hidden md:block">
-          <input type="search" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Поиск по товарам" class="search-input-glass w-full text-white rounded-full px-5 pl-5 pr-12 focus:outline-none focus:ring-1 focus:ring-accent text-sm transition-[padding] duration-300 py-2.5" :class="scrolled && '!py-1.5'" />
+          <input type="search" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Поиск по товарам" class="search-input-glass w-full text-white rounded-full px-5 pl-5 pr-12 focus:outline-none focus:ring-1 focus:ring-accent text-sm transition-[padding] duration-300 py-2" :class="scrolled && '!py-1'" />
           <button type="submit" class="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white w-[18px] h-[18px] inline-flex items-center justify-center focus:outline-none">
             <i data-lucide="search" class="w-[18px] h-[18px] inline-block"></i>
           </button>
@@ -264,7 +279,7 @@
                  x-transition:leave="transition ease-in duration-100"
                  x-transition:leave-start="opacity-100 translate-y-0"
                  x-transition:leave-end="opacity-0 -translate-y-1"
-                 class="absolute right-0 top-full mt-2 z-50 min-w-[220px] city-dropdown-panel rounded-xl shadow-xl overflow-hidden py-2">
+                 class="absolute left-0 top-full mt-2 z-50 min-w-[220px] city-dropdown-panel rounded-xl shadow-xl overflow-hidden py-2 text-left">
               <form method="post" action="{% url 'catalog:set_city' %}" id="header-city-form">
                 {% csrf_token %}
                 <input type="hidden" name="next" value="{{ request.get_full_path }}" />
@@ -306,11 +321,11 @@
       </form>
     </div>
 
-    <div class="header-nav transition-[padding] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] py-4"
-         :class="scrolled && '!py-1'">
+    <div class="header-nav transition-[padding] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] py-3"
+         :class="scrolled && '!py-0.5'">
       <div class="container mx-auto px-4">
-        <nav class="flex items-center text-xs font-bold uppercase tracking-wide transition-[padding] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] py-3"
-             :class="scrolled && '!py-1'"
+        <nav class="flex items-center text-xs font-bold uppercase tracking-wide transition-[padding] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] py-2"
+             :class="scrolled && '!py-0.5'"
              x-data="{ catalogOpen: false }"
              @keydown.escape.window="catalogOpen = false">
           <!-- КАТАЛОГ с выпадающим меню (вне overflow, чтобы dropdown не обрезался) -->
@@ -367,7 +382,7 @@
             <a href="#" class="hover:text-accent whitespace-nowrap flex-shrink-0">АРЕНДА</a>
             <a href="#" class="hover:text-accent whitespace-nowrap flex-shrink-0">ИНСТРУКЦИИ</a>
             <a href="#" class="hover:text-accent whitespace-nowrap flex-shrink-0">УСЛУГИ</a>
-            <a href="#" class="hover:text-accent whitespace-nowrap flex-shrink-0">КОНТАКТЫ</a>
+            <a href="{% url 'contacts' %}" class="hover:text-accent whitespace-nowrap flex-shrink-0">КОНТАКТЫ</a>
           </div>
         </nav>
       </div>
@@ -505,7 +520,8 @@
         <div>
           <h4 class="text-white font-bold mb-4 uppercase">Клиентский сервис</h4>
           <p class="text-gray-600 text-[10px]">Техническая поддержка и сопровождение после покупки</p>
-          <a href="{% url 'privacy' %}" class="text-accent hover:text-accent-hover text-xs mt-2 inline-block">Политика конфиденциальности</a>
+          <a href="{% url 'contacts' %}" class="text-accent hover:text-accent-hover text-xs mt-2 inline-block">Контакты</a>
+          <a href="{% url 'privacy' %}" class="text-accent hover:text-accent-hover text-xs mt-2 inline-block block">Политика конфиденциальности</a>
         </div>
       </div>
       <div class="flex flex-col md:flex-row justify-between items-center pt-8 border-t border-gray-800 text-[10px] text-gray-600 gap-4">

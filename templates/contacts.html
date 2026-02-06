@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block title %}Контакты — BizonVR{% endblock %}
+
+{% block content %}
+<style>
+  .contacts-grid { display: grid; grid-template-columns: 1fr; row-gap: 3rem; column-gap: 4rem; max-width: 80rem; margin-left: auto; margin-right: auto; }
+  @media (min-width: 1024px) { .contacts-grid { grid-template-columns: 1fr 1fr; } }
+</style>
+<div class="container mx-auto px-4 py-12">
+  <div class="contacts-grid">
+    <!-- Форма обратной связи -->
+    <div>
+      <h2 class="text-xl font-semibold text-white mb-4">Напишите нам</h2>
+      <p class="text-gray-400 text-sm mb-6">Оставьте заявку — мы ответим в течение рабочего дня.</p>
+
+      {% if messages %}
+      <div class="mb-6 space-y-2">
+        {% for message in messages %}
+        <p class="text-accent text-sm py-2 px-4 bg-accent/10 rounded-lg">{{ message }}</p>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <form method="post" action="{% url 'contacts' %}" class="space-y-4">
+        {% csrf_token %}
+        {% for field in form %}
+        <div>
+          <label for="{{ field.id_for_label }}" class="block text-sm text-gray-400 mb-1">{{ field.label }}</label>
+          {{ field }}
+          {% if field.errors %}
+          <p class="text-red-400 text-xs mt-1">{{ field.errors.0 }}</p>
+          {% endif %}
+        </div>
+        {% endfor %}
+        <button type="submit"
+                class="w-full bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-4 rounded-full transition-colors">
+          Отправить
+        </button>
+      </form>
+    </div>
+
+    <!-- Наши контакты -->
+    <div>
+      <h2 class="text-xl font-semibold text-white mb-4">Наши контакты</h2>
+      <div class="space-y-6">
+        <div>
+          <div class="text-[10px] text-gray-500 uppercase mb-1">Адрес</div>
+          <p class="text-white font-medium">г. Москва, улица Академика Королева, 13с1</p>
+          <p class="text-sm text-gray-400 mt-1">Метро ВДНХ</p>
+        </div>
+        <div>
+          <div class="text-[10px] text-gray-500 uppercase mb-1">Режим работы</div>
+          <p class="text-gray-300">с 10:00 до 19:00</p>
+        </div>
+        <div>
+          <div class="text-[10px] text-gray-500 uppercase mb-1">Телефон</div>
+          <a href="tel:+79324910482" class="text-lg font-bold text-white hover:text-accent transition-colors">+7 (932) 491-04-82</a>
+        </div>
+        <div>
+          <div class="text-[10px] text-gray-500 uppercase mb-1">Email</div>
+          <a href="mailto:info@bizon-business.ru" class="text-gray-300 hover:text-accent transition-colors">info@bizon-business.ru</a>
+        </div>
+        <div>
+          <div class="text-[10px] text-gray-500 uppercase mb-1">Telegram</div>
+          <a href="https://t.me/bizon_order_manager" target="_blank" rel="noopener noreferrer" class="text-gray-300 hover:text-accent transition-colors">@bizon_order_manager</a>
+        </div>
+      </div>
+
+      <div class="mt-8 relative h-64 bg-dark-700 rounded-xl overflow-hidden grayscale opacity-80">
+        <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Map_of_Moscow_center.svg/2560px-Map_of_Moscow_center.svg.png" alt="Карта" class="w-full h-full object-cover opacity-50" />
+        <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+          <i data-lucide="map-pin" class="w-10 h-10 text-accent drop-shadow-lg inline-block" style="fill: currentColor;"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

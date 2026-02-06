@@ -235,3 +235,20 @@ class Favorite(models.Model):
 
     def __str__(self):
         return f'{self.user} — {self.product.name}'
+
+
+class ContactRequest(models.Model):
+    """Заявка с формы обратной связи на странице контактов."""
+    name = models.CharField('Имя', max_length=150)
+    email = models.EmailField('Email')
+    phone = models.CharField('Телефон', max_length=20, blank=True)
+    message = models.TextField('Сообщение')
+    created_at = models.DateTimeField('Создано', auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Заявка с контактов'
+        verbose_name_plural = 'Заявки с контактов'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.name} — {self.created_at:%d.%m.%Y %H:%M}'

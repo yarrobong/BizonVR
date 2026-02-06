@@ -11,7 +11,7 @@ from django.views.decorators.http import require_GET, require_POST
 from django.views.generic import DetailView, ListView
 from django_ratelimit.decorators import ratelimit
 
-from .models import Category, City, Favorite, Product, ProductStock
+from .models import CatalogSection, Category, City, Favorite, Product, ProductCharacteristic, ProductStock, ProductTag
 
 
 def _get_cart_count(request):
@@ -280,7 +280,7 @@ class ProductListView(ListView):
     template_name = 'catalog/product_list.html'
 
     def get_queryset(self):
-        qs = Product.objects.filter(is_active=True).select_related('category').prefetch_related('tags').order_by('-created_at')
+        qs = Product.objects.filter(is_active=True).select_related('category').prefetch_related('tags', 'characteristics').order_by('-created_at')
         search_query = (self.request.GET.get('q') or '').strip()
         if search_query:
             qs = qs.filter(
@@ -292,6 +292,27 @@ class ProductListView(ListView):
         section_slug = self.request.GET.get('section')
         if section_slug:
             qs = qs.filter(category__section__slug=section_slug)
+        tag_slug = (self.request.GET.get('tag') or '').strip()
+        if tag_slug:
+            qs = qs.filter(tags__slug=tag_slug).distinct()
+        # Фильтр по цене
+        price_min = self.request.GET.get('price_min')
+        if price_min:
+            try:
+                qs = qs.filter(price__gte=float(price_min))
+            except (ValueError, TypeError):
+                pass
+        price_max = self.request.GET.get('price_max')
+        if price_max:
+            try:
+                qs = qs.filter(price__lte=float(price_max))
+            except (ValueError, TypeError):
+                pass
+        # Фильтр по характеристикам (char_<name>=<value>)
+        for key, value in self.request.GET.items():
+            if key.startswith('char_') and value:
+                ch_name = key[5:]
+                qs = qs.filter(characteristics__name=ch_name, characteristics__value=value).distinct()
         sort = self.request.GET.get('sort', 'newest')
         if sort == 'price_asc':
             qs = qs.order_by('price')
@@ -299,16 +320,73 @@ class ProductListView(ListView):
             qs = qs.order_by('-price')
         elif sort == 'name':
             qs = qs.order_by('name')
-        # default: newest (уже -created_at)
+        return qs
+
+    def _get_filter_base_queryset(self):
+        """Базовый queryset для сбора опций фильтров (без пагинации, без char-фильтров)."""
+        qs = Product.objects.filter(is_active=True).select_related('category')
+        search_query = (self.request.GET.get('q') or '').strip()
+        if search_query:
+            qs = qs.filter(
+                Q(name__icontains=search_query) | Q(description__icontains=search_query)
+            )
+        category_slug = self.request.GET.get('category')
+        if category_slug:
+            qs = qs.filter(category__slug=category_slug)
+        section_slug = self.request.GET.get('section')
+        if section_slug:
+            qs = qs.filter(category__section__slug=section_slug)
+        tag_slug = (self.request.GET.get('tag') or '').strip()
+        if tag_slug:
+            qs = qs.filter(tags__slug=tag_slug).distinct()
+        price_min = self.request.GET.get('price_min')
+        if price_min:
+            try:
+                qs = qs.filter(price__gte=float(price_min))
+            except (ValueError, TypeError):
+                pass
+        price_max = self.request.GET.get('price_max')
+        if price_max:
+            try:
+                qs = qs.filter(price__lte=float(price_max))
+            except (ValueError, TypeError):
+                pass
         return qs
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context['categories'] = Category.objects.all()
         context['current_category'] = self.request.GET.get('category', '')
         context['current_section'] = self.request.GET.get('section', '')
+        context['categories'] = list(Category.objects.select_related('section').order_by('name'))
+        if context['current_section']:
+            context['categories'] = [c for c in context['categories'] if c.section and c.section.slug == context['current_section']]
+        context['catalog_sections'] = list(CatalogSection.objects.prefetch_related('categories').order_by('order', 'name'))
+        context['current_tag'] = (self.request.GET.get('tag') or '').strip()
+        context['product_tags'] = list(ProductTag.objects.order_by('order', 'name'))
         context['current_sort'] = self.request.GET.get('sort', 'newest')
         context['search_query'] = (self.request.GET.get('q') or '').strip()
+        context['price_min_filter'] = self.request.GET.get('price_min', '')
+        context['price_max_filter'] = self.request.GET.get('price_max', '')
+        context['char_filters'] = {k[5:]: v for k, v in self.request.GET.items() if k.startswith('char_') and v}
+        context['filter_clear'] = ''  # для filter_url: удалить параметр
+
+        # Опции фильтров из товаров текущего раздела
+        base_qs = self._get_filter_base_queryset()
+        from django.db.models import Min, Max
+        price_agg = base_qs.aggregate(min_p=Min('price'), max_p=Max('price'))
+        context['filter_price_min'] = int(price_agg['min_p']) if price_agg['min_p'] is not None else 0
+        context['filter_price_max'] = int(price_agg['max_p']) if price_agg['max_p'] is not None else 0
+
+        char_qs = ProductCharacteristic.objects.filter(product__in=base_qs).values('name', 'value').distinct().order_by('name', 'value')
+        from collections import OrderedDict
+        char_options = OrderedDict()
+        for row in char_qs:
+            name = row['name']
+            if name not in char_options:
+                char_options[name] = []
+            if row['value'] not in char_options[name]:
+                char_options[name].append(row['value'])
+        context['filter_characteristics'] = char_options
         if self.request.user.is_authenticated:
             context['favorite_product_ids'] = set(
                 Favorite.objects.filter(user=self.request.user).values_list('product_id', flat=True)
