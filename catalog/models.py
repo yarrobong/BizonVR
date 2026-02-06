@@ -156,6 +156,26 @@ class ProductVariant(models.Model):
         return self.price_override if self.price_override is not None else self.product.price
 
 
+class ProductVariantCharacteristic(models.Model):
+    """Характеристика варианта товара (наследуется от товара, можно редактировать)."""
+    variant = models.ForeignKey(
+        ProductVariant,
+        on_delete=models.CASCADE,
+        related_name='characteristics',
+        verbose_name='Вариант',
+    )
+    name = models.CharField('Название', max_length=200)
+    value = models.CharField('Значение', max_length=500)
+
+    class Meta:
+        verbose_name = 'Характеристика варианта'
+        verbose_name_plural = 'Характеристики варианта'
+        ordering = ('name',)
+
+    def __str__(self):
+        return f'{self.name}: {self.value}'
+
+
 class ProductImage(models.Model):
     """Дополнительное фото товара для галереи."""
     product = models.ForeignKey(
@@ -303,7 +323,7 @@ class PickupPoint(models.Model):
 
 
 class ProductStock(models.Model):
-    """Остаток товара в точке выдачи."""
+    """Остаток товара в точке выдачи. variant=None — для товаров без вариантов."""
     product = models.ForeignKey(
         Product,
         on_delete=models.CASCADE,
@@ -316,6 +336,15 @@ class ProductStock(models.Model):
         related_name='stocks',
         verbose_name='Точка выдачи',
     )
+    variant = models.ForeignKey(
+        ProductVariant,
+        on_delete=models.CASCADE,
+        related_name='stocks',
+        verbose_name='Вариант',
+        null=True,
+        blank=True,
+        help_text='Пусто — остаток для товаров без вариантов',
+    )
     quantity = models.PositiveIntegerField('Количество', default=0)
 
     class Meta:
@@ -323,13 +352,15 @@ class ProductStock(models.Model):
         verbose_name_plural = 'Остатки в точках'
         constraints = [
             models.UniqueConstraint(
-                fields=['product', 'pickup_point'],
-                name='catalog_productstock_product_pickup_unique',
+                fields=['product', 'pickup_point', 'variant'],
+                name='catalog_productstock_product_pickup_variant_unique',
             ),
         ]
         ordering = ('pickup_point', 'product')
 
     def __str__(self):
+        if self.variant:
+            return f'{self.product.name} ({self.variant.name}) @ {self.pickup_point}: {self.quantity}'
         return f'{self.product.name} @ {self.pickup_point}: {self.quantity}'
 
 
