@@ -9,6 +9,7 @@ module.exports = {
   ],
   theme: {
     extend: {
+      screens: { '2xl': '1535px' },
       fontFamily: { sans: ['Inter', 'sans-serif'] },
       colors: {
         accent: '#00d4ff',
@@ -18,6 +19,6 @@ module.exports = {
     },
   },
   blocklist: ['pt-[var(--header-height)]'],
-  safelist: ['md:flex'],
+  safelist: ['md:flex', 'lg:grid-cols-[minmax(500px,600px)_1fr]', '2xl:grid-cols-[620px_1fr]'],
   plugins: [],
 };
