@@ -15,14 +15,24 @@
       --header-scrolled: 0;         /* 0 — подробная, 1 — компактная */
     }
     /* scroll-padding-top: браузер учитывает шапку при прокрутке к началу/к якорям */
-    html { scroll-padding-top: var(--header-height); }
+    html { scroll-padding-top: 0; }
+    @media (min-width: 768px) {
+      html { scroll-padding-top: var(--header-height); }
+    }
     body {
       background: #0d0f17;
       background-image: radial-gradient(circle at 15px 15px, rgba(0, 212, 255, 0.10) 2px, transparent 1.5px);
       background-size: 60px 60px;
       color: #ffffff;
-      padding-top: var(--header-height);
+      padding-top: 0;
+      padding-bottom: 64px;
       transition: padding-top 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    @media (min-width: 768px) {
+      body {
+        padding-top: var(--header-height);
+        padding-bottom: 0;
+      }
     }
     #main-content { padding-top: 0 !important; }
     ::-webkit-scrollbar { width: 8px; }
@@ -109,6 +119,124 @@
   <script src="https://unpkg.com/htmx.org@1.9.10"></script>
   <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
   <script>
+    window.productDetail = function() {
+      const el = document.getElementById('product-detail-data');
+      if (!el) return {};
+      const raw = JSON.parse(el.textContent);
+      return {
+          selectedVariant: null,
+          variants: raw.variants || [],
+          productImage: raw.productImage || '',
+          productPrice: raw.productPrice || 0,
+          productGallery: raw.productGallery || [],
+          productCharacteristics: raw.productCharacteristics || [],
+          variantCharacteristics: raw.variantCharacteristics || {},
+          stockByVariant: raw.stockByVariant || {},
+          stockInCityByVariant: raw.stockInCityByVariant || {},
+          stockTotalProduct: raw.stockTotalProduct ?? 0,
+          stockInCityProduct: raw.stockInCityProduct ?? null,
+          selectedCityName: raw.selectedCityName || '',
+          selectedImageIndex: 0,
+          touchStartX: 0,
+          touchMoveX: 0,
+          handleSwipe() {
+            const diff = this.touchStartX - this.touchMoveX;
+            const threshold = 50;
+            if (Math.abs(diff) > threshold) {
+              if (diff > 0 && this.selectedImageIndex < this.displayImages.length - 1) {
+                this.selectedImageIndex++;
+              } else if (diff < 0 && this.selectedImageIndex > 0) {
+                this.selectedImageIndex--;
+              }
+            }
+            this.touchStartX = 0;
+            this.touchMoveX = 0;
+          },
+          shareProduct() {
+            const url = window.location.href;
+            const title = document.title;
+            if (navigator.share) {
+              navigator.share({
+                title: title,
+                url: url
+              }).catch(err => {
+                console.log('Error sharing:', err);
+                this.fallbackShare(url);
+              });
+            } else {
+              this.fallbackShare(url);
+            }
+          },
+          fallbackShare(url) {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(url).then(() => {
+                alert('Ссылка скопирована в буфер обмена');
+              }).catch(err => {
+                console.log('Error copying to clipboard:', err);
+                this.legacyCopy(url);
+              });
+            } else {
+              this.legacyCopy(url);
+            }
+          },
+          legacyCopy(url) {
+            const textArea = document.createElement('textarea');
+            textArea.value = url;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-999999px';
+            document.body.appendChild(textArea);
+            textArea.select();
+            try {
+              document.execCommand('copy');
+              alert('Ссылка скопирована в буфер обмена');
+            } catch (err) {
+              console.log('Error copying:', err);
+              prompt('Скопируйте ссылку:', url);
+            }
+            document.body.removeChild(textArea);
+          },
+          get displayImages() {
+            const gallery = this.productGallery;
+            if (this.selectedVariant && this.selectedVariant.imageUrl) {
+              const rest = gallery.filter(url => url !== this.selectedVariant.imageUrl);
+              return [this.selectedVariant.imageUrl, ...rest];
+            }
+            return gallery;
+          },
+          get currentImage() {
+            const imgs = this.displayImages;
+            if (imgs.length === 0) return '';
+            return imgs[this.selectedImageIndex] || imgs[0];
+          },
+          get displayCharacteristics() {
+            const key = this.selectedVariant ? String(this.selectedVariant.id) : null;
+            if (key && this.variantCharacteristics[key] && this.variantCharacteristics[key].length) {
+              return this.variantCharacteristics[key];
+            }
+            return this.productCharacteristics;
+          },
+          get stockTotal() {
+            if (this.variants.length && this.selectedVariant) {
+              const key = String(this.selectedVariant.id);
+              return this.stockByVariant[key] ?? 0;
+            }
+            return this.stockTotalProduct ?? 0;
+          },
+          get stockInCity() {
+            if (this.variants.length && this.selectedVariant) {
+              const key = String(this.selectedVariant.id);
+              return this.stockInCityByVariant[key] ?? null;
+            }
+            return this.stockInCityProduct;
+          },
+          init() {
+            if (this.variants.length) this.selectedVariant = this.variants[0];
+            this.$watch('selectedVariant', () => { this.selectedImageIndex = 0; });
+          }
+        };
+    };
+  </script>
+  <script>
     function initHtmxHandlers() {
       if (!document.body) return;
       document.body.addEventListener('htmx:afterRequest', function(ev) {
@@ -125,6 +253,7 @@
         if (ev.detail.target.id === 'main-content') {
           window.scrollTo(0, 0);
           window.dispatchEvent(new CustomEvent('header-expand'));
+          if (typeof Alpine !== 'undefined') Alpine.initTree(ev.detail.target);
         }
       });
     }
@@ -143,7 +272,9 @@
       hx-swap="innerHTML"
       hx-push-url="true"
       hx-timeout="15000"
-      x-data="{ cartOpen: false, scrolled: false, ready: false, cartCount: {{ cart_count|default:0 }}, miniCartOpen: false, miniCartData: null }"
+      x-data="{ cartOpen: false, scrolled: false, ready: false, cartCount: {{ cart_count|default:0 }}, favoritesCount: {{ favorites_count|default:0 }}, miniCartOpen: false, miniCartData: null, searchOpen: false }"
+      @open-search.window="searchOpen = true; $nextTick(() => setTimeout(() => typeof initLucide === 'function' && initLucide(), 80))"
+      x-init="$watch('searchOpen', v => { if (v) $nextTick(() => setTimeout(() => typeof initLucide === 'function' && initLucide(), 80)) })"
      @open-cart.window="cartOpen = true"
      @cart-updated.window="cartCount = $event.detail.count; if ($event.detail.added_item) { miniCartData = $event.detail; miniCartOpen = true; cartOpen = false; setTimeout(() => miniCartOpen = false, 6000) }"
      @scroll.window.passive.throttle.20ms="
@@ -175,7 +306,7 @@
     window.scrollTo(0, 0);
   </script>
   <!-- Header: большая у верха, компактная при скролле вниз -->
-  <header class="w-full text-white">
+  <header class="w-full text-white hidden md:block">
     <div class="hidden md:block header-top-row"
          :class="scrolled && 'collapsed'">
       <div class="flex justify-between items-center container mx-auto px-4 py-1.5 text-xs text-gray-400 border-gray-800">
@@ -439,6 +570,72 @@
   <main id="main-content">
     {% block content %}{% endblock %}
   </main>
+
+  <!-- Mobile Bottom Navigation -->
+  <nav class="fixed bottom-0 left-0 right-0 md:hidden z-50 bg-dark-800/80 backdrop-blur-xl border-t border-dark-600" style="padding-bottom: env(safe-area-inset-bottom);">
+    <div class="flex items-center justify-around h-16 px-2">
+      <!-- Home -->
+      <a href="{% url 'home' %}" class="flex flex-col items-center justify-center gap-1 flex-1 h-full text-gray-400 hover:text-accent transition-colors" title="Главная">
+        <i data-lucide="home" class="w-5 h-5 inline-block"></i>
+        <span class="text-[10px] uppercase tracking-wide">Главная</span>
+      </a>
+      <!-- Search -->
+      <button type="button" @click="searchOpen = true" class="flex flex-col items-center justify-center gap-1 flex-1 h-full text-gray-400 hover:text-accent transition-colors" title="Поиск">
+        <i data-lucide="search" class="w-5 h-5 inline-block"></i>
+        <span class="text-[10px] uppercase tracking-wide">Поиск</span>
+      </button>
+      <!-- Favorites -->
+      <a href="{% url 'catalog:favorites' %}" class="flex flex-col items-center justify-center gap-1 flex-1 h-full text-gray-400 hover:text-accent transition-colors relative" title="Избранное">
+        <i data-lucide="heart" class="w-5 h-5 inline-block"></i>
+        <span class="text-[10px] uppercase tracking-wide">Избранное</span>
+        <span x-show="favoritesCount > 0" x-cloak class="absolute top-0 right-1/4 bg-accent text-dark-900 text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center" x-text="favoritesCount > 99 ? '99+' : favoritesCount"></span>
+      </a>
+      <!-- Cart -->
+      <a href="{% url 'catalog:cart' %}" class="flex flex-col items-center justify-center gap-1 flex-1 h-full text-gray-400 hover:text-accent transition-colors relative" title="Корзина">
+        <i data-lucide="shopping-cart" class="w-5 h-5 inline-block"></i>
+        <span class="text-[10px] uppercase tracking-wide">Корзина</span>
+        <span x-show="cartCount > 0" x-cloak class="absolute top-0 right-1/4 bg-accent text-dark-900 text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center" x-text="cartCount > 99 ? '99+' : cartCount"></span>
+      </a>
+      <!-- Profile -->
+      <a href="{% url 'accounts:profile' %}" class="flex flex-col items-center justify-center gap-1 flex-1 h-full text-gray-400 hover:text-accent transition-colors" title="Профиль">
+        <i data-lucide="user" class="w-5 h-5 inline-block"></i>
+        <span class="text-[10px] uppercase tracking-wide">Профиль</span>
+      </a>
+    </div>
+  </nav>
+
+  <!-- Search Modal -->
+  <div x-show="searchOpen"
+       x-cloak
+       @click.away="searchOpen = false"
+       x-transition:enter="transition ease-out duration-200"
+       x-transition:enter-start="opacity-0"
+       x-transition:enter-end="opacity-100"
+       x-transition:leave="transition ease-in duration-150"
+       x-transition:leave-start="opacity-100"
+       x-transition:leave-end="opacity-0"
+       class="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4 md:hidden">
+    <div class="w-full max-w-lg bg-dark-800 border border-dark-600 rounded-xl shadow-xl p-4"
+         @click.stop>
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-bold text-white">Поиск</h2>
+        <button type="button" @click="searchOpen = false" class="p-2 rounded-lg hover:bg-dark-700 text-gray-400 hover:text-white focus:outline-none">
+          <i data-lucide="x" class="w-5 h-5 inline-block"></i>
+        </button>
+      </div>
+      <form action="{% url 'catalog:product_list' %}" method="get" class="relative">
+        <input type="search" 
+               name="q" 
+               value="{{ request.GET.q|default:'' }}" 
+               placeholder="Введите запрос" 
+               autofocus
+               class="w-full bg-dark-700 border border-dark-600 rounded-lg px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent" />
+        <button type="submit" @click="searchOpen = false" class="absolute right-2 top-1/2 -translate-y-1/2 bg-accent hover:bg-accent-hover text-dark-900 font-bold px-4 py-2 rounded-lg text-sm transition-colors">
+          Найти
+        </button>
+      </form>
+    </div>
+  </div>
 
   <!-- Cart Modal -->
   <div x-show="cartOpen"

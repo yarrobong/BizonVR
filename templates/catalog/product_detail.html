@@ -4,72 +4,283 @@
 {% block title %}{{ product.name }} — BizonVR{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 py-8"
-     x-data="{
-       selectedVariant: null,
-       variants: [
-         {% for v in product.variants.all %}
-         { id: {{ v.pk }}, name: '{{ v.name|escapejs }}', price: {{ v.price|js_number }}, imageUrl: '{% if v.image %}{{ v.image.url|absolute_uri:request }}{% endif %}' }{% if not forloop.last %},{% endif %}
-         {% endfor %}
-       ],
-       productImage: '{% if product.image %}{{ product.image.url|absolute_uri:request }}{% endif %}',
-       productPrice: {{ product.price|js_number }},
-       productGallery: [{% for url in product_gallery %}'{{ url|escapejs }}'{% if not forloop.last %}, {% endif %}{% endfor %}],
-       selectedImageIndex: 0,
-       get displayImages() {
-         if (this.selectedVariant && this.selectedVariant.imageUrl) {
-           return [this.selectedVariant.imageUrl, ...this.productGallery];
-         }
-         return this.productGallery;
-       },
-       get currentImage() {
-         const imgs = this.displayImages;
-         if (imgs.length === 0) return '';
-         return imgs[this.selectedImageIndex] || imgs[0];
-       }
-     }"
-     x-init="
-       if (variants.length) selectedVariant = variants[0];
-       $watch('selectedVariant', () => { selectedImageIndex = 0; });
-     ">
-  <nav class="mb-6">
+{{ product_detail_data|json_script:"product-detail-data" }}
+<style>
+  /* Mobile: full-width image carousel */
+  .product-image-mobile-container {
+    position: relative;
+    width: 100vw;
+    margin-left: calc(-50vw + 50%);
+    margin-right: calc(-50vw + 50%);
+    height: 50vh;
+    min-height: 300px;
+    max-height: 500px;
+    background: #0d0f17;
+    overflow: hidden;
+    touch-action: pan-y;
+  }
+  .product-image-mobile-slide {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  }
+  .product-image-mobile-slide img {
+    max-width: 100%;
+    max-height: 100%;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+  }
+  .product-image-overlay-buttons {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    padding: 12px 16px;
+    padding-top: calc(12px + env(safe-area-inset-top));
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    z-index: 40;
+    pointer-events: none;
+  }
+  @media (min-width: 768px) {
+    .product-image-overlay-buttons {
+      position: absolute;
+      padding-top: 12px;
+    }
+  }
+  .product-image-overlay-buttons > * {
+    pointer-events: auto;
+  }
+  .product-image-overlay-button {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .product-image-overlay-button:hover {
+    background: rgba(0, 0, 0, 0.7);
+  }
+  .product-image-overlay-buttons-right {
+    display: flex;
+    gap: 8px;
+  }
+  .product-image-carousel-indicators {
+    position: absolute;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 8px;
+    z-index: 10;
+  }
+  .product-image-carousel-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.4);
+    transition: background 0.2s;
+  }
+  .product-image-carousel-indicator.active {
+    background: rgba(0, 212, 255, 1);
+  }
+  /* Desktop: original styles */
+  .product-image-container {
+    width: 300px !important;
+    height: 300px !important;
+    min-width: 300px !important;
+    min-height: 300px !important;
+    max-width: 300px !important;
+    max-height: 300px !important;
+    aspect-ratio: 1 / 1 !important;
+    flex-shrink: 0 !important;
+    box-sizing: border-box !important;
+  }
+  @media (min-width: 768px) {
+    .product-image-container {
+      width: 500px !important;
+      height: 500px !important;
+      min-width: 500px !important;
+      min-height: 500px !important;
+      max-width: 500px !important;
+      max-height: 500px !important;
+    }
+  }
+  @media (min-width: 1024px) {
+    .product-image-container {
+      width: 380px !important;
+      height: 380px !important;
+      min-width: 380px !important;
+      min-height: 380px !important;
+      max-width: 380px !important;
+      max-height: 380px !important;
+    }
+  }
+  @media (min-width: 1280px) {
+    .product-image-container {
+      width: 500px !important;
+      height: 500px !important;
+      min-width: 500px !important;
+      min-height: 500px !important;
+      max-width: 500px !important;
+      max-height: 500px !important;
+    }
+  }
+  .product-image-container img {
+    max-width: 100% !important;
+    max-height: 100% !important;
+    width: auto !important;
+    height: auto !important;
+    object-fit: contain !important;
+    object-position: center !important;
+  }
+  .product-thumbnail {
+    width: 65px;
+    height: 65px;
+    min-width: 65px;
+    min-height: 65px;
+    padding: 0;
+    border: 2px solid #333;
+    border-radius: 0.5rem;
+    overflow: hidden;
+    background: #252525;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .product-thumbnail img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+    display: block;
+  }
+</style>
+<div class="container mx-auto px-4 py-4 md:py-8" x-data="productDetail()">
+  <!-- Mobile: Full-width image carousel with overlay buttons -->
+  <div class="md:hidden -mx-4 mb-6">
+    <div class="product-image-mobile-container"
+         @touchstart="touchStartX = $event.touches[0].clientX"
+         @touchmove="touchMoveX = $event.touches[0].clientX"
+         @touchend="handleSwipe()">
+      <template x-for="(img, i) in displayImages" :key="i">
+        <div class="product-image-mobile-slide"
+             :style="`transform: translateX(${(i - selectedImageIndex) * 100}%);`">
+          <img :src="img" 
+               :alt="'{{ product.name|escapejs }} - фото ' + (i + 1)"
+               loading="eager" />
+        </div>
+      </template>
+      <template x-if="displayImages.length === 0">
+        <div class="product-image-mobile-slide">
+          <div class="text-gray-500 flex flex-col items-center gap-2">
+            <i data-lucide="image-off" class="w-20 h-20 inline-block"></i>
+            <span class="text-sm">Нет фото</span>
+          </div>
+        </div>
+      </template>
+      
+      <!-- Overlay buttons -->
+      <div class="product-image-overlay-buttons">
+        <button type="button" 
+                @click="history.back()" 
+                class="product-image-overlay-button"
+                title="Назад">
+          <i data-lucide="arrow-left" class="w-5 h-5 inline-block"></i>
+        </button>
+        <div class="product-image-overlay-buttons-right">
+          <button type="button" 
+                  @click="$dispatch('open-search')" 
+                  class="product-image-overlay-button"
+                  title="Поиск">
+            <i data-lucide="search" class="w-5 h-5 inline-block"></i>
+          </button>
+          <button type="button" 
+                  @click="shareProduct()" 
+                  class="product-image-overlay-button"
+                  title="Поделиться">
+            <i data-lucide="share-2" class="w-5 h-5 inline-block"></i>
+          </button>
+          {% if user.is_authenticated %}
+          <form action="{% url 'catalog:toggle_favorite' product.pk %}" method="post" class="inline">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+            <button type="submit" 
+                    class="product-image-overlay-button {% if is_favorite %}text-red-400{% endif %}"
+                    title="{% if is_favorite %}Убрать из избранного{% else %}В избранное{% endif %}">
+              <i data-lucide="heart" class="w-5 h-5 inline-block {% if is_favorite %}fill-current{% endif %}"></i>
+            </button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+      
+      <!-- Carousel indicators -->
+      <div x-show="displayImages.length > 1" 
+           class="product-image-carousel-indicators" 
+           x-cloak>
+        <template x-for="(img, i) in displayImages" :key="i">
+          <div class="product-image-carousel-indicator"
+               :class="selectedImageIndex === i ? 'active' : ''"
+               @click="selectedImageIndex = i"></div>
+        </template>
+      </div>
+    </div>
+  </div>
+
+  <!-- Desktop nav -->
+  <nav class="mb-6 hidden md:block">
     <a href="{% url 'catalog:product_list' %}" class="text-gray-400 hover:text-accent text-sm flex items-center gap-1">
       <i data-lucide="arrow-left" class="w-4 h-4 inline-block"></i>
       В каталог
     </a>
   </nav>
 
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12">
-    <div class="space-y-4">
-      <div class="rounded-xl overflow-hidden bg-dark-800/50 border border-dark-600 aspect-square min-h-[280px] md:min-h-[380px] flex items-center justify-center p-4 md:p-6">
-        <template x-if="currentImage">
-          <img :src="currentImage"
-               alt="{{ product.name|escapejs }}"
-               loading="eager"
-               class="max-w-full max-h-full object-contain" />
-        </template>
-        <template x-if="!currentImage">
-          <div class="text-gray-500 flex flex-col items-center gap-2">
-            <i data-lucide="image-off" class="w-20 h-20 md:w-24 md:h-24 inline-block"></i>
-            <span class="text-sm">Нет фото</span>
-          </div>
-        </template>
-      </div>
-      <template x-if="displayImages.length > 1">
-        <div class="flex gap-2 overflow-x-auto pb-1">
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-8 2xl:grid-cols-[auto_1fr] 2xl:gap-6">
+    <div class="space-y-4 flex flex-col items-start hidden md:flex">
+      <div class="flex flex-col gap-3 items-center lg:flex-row lg:items-start">
+        <div class="product-image-container rounded-xl overflow-hidden bg-dark-800/50 border border-dark-600 flex items-center justify-center flex-shrink-0 order-1 lg:order-2">
+          <template x-if="currentImage">
+            <img :src="currentImage"
+                 alt="{{ product.name|escapejs }}"
+                 loading="eager"
+                 style="max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; object-position: center; display: block;" />
+          </template>
+          <template x-if="!currentImage">
+            <div class="text-gray-500 flex flex-col items-center gap-2">
+              <i data-lucide="image-off" class="w-20 h-20 md:w-24 md:h-24 inline-block"></i>
+              <span class="text-sm">Нет фото</span>
+            </div>
+          </template>
+        </div>
+        <div x-show="displayImages.length > 1" class="flex flex-row gap-2 flex-shrink-0 justify-center order-2 lg:order-1 lg:flex-col lg:justify-start" x-cloak>
           <template x-for="(img, i) in displayImages" :key="i">
             <button type="button"
                     @click="selectedImageIndex = i"
                     :class="selectedImageIndex === i ? 'ring-2 ring-accent ring-offset-2 ring-offset-dark-900' : 'hover:border-dark-500'"
-                    class="flex-shrink-0 w-16 h-16 md:w-20 md:h-20 rounded-lg overflow-hidden bg-dark-700 border-2 border-dark-600 transition-all duration-200">
-              <img :src="img" alt="" class="w-full h-full object-cover" loading="lazy" />
+                    class="product-thumbnail">
+              <img :src="img" alt="" loading="lazy" />
             </button>
           </template>
         </div>
-      </template>
+      </div>
     </div>
 
-    <div>
+    <div class="lg:-ml-4">
       <p class="text-[10px] text-gray-500 uppercase tracking-widest mb-2">{{ product.category.name }}</p>
       {% if product.tags.all %}
       <div class="flex flex-wrap gap-2 mb-3">
@@ -106,45 +317,35 @@
 
       <div class="text-2xl font-bold text-white mb-6" x-text="(selectedVariant ? selectedVariant.price : productPrice).toLocaleString('ru-RU') + ' ₽'"></div>
 
-      {% if selected_city %}
-        {% if stock_in_city > 0 %}
-      <p class="text-sm text-gray-400 mb-4">В наличии ({{ selected_city.name }}): <span class="text-white font-medium">{{ stock_in_city }} шт.</span></p>
-        {% elif stock_total > 0 %}
-      <p class="text-sm text-gray-400 mb-4">В наличии, <span class="text-white font-medium">доставка</span> ({{ stock_total }} шт. в России)</p>
-        {% else %}
-      <p class="text-sm text-gray-400 mb-4">Нет в наличии — <span class="text-accent font-medium">под заказ</span></p>
-        {% endif %}
-      {% else %}
-        {% if stock_total > 0 %}
-      <p class="text-sm text-gray-400 mb-4">Доступно к отправке: <span class="text-white font-medium">{{ stock_total }} шт.</span></p>
-        {% else %}
-      <p class="text-sm text-gray-400 mb-4">Нет в наличии — <span class="text-accent font-medium">под заказ</span></p>
-        {% endif %}
-      {% endif %}
+      <p class="text-sm text-gray-400 mb-4" x-show="selectedCityName">
+        <span x-show="stockInCity > 0">В наличии (<span x-text="selectedCityName"></span>): <span class="text-white font-medium" x-text="(stockInCity ?? 0) + ' шт.'"></span></span>
+        <span x-show="selectedCityName && stockInCity <= 0 && stockTotal > 0">В наличии, <span class="text-white font-medium">доставка</span> (<span x-text="stockTotal + ' шт. в России'"></span>)</span>
+        <span x-show="selectedCityName && stockTotal <= 0">Нет в наличии — <span class="text-accent font-medium">под заказ</span></span>
+      </p>
+      <p class="text-sm text-gray-400 mb-4" x-show="!selectedCityName">
+        <span x-show="stockTotal > 0">Доступно к отправке: <span class="text-white font-medium" x-text="stockTotal + ' шт.'"></span></span>
+        <span x-show="stockTotal <= 0">Нет в наличии — <span class="text-accent font-medium">под заказ</span></span>
+      </p>
 
       {% if product.description %}
         <div class="text-sm text-gray-300 leading-relaxed mb-6">{{ product.description|linebreaks }}</div>
       {% endif %}
 
-      {% if product.characteristics.all %}
-        <div class="mb-8">
-          <h2 class="text-sm font-bold text-white mb-3 uppercase tracking-wide">Характеристики</h2>
-          <table class="w-full text-sm">
-            {% for ch in product.characteristics.all %}
-              <tr class="border-b border-dark-600">
-                <td class="py-2 text-gray-400">{{ ch.name }}</td>
-                <td class="py-2 text-white text-right">{{ ch.value }}</td>
-              </tr>
-            {% endfor %}
-          </table>
-        </div>
-      {% endif %}
+      <div class="mb-8" x-show="displayCharacteristics.length > 0">
+        <h2 class="text-sm font-bold text-white mb-3 uppercase tracking-wide">Характеристики</h2>
+        <table class="w-full text-sm">
+          <template x-for="ch in displayCharacteristics" :key="ch[0] + ch[1]">
+            <tr class="border-b border-dark-600">
+              <td class="py-2 text-gray-400" x-text="ch[0]"></td>
+              <td class="py-2 text-white text-right" x-text="ch[1]"></td>
+            </tr>
+          </template>
+        </table>
+      </div>
 
-      {% if bundles or compatible_from_category %}
+      {% if bundles %}
       <div class="mb-8 pt-8 border-t border-dark-600">
-        <h2 class="text-sm font-bold text-white mb-4 uppercase tracking-wide">{% if bundles %}Купить набором{% else %}Дополните покупку{% endif %}</h2>
-
-        {% if bundles %}
+        <h2 class="text-sm font-bold text-white mb-4 uppercase tracking-wide">Купить набором</h2>
         <div class="space-y-4 mb-6">
           {% for bundle in bundles %}
           <div class="bg-dark-800 border border-dark-600 rounded-xl p-4">
@@ -180,42 +381,6 @@
           </div>
           {% endfor %}
         </div>
-        {% endif %}
-
-        {% if compatible_from_category %}
-        <div class="bg-dark-800 border border-dark-600 rounded-xl p-4">
-          <p class="text-sm text-gray-400 mb-3">Товары из категории «{{ product.category.name }}»</p>
-          <form action="{% url 'catalog:add_bundle_to_cart' %}" method="post" id="bundle-category-form"
-                hx-post="{% url 'catalog:add_bundle_to_cart' %}"
-                hx-target="#cart-modal-content"
-                hx-swap="innerHTML">
-            {% csrf_token %}
-            <input type="hidden" name="product_id" value="{{ product.pk }}" />
-            <input type="hidden" name="next" value="{{ request.get_full_path }}" />
-            <div class="flex flex-wrap gap-3 mb-4">
-              {% for p in compatible_from_category %}
-              <label class="flex items-center gap-2 p-3 rounded-lg border border-dark-600 hover:border-dark-500 cursor-pointer transition-colors has-[:checked]:border-accent has-[:checked]:bg-accent/10">
-                <input type="checkbox" name="product_ids" value="{{ p.pk }}" class="rounded border-dark-500 text-accent focus:ring-accent" />
-                <span class="flex items-center gap-2 min-w-0 flex-1">
-                  {% if p.image %}
-                  <img src="{{ p.image.url|absolute_uri:request }}" alt="" class="w-10 h-10 rounded object-contain flex-shrink-0" />
-                  {% else %}
-                  <div class="w-10 h-10 rounded bg-dark-600 flex items-center justify-center flex-shrink-0">
-                    <i data-lucide="package" class="w-5 h-5 text-gray-500"></i>
-                  </div>
-                  {% endif %}
-                  <span class="text-sm text-white truncate">{{ p.name }}</span>
-                  <span class="text-sm text-gray-400 flex-shrink-0">{{ p.price|price_format }} ₽</span>
-                </span>
-              </label>
-              {% endfor %}
-            </div>
-            <button type="submit" class="bg-accent hover:bg-accent-hover text-dark-900 font-bold py-2 px-5 rounded-full text-sm uppercase tracking-wide">
-              Купить набором
-            </button>
-          </form>
-        </div>
-        {% endif %}
       </div>
       {% endif %}
 
@@ -228,12 +393,10 @@
           <input type="hidden" name="quantity" value="1" />
           {% if product.variants.all %}
           <input type="hidden" name="variant_id" :value="selectedVariant ? selectedVariant.id : ''" />
-          <button type="submit" :disabled="!selectedVariant" class="bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-8 rounded-full transition-colors text-sm uppercase tracking-wide disabled:opacity-50 disabled:cursor-not-allowed">
-            {% if stock_total == 0 %}Купить под заказ{% else %}Добавить в корзину{% endif %}
+          <button type="submit" :disabled="!selectedVariant" class="bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-8 rounded-full transition-colors text-sm uppercase tracking-wide disabled:opacity-50 disabled:cursor-not-allowed" x-text="stockTotal > 0 ? 'Добавить в корзину' : 'Купить под заказ'">
           </button>
           {% else %}
-          <button type="submit" class="bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-8 rounded-full transition-colors text-sm uppercase tracking-wide">
-            {% if stock_total == 0 %}Купить под заказ{% else %}Добавить в корзину{% endif %}
+          <button type="submit" class="bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-8 rounded-full transition-colors text-sm uppercase tracking-wide" x-text="stockTotal > 0 ? 'Добавить в корзину' : 'Купить под заказ'">
           </button>
           {% endif %}
         </form>

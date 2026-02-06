@@ -21,25 +21,30 @@ def _get_cart_count(request):
     return sum(item.get('quantity', 0) for item in items)
 
 
-def _get_stock_in_city(city_id, product_id):
-    """Суммарный остаток товара по городу (все точки выдачи)."""
+def _get_stock_in_city(city_id, product_id, variant_id=None):
+    """Суммарный остаток товара по городу. variant_id — для товаров с вариантами."""
     if not city_id:
         return None
-    total = (
-        ProductStock.objects
-        .filter(product_id=product_id, pickup_point__city_id=city_id)
-        .aggregate(s=Sum('quantity'))
+    qs = ProductStock.objects.filter(
+        product_id=product_id,
+        pickup_point__city_id=city_id,
     )
+    if variant_id is not None:
+        qs = qs.filter(variant_id=variant_id)
+    else:
+        qs = qs.filter(variant__isnull=True)
+    total = qs.aggregate(s=Sum('quantity'))
     return (total['s'] or 0)
 
 
-def _get_stock_total(product_id):
-    """Суммарный остаток товара по всей России."""
-    total = (
-        ProductStock.objects
-        .filter(product_id=product_id)
-        .aggregate(s=Sum('quantity'))
-    )
+def _get_stock_total(product_id, variant_id=None):
+    """Суммарный остаток товара по всей России. variant_id — для товаров с вариантами."""
+    qs = ProductStock.objects.filter(product_id=product_id)
+    if variant_id is not None:
+        qs = qs.filter(variant_id=variant_id)
+    else:
+        qs = qs.filter(variant__isnull=True)
+    total = qs.aggregate(s=Sum('quantity'))
     return (total['s'] or 0)
 
 
@@ -86,20 +91,19 @@ def cart_page_view(request):
     stock_by_product = {}
     stock_total_by_product = {}
     if cart_items:
-        product_ids = [i['product_id'] for i in cart_items]
-        for pid in product_ids:
-            stock_total_by_product[pid] = _get_stock_total(pid)
-            if selected_city_id:
-                stock_by_product[pid] = _get_stock_in_city(selected_city_id, pid)
-    if cart_items:
-        product_ids = [i['product_id'] for i in cart_items]
         slugs = dict(
-            Product.objects.filter(pk__in=product_ids).values_list('pk', 'slug')
+            Product.objects.filter(pk__in=[i['product_id'] for i in cart_items]).values_list('pk', 'slug')
         )
         for item in cart_items:
-            item['product_slug'] = slugs.get(item['product_id'], '')
-            item['stock_in_city'] = stock_by_product.get(item['product_id'])
-            item['stock_total'] = stock_total_by_product.get(item['product_id'], 0)
+            pid = item['product_id']
+            vid = item.get('variant_id')
+            key = (pid, vid)
+            stock_total_by_product[key] = _get_stock_total(pid, vid)
+            if selected_city_id:
+                stock_by_product[key] = _get_stock_in_city(selected_city_id, pid, vid)
+            item['product_slug'] = slugs.get(pid, '')
+            item['stock_in_city'] = stock_by_product.get(key)
+            item['stock_total'] = stock_total_by_product.get(key, 0)
     return render(request, 'catalog/cart.html', {
         'cart_items': cart_items,
         'total': total,
@@ -168,7 +172,7 @@ def add_to_cart_view(request, product_id):
     )
     selected_city_id = request.session.get('selected_city_id')
     if selected_city_id:
-        stock = _get_stock_in_city(selected_city_id, product_id)
+        stock = _get_stock_in_city(selected_city_id, product_id, variant_id)
         available = max(0, stock - current_in_cart)
         if stock > 0:
             # Товар в наличии — ограничиваем остатком
@@ -188,7 +192,7 @@ def add_to_cart_view(request, product_id):
                 return redirect(next_url + '?cart_error=1')
         else:
             # Товара нет в городе — проверяем общий остаток по России
-            stock_total = _get_stock_total(product_id)
+            stock_total = _get_stock_total(product_id, variant_id)
             if stock_total > 0:
                 # В наличии в другом городе — ограничиваем общим остатком
                 available = max(0, stock_total - current_in_cart)
@@ -316,11 +320,11 @@ def cart_update_view(request):
                     variant_id = None
             selected_city_id = request.session.get('selected_city_id')
             if selected_city_id:
-                stock = _get_stock_in_city(selected_city_id, product_id)
+                stock = _get_stock_in_city(selected_city_id, product_id, variant_id)
                 if stock > 0:
                     quantity = min(quantity, stock)
                 else:
-                    stock_total = _get_stock_total(product_id)
+                    stock_total = _get_stock_total(product_id, variant_id)
                     if stock_total > 0:
                         quantity = min(quantity, stock_total)
                     # иначе stock_total == 0 — под заказ, quantity не ограничиваем
@@ -409,13 +413,10 @@ def _add_product_to_cart_items(cart_items, product, variant_id, variant, quantit
 def add_bundle_to_cart_view(request):
     """
     Добавить набор товаров в корзину.
-    POST: bundle_id — добавить все товары набора со скидкой.
-    POST: product_id + product_ids — добавить текущий товар + выбранные из категории (без скидки).
+    POST: bundle_id — добавить все товары набора (наборы задаются в админке).
     """
     cart_items = request.session.get('cart_items', []) or []
     bundle_id = request.POST.get('bundle_id')
-    product_id = request.POST.get('product_id')
-    product_ids_raw = request.POST.getlist('product_ids') or request.POST.getlist('product_ids[]')
 
     if bundle_id:
         try:
@@ -467,72 +468,16 @@ def add_bundle_to_cart_view(request):
         next_url = request.POST.get('next') or request.GET.get('next') or reverse('catalog:product_list')
         return redirect(next_url)
 
-    # Режим: product_id + product_ids (из категории, без скидки)
-    try:
-        product_id = int(product_id)
-    except (TypeError, ValueError):
-        product_id = None
-    product_ids = []
-    for pid in product_ids_raw:
-        try:
-            product_ids.append(int(pid))
-        except (TypeError, ValueError):
-            pass
-    product_ids = list(dict.fromkeys(product_ids))
-
-    if not product_id:
-        if request.headers.get('HX-Request'):
-            total = sum(i.get('subtotal', 0) for i in cart_items)
-            resp = render(request, 'catalog/partials/cart_content.html', {
-                'cart_items': cart_items,
-                'total': total,
-                'cart_error': 'Укажите товар.',
-            })
-            resp['HX-Trigger'] = json.dumps({'cart-updated': {'count': _get_cart_count(request)}})
-            return resp
-        return redirect('catalog:product_list')
-
-    current_product = Product.objects.filter(pk=product_id, is_active=True).select_related('category').prefetch_related('variants').first()
-    if not current_product:
-        if request.headers.get('HX-Request'):
-            total = sum(i.get('subtotal', 0) for i in cart_items)
-            resp = render(request, 'catalog/partials/cart_content.html', {
-                'cart_items': cart_items,
-                'total': total,
-                'cart_error': 'Товар не найден.',
-            })
-            resp['HX-Trigger'] = json.dumps({'cart-updated': {'count': _get_cart_count(request)}})
-            return resp
-        return redirect('catalog:product_list')
-
-    to_add = [current_product]
-    if product_ids:
-        others = list(Product.objects.filter(pk__in=product_ids, is_active=True, category=current_product.category).prefetch_related('variants'))
-        to_add.extend(others)
-
-    for product in to_add:
-        variant = product.variants.first()
-        variant_id = variant.pk if variant else None
-        cart_items, _ = _add_product_to_cart_items(cart_items, product, variant_id, variant, 1)
-
-    request.session['cart_items'] = cart_items
-    request.session.modified = True
-
     if request.headers.get('HX-Request'):
         total = sum(i.get('subtotal', 0) for i in cart_items)
         resp = render(request, 'catalog/partials/cart_content.html', {
             'cart_items': cart_items,
             'total': total,
+            'cart_error': 'Укажите набор (bundle_id).',
         })
-        resp['HX-Trigger'] = json.dumps({
-            'cart-updated': {
-                'count': _get_cart_count(request),
-                'total': total,
-            }
-        })
+        resp['HX-Trigger'] = json.dumps({'cart-updated': {'count': _get_cart_count(request)}})
         return resp
-    next_url = request.POST.get('next') or request.GET.get('next') or current_product.get_absolute_url()
-    return redirect(next_url)
+    return redirect('catalog:product_list')
 
 
 class ProductListView(ListView):
@@ -684,7 +629,9 @@ class ProductDetailView(DetailView):
     template_name = 'catalog/product_detail.html'
 
     def get_queryset(self):
-        return Product.objects.filter(is_active=True).prefetch_related('characteristics', 'tags', 'variants', 'images').select_related('category')
+        return Product.objects.filter(is_active=True).prefetch_related(
+            'characteristics', 'tags', 'variants', 'variants__characteristics', 'images'
+        ).select_related('category')
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -695,11 +642,34 @@ class ProductDetailView(DetailView):
         else:
             context['is_favorite'] = False
         selected_city_id = self.request.session.get('selected_city_id')
-        context['stock_total'] = _get_stock_total(self.object.pk)
-        if selected_city_id:
-            context['stock_in_city'] = _get_stock_in_city(selected_city_id, self.object.pk)
-        else:
+
+        # Остатки: для товаров с вариантами — по варианту, иначе — по товару
+        if self.object.variants.exists():
+            context['stock_by_variant'] = {
+                v.pk: _get_stock_total(self.object.pk, v.pk)
+                for v in self.object.variants.all()
+            }
+            context['stock_in_city_by_variant'] = {}
+            if selected_city_id:
+                context['stock_in_city_by_variant'] = {
+                    v.pk: _get_stock_in_city(selected_city_id, self.object.pk, v.pk)
+                    for v in self.object.variants.all()
+                }
+            context['stock_total'] = None
             context['stock_in_city'] = None
+        else:
+            context['stock_total'] = _get_stock_total(self.object.pk)
+            context['stock_in_city'] = _get_stock_in_city(selected_city_id, self.object.pk) if selected_city_id else None
+            context['stock_by_variant'] = {}
+            context['stock_in_city_by_variant'] = {}
+
+        context['selected_city'] = City.objects.filter(pk=selected_city_id).first() if selected_city_id else None
+
+        # Характеристики вариантов для шаблона
+        context['variant_characteristics'] = {
+            v.pk: [(c.name, c.value) for c in v.characteristics.all()]
+            for v in self.object.variants.all()
+        }
 
         # Наборы с текущим товаром (через ProductBundleItem)
         try:
@@ -715,27 +685,43 @@ class ProductDetailView(DetailView):
             # Защита от устаревшей схемы (catalog_productbundle_products)
             context['bundles'] = []
 
-        # Товары из категории (если наборов мало или нет)
-        bundle_product_ids = set()
-        for b in context['bundles']:
-            bundle_product_ids.update(b.items.values_list('product_id', flat=True))
-        category_products = (
-            Product.objects
-            .filter(category=self.object.category, is_active=True)
-            .exclude(pk=self.object.pk)
-            .exclude(pk__in=bundle_product_ids)
-            .select_related('category')
-            .prefetch_related('variants', 'tags')[:6]
-        )
-        context['compatible_from_category'] = list(category_products)
-
-        # Галерея фото: основное + дополнительные
+        # Галерея фото: только основное + общие доп. фото (без фото вариантов — они показываются при выборе варианта)
         gallery = []
+        seen = set()
         if self.object.image:
-            gallery.append(self.request.build_absolute_uri(self.object.image.url))
+            url = self.request.build_absolute_uri(self.object.image.url)
+            gallery.append(url)
+            seen.add(url)
         for img in self.object.images.all():
-            gallery.append(self.request.build_absolute_uri(img.image.url))
+            url = self.request.build_absolute_uri(img.image.url)
+            if url not in seen:
+                gallery.append(url)
+                seen.add(url)
         context['product_gallery'] = gallery
+
+        # Данные для Alpine.js (json_script) — избегаем проблем с x-data в атрибуте
+        variants_data = [
+            {
+                'id': v.pk,
+                'name': v.name,
+                'price': float(v.price),
+                'imageUrl': self.request.build_absolute_uri(v.image.url) if v.image else '',
+            }
+            for v in self.object.variants.all()
+        ]
+        context['product_detail_data'] = {
+            'variants': variants_data,
+            'productImage': self.request.build_absolute_uri(self.object.image.url) if self.object.image else '',
+            'productPrice': float(self.object.price),
+            'productGallery': gallery,
+            'productCharacteristics': [[c.name, c.value] for c in self.object.characteristics.all()],
+            'variantCharacteristics': context['variant_characteristics'],
+            'stockByVariant': context['stock_by_variant'],
+            'stockInCityByVariant': context['stock_in_city_by_variant'],
+            'stockTotalProduct': context['stock_total'] if context['stock_total'] is not None else 0,
+            'stockInCityProduct': context['stock_in_city'],
+            'selectedCityName': context['selected_city'].name if context['selected_city'] else '',
+        }
 
         return context
 
