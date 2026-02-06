@@ -250,18 +250,18 @@
     </a>
   </nav>
 
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-8 2xl:grid-cols-[auto_1fr] 2xl:gap-6">
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-8 2xl:grid-cols-[auto_1fr] 2xl:gap-6">
     <div class="space-y-4 flex flex-col items-start hidden md:flex">
       <div class="flex flex-col gap-3 items-center lg:flex-row lg:items-start">
         <div class="product-image-container rounded-xl overflow-hidden bg-dark-800/50 border border-dark-600 flex items-center justify-center flex-shrink-0 order-1 lg:order-2">
-          <template x-if="currentImage">
-            <img :src="currentImage"
+          <template x-if="effectiveImage">
+            <img :src="effectiveImage"
                  alt="{{ product.name|escapejs }}"
                  loading="eager"
                  style="max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; object-position: center; display: block;" />
           </template>
-          <template x-if="!currentImage">
-            <div class="text-gray-500 flex flex-col items-center gap-2">
+          <template x-if="!effectiveImage">
+            <div class="text-gray-400 flex flex-col items-center gap-2">
               <i data-lucide="image-off" class="w-20 h-20 md:w-24 md:h-24 inline-block"></i>
               <span class="text-sm">Нет фото</span>
             </div>

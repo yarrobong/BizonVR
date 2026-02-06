@@ -208,6 +208,9 @@
             if (imgs.length === 0) return '';
             return imgs[this.selectedImageIndex] || imgs[0];
           },
+          get effectiveImage() {
+            return this.currentImage || this.productImage || '';
+          },
           get displayCharacteristics() {
             const key = this.selectedVariant ? String(this.selectedVariant.id) : null;
             if (key && this.variantCharacteristics[key] && this.variantCharacteristics[key].length) {

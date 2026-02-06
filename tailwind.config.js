@@ -18,5 +18,6 @@ module.exports = {
     },
   },
   blocklist: ['pt-[var(--header-height)]'],
+  safelist: ['md:flex'],
   plugins: [],
 };
