@@ -48,6 +48,8 @@ INSTALLED_APPS = [
     'orders',
     'payments',
 ]
+if DEBUG:
+    INSTALLED_APPS += ['silk']
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -59,6 +61,8 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+if DEBUG:
+    MIDDLEWARE += ['silk.middleware.SilkyMiddleware']
 
 ROOT_URLCONF = 'config.urls'
 

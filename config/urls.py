@@ -19,9 +19,10 @@ from decouple import config
 from django.contrib import admin
 from django.urls import path, include, re_path
 
-from config.views import contacts_view, home_view, privacy_view, serve_media
+from config.views import contacts_view, favicon_view, home_view, privacy_view, serve_media
 
 urlpatterns = [
+    path('favicon.ico', favicon_view),
     path('admin/', admin.site.urls),
     path('contacts/', contacts_view, name='contacts'),
     path('privacy/', privacy_view, name='privacy'),
@@ -32,6 +33,8 @@ urlpatterns = [
     path('catalog/', include('catalog.urls')),
     path('', home_view, name='home'),
 ]
+if getattr(settings, 'DEBUG', False):
+    urlpatterns += [path('silk/', include('silk.urls'))]
 
 # Медиа: в DEBUG или SERVE_MEDIA=1 — раздаём через serve_media
 if settings.DEBUG or config('SERVE_MEDIA', default=False, cast=bool):

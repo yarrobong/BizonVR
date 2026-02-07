@@ -112,6 +112,12 @@
       animation: none !important;
     }
 
+    /* Плавное затемнение слева у слайдов hero */
+    .hero-slide-gradient {
+      background: linear-gradient(to right, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.5) 25%, rgba(0,0,0,0.25) 50%, rgba(0,0,0,0.08) 75%, transparent 100%);
+    }
+    /* Hero-карусель: contain для снижения перерасчёта layout при resize */
+    .hero-carousel { contain: layout style; }
     /* Hero-карусель на мобильных — карточки 16:5, скругленные, плавная карусель с peek */
     @media (max-width: 767px) {
       .hero-carousel { 
@@ -341,6 +347,16 @@
       window.scrollTo(0, 0);
       /* Fallback: снять preload через 250ms, если Alpine не успел (иначе анимации не работают) */
       setTimeout(function() { document.body.classList.remove('preload'); }, 250);
+      /* Workaround: курсор зависает в col-resize после ресайза в DevTools — сбрасываем после окончания */
+      var resizeT = null;
+      window.addEventListener('resize', function() {
+        if (resizeT) clearTimeout(resizeT);
+        resizeT = setTimeout(function() {
+          resizeT = null;
+          document.body.style.cursor = 'default';
+          document.body.style.cursor = '';
+        }, 150);
+      }, { passive: true });
     });
   </script>
   <script src="https://unpkg.com/htmx.org@1.9.10"></script>
