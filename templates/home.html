@@ -4,75 +4,124 @@
 {% block title %}BizonVR — VR оборудование и аттракционы{% endblock %}
 
 {% block content %}
-<!-- Hero Carousel: Цифровой магазин, Трейд-ин (фон из media/hero/tradein.webp), Решения для VR бизнеса, VR Аттракционы -->
-<section class="relative w-full max-w-full min-w-0 h-[400px] md:h-[500px] bg-dark-900"
+<!-- Мобильная шапка: подробный контейнер скроллится; когда исчезает — плавно появляется фиксированный поиск -->
+<div class="mobile-header" x-data="{ cityOpen: false, showFixedSearch: false }" @click.outside="cityOpen = false"
+     x-init="
+       const check = () => { showFixedSearch = window.scrollY > 100 };
+       let raf = null;
+       const throttled = () => { if (!raf) raf = requestAnimationFrame(() => { check(); raf = null; }); };
+       window.addEventListener('scroll', throttled, { passive: true });
+       check();
+       return () => window.removeEventListener('scroll', throttled);
+     ">
+  <!-- Подробный контейнер: город + поиск, уезжает при скролле -->
+  <div class="mobile-header-wrapper">
+    <div class="mobile-header-bar">
+      <div class="mobile-header-inner">
+        <div class="mobile-header-city-wrap">
+          <div class="mobile-header-city-pad">
+            {% if cities %}
+            <div class="relative">
+              <button type="button" @click="cityOpen = !cityOpen" class="mobile-header-city-btn" :class="{ 'open': cityOpen }">
+                <i data-lucide="map-pin" class="mobile-header-city-icon"></i>
+                <span>{% if selected_city %}{{ selected_city.name }}{% else %}Город{% endif %}</span>
+                <i data-lucide="chevron-down" class="chevron"></i>
+              </button>
+              <div x-show="cityOpen" x-cloak class="mobile-header-city-dropdown">
+                <form method="post" action="{% url 'catalog:set_city' %}">
+                  {% csrf_token %}
+                  <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+                  <button type="submit" name="city_id" value="" @click="cityOpen = false">Все города</button>
+                  {% for city in cities %}
+                  <button type="submit" name="city_id" value="{{ city.pk }}" @click="cityOpen = false">{{ city.name }}</button>
+                  {% endfor %}
+                </form>
+              </div>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+        <div class="mobile-header-search-wrap">
+          <form action="{% url 'catalog:product_list' %}" method="get" class="mobile-header-search-form">
+            <input type="search" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Поиск по товарам" class="mobile-header-search-input" />
+            <button type="submit" class="mobile-header-search-btn">
+              <i data-lucide="search"></i>
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- Фиксированный поиск: плавно появляется, когда контейнер уехал -->
+  <div class="mobile-header-fixed-search" :class="{ 'visible': showFixedSearch }">
+    <form action="{% url 'catalog:product_list' %}" method="get" class="mobile-header-search-form">
+      <input type="search" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Поиск по товарам" class="mobile-header-search-input" />
+      <button type="submit" class="mobile-header-search-btn">
+        <i data-lucide="search"></i>
+      </button>
+    </form>
+  </div>
+</div>
+
+
+<!-- Hero Carousel: карточки с собственным фоном, соотношение 16:5 на всех устройствах -->
+<section class="hero-carousel relative w-full max-w-full min-w-0 min-h-[200px] bg-dark-900 touch-pan-y md:mx-0"
          style="overflow: hidden;"
          x-data="{
            current: 0,
            total: {{ hero_slides|length }},
-           bgConfigs: [{% for s in hero_slides %}{url: '{{ s.bg_url|escapejs }}', position: '{{ s.bg_position|default:"center center"|escapejs }}', size: '{{ s.bg_size|default:"auto 100%"|escapejs }}', repeat: '{{ s.bg_repeat|default:"repeat-x"|escapejs }}'}{% if not forloop.last %}, {% endif %}{% endfor %}],
            timeId: null,
+           touchStartX: 0,
+           touchStartY: 0,
            scheduleNext() {
              if (this.timeId) clearTimeout(this.timeId);
              this.timeId = setTimeout(() => { this.current = (this.current + 1) % this.total }, 6000);
+           },
+           handleTouchStart(e) {
+             this.touchStartX = e.touches[0].clientX;
+             this.touchStartY = e.touches[0].clientY;
+           },
+           handleTouchEnd(e) {
+             const touchEndX = e.changedTouches[0].clientX;
+             const touchEndY = e.changedTouches[0].clientY;
+             const deltaX = touchEndX - this.touchStartX;
+             const deltaY = touchEndY - this.touchStartY;
+             const minSwipe = 50;
+             if (Math.abs(deltaX) > minSwipe && Math.abs(deltaX) > Math.abs(deltaY)) {
+               if (deltaX > 0) {
+                 this.current = this.current === 0 ? this.total - 1 : this.current - 1;
+               } else {
+                 this.current = (this.current + 1) % this.total;
+               }
+             }
            }
          }"
-         x-init="scheduleNext(); $watch('current', () => scheduleNext())">
-  <div class="absolute inset-0 overflow-hidden">
-    <!-- Первый фон сразу из HTML, чтобы не мелькали все слайды до Alpine -->
-    <div class="absolute inset-0 z-0"
-         style="background-image: url('{{ hero_slides.0.bg_url|escapejs }}'); background-position: center center; background-size: auto 100%; background-repeat: repeat-x;"></div>
-    <div class="absolute inset-0 z-0 overflow-hidden" x-show="true">
-      <template x-for="(cfg, index) in bgConfigs" :key="index">
-        <div class="absolute inset-0 transition-opacity duration-700"
-             :class="current === index ? 'opacity-100' : 'opacity-0'"
-             :style="'background-image: url(\'' + cfg.url + '\'); background-position: ' + cfg.position + '; background-size: ' + cfg.size + '; background-repeat: ' + cfg.repeat"></div>
-      </template>
-    </div>
-    <div class="absolute inset-0 bg-gradient-to-r from-dark-900 via-dark-900/80 to-transparent z-[1] pointer-events-none"></div>
-
-    <div class="container mx-auto px-4 h-full flex flex-col justify-center relative z-10 overflow-hidden min-w-0">
-      <!-- width и transition в :style, чтобы Alpine не затирал их при биндинге -->
-      <div class="relative flex"
-           style="width: 400%; transform: translateX(0); transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);"
-           :style="'width: ' + (total * 100) + '%; transform: translateX(-' + (current * (100 / total)) + '%); transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1)'">
-        <!-- 1. Цифровой магазин -->
-        <div class="flex-shrink-0 px-2 box-border w-1/4">
-          <div class="max-w-xl">
-            <h2 class="text-3xl md:text-5xl font-light text-white mb-4">Цифровой магазин</h2>
-            <p class="text-gray-300 text-sm md:text-base mb-8 max-w-md">Цифровые товары и контент для VR. Ключи, подписки и лицензии в одном месте.</p>
-            <a href="{% url 'catalog:product_list' %}?section=cifrovye-tovary" class="inline-block bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-8 rounded-full transition-colors text-sm uppercase tracking-wide">В каталог</a>
+         x-init="scheduleNext(); $watch('current', () => scheduleNext())"
+         @touchstart="handleTouchStart($event)"
+         @touchend="handleTouchEnd($event)">
+  <div class="hero-carousel-inner absolute inset-0 md:overflow-hidden">
+    <div class="container mx-auto px-4 h-full flex flex-col justify-center relative z-10 min-w-0 overflow-hidden">
+      <div class="hero-slides-track relative flex"
+           style="--hero-current: 0; --hero-total: {{ hero_slides|length }}; transition: transform 0.6s cubic-bezier(0.32, 0.72, 0, 1);"
+           :style="'--hero-current: ' + current + '; --hero-total: ' + total + '; transition: transform 0.6s cubic-bezier(0.32, 0.72, 0, 1);'">
+        {% for slide in hero_slides %}
+        <div class="hero-slide hero-slide-card flex-shrink-0 px-2 md:px-2 box-border md:w-1/4 h-full overflow-hidden rounded-xl md:rounded-none"
+             style="background-image: url('{{ slide.bg_url }}'); background-position: {{ slide.bg_position|default:'center center' }}; background-size: cover; background-repeat: no-repeat;">
+          <div class="absolute inset-0 bg-gradient-to-r from-black/70 via-black/40 to-transparent z-[1] pointer-events-none"></div>
+          <div class="relative z-10 h-full flex flex-col justify-center px-4 md:px-2 hero-slide-content">
+            <div class="hero-slide-text-wrap md:max-w-xl">
+              <h2 class="text-xl md:text-5xl font-light text-white mb-2 md:mb-4 hero-slide-title">{{ slide.title }}</h2>
+              <p class="text-gray-300 text-xs md:text-base mb-4 md:mb-8 max-w-full md:max-w-md hero-slide-desc">{{ slide.description }}</p>
+              <a href="{{ slide.url }}" class="inline-block bg-accent hover:bg-accent-hover text-dark-900 font-bold py-2 px-4 md:py-3 md:px-8 rounded-full transition-colors text-xs md:text-sm uppercase tracking-wide hero-slide-btn">{{ slide.btn }}</a>
+            </div>
           </div>
         </div>
-        <!-- 2. Трейд-ин (фон из media/hero/tradein.webp) -->
-        <div class="flex-shrink-0 px-2 box-border w-1/4">
-          <div class="max-w-xl">
-            <h2 class="text-3xl md:text-5xl font-light text-white mb-4">Трейд-ин</h2>
-            <p class="text-gray-300 text-sm md:text-base mb-8 max-w-md">Сдайте старый шлем и получите скидку на новое оборудование. Выгодный обмен и быстрая оценка.</p>
-            <a href="{% url 'catalog:product_list' %}" class="inline-block bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-8 rounded-full transition-colors text-sm uppercase tracking-wide">Подробнее</a>
-          </div>
-        </div>
-        <!-- 3. Решения для VR бизнеса -->
-        <div class="flex-shrink-0 px-2 box-border w-1/4">
-          <div class="max-w-xl">
-            <h2 class="text-3xl md:text-5xl font-light text-white mb-4">Решения для VR бизнеса</h2>
-            <p class="text-gray-300 text-sm md:text-base mb-8 max-w-md">Готовые решения для парков развлечений, торговых центров и квестов. Симуляторы, аттракционы и контент.</p>
-            <a href="{% url 'catalog:product_list' %}?section=resheniya-dlya-vr-biznesa" class="inline-block bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-8 rounded-full transition-colors text-sm uppercase tracking-wide">Смотреть решения</a>
-          </div>
-        </div>
-        <!-- 4. VR Аттракционы -->
-        <div class="flex-shrink-0 px-2 box-border w-1/4">
-          <div class="max-w-xl">
-            <h2 class="text-3xl md:text-5xl font-light text-white mb-4">VR Аттракционы</h2>
-            <p class="text-gray-300 text-sm md:text-base mb-8 max-w-md">Коммерческие VR-аттракционы: гонки 5D, хоррор-комнаты, сферические симуляторы для парков и ТЦ.</p>
-            <a href="{% url 'catalog:product_list' %}?section=vr-attrakciony" class="inline-block bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-8 rounded-full transition-colors text-sm uppercase tracking-wide">Аттракционы</a>
-          </div>
-        </div>
+        {% endfor %}
       </div>
     </div>
 
-    <!-- Кнопки влево/вправо: жёстко привязаны к краям секции, не смещаются при ресайзе -->
-    <div class="absolute inset-y-0 left-0 z-20 w-0 pointer-events-none">
+    <!-- Кнопки влево/вправо: только на десктопе, на мобильных — свайп -->
+    <div class="absolute inset-y-0 left-0 z-20 w-0 pointer-events-none hidden md:block">
       <button type="button"
               @click="current = current === 0 ? total - 1 : current - 1"
               class="pointer-events-auto absolute top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-dark-800/80 hover:bg-dark-700 border border-dark-600 flex items-center justify-center text-white transition-colors focus:outline-none focus:ring-2 focus:ring-accent flex-shrink-0"
@@ -80,7 +129,7 @@
         <i data-lucide="chevron-left" class="w-6 h-6 inline-block"></i>
       </button>
     </div>
-    <div class="absolute inset-y-0 right-0 z-20 w-0 pointer-events-none">
+    <div class="absolute inset-y-0 right-0 z-20 w-0 pointer-events-none hidden md:block">
       <button type="button"
               @click="current = (current + 1) % total"
               class="pointer-events-auto absolute top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-dark-800/80 hover:bg-dark-700 border border-dark-600 flex items-center justify-center text-white transition-colors focus:outline-none focus:ring-2 focus:ring-accent flex-shrink-0"
@@ -117,7 +166,7 @@
   {% if featured_products %}
     <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
       {% for product in featured_products %}
-        <article class="group bg-dark-900 md:bg-transparent md:hover:bg-dark-800 border border-transparent md:hover:border-dark-700 p-4 rounded-xl transition-all duration-300 relative flex flex-col h-full">
+        <article id="product-{{ product.pk }}" class="group bg-dark-900 md:bg-transparent md:hover:bg-dark-800 border border-transparent md:hover:border-dark-700 p-4 rounded-xl transition-all duration-300 relative flex flex-col h-full scroll-mt-40">
           {% if product.tags.all %}
           <div class="absolute top-4 left-4 z-10 flex flex-wrap gap-1">
             {% for tag in product.tags.all %}
@@ -131,7 +180,17 @@
           </div>
           {% endif %}
           <div class="absolute top-4 right-4 z-10 flex flex-col space-y-2 opacity-0 group-hover:opacity-100 transition-opacity">
-            <div class="bg-dark-700 p-1.5 rounded-full hover:bg-accent hover:text-dark-900 cursor-pointer text-gray-400"><i data-lucide="heart" class="w-4 h-4 inline-block"></i></div>
+            {% if user.is_authenticated %}
+            <form action="{% url 'catalog:toggle_favorite' product.pk %}" method="post" class="inline" hx-boost="false">
+              {% csrf_token %}
+              <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+              <button type="submit" class="bg-dark-700 p-1.5 rounded-full hover:bg-accent hover:text-dark-900 cursor-pointer text-gray-400 {% if product.id in favorite_product_ids %}text-red-400{% endif %}" title="{% if product.id in favorite_product_ids %}Убрать из избранного{% else %}В избранное{% endif %}">
+                <i data-lucide="heart" class="w-4 h-4 inline-block {% if product.id in favorite_product_ids %}fill-current{% endif %}"></i>
+              </button>
+            </form>
+            {% else %}
+            <a href="{% url 'accounts:login' %}?next={{ request.get_full_path }}" class="bg-dark-700 p-1.5 rounded-full hover:bg-accent hover:text-dark-900 cursor-pointer text-gray-400 inline-block" title="Войдите, чтобы добавить в избранное"><i data-lucide="heart" class="w-4 h-4 inline-block"></i></a>
+            {% endif %}
             <div class="bg-dark-700 p-1.5 rounded-full hover:bg-accent hover:text-dark-900 cursor-pointer text-gray-400"><i data-lucide="git-compare" class="w-4 h-4 inline-block"></i></div>
           </div>
           <a href="{% url 'catalog:product_detail' product.slug %}" class="block relative w-full aspect-square mb-4 overflow-hidden rounded-lg bg-white/5 flex items-center justify-center">

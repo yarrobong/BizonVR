@@ -3,11 +3,11 @@ import os
 
 from django.conf import settings
 from django.contrib import messages
-from django.http import FileResponse, Http404
+from django.http import FileResponse, Http404, HttpResponseRedirect
 from django.shortcuts import redirect, render
 from django.urls import reverse
 
-from catalog.models import Category, ContactRequest, Product, ProductTag
+from catalog.models import Category, ContactRequest, Favorite, Product, ProductTag
 
 from .forms import ContactForm
 
@@ -18,6 +18,11 @@ _HERO_DEFAULT_BG = [
     'https://images.unsplash.com/photo-1531746795393-6c2495d120b0?q=80&w=2070&auto=format&fit=crop',
     'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?q=80&w=2070&auto=format&fit=crop',
 ]
+
+
+def favicon_view(request):
+    """Редирект /favicon.ico на SVG-иконку."""
+    return HttpResponseRedirect(settings.STATIC_URL + 'images/favicon.svg')
 
 
 def serve_media(request, path):
@@ -86,10 +91,10 @@ def home_view(request):
     else:
         base_bg = _HERO_DEFAULT_BG.copy()
     media_url = (settings.MEDIA_URL or '/media/').rstrip('/') + '/'
-    # Относительные пути — корректно работают локально и за прокси
-    mart_bg = media_url + 'hero/mart.webp'
-    tradein_bg = media_url + 'hero/tradein.webp'
-    attractions_bg = media_url + 'hero/attractions.webp'
+    # Абсолютные URL для корректной загрузки фонов во всех контекстах
+    mart_bg = request.build_absolute_uri(media_url + 'hero/mart.webp')
+    tradein_bg = request.build_absolute_uri(media_url + 'hero/tradein.webp')
+    attractions_bg = request.build_absolute_uri(media_url + 'hero/attractions.webp')
     catalog_url = reverse('catalog:product_list')
 
     # Ровно 4 слайда: Цифровой магазин, Трейд-ин (фон tradein.webp), Решения для VR бизнеса, VR Аттракционы
@@ -101,8 +106,6 @@ def home_view(request):
             'btn': 'В каталог',
             'bg_url': mart_bg,  # фон: media/hero/mart.webp
             'bg_position': 'center center',
-            'bg_size': 'auto 100%',
-            'bg_repeat': 'repeat-x',
         },
         {
             'title': 'Трейд-ин',
@@ -111,8 +114,6 @@ def home_view(request):
             'btn': 'Подробнее',
             'bg_url': tradein_bg,  # фон: media/hero/tradein.webp
             'bg_position': 'center center',
-            'bg_size': 'auto 100%',
-            'bg_repeat': 'repeat-x',
         },
         {
             'title': 'Решения для VR бизнеса',
@@ -121,8 +122,6 @@ def home_view(request):
             'btn': 'Смотреть решения',
             'bg_url': base_bg[2],
             'bg_position': 'center center',
-            'bg_size': 'auto 100%',
-            'bg_repeat': 'repeat-x',
         },
         {
             'title': 'VR Аттракционы',
@@ -131,11 +130,14 @@ def home_view(request):
             'btn': 'Аттракционы',
             'bg_url': attractions_bg,  # фон: media/hero/attractions.webp 5760×1800
             'bg_position': '60% center',  # сдвиг вправо
-            'bg_size': 'auto 100%',
-            'bg_repeat': 'repeat-x',
         },
     ]
     hero_slide_width_pct = (100 // len(hero_slides)) if hero_slides else 25
+    favorite_product_ids = set()
+    if request.user.is_authenticated:
+        favorite_product_ids = set(
+            Favorite.objects.filter(user=request.user, product__in=featured).values_list('product_id', flat=True)
+        )
     return render(request, 'home.html', {
         'featured_products': featured,
         'product_tags': product_tags,
@@ -143,4 +145,5 @@ def home_view(request):
         'categories': categories,
         'hero_slides': hero_slides,
         'hero_slide_width_pct': hero_slide_width_pct,
+        'favorite_product_ids': favorite_product_ids,
     })
