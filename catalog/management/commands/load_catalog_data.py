@@ -335,12 +335,13 @@ class Command(BaseCommand):
                 )
                 pickup_points.append(pp)
 
-        # Остатки: случайное количество для каждого товара в каждой точке
+        # Остатки: случайное количество для каждого товара в каждой точке (variant=None — для товаров без вариантов)
         for product in products:
             for pp in pickup_points:
                 ProductStock.objects.update_or_create(
                     product=product,
                     pickup_point=pp,
+                    variant=None,
                     defaults={'quantity': random.randint(0, 15)},
                 )
         self.stdout.write(f'  Города: {len(CITIES)}, точек: {len(pickup_points)}, остатки заполнены')

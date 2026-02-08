@@ -4,7 +4,6 @@ from urllib.parse import urlparse
 from django.contrib.auth.decorators import login_required
 from django.db.models import Q, Sum
 from django.db.utils import ProgrammingError
-from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
@@ -12,13 +11,8 @@ from django.views.decorators.http import require_GET, require_POST
 from django.views.generic import DetailView, ListView
 from django_ratelimit.decorators import ratelimit
 
+from .cart_services import get_cart_count, get_cart_items, save_cart_to_db, save_cart_to_session
 from .models import CatalogSection, Category, City, Favorite, Product, ProductBundle, ProductBundleItem, ProductCharacteristic, ProductStock, ProductTag, ProductVariant
-
-
-def _get_cart_count(request):
-    """Сумма quantity по всем позициям корзины в сессии."""
-    items = request.session.get('cart_items', []) or []
-    return sum(item.get('quantity', 0) for item in items)
 
 
 def _get_stock_in_city(city_id, product_id, variant_id=None):
@@ -85,7 +79,7 @@ def set_city_view(request):
 
 def cart_page_view(request):
     """Отдельная страница корзины: список товаров, изменение количества, переход к оформлению."""
-    cart_items = request.session.get('cart_items', []) or []
+    cart_items = get_cart_items(request)
     total = sum(item.get('subtotal', 0) for item in cart_items)
     selected_city_id = request.session.get('selected_city_id')
     stock_by_product = {}
@@ -113,7 +107,7 @@ def cart_page_view(request):
 
 def cart_partial(request):
     """Фрагмент корзины для модального окна (HTMX)."""
-    cart_items = request.session.get('cart_items', []) or []
+    cart_items = get_cart_items(request)
     total = sum(item.get('subtotal', 0) for item in cart_items)
     return render(request, 'catalog/partials/cart_content.html', {'cart_items': cart_items, 'total': total})
 
@@ -150,13 +144,14 @@ def add_to_cart_view(request, product_id):
             variant_id = None
     if product.variants.exists() and not variant:
         if request.headers.get('HX-Request'):
-            total = sum(i.get('subtotal', 0) for i in request.session.get('cart_items', []) or [])
+            cart_items_err = get_cart_items(request)
+            total = sum(i.get('subtotal', 0) for i in cart_items_err)
             resp = render(request, 'catalog/partials/cart_content.html', {
-                'cart_items': request.session.get('cart_items', []) or [],
+                'cart_items': cart_items_err,
                 'total': total,
                 'cart_error': 'Выберите вариант товара.',
             })
-            resp['HX-Trigger'] = json.dumps({'cart-updated': {'count': _get_cart_count(request)}})
+            resp['HX-Trigger'] = json.dumps({'cart-updated': {'count': get_cart_count(request)}})
             return resp
         next_url = request.POST.get('next') or request.GET.get('next') or product.get_absolute_url()
         return redirect(next_url + '?cart_error=1')
@@ -165,7 +160,7 @@ def add_to_cart_view(request, product_id):
     except (TypeError, ValueError):
         quantity = 1
 
-    cart_items = request.session.get('cart_items', []) or []
+    cart_items = list(get_cart_items(request))  # копия для изменения
     current_in_cart = sum(
         i.get('quantity', 0) for i in cart_items
         if _cart_item_matches(i, product_id, variant_id)
@@ -186,7 +181,7 @@ def add_to_cart_view(request, product_id):
                         'total': total,
                         'cart_error': 'Недостаточно товара в выбранном городе.',
                     })
-                    resp['HX-Trigger'] = json.dumps({'cart-updated': {'count': _get_cart_count(request)}})
+                    resp['HX-Trigger'] = json.dumps({'cart-updated': {'count': get_cart_count(request)}})
                     return resp
                 next_url = request.POST.get('next') or request.GET.get('next') or product.get_absolute_url()
                 return redirect(next_url + '?cart_error=1')
@@ -206,7 +201,7 @@ def add_to_cart_view(request, product_id):
                             'total': total,
                             'cart_error': 'Недостаточно товара.',
                         })
-                        resp['HX-Trigger'] = json.dumps({'cart-updated': {'count': _get_cart_count(request)}})
+                        resp['HX-Trigger'] = json.dumps({'cart-updated': {'count': get_cart_count(request)}})
                         return resp
                     next_url = request.POST.get('next') or request.GET.get('next') or product.get_absolute_url()
                     return redirect(next_url + '?cart_error=1')
@@ -220,7 +215,7 @@ def add_to_cart_view(request, product_id):
                             'total': total,
                             'cart_error': 'Товар недоступен для заказа.',
                         })
-                        resp['HX-Trigger'] = json.dumps({'cart-updated': {'count': _get_cart_count(request)}})
+                        resp['HX-Trigger'] = json.dumps({'cart-updated': {'count': get_cart_count(request)}})
                         return resp
                     next_url = request.POST.get('next') or request.GET.get('next') or product.get_absolute_url()
                     return redirect(next_url + '?cart_error=1')
@@ -251,10 +246,12 @@ def add_to_cart_view(request, product_id):
             'subtotal': price * quantity,
         })
 
-    request.session['cart_items'] = cart_items
-    request.session.modified = True
+    if request.user.is_authenticated:
+        save_cart_to_db(request, cart_items)
+    else:
+        save_cart_to_session(request, cart_items)
 
-    cart_count = _get_cart_count(request)
+    cart_count = get_cart_count(request)
 
     if request.headers.get('HX-Request'):
         total = sum(i.get('subtotal', 0) for i in cart_items)
@@ -308,7 +305,7 @@ def cart_update_view(request):
             return cart_partial(request)
         return redirect('catalog:product_list')
 
-    cart_items = request.session.get('cart_items', []) or []
+    cart_items = list(get_cart_items(request))
     cart_items = [i for i in cart_items if not _cart_item_matches(i, product_id, variant_id)]
     if quantity > 0:
         product = Product.objects.filter(pk=product_id, is_active=True).first()
@@ -347,16 +344,43 @@ def cart_update_view(request):
                     'image_url': image_url,
                     'subtotal': price * quantity,
                 })
-    request.session['cart_items'] = cart_items
-    request.session.modified = True
+    if request.user.is_authenticated:
+        save_cart_to_db(request, cart_items)
+    else:
+        save_cart_to_session(request, cart_items)
 
     if request.headers.get('HX-Request'):
         total = sum(i.get('subtotal', 0) for i in cart_items)
-        resp = render(request, 'catalog/partials/cart_content.html', {
-            'cart_items': cart_items,
-            'total': total,
-        })
-        resp['HX-Trigger'] = json.dumps({'cart-updated': {'count': _get_cart_count(request)}})
+        # HTMX от страницы корзины — возвращаем контент страницы (hx-target или Referer)
+        from_cart_page = (
+            request.headers.get('HX-Target') in ('cart-page-content', 'main-content') or
+            (request.META.get('HTTP_REFERER') or '').rstrip('/').endswith('/catalog/cart')
+        )
+        if from_cart_page:
+            selected_city_id = request.session.get('selected_city_id')
+            if cart_items:
+                slugs = dict(
+                    Product.objects.filter(pk__in=[i['product_id'] for i in cart_items]).values_list('pk', 'slug')
+                )
+                for item in cart_items:
+                    pid = item['product_id']
+                    vid = item.get('variant_id')
+                    item['product_slug'] = slugs.get(pid, '')
+                    item['stock_in_city'] = _get_stock_in_city(selected_city_id, pid, vid) if selected_city_id else None
+                    item['stock_total'] = _get_stock_total(pid, vid)
+            resp = render(request, 'catalog/partials/cart_page_wrapper.html', {
+                'cart_items': cart_items,
+                'total': total,
+                'selected_city': City.objects.filter(pk=selected_city_id).first() if selected_city_id else None,
+            })
+        else:
+            resp = render(request, 'catalog/partials/cart_content.html', {
+                'cart_items': cart_items,
+                'total': total,
+            })
+        resp['HX-Trigger'] = json.dumps({'cart-updated': {'count': get_cart_count(request)}})
+        if from_cart_page:
+            resp['HX-Push-Url'] = reverse('catalog:cart')
         return resp
     next_url = request.POST.get('next') or request.GET.get('next')
     return redirect(next_url or reverse('catalog:cart'))
@@ -415,7 +439,7 @@ def add_bundle_to_cart_view(request):
     Добавить набор товаров в корзину.
     POST: bundle_id — добавить все товары набора (наборы задаются в админке).
     """
-    cart_items = request.session.get('cart_items', []) or []
+    cart_items = list(get_cart_items(request))
     bundle_id = request.POST.get('bundle_id')
 
     if bundle_id:
@@ -433,7 +457,7 @@ def add_bundle_to_cart_view(request):
                     'total': total,
                     'cart_error': 'Набор не найден или содержит менее 2 позиций.',
                 })
-                resp['HX-Trigger'] = json.dumps({'cart-updated': {'count': _get_cart_count(request)}})
+                resp['HX-Trigger'] = json.dumps({'cart-updated': {'count': get_cart_count(request)}})
                 return resp
             return redirect('catalog:product_list')
 
@@ -449,8 +473,10 @@ def add_bundle_to_cart_view(request):
                 cart_items, product, variant_id, variant, qty, price_override=price_in_bundle
             )
 
-        request.session['cart_items'] = cart_items
-        request.session.modified = True
+        if request.user.is_authenticated:
+            save_cart_to_db(request, cart_items)
+        else:
+            save_cart_to_session(request, cart_items)
 
         if request.headers.get('HX-Request'):
             total = sum(i.get('subtotal', 0) for i in cart_items)
@@ -460,7 +486,7 @@ def add_bundle_to_cart_view(request):
             })
             resp['HX-Trigger'] = json.dumps({
                 'cart-updated': {
-                    'count': _get_cart_count(request),
+                    'count': get_cart_count(request),
                     'total': total,
                 }
             })
@@ -475,7 +501,7 @@ def add_bundle_to_cart_view(request):
             'total': total,
             'cart_error': 'Укажите набор (bundle_id).',
         })
-        resp['HX-Trigger'] = json.dumps({'cart-updated': {'count': _get_cart_count(request)}})
+        resp['HX-Trigger'] = json.dumps({'cart-updated': {'count': get_cart_count(request)}})
         return resp
     return redirect('catalog:product_list')
 
@@ -595,12 +621,8 @@ class ProductListView(ListView):
             if row['value'] not in char_options[name]:
                 char_options[name].append(row['value'])
         context['filter_characteristics'] = char_options
-        if self.request.user.is_authenticated:
-            context['favorite_product_ids'] = set(
-                Favorite.objects.filter(user=self.request.user).values_list('product_id', flat=True)
-            )
-        else:
-            context['favorite_product_ids'] = set()
+        from .cart_services import get_favorite_product_ids
+        context['favorite_product_ids'] = get_favorite_product_ids(self.request)
         selected_city_id = self.request.session.get('selected_city_id')
         stock_total_qs = (
             ProductStock.objects
@@ -635,12 +657,8 @@ class ProductDetailView(DetailView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        if self.request.user.is_authenticated:
-            context['is_favorite'] = Favorite.objects.filter(
-                user=self.request.user, product=self.object
-            ).exists()
-        else:
-            context['is_favorite'] = False
+        from .cart_services import is_favorite
+        context['is_favorite'] = is_favorite(self.request, self.object.pk)
         selected_city_id = self.request.session.get('selected_city_id')
 
         # Остатки: для товаров с вариантами — по варианту, иначе — по товару
@@ -688,30 +706,39 @@ class ProductDetailView(DetailView):
         # Галерея фото: только основное + общие доп. фото (без фото вариантов — они показываются при выборе варианта)
         gallery = []
         seen = set()
-        if self.object.image:
-            url = self.request.build_absolute_uri(self.object.image.url)
-            gallery.append(url)
-            seen.add(url)
-        for img in self.object.images.all():
-            url = self.request.build_absolute_uri(img.image.url)
-            if url not in seen:
+        try:
+            if self.object.image:
+                url = self.request.build_absolute_uri(self.object.image.url)
                 gallery.append(url)
                 seen.add(url)
+            for img in self.object.images.all():
+                if img.image:
+                    url = self.request.build_absolute_uri(img.image.url)
+                    if url not in seen:
+                        gallery.append(url)
+                        seen.add(url)
+        except (ValueError, OSError):
+            pass  # файл удалён или некорректный путь
         context['product_gallery'] = gallery
 
         # Данные для Alpine.js (json_script) — избегаем проблем с x-data в атрибуте
+        def _safe_image_url(img_field):
+            try:
+                return self.request.build_absolute_uri(img_field.url) if img_field else ''
+            except (ValueError, OSError):
+                return ''
         variants_data = [
             {
                 'id': v.pk,
                 'name': v.name,
                 'price': float(v.price),
-                'imageUrl': self.request.build_absolute_uri(v.image.url) if v.image else '',
+                'imageUrl': _safe_image_url(v.image),
             }
             for v in self.object.variants.all()
         ]
         context['product_detail_data'] = {
             'variants': variants_data,
-            'productImage': self.request.build_absolute_uri(self.object.image.url) if self.object.image else '',
+            'productImage': _safe_image_url(self.object.image),
             'productPrice': float(self.object.price),
             'productGallery': gallery,
             'productCharacteristics': [[c.name, c.value] for c in self.object.characteristics.all()],
@@ -738,17 +765,24 @@ def favorite_list_view(request):
 
 
 @require_POST
-@login_required
 def toggle_favorite_view(request, product_id):
-    """Добавить или убрать товар из избранного. Редирект или JSON для HTMX."""
+    """Добавить или убрать товар из избранного. Анонимы — в сессию, при входе сольётся в профиль."""
     product = get_object_or_404(Product, pk=product_id, is_active=True)
-    fav, created = Favorite.objects.get_or_create(user=request.user, product=product)
-    if not created:
-        fav.delete()
-        is_favorite = False
+    if request.user.is_authenticated:
+        fav, created = Favorite.objects.get_or_create(user=request.user, product=product)
+        if not created:
+            fav.delete()
     else:
-        is_favorite = True
-    if request.headers.get('HX-Request'):
-        return JsonResponse({'ok': True, 'is_favorite': is_favorite})
+        ids = set(request.session.get('favorite_product_ids', []) or [])
+        if product_id in ids:
+            ids.discard(product_id)
+        else:
+            ids.add(product_id)
+        request.session['favorite_product_ids'] = list(ids)
+        request.session.modified = True
     next_url = request.POST.get('next') or request.GET.get('next') or product.get_absolute_url()
+    # Якорь #product-{id} — браузер прокрутит к карточке после перезагрузки
+    if '#' in next_url:
+        next_url = next_url.split('#')[0]
+    next_url = f'{next_url}#product-{product_id}'
     return redirect(next_url)

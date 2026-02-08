@@ -19,6 +19,7 @@ except ImportError:
 from django.conf import settings
 from django.db.models import Sum
 
+from catalog.cart_services import clear_cart, get_cart_items
 from catalog.models import City, PickupPoint, Product, ProductStock
 
 from .forms import CheckoutForm, PurchaseRequestForm
@@ -65,9 +66,6 @@ def _normalize_phone(phone):
     return re.sub(r'\D', '', str(phone).strip())
 
 
-def _get_cart_from_session(request):
-    """Корзина из сессии; возвращает список dict с ключами product_id, name, price, quantity, subtotal."""
-    return request.session.get('cart_items', []) or []
 
 
 def _discount_for_promo(subtotal, promo):
@@ -83,7 +81,7 @@ def checkout_view(request):
     ВРЕМЕННО: Заявка на покупку. Клиент оставляет телефон и Telegram,
     мы связываемся для оформления заказа.
     """
-    cart_items = _get_cart_from_session(request)
+    cart_items = get_cart_items(request)
 
     if request.method == 'GET':
         if not cart_items:
@@ -113,7 +111,7 @@ def checkout_view(request):
 
     # POST
     form = PurchaseRequestForm(request.POST)
-    cart_items = _get_cart_from_session(request)
+    cart_items = get_cart_items(request)
     if not cart_items:
         return redirect('orders:checkout')
 
@@ -132,6 +130,7 @@ def checkout_view(request):
     items_data = [
         {
             'product_id': item.get('product_id'),
+            'variant_name': item.get('variant_name'),
             'name': item.get('name', ''),
             'price': float(item.get('price', 0)),
             'quantity': item.get('quantity', 1),
@@ -146,8 +145,7 @@ def checkout_view(request):
         total=cart_total,
     )
 
-    request.session['cart_items'] = []
-    request.session.modified = True
+    clear_cart(request)
 
     return redirect('orders:request_created', request_id=req.pk)
 

@@ -1,0 +1,101 @@
+{% load catalog_tags %}
+<nav class="mb-6">
+  <a href="{% url 'catalog:product_list' %}" class="text-gray-400 hover:text-accent text-sm flex items-center gap-1">
+    <i data-lucide="arrow-left" class="w-4 h-4 inline-block"></i>
+    В каталог
+  </a>
+</nav>
+
+<h1 class="text-2xl font-light text-white mb-8">Корзина</h1>
+
+{% if cart_items %}
+  <div class="bg-dark-800 border border-dark-600 rounded-xl overflow-hidden">
+    <ul class="divide-y divide-dark-600">
+      {% for item in cart_items %}
+        <li class="p-4 flex flex-wrap gap-4 items-center">
+          <div class="w-20 h-20 rounded-lg bg-dark-600 flex-shrink-0 overflow-hidden">
+            {% if item.image_url %}
+              <img src="{{ item.image_url|absolute_uri:request }}" alt="" class="w-full h-full object-cover" />
+            {% else %}
+              <div class="w-full h-full flex items-center justify-center text-gray-500">
+                <i data-lucide="package" class="w-8 h-8"></i>
+              </div>
+            {% endif %}
+          </div>
+          <div class="flex-1 min-w-0">
+            {% if item.product_slug %}
+              <a href="{% url 'catalog:product_detail' item.product_slug %}" class="text-white hover:text-accent font-medium line-clamp-2">{{ item.name }}</a>
+            {% else %}
+              <span class="text-white font-medium line-clamp-2">{{ item.name }}</span>
+            {% endif %}
+            <p class="text-sm text-gray-400 mt-0.5">{{ item.price|price_format }} ₽ за шт.</p>
+            {% if selected_city and item.stock_in_city is not None %}
+              {% if item.stock_in_city > 0 %}
+            <p class="text-xs text-gray-500 mt-0.5">В наличии ({{ selected_city.name }}): {{ item.stock_in_city }} шт.</p>
+              {% elif item.stock_total > 0 %}
+            <p class="text-xs text-gray-500 mt-0.5">В наличии, доставка</p>
+              {% else %}
+            <p class="text-xs text-accent mt-0.5">Под заказ</p>
+              {% endif %}
+            {% elif item.stock_total > 0 %}
+            <p class="text-xs text-gray-500 mt-0.5">Доступно к отправке: {{ item.stock_total }} шт.</p>
+            {% elif item.stock_total == 0 %}
+            <p class="text-xs text-accent mt-0.5">Под заказ</p>
+            {% endif %}
+          </div>
+          <div class="flex items-center gap-3 flex-shrink-0">
+            <form action="{% url 'catalog:cart_update' %}" method="post" class="flex items-center gap-2"
+                  hx-post="{% url 'catalog:cart_update' %}"
+                  hx-target="#main-content"
+                  hx-swap="outerHTML"
+                  hx-push-url="{% url 'catalog:cart' %}"
+                  hx-include="this">
+              {% csrf_token %}
+              <input type="hidden" name="product_id" value="{{ item.product_id }}" />
+              <input type="hidden" name="next" value="{% url 'catalog:cart' %}" />
+              <label class="sr-only">Количество</label>
+              <input type="number" name="quantity" value="{{ item.quantity }}" min="1" max="{% if item.stock_in_city is not None and item.stock_in_city > 0 %}{{ item.stock_in_city }}{% elif item.stock_total > 0 %}{{ item.stock_total }}{% else %}99{% endif %}"
+                     class="w-16 bg-dark-600 border border-dark-500 text-white text-center rounded-lg py-2 px-2 text-sm focus:outline-none focus:ring-1 focus:ring-accent" />
+              <button type="submit" class="text-gray-400 hover:text-accent text-sm whitespace-nowrap">Изменить</button>
+            </form>
+            <form action="{% url 'catalog:cart_update' %}" method="post" class="inline"
+                  hx-post="{% url 'catalog:cart_update' %}"
+                  hx-target="#main-content"
+                  hx-swap="outerHTML"
+                  hx-push-url="{% url 'catalog:cart' %}"
+                  hx-include="this">
+              {% csrf_token %}
+              <input type="hidden" name="product_id" value="{{ item.product_id }}" />
+              {% if item.variant_id %}<input type="hidden" name="variant_id" value="{{ item.variant_id }}" />{% endif %}
+              <input type="hidden" name="quantity" value="0" />
+              <input type="hidden" name="next" value="{% url 'catalog:cart' %}" />
+              <button type="submit" class="text-red-400 hover:text-red-300 text-sm">Удалить</button>
+            </form>
+          </div>
+          <div class="text-right w-24 flex-shrink-0">
+            <span class="font-bold text-white">{{ item.subtotal|price_format }} ₽</span>
+          </div>
+        </li>
+      {% endfor %}
+    </ul>
+    <div class="p-4 border-t border-dark-600 flex flex-wrap items-center justify-between gap-4">
+      <p class="text-lg font-bold text-white">Итого: {{ total|price_format }} ₽</p>
+      <a href="{% url 'orders:checkout' %}" class="bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-6 rounded-full text-sm uppercase tracking-wide transition-colors inline-flex items-center gap-2">
+        Оставить заявку
+        <i data-lucide="arrow-right" class="w-4 h-4"></i>
+      </a>
+    </div>
+  </div>
+{% else %}
+  <div class="bg-dark-800 border border-dark-600 rounded-xl p-12 text-center">
+    <div class="flex flex-col items-center justify-center text-gray-400">
+      <i data-lucide="shopping-cart" class="w-20 h-20 mb-4 opacity-50"></i>
+      <p class="text-lg mb-2">Корзина пуста</p>
+      <p class="text-sm mb-6">Добавьте товары из каталога, чтобы оформить заказ.</p>
+      <a href="{% url 'catalog:product_list' %}" class="inline-flex items-center gap-2 bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-6 rounded-full text-sm uppercase tracking-wide transition-colors">
+        Перейти в каталог
+        <i data-lucide="arrow-right" class="w-4 h-4"></i>
+      </a>
+    </div>
+  </div>
+{% endif %}

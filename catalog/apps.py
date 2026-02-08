@@ -5,3 +5,16 @@ class CatalogConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'catalog'
     verbose_name = 'Каталог'
+
+    def ready(self):
+        from django.contrib.auth.signals import user_logged_in
+
+        from .cart_services import merge_session_cart_into_user, merge_session_favorites_into_user
+
+        def _merge_cart_and_favorites(sender, request, user, **kwargs):
+            if not hasattr(request, 'user'):
+                request.user = user
+            merge_session_cart_into_user(request)
+            merge_session_favorites_into_user(request)
+
+        user_logged_in.connect(_merge_cart_and_favorites)

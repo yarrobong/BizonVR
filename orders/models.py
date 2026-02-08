@@ -221,13 +221,20 @@ class OrderItem(models.Model):
         default=False,
         help_text='Товар был заказан при отсутствии на складе',
     )
+    variant_name = models.CharField(
+        'Вариант',
+        max_length=100,
+        blank=True,
+        help_text='Цвет, размер и т.п. — для отображения в заказе',
+    )
 
     class Meta:
         verbose_name = 'Позиция заказа'
         verbose_name_plural = 'Позиции заказа'
 
     def __str__(self):
-        return f'{self.product.name} x {self.quantity}'
+        name = f'{self.product.name} ({self.variant_name})' if self.variant_name else self.product.name
+        return f'{name} x {self.quantity}'
 
     @property
     def subtotal(self):

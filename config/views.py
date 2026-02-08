@@ -3,13 +3,18 @@ import os
 
 from django.conf import settings
 from django.contrib import messages
+from django.core.cache import cache
 from django.http import FileResponse, Http404, HttpResponseRedirect
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.views.decorators.cache import cache_page
 
-from catalog.models import Category, ContactRequest, Favorite, Product, ProductTag
+from catalog.models import ContactRequest, Product, ProductTag
 
 from .forms import ContactForm
+from catalog.cache_utils import CACHE_KEY_PRODUCT_TAGS
+
+_CACHE_TTL = 300  # 5 минут
 
 # Фоны hero по умолчанию (Unsplash), если нет своих в static
 _HERO_DEFAULT_BG = [
@@ -68,8 +73,8 @@ def contacts_view(request):
     return render(request, 'contacts.html', {'form': form})
 
 
-def home_view(request):
-    """Главная страница: hero, лучшие предложения (товары из каталога), сетка категорий, баннер."""
+def _home_view_impl(request):
+    """Внутренняя реализация главной страницы."""
     featured_qs = (
         Product.objects.filter(is_active=True)
         .select_related('category')
@@ -80,8 +85,11 @@ def home_view(request):
     if tag_slug:
         featured_qs = featured_qs.filter(tags__slug=tag_slug).distinct()
     featured = list(featured_qs[:8])
-    product_tags = list(ProductTag.objects.order_by('order', 'name'))
-    categories = Category.objects.all()
+    product_tags = cache.get(CACHE_KEY_PRODUCT_TAGS)
+    if product_tags is None:
+        product_tags = list(ProductTag.objects.order_by('order', 'name'))
+        cache.set(CACHE_KEY_PRODUCT_TAGS, product_tags, _CACHE_TTL)
+    # categories берём из catalog_sections (context processor) — убираем дублирующий запрос
 
     # Фоны: свои из static или дефолтные; слайд «Трейд-ин» — всегда media/hero/tradein.webp
     hero_dir = settings.BASE_DIR / 'static' / 'images' / 'hero'
@@ -133,17 +141,23 @@ def home_view(request):
         },
     ]
     hero_slide_width_pct = (100 // len(hero_slides)) if hero_slides else 25
-    favorite_product_ids = set()
-    if request.user.is_authenticated:
-        favorite_product_ids = set(
-            Favorite.objects.filter(user=request.user, product__in=featured).values_list('product_id', flat=True)
-        )
+    from catalog.cart_services import get_favorite_product_ids
+    favorite_product_ids = get_favorite_product_ids(request)
     return render(request, 'home.html', {
         'featured_products': featured,
         'product_tags': product_tags,
         'current_tag': tag_slug,
-        'categories': categories,
         'hero_slides': hero_slides,
         'hero_slide_width_pct': hero_slide_width_pct,
         'favorite_product_ids': favorite_product_ids,
     })
+
+
+_home_view_cached = cache_page(_CACHE_TTL, key_prefix='home_anon')(_home_view_impl)
+
+
+def home_view(request):
+    """Главная страница: hero, лучшие предложения, сетка категорий. Кэш для анонимных."""
+    if request.user.is_authenticated:
+        return _home_view_impl(request)
+    return _home_view_cached(request)

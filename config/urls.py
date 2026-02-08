@@ -33,9 +33,6 @@ urlpatterns = [
     path('catalog/', include('catalog.urls')),
     path('', home_view, name='home'),
 ]
-if getattr(settings, 'DEBUG', False):
-    urlpatterns += [path('silk/', include('silk.urls'))]
-
 # Медиа: в DEBUG или SERVE_MEDIA=1 — раздаём через serve_media
 if settings.DEBUG or config('SERVE_MEDIA', default=False, cast=bool):
     urlpatterns = [re_path(r'^media/(?P<path>.*)$', serve_media)] + urlpatterns

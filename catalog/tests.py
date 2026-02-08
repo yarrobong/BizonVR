@@ -65,11 +65,12 @@ class FavoriteTest(TestCase):
             is_active=True,
         )
 
-    def test_toggle_favorite_requires_login(self):
+    def test_toggle_favorite_anonymous_stores_in_session(self):
+        """Аноним может добавлять в избранное — сохраняется в сессии."""
         url = reverse('catalog:toggle_favorite', kwargs={'product_id': self.product.pk})
-        resp = self.client.post(url, {})
+        resp = self.client.post(url, {'next': '/'})
         self.assertEqual(resp.status_code, 302)
-        self.assertTrue(resp.url.startswith(reverse('accounts:login')))
+        self.assertIn(self.product.pk, self.client.session.get('favorite_product_ids', []))
 
     def test_toggle_favorite_add_and_remove(self):
         self.client.force_login(self.user)

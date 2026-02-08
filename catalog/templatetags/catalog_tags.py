@@ -1,5 +1,7 @@
 """Шаблонные теги для каталога."""
+import json
 from django import template
+from django.utils.safestring import mark_safe
 
 register = template.Library()
 
@@ -101,3 +103,9 @@ def get_item(d, key):
     if not isinstance(d, dict):
         return 0
     return d.get(key, 0)
+
+
+@register.filter
+def to_json(value):
+    """Сериализовать значение в JSON для использования в JavaScript."""
+    return mark_safe(json.dumps(value, default=str))

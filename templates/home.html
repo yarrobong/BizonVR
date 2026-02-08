@@ -183,7 +183,6 @@
           </div>
           {% endif %}
           <div class="absolute top-4 right-4 z-10 flex flex-col space-y-2 opacity-0 group-hover:opacity-100 transition-opacity">
-            {% if user.is_authenticated %}
             <form action="{% url 'catalog:toggle_favorite' product.pk %}" method="post" class="inline" hx-boost="false">
               {% csrf_token %}
               <input type="hidden" name="next" value="{{ request.get_full_path }}" />
@@ -191,9 +190,6 @@
                 <i data-lucide="heart" class="w-4 h-4 inline-block {% if product.id in favorite_product_ids %}fill-current{% endif %}"></i>
               </button>
             </form>
-            {% else %}
-            <a href="{% url 'accounts:login' %}?next={{ request.get_full_path }}" class="bg-dark-700 p-1.5 rounded-full hover:bg-accent hover:text-dark-900 cursor-pointer text-gray-400 inline-block" title="Войдите, чтобы добавить в избранное"><i data-lucide="heart" class="w-4 h-4 inline-block"></i></a>
-            {% endif %}
             <div class="bg-dark-700 p-1.5 rounded-full hover:bg-accent hover:text-dark-900 cursor-pointer text-gray-400"><i data-lucide="git-compare" class="w-4 h-4 inline-block"></i></div>
           </div>
           <a href="{% url 'catalog:product_detail' product.slug %}" class="block relative w-full aspect-square mb-4 overflow-hidden rounded-lg bg-white/5 flex items-center justify-center">
@@ -279,9 +275,10 @@
       </div>
     </div>
   </div>
-  {% if categories %}
+  {% if catalog_sections %}
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
-      {% for category in categories %}
+      {% for section in catalog_sections %}
+      {% for category in section.categories.all %}
         <a href="{% url 'catalog:product_list' %}?category={{ category.slug }}" class="bg-[#1a2b4a] rounded-xl relative overflow-hidden group cursor-pointer h-40 flex flex-col justify-end p-6">
           <div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-105 opacity-50" style="background-image: url('https://picsum.photos/seed/{{ category.slug }}/600/400')"></div>
           <div class="relative z-20">
@@ -289,6 +286,7 @@
             <h3 class="text-lg font-medium text-white">{{ category.name }}</h3>
           </div>
         </a>
+      {% endfor %}
       {% endfor %}
     </div>
   {% endif %}

@@ -37,7 +37,7 @@ class OrderAdmin(admin.ModelAdmin):
 
 @admin.register(OrderItem)
 class OrderItemAdmin(admin.ModelAdmin):
-    list_display = ('order', 'product', 'quantity', 'price', 'is_on_request', 'subtotal_display')
+    list_display = ('order', 'product', 'variant_name', 'quantity', 'price', 'is_on_request', 'subtotal_display')
     list_filter = ('order',)
     raw_id_fields = ('order', 'product')
 

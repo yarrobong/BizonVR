@@ -364,6 +364,53 @@ class ProductStock(models.Model):
         return f'{self.product.name} @ {self.pickup_point}: {self.quantity}'
 
 
+class CartItem(models.Model):
+    """Позиция корзины: привязка к пользователю для сохранения между сессиями."""
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='cart_items',
+        verbose_name='Пользователь',
+    )
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name='cart_items',
+        verbose_name='Товар',
+    )
+    variant = models.ForeignKey(
+        ProductVariant,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='cart_items',
+        verbose_name='Вариант',
+    )
+    quantity = models.PositiveIntegerField('Количество', default=1)
+
+    class Meta:
+        verbose_name = 'Позиция корзины'
+        verbose_name_plural = 'Позиции корзины'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['user', 'product'],
+                condition=models.Q(variant__isnull=True),
+                name='cart_user_product_no_variant_unique',
+            ),
+            models.UniqueConstraint(
+                fields=['user', 'product', 'variant'],
+                condition=models.Q(variant__isnull=False),
+                name='cart_user_product_variant_unique',
+            ),
+        ]
+        ordering = ['product', 'variant']
+
+    def __str__(self):
+        if self.variant:
+            return f'{self.user} — {self.product.name} ({self.variant.name}) x {self.quantity}'
+        return f'{self.user} — {self.product.name} x {self.quantity}'
+
+
 class Favorite(models.Model):
     """Избранное: пользователь + товар (уникальная пара)."""
     user = models.ForeignKey(

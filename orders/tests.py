@@ -7,7 +7,7 @@ from django.urls import reverse
 
 from catalog.models import Category, Product
 
-from .models import Order, OrderItem
+from .models import Order, OrderItem, PurchaseRequest
 
 User = get_user_model()
 
@@ -44,31 +44,24 @@ class CheckoutTest(TestCase):
             is_active=True,
         )
 
-    def test_checkout_creates_order_and_clears_cart(self):
-        # Добавляем товар в корзину через view, чтобы сессия точно содержала cart_items
+    def test_checkout_creates_request_and_clears_cart(self):
+        """Оформление заявки: создаётся PurchaseRequest, корзина очищается."""
         add_url = reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk})
         self.client.post(add_url, {'quantity': 2})
         url = reverse('orders:checkout')
         resp = self.client.post(url, {
             'phone': '+7 999 123 45 67',
-            'first_name': 'Иван',
-            'last_name': 'Иванов',
-            'email': 'guest@example.com',
-            'address': 'Москва, ул. Тестовая, 1',
-            'delivery_type': 'courier',
-            'comment': '',
+            'telegram': '@testuser',
         })
         self.assertEqual(resp.status_code, 302, msg=f'Got {resp.status_code}. URL: {getattr(resp, "url", "")}. Content: {resp.content.decode()[:300] if resp.content else ""}')
-        self.assertIn('/orders/created/', resp.url, msg=f'Expected redirect to order_created, got {resp.url}')
-        order = Order.objects.first()
-        self.assertIsNotNone(order, msg=f'Order was not created. Redirect URL: {resp.url}')
-        self.assertEqual(resp.url, reverse('orders:order_created', kwargs={'order_id': order.pk}))
-        self.assertIsNone(order.user_id)
-        self.assertEqual(order.total, Decimal('200.00'))
-        self.assertEqual(order.phone, '+7 999 123 45 67')
-        self.assertEqual(OrderItem.objects.filter(order=order).count(), 1)
-        # После оформления корзина в сессии должна быть пуста
-        self.client.get(resp.url)  # следовать редиректу, чтобы обновить сессию на клиенте
+        self.assertIn('request-created', resp.url, msg=f'Expected redirect to request_created, got {resp.url}')
+        req = PurchaseRequest.objects.first()
+        self.assertIsNotNone(req, msg=f'PurchaseRequest was not created. Redirect URL: {resp.url}')
+        self.assertEqual(req.total, Decimal('200.00'))
+        self.assertEqual(req.phone, '+7 999 123 45 67')
+        self.assertEqual(len(req.items), 1)
+        # После оформления корзина пуста (сессия для анонима)
+        self.client.get(resp.url)
         self.assertEqual(self.client.session.get('cart_items', []), [])
 
 

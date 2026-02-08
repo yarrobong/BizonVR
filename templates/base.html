@@ -625,21 +625,12 @@
               <span>Войти</span>
             </a>
           {% endif %}
-          {% if user.is_authenticated %}
           <a href="{% url 'catalog:favorites' %}" class="flex flex-col items-center group" title="Избранное">
             <div class="relative">
               <i data-lucide="heart" class="text-white group-hover:text-accent transition-colors w-6 h-6 inline-block"></i>
               <span id="favorites-count" class="absolute -top-1 -right-1 w-4 h-4 bg-dark-700 rounded-full text-[10px] flex items-center justify-center border border-dark-800">{{ favorites_count|default:0 }}</span>
             </div>
           </a>
-          {% else %}
-          <a href="{% url 'accounts:login' %}?next={{ request.path }}" class="flex flex-col items-center group" title="Войдите, чтобы видеть избранное" hx-boost="false">
-            <div class="relative">
-              <i data-lucide="heart" class="text-white group-hover:text-accent transition-colors w-6 h-6 inline-block"></i>
-              <span class="absolute -top-1 -right-1 w-4 h-4 bg-dark-700 rounded-full text-[10px] flex items-center justify-center border border-dark-800">0</span>
-            </div>
-          </a>
-          {% endif %}
           {% if cities %}
           <div class="relative" x-data="{ cityOpen: false }" @click.outside="cityOpen = false">
             <button type="button" @click="cityOpen = !cityOpen"

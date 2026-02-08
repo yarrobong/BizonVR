@@ -212,6 +212,38 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 
 ---
 
+## Медиафайлы (media/)
+
+**Текущая схема:** `./media` монтируется с хоста (bind mount). В каталоге:
+- `media/hero/` — фоны hero-слайдов (в git)
+- `media/products/` — фото товаров (загрузки через админку, **не в git**)
+
+**Почему не Docker volume:** Раньше использовался named volume `media_volume`. При смене конфигурации (например, переход на bind mount) данные в volume оставались «заперты» — контейнер переставал их видеть. Hero-фото из git не попадали в пустой volume. Поэтому используем bind mount: всё лежит на хосте, `git pull` подтягивает hero, загрузки товаров сохраняются в том же каталоге.
+
+**Бэкап media (рекомендуется):**
+```bash
+tar -czvf media-backup-$(date +%Y%m%d).tar.gz -C /opt/BizonVR media/
+```
+
+**Миграция с volume на bind mount** (если когда-то вернёте volume и потом снова перейдёте):
+```bash
+cd /opt/BizonVR
+# Имя volume: docker volume ls | grep media
+docker run --rm -v ИМЯ_VOLUME:/from -v $(pwd)/media:/to alpine sh -c "cp -a /from/. /to/"
+```
+
+---
+
+## Частые проблемы
+
+**Cross-Origin-Opener-Policy (COOP) ignored** — предупреждение появляется при доступе по HTTP. Решение: использовать HTTPS (см. раздел про SSL). COOP работает только для надёжных origin (HTTPS, localhost).
+
+**favicon.ico 404** — иконка доступна по `/favicon.ico` (редирект на SVG) и в шапке страницы. Убедитесь, что `collectstatic` выполнен и `STATIC_URL` настроен.
+
+**500 на странице товара** — проверьте логи (`docker compose logs web`). Часто связано с отсутствующими файлами изображений в `media/` или устаревшей схемой БД (миграции).
+
+---
+
 ## Чек-лист (на сервере)
 
 - [ ] Репозиторий склонирован в `/opt/BizonVR`
