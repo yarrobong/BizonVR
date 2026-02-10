@@ -274,7 +274,7 @@ class ProductAdmin(admin.ModelAdmin):
     image_preview.short_description = 'Превью'
 
     def get_queryset(self, request):
-        return super().get_queryset(request).select_related('category').prefetch_related('tags', 'variants', 'characteristics', 'variants__image', 'images')
+        return super().get_queryset(request).select_related('category').prefetch_related('tags', 'variants', 'characteristics', 'images')
 
     @admin.action(description='📥 Скачать каталог с картинками (ZIP)')
     def export_catalog_with_images(self, request, queryset):
