@@ -1,5 +1,13 @@
+import csv
+import io
+import os
+import zipfile
+from datetime import datetime
+
+from django.conf import settings
 from django.contrib import admin
 from django.contrib import messages
+from django.http import HttpResponse
 from django.utils.html import format_html
 
 from .cache_utils import invalidate_catalog_cache
@@ -253,6 +261,7 @@ class ProductAdmin(admin.ModelAdmin):
     inlines = (ProductVariantInline, ProductImageInline, ProductCharacteristicInline, ProductStockInlineForProduct)
     readonly_fields = ('created_at', 'updated_at', 'image_preview')
     filter_horizontal = ('tags',)
+    actions = ('export_catalog_with_images',)
     fieldsets = (
         (None, {
             'fields': ('name', 'slug', 'category', 'price', 'description', 'image_preview', 'image', 'is_active', 'allow_order_on_request', 'option_label', 'tags', 'created_at', 'updated_at'),
@@ -265,7 +274,115 @@ class ProductAdmin(admin.ModelAdmin):
     image_preview.short_description = 'Превью'
 
     def get_queryset(self, request):
-        return super().get_queryset(request).select_related('category').prefetch_related('tags', 'variants')
+        return super().get_queryset(request).select_related('category').prefetch_related('tags', 'variants', 'characteristics', 'variants__image', 'images')
+
+    @admin.action(description='📥 Скачать каталог с картинками (ZIP)')
+    def export_catalog_with_images(self, request, queryset):
+        """
+        Экспортирует выбранные товары (или все, если ничего не выбрано) в ZIP архив:
+        - CSV файл с данными товаров
+        - Папка images/ со всеми изображениями
+        """
+        # Если ничего не выбрано, экспортируем все активные товары
+        if not queryset.exists():
+            products = Product.objects.filter(is_active=True).select_related('category').prefetch_related(
+                'characteristics', 'variants', 'images', 'tags'
+            )
+        else:
+            products = queryset.select_related('category').prefetch_related(
+                'characteristics', 'variants', 'images', 'tags'
+            )
+
+        # Создаём ZIP архив в памяти
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            # Создаём CSV файл
+            csv_buffer = io.StringIO()
+            writer = csv.writer(csv_buffer, delimiter=';', quoting=csv.QUOTE_MINIMAL)
+
+            # Заголовки CSV
+            writer.writerow([
+                'Название',
+                'Цена продажи',
+                'Артикул (slug)',
+                'Категория',
+                'Описание',
+                'Характеристики',
+            ])
+
+            # Собираем изображения
+            media_root = settings.MEDIA_ROOT
+            images_added = set()  # Чтобы не дублировать одинаковые файлы
+
+            for product in products.order_by('category__name', 'name'):
+                # Собираем характеристики в строку
+                characteristics = []
+                for char in product.characteristics.all().order_by('name'):
+                    characteristics.append(f'{char.name}: {char.value}')
+                characteristics_str = '; '.join(characteristics)
+
+                # Записываем строку товара в CSV
+                writer.writerow([
+                    product.name,
+                    str(product.price),
+                    product.slug,
+                    product.category.name,
+                    product.description or '',
+                    characteristics_str,
+                ])
+
+                # Добавляем основное изображение товара
+                if product.image:
+                    image_path = product.image.path
+                    if os.path.exists(image_path) and image_path not in images_added:
+                        # Имя файла в архиве: images/product_slug_main.jpg
+                        archive_name = f'images/{product.slug}_main{os.path.splitext(image_path)[1]}'
+                        zip_file.write(image_path, archive_name)
+                        images_added.add(image_path)
+
+                # Добавляем изображения вариантов
+                for variant in product.variants.all():
+                    if variant.image:
+                        variant_image_path = variant.image.path
+                        if os.path.exists(variant_image_path) and variant_image_path not in images_added:
+                            # Имя файла: images/product_slug_variant_variantname.jpg
+                            safe_variant_name = variant.name.replace('/', '_').replace('\\', '_')
+                            archive_name = f'images/{product.slug}_variant_{safe_variant_name}{os.path.splitext(variant_image_path)[1]}'
+                            zip_file.write(variant_image_path, archive_name)
+                            images_added.add(variant_image_path)
+
+                # Добавляем дополнительные изображения товара
+                for product_image in product.images.all().order_by('order', 'id'):
+                    if product_image.image:
+                        extra_image_path = product_image.image.path
+                        if os.path.exists(extra_image_path) and extra_image_path not in images_added:
+                            # Имя файла: images/product_slug_extra_N.jpg
+                            archive_name = f'images/{product.slug}_extra_{product_image.order}{os.path.splitext(extra_image_path)[1]}'
+                            zip_file.write(extra_image_path, archive_name)
+                            images_added.add(extra_image_path)
+
+            # Добавляем CSV файл в архив
+            csv_content = csv_buffer.getvalue().encode('utf-8-sig')  # UTF-8 BOM для Excel
+            zip_file.writestr('catalog_export.csv', csv_content)
+
+        # Подготавливаем ответ
+        zip_buffer.seek(0)
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f'catalog_export_{timestamp}.zip'
+
+        response = HttpResponse(zip_buffer.read(), content_type='application/zip')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        response['Content-Length'] = len(zip_buffer.getvalue())
+
+        products_count = products.count()
+        images_count = len(images_added)
+        self.message_user(
+            request,
+            f'Экспорт завершён: {products_count} товаров, {images_count} изображений. Файл скачивается...',
+            messages.SUCCESS
+        )
+
+        return response
 
 
 @admin.register(CartItem)
