@@ -7,7 +7,8 @@ from datetime import datetime
 from django.conf import settings
 from django.contrib import admin
 from django.contrib import messages
-from django.http import HttpResponse
+from django.http import HttpResponse, HttpResponseRedirect
+from django.urls import path
 from django.utils.html import format_html
 
 from .cache_utils import invalidate_catalog_cache
@@ -261,7 +262,7 @@ class ProductAdmin(admin.ModelAdmin):
     inlines = (ProductVariantInline, ProductImageInline, ProductCharacteristicInline, ProductStockInlineForProduct)
     readonly_fields = ('created_at', 'updated_at', 'image_preview')
     filter_horizontal = ('tags',)
-    actions = ('export_catalog_with_images',)
+    actions = ('export_catalog_with_images', 'backup_full_catalog',)
     fieldsets = (
         (None, {
             'fields': ('name', 'slug', 'category', 'price', 'description', 'image_preview', 'image', 'is_active', 'allow_order_on_request', 'option_label', 'tags', 'created_at', 'updated_at'),
@@ -275,6 +276,11 @@ class ProductAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         return super().get_queryset(request).select_related('category').prefetch_related('tags', 'variants', 'characteristics', 'images')
+
+    def changelist_view(self, request, extra_context=None):
+        extra_context = extra_context or {}
+        extra_context['restore_backup_url'] = 'admin:catalog_product_restore_backup'
+        return super().changelist_view(request, extra_context=extra_context)
 
     @admin.action(description='📥 Скачать каталог с картинками (ZIP)')
     def export_catalog_with_images(self, request, queryset):
@@ -383,6 +389,119 @@ class ProductAdmin(admin.ModelAdmin):
         )
 
         return response
+
+    @admin.action(description='💾 Создать полный бэкап каталога (ZIP)')
+    def backup_full_catalog(self, request, queryset):
+        """
+        Создаёт полный бэкап всего каталога: все модели в JSON + изображения в ZIP архиве.
+        Использует команду management backup_catalog.
+        """
+        from django.core.management import call_command
+        from io import BytesIO
+        
+        # Создаём бэкап в памяти
+        output_buffer = BytesIO()
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        temp_filename = f'/tmp/catalog_backup_{timestamp}.zip'
+        
+        try:
+            # Вызываем команду бэкапа
+            call_command('backup_catalog', output=temp_filename)
+            
+            # Читаем созданный файл
+            with open(temp_filename, 'rb') as f:
+                backup_data = f.read()
+            
+            # Удаляем временный файл
+            os.remove(temp_filename)
+            
+            # Отправляем файл пользователю
+            filename = f'catalog_backup_{timestamp}.zip'
+            response = HttpResponse(backup_data, content_type='application/zip')
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            response['Content-Length'] = len(backup_data)
+            
+            self.message_user(
+                request,
+                f'Полный бэкап каталога создан и скачивается: {filename}',
+                messages.SUCCESS
+            )
+            
+            return response
+            
+        except Exception as e:
+            import traceback
+            self.message_user(
+                request,
+                f'Ошибка при создании бэкапа: {str(e)}',
+                messages.ERROR
+            )
+            return HttpResponseRedirect(request.path)
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path('restore-backup/', self.admin_site.admin_view(self.restore_backup_view), name='catalog_product_restore_backup'),
+        ]
+        return custom_urls + urls
+
+    def restore_backup_view(self, request):
+        """Представление для восстановления каталога из бэкапа."""
+        from django.contrib.admin.views.decorators import staff_member_required
+        from django.template.response import TemplateResponse
+        
+        if request.method == 'POST':
+            backup_file = request.FILES.get('backup_file')
+            clear = request.POST.get('clear') == 'on'
+            
+            if not backup_file:
+                messages.error(request, 'Не выбран файл бэкапа')
+                context = {
+                    **self.admin_site.each_context(request),
+                    'title': 'Восстановление каталога из бэкапа',
+                    'opts': self.model._meta,
+                    'has_view_permission': True,
+                }
+                return TemplateResponse(request, 'admin/catalog/restore_backup.html', context)
+            
+            # Сохраняем загруженный файл во временную директорию
+            import tempfile
+            temp_dir = tempfile.mkdtemp()
+            temp_file_path = os.path.join(temp_dir, backup_file.name)
+            
+            try:
+                with open(temp_file_path, 'wb') as f:
+                    for chunk in backup_file.chunks():
+                        f.write(chunk)
+                
+                # Вызываем команду восстановления
+                from django.core.management import call_command
+                call_command('restore_catalog', temp_file_path, clear=clear)
+                
+                messages.success(request, 'Каталог успешно восстановлен из бэкапа!')
+                invalidate_catalog_cache()
+                
+            except Exception as e:
+                import traceback
+                error_msg = str(e)
+                self.stdout.write(traceback.format_exc())
+                messages.error(request, f'Ошибка при восстановлении: {error_msg}')
+            finally:
+                # Удаляем временный файл
+                if os.path.exists(temp_file_path):
+                    os.remove(temp_file_path)
+                if os.path.exists(temp_dir):
+                    os.rmdir(temp_dir)
+            
+            return HttpResponseRedirect('../../')
+        
+        context = {
+            **self.admin_site.each_context(request),
+            'title': 'Восстановление каталога из бэкапа',
+            'opts': self.model._meta,
+            'has_view_permission': True,
+        }
+        return TemplateResponse(request, 'admin/catalog/restore_backup.html', context)
 
 
 @admin.register(CartItem)

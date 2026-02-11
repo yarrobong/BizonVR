@@ -1,0 +1,70 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls static admin_modify %}
+
+{% block title %}Восстановление каталога из бэкапа | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+<a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+&rsaquo; <a href="{% url 'admin:catalog_product_changelist' %}">Товары</a>
+&rsaquo; Восстановление из бэкапа
+</div>
+{% endblock %}
+
+{% block content %}
+<h1>Восстановление каталога из бэкапа</h1>
+
+<div style="max-width: 800px; margin: 20px 0;">
+    <div class="module" style="padding: 20px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px;">
+        <h2 style="margin-top: 0;">Инструкция</h2>
+        <ol>
+            <li>Выберите ZIP файл с бэкапом каталога (созданный через действие "Создать полный бэкап каталога")</li>
+            <li>При необходимости отметьте опцию "Очистить существующие данные" для полной замены каталога</li>
+            <li>Нажмите "Восстановить" для начала процесса восстановления</li>
+        </ol>
+        
+        <div style="margin-top: 20px; padding: 15px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px;">
+            <strong>⚠️ Внимание:</strong> Восстановление из бэкапа заменит все данные каталога. 
+            Рекомендуется создать новый бэкап перед восстановлением, если вы хотите сохранить текущее состояние.
+        </div>
+    </div>
+
+    <form method="post" enctype="multipart/form-data" style="margin-top: 30px;">
+        {% csrf_token %}
+        
+        <div class="form-row" style="margin-bottom: 20px;">
+            <div>
+                <label for="id_backup_file" style="display: block; margin-bottom: 5px; font-weight: bold;">
+                    Файл бэкапа (ZIP):
+                </label>
+                <input type="file" name="backup_file" id="id_backup_file" accept=".zip" required 
+                       style="padding: 8px; border: 1px solid #ccc; border-radius: 4px; width: 100%; max-width: 500px;">
+                <p class="help" style="margin-top: 5px; color: #666; font-size: 12px;">
+                    Выберите ZIP файл, созданный через действие "Создать полный бэкап каталога"
+                </p>
+            </div>
+        </div>
+        
+        <div class="form-row" style="margin-bottom: 20px;">
+            <div>
+                <label style="display: flex; align-items: center; cursor: pointer;">
+                    <input type="checkbox" name="clear" id="id_clear" style="margin-right: 8px;">
+                    <span style="font-weight: bold;">Очистить существующие данные каталога перед восстановлением</span>
+                </label>
+                <p class="help" style="margin-top: 5px; color: #666; font-size: 12px;">
+                    Если отмечено, все существующие разделы, категории, товары и связанные данные будут удалены перед восстановлением из бэкапа.
+                </p>
+            </div>
+        </div>
+        
+        <div class="submit-row" style="margin-top: 30px;">
+            <input type="submit" value="Восстановить каталог" class="default" 
+                   style="padding: 10px 20px; background: #417690; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">
+            <a href="{% url 'admin:catalog_product_changelist' %}" 
+               style="margin-left: 10px; padding: 10px 20px; background: #ba2121; color: white; text-decoration: none; border-radius: 4px; display: inline-block;">
+                Отмена
+            </a>
+        </div>
+    </form>
+</div>
+{% endblock %}
