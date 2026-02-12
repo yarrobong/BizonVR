@@ -81,6 +81,11 @@ def absolute_uri(url, request):
     url = str(url).strip()
     if url.startswith(('http://', 'https://')):
         return url
+    # Относительный URL без ведущего / браузер разрешает от текущего path — ломает /catalog/ и т.д.
+    if not url.startswith('/'):
+        url = '/' + url
+    if not request:
+        return url
     return request.build_absolute_uri(url)
 
 

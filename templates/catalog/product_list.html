@@ -163,7 +163,10 @@
             </div>
             {% endif %}
             {% if product.image %}
-              <img src="{{ product.image.url|absolute_uri:request }}" alt="{{ product.name }}" class="w-full h-full object-contain p-4 group-hover:scale-105 transition-transform duration-300" />
+              <img src="{{ product.image.url|absolute_uri:request }}" alt="{{ product.name }}" class="w-full h-full object-contain p-4 group-hover:scale-105 transition-transform duration-300 product-card-img" loading="lazy" onerror="this.classList.add('!hidden'); this.nextElementSibling.classList.remove('hidden'); if (typeof lucide !== 'undefined') lucide.createIcons();" />
+              <div class="hidden w-full h-full flex items-center justify-center text-gray-500 product-card-placeholder">
+                <i data-lucide="image-off" class="w-16 h-16 inline-block"></i>
+              </div>
             {% else %}
               <div class="w-full h-full flex items-center justify-center text-gray-500">
                 <i data-lucide="image-off" class="w-16 h-16 inline-block"></i>
