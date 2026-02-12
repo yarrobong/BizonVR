@@ -1,0 +1,17 @@
+# Media uploads (product images, etc.)
+media/products/
+
+# Environment
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+.eggs/
+
+# Node
+node_modules/
