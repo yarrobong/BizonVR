@@ -10,15 +10,40 @@ module.exports = {
   theme: {
     extend: {
       screens: { '2xl': '1535px' },
-      fontFamily: { sans: ['Inter', 'sans-serif'] },
+      fontFamily: {
+        sans: [
+          'Inter',
+          '-apple-system',
+          'BlinkMacSystemFont',
+          'Segoe UI',
+          'Roboto',
+          'Helvetica Neue',
+          'Arial',
+          'sans-serif',
+        ],
+      },
       colors: {
-        accent: '#00d4ff',
-        'accent-hover': '#00b4e6',
-        dark: { 900: '#111111', 800: '#1a1a1a', 700: '#252525', 600: '#333333' },
+        accent: {
+          DEFAULT: '#00D4FF',
+          hover: '#00B8E6',
+          purple: '#9D00FF',
+        },
+        dark: {
+          900: '#0B0D14',
+          800: '#151923',
+          700: '#1F2532',
+          600: '#2A3042',
+        },
+      },
+      boxShadow: {
+        neon: '0 0 10px rgba(0, 212, 255, 0.5), 0 0 20px rgba(0, 212, 255, 0.3)',
+        'neon-purple':
+          '0 0 10px rgba(157, 0, 255, 0.5), 0 0 20px rgba(157, 0, 255, 0.3)',
+        glass: '0 8px 32px 0 rgba(0, 0, 0, 0.37)',
       },
     },
   },
   blocklist: ['pt-[var(--header-height)]'],
-  safelist: ['md:flex', 'lg:grid-cols-[minmax(500px,600px)_1fr]', '2xl:grid-cols-[620px_1fr]'],
+  safelist: ['md:flex', 'lg:grid-cols-[minmax(500px,600px)_1fr]', '2xl:grid-cols-[620px_1fr]', 'top-[5rem]', 'top-[12rem]', 'h-[calc(100vh-5rem)]', 'h-[calc(100vh-12rem)]', 'hidden', 'lg:block', 'lg:hidden'],
   plugins: [],
 };

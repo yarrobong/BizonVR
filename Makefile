@@ -53,6 +53,18 @@ pull:
 migrate:
 	$(COMPOSE_BASE) exec web python manage.py migrate
 
+# Миграции и данные в контейнере prod (когда запущен make up / make restart)
+migrate-prod:
+	$(COMPOSE_PROD) exec web python manage.py migrate
+load-data-prod:
+	$(COMPOSE_PROD) exec web python manage.py load_catalog_data
+shell-prod:
+	$(COMPOSE_PROD) exec web python manage.py shell
+
+# Сбросить кэш каталога (города/разделы), чтобы на сайте отобразились города из БД
+clear-cache-prod:
+	$(COMPOSE_PROD) exec web python manage.py clear_catalog_cache
+
 load-data:
 	$(COMPOSE_BASE) exec web python manage.py load_catalog_data
 

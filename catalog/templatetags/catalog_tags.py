@@ -106,6 +106,12 @@ def get_item(d, key):
 
 
 @register.filter
+def get_dict_item(d, key):
+    """Вернуть d.get(key) для словаря (None если ключа нет)."""
+    return d.get(key) if isinstance(d, dict) else None
+
+
+@register.filter
 def to_json(value):
     """Сериализовать значение в JSON для использования в JavaScript."""
     return mark_safe(json.dumps(value, default=str))

@@ -4,8 +4,8 @@
 {% block title %}BizonVR — VR оборудование и аттракционы{% endblock %}
 
 {% block content %}
-<!-- Мобильная шапка: подробный контейнер скроллится; когда исчезает — плавно появляется фиксированный поиск -->
-<div class="mobile-header" x-data="{ cityOpen: false, showFixedSearch: false }" @click.outside="cityOpen = false"
+<!-- Мобильная шапка: только на мобильных; на десктопе скрыта -->
+<div class="mobile-header md:hidden" x-data="{ cityOpen: false, showFixedSearch: false }" @click.outside="cityOpen = false"
      x-init="
        const check = () => { showFixedSearch = window.scrollY > 100 };
        let raf = null;
@@ -65,8 +65,7 @@
 
 
 <!-- Hero Carousel: карточки с собственным фоном, соотношение 16:5 на всех устройствах -->
-<section class="hero-carousel relative w-full max-w-full min-w-0 min-h-[200px] bg-dark-900 touch-pan-y md:mx-0"
-         style="overflow: hidden;"
+<section class="hero-carousel relative w-full max-w-full min-w-0 min-h-[200px] bg-dark-900 touch-pan-y md:mx-0 mt-4 md:mt-6"
          x-data="{
            current: 0,
            total: {{ hero_slides|length }},
@@ -99,23 +98,25 @@
          x-init="scheduleNext(); $watch('current', () => scheduleNext())"
          @touchstart="handleTouchStart($event)"
          @touchend="handleTouchEnd($event)">
-  <div class="hero-carousel-inner absolute inset-0 md:overflow-hidden">
-    <div class="container mx-auto px-4 h-full flex flex-col justify-center relative z-10 min-w-0 overflow-hidden">
+  <div class="hero-carousel-inner absolute inset-0">
+    <div class="container mx-auto px-4 h-full flex flex-col justify-center relative z-10 min-w-0 w-full">
       <div class="hero-slides-track relative flex"
            style="--hero-current: 0; --hero-total: {{ hero_slides|length }}; transition: transform 0.6s cubic-bezier(0.32, 0.72, 0, 1);"
            :style="'--hero-current: ' + current + '; --hero-total: ' + total + '; transition: transform 0.6s cubic-bezier(0.32, 0.72, 0, 1);'">
         {% for slide in hero_slides %}
-        <div class="hero-slide hero-slide-card flex-shrink-0 px-2 md:px-2 box-border md:w-1/4 h-full overflow-hidden rounded-xl md:rounded-none"
-             data-bg-url="{{ slide.bg_url }}"
-             data-bg-position="{{ slide.bg_position|default:'center center' }}"
-             x-init="$el.style.backgroundImage='url(\''+$el.dataset.bgUrl+'\')';$el.style.backgroundPosition=$el.dataset.bgPosition||'center center'"
-             style="background-size: cover; background-repeat: no-repeat;">
-          <div class="absolute inset-0 hero-slide-gradient z-[1] pointer-events-none"></div>
-          <div class="relative z-10 h-full flex flex-col justify-center px-4 md:px-2 hero-slide-content">
-            <div class="hero-slide-text-wrap md:max-w-xl">
-              <h2 class="text-xl md:text-5xl font-light text-white mb-2 md:mb-4 hero-slide-title">{{ slide.title }}</h2>
-              <p class="text-gray-300 text-xs md:text-base mb-4 md:mb-8 max-w-full md:max-w-md hero-slide-desc">{{ slide.description }}</p>
-              <a href="{{ slide.url }}" class="inline-block bg-accent hover:bg-accent-hover text-dark-900 font-bold py-2 px-4 md:py-3 md:px-8 rounded-full transition-colors text-xs md:text-sm uppercase tracking-wide hero-slide-btn">{{ slide.btn }}</a>
+        <div class="hero-slide">
+          <div class="hero-slide-card overflow-hidden"
+               data-bg-url="{{ slide.bg_url }}"
+               data-bg-position="{{ slide.bg_position|default:'center center' }}"
+               x-init="$el.style.backgroundImage='url(\''+$el.dataset.bgUrl+'\')';$el.style.backgroundPosition=$el.dataset.bgPosition||'center center'"
+               style="background-size: cover; background-repeat: no-repeat;">
+            <div class="absolute inset-0 hero-slide-gradient z-[1] pointer-events-none"></div>
+            <div class="relative z-10 h-full flex flex-col justify-center px-4 md:px-8 hero-slide-content">
+              <div class="hero-slide-text-wrap md:max-w-xl">
+                <h2 class="text-xl md:text-5xl font-light text-white mb-2 md:mb-4 hero-slide-title">{{ slide.title }}</h2>
+                <p class="text-gray-300 text-xs md:text-base mb-4 md:mb-8 max-w-full md:max-w-md hero-slide-desc">{{ slide.description }}</p>
+                <a href="{{ slide.url }}" class="inline-block bg-accent hover:bg-accent-hover text-dark-900 font-bold py-2 px-4 md:py-3 md:px-8 rounded-full transition-colors text-xs md:text-sm uppercase tracking-wide hero-slide-btn">{{ slide.btn }}</a>
+              </div>
             </div>
           </div>
         </div>
@@ -234,44 +235,56 @@
 <!-- Сетка категорий -->
 <div class="container mx-auto px-4 py-8">
   <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 h-auto md:h-[400px]">
-    <a href="{% url 'catalog:product_list' %}" class="lg:col-span-2 bg-[#1a2b4a] rounded-xl relative overflow-hidden group cursor-pointer h-64 md:h-auto">
-      <div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-105 opacity-60 mix-blend-overlay" style="background-image: url('https://picsum.photos/seed/tech1/600/600')"></div>
-      <img src="https://picsum.photos/seed/vrheadset/400/400" alt="VR" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-3/4 object-contain z-10" />
+    {% with tile=marketing_tiles_map.quest_accessories %}
+    <a href="{{ tile.url|default:request.path }}" class="lg:col-span-2 bg-[#1a2b4a] rounded-xl relative overflow-hidden group cursor-pointer h-64 md:h-auto">
+      <div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-105 opacity-60 mix-blend-overlay" style="background-image: url('{{ tile.bg_url|default:'' }}')"></div>
+      {% if tile.image_url %}
+      <img src="{{ tile.image_url }}" alt="{{ tile.alt|default:'Аксессуары для Oculus Quest 3' }}" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-3/4 object-contain z-10" loading="lazy" />
+      {% endif %}
       <div class="absolute bottom-6 left-6 z-20">
         <div class="text-[10px] uppercase text-gray-400 mb-1">Удобно, стильно и практично</div>
         <h3 class="text-xl font-medium text-white">Аксессуары для Oculus Quest 3</h3>
       </div>
     </a>
-    <a href="{% url 'catalog:product_list' %}" class="lg:col-span-1 bg-[#1a2b4a] rounded-xl relative overflow-hidden group cursor-pointer h-64 md:h-auto">
-      <div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-105 opacity-50" style="background-image: url('https://images.unsplash.com/photo-1485827404703-89b55fcc595e?auto=format&fit=crop&q=80&w=600')"></div>
+    {% endwith %}
+    {% with tile=marketing_tiles_map.unitree_robot %}
+    <a href="{{ tile.url|default:request.path }}" class="lg:col-span-1 bg-[#1a2b4a] rounded-xl relative overflow-hidden group cursor-pointer h-64 md:h-auto">
+      <div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-105 opacity-50" style="background-image: url('{{ tile.bg_url|default:'' }}')"></div>
       <div class="absolute bottom-6 left-6 z-20">
         <div class="text-[10px] uppercase text-gray-400 mb-1">Мировая премьера</div>
         <h3 class="text-xl font-medium text-white leading-tight">Бионический робот Unitree Go2</h3>
       </div>
     </a>
+    {% endwith %}
     <div class="lg:col-span-2 flex flex-col gap-4 h-full">
-      <div class="flex-1 bg-[#1e293b] rounded-xl relative overflow-hidden group cursor-pointer">
-        <div class="absolute right-0 top-0 bottom-0 w-1/2 bg-contain bg-no-repeat bg-center opacity-80" style="background-image: url('https://picsum.photos/seed/gamepad/300/300')"></div>
+      {% with tile=marketing_tiles_map.gamepads %}
+      <a href="{{ tile.url|default:request.path }}" class="flex-1 bg-[#1e293b] rounded-xl relative overflow-hidden group cursor-pointer block">
+        <div class="absolute right-0 top-0 bottom-0 w-1/2 bg-contain bg-no-repeat bg-center opacity-80" style="background-image: url('{{ tile.bg_url|default:'' }}')"></div>
         <div class="absolute bottom-6 left-6 z-20">
           <div class="text-[10px] uppercase text-gray-400 mb-1">Яркие эмоции</div>
           <h3 class="text-xl font-medium text-white">Геймпады</h3>
         </div>
-      </div>
+      </a>
+      {% endwith %}
       <div class="flex-1 grid grid-cols-2 gap-4">
-        <div class="bg-[#1e293b] rounded-xl relative overflow-hidden group cursor-pointer p-4">
-          <div class="absolute inset-0 bg-cover bg-center opacity-40 group-hover:opacity-50 transition-opacity" style="background-image: url('https://picsum.photos/seed/console/300/300')"></div>
+        {% with tile=marketing_tiles_map.portable_consoles %}
+        <a href="{{ tile.url|default:request.path }}" class="bg-[#1e293b] rounded-xl relative overflow-hidden group cursor-pointer p-4">
+          <div class="absolute inset-0 bg-cover bg-center opacity-40 group-hover:opacity-50 transition-opacity" style="background-image: url('{{ tile.bg_url|default:'' }}')"></div>
           <div class="relative z-10 mt-auto h-full flex flex-col justify-end">
             <div class="text-[8px] uppercase text-gray-400">Инновации в каждом касании</div>
             <h3 class="text-sm font-medium text-white leading-tight mt-1">Портативные консоли</h3>
           </div>
-        </div>
-        <a href="{% url 'catalog:product_list' %}" class="bg-[#1e293b] rounded-xl relative overflow-hidden group cursor-pointer p-4">
-          <div class="absolute inset-0 bg-cover bg-center opacity-40 group-hover:opacity-50 transition-opacity" style="background-image: url('https://picsum.photos/seed/attract/300/300')"></div>
+        </a>
+        {% endwith %}
+        {% with tile=marketing_tiles_map.vr_attractions %}
+        <a href="{{ tile.url|default:request.path }}" class="bg-[#1e293b] rounded-xl relative overflow-hidden group cursor-pointer p-4">
+          <div class="absolute inset-0 bg-cover bg-center opacity-40 group-hover:opacity-50 transition-opacity" style="background-image: url('{{ tile.bg_url|default:'' }}')"></div>
           <div class="relative z-10 mt-auto h-full flex flex-col justify-end">
             <div class="text-[8px] uppercase text-gray-400">Незабываемые приключения</div>
             <h3 class="text-sm font-medium text-white leading-tight mt-1">VR аттракционы</h3>
           </div>
         </a>
+        {% endwith %}
       </div>
     </div>
   </div>
@@ -279,26 +292,32 @@
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
       {% for section in catalog_sections %}
       {% for category in section.categories.all %}
+        {% with bg=category_bg_map|get_item:category.slug %}
         <a href="{% url 'catalog:product_list' %}?category={{ category.slug }}" class="bg-[#1a2b4a] rounded-xl relative overflow-hidden group cursor-pointer h-40 flex flex-col justify-end p-6">
-          <div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-105 opacity-50" style="background-image: url('https://picsum.photos/seed/{{ category.slug }}/600/400')"></div>
+          <div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-105 opacity-60" style="background-image: linear-gradient(135deg, rgba(15,20,34,0.9), rgba(12,15,24,0.85)){% if bg %}, url('{{ bg }}'){% endif %};"></div>
           <div class="relative z-20">
             <div class="text-[10px] uppercase text-gray-400 mb-1">Каталог</div>
             <h3 class="text-lg font-medium text-white">{{ category.name }}</h3>
           </div>
         </a>
+        {% endwith %}
       {% endfor %}
       {% endfor %}
     </div>
   {% endif %}
+  {% with tile=marketing_tiles_map.pico_accessories %}
   <div class="mt-4">
-    <a href="{% url 'catalog:product_list' %}" class="block bg-[#1a2b4a] rounded-xl relative overflow-hidden group cursor-pointer h-40 flex items-center justify-between px-8 md:px-16">
+    <a href="{{ tile.url|default:request.path }}" class="block bg-[#1a2b4a] rounded-xl relative overflow-hidden group cursor-pointer h-40 flex items-center justify-between px-8 md:px-16">
       <div class="z-10">
         <div class="text-xs uppercase text-gray-400 mb-2">Удобно, стильно и практично</div>
         <h3 class="text-2xl font-medium text-white">Аксессуары для PICO 4</h3>
       </div>
-      <img src="https://picsum.photos/seed/pico/300/200" class="h-32 object-contain relative z-10" alt="Pico 4" />
+      {% if tile.image_url %}
+      <img src="{{ tile.image_url }}" class="h-32 object-contain relative z-10" alt="{{ tile.alt|default:'PICO 4' }}" loading="lazy" />
+      {% endif %}
     </a>
   </div>
+  {% endwith %}
 </div>
 
 <!-- NewsBanner -->

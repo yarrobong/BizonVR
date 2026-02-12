@@ -34,10 +34,16 @@ from .models import (
 
 @admin.register(CatalogSection)
 class CatalogSectionAdmin(admin.ModelAdmin):
-    list_display = ('name', 'slug', 'order')
+    list_display = ('name', 'slug', 'order', 'has_icon')
     list_editable = ('order',)
     prepopulated_fields = {'slug': ('name',)}
     search_fields = ('name',)
+    fields = ('name', 'slug', 'order', 'icon')
+    
+    def has_icon(self, obj):
+        return bool(obj.icon)
+    has_icon.boolean = True
+    has_icon.short_description = 'Есть иконка'
 
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)
@@ -98,10 +104,19 @@ class ProductImageInline(admin.TabularInline):
 
 
 class ProductStockInlineForProduct(admin.TabularInline):
+    """Остатки товара по точкам выдачи. Наличие в городе = сумма остатков по точкам этого города."""
     model = ProductStock
     fk_name = 'product'
     extra = 0
     autocomplete_fields = ('pickup_point', 'variant')
+    readonly_fields = ('stock_city',)
+    fields = ('pickup_point', 'stock_city', 'variant', 'quantity')
+
+    def stock_city(self, obj):
+        if obj and obj.pickup_point_id:
+            return obj.pickup_point.city.name
+        return '—'
+    stock_city.short_description = 'Город'
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == 'variant':
@@ -123,12 +138,21 @@ class ProductStockInlineForPickupPoint(admin.TabularInline):
     autocomplete_fields = ('product', 'variant')
 
 
+class PickupPointInline(admin.TabularInline):
+    """Точки выдачи в городе — наличие товаров в городе задаётся остатками в этих точках."""
+    model = PickupPoint
+    extra = 1
+    ordering = ('order', 'name')
+    fields = ('name', 'address', 'order')
+
+
 @admin.register(City)
 class CityAdmin(admin.ModelAdmin):
-    list_display = ('name', 'slug', 'order')
+    list_display = ('name', 'slug', 'order', 'pickup_points_count')
     list_editable = ('order',)
     prepopulated_fields = {'slug': ('name',)}
     search_fields = ('name',)
+    inlines = (PickupPointInline,)
 
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)
@@ -141,6 +165,12 @@ class CityAdmin(admin.ModelAdmin):
     def delete_queryset(self, request, queryset):
         super().delete_queryset(request, queryset)
         invalidate_catalog_cache()
+
+    def pickup_points_count(self, obj):
+        if obj is None:
+            return '—'
+        return obj.pickup_points.count()
+    pickup_points_count.short_description = 'Точек выдачи'
 
 
 @admin.register(PickupPoint)
@@ -162,10 +192,17 @@ class ProductStockAdmin(admin.ModelAdmin):
 
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
-    list_display = ('name', 'slug', 'section')
+    list_display = ('name', 'slug', 'section', 'tile_size', 'has_icon')
+    list_editable = ('tile_size',)
     list_filter = ('section',)
     prepopulated_fields = {'slug': ('name',)}
     search_fields = ('name',)
+    fields = ('name', 'slug', 'section', 'icon', 'tile_size')
+    
+    def has_icon(self, obj):
+        return bool(obj.icon)
+    has_icon.boolean = True
+    has_icon.short_description = 'Есть иконка'
 
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)

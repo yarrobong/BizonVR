@@ -29,7 +29,7 @@ services:
     build: .
     networks:
       - app
-    entrypoint: ["./entrypoint.sh"]
+    entrypoint: ["/app/entrypoint.sh"]
     environment:
       DEBUG: "False"
       SERVE_MEDIA: "1"

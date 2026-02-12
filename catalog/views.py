@@ -2,7 +2,7 @@ import json
 from urllib.parse import urlparse
 
 from django.contrib.auth.decorators import login_required
-from django.db.models import Q, Sum
+from django.db.models import Case, Count, F, IntegerField, Q, Sum, Value, When
 from django.db.utils import ProgrammingError
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -548,12 +548,37 @@ class ProductListView(ListView):
                 ch_name = key[5:]
                 qs = qs.filter(characteristics__name=ch_name, characteristics__value=value).distinct()
         sort = self.request.GET.get('sort', 'newest')
-        if sort == 'price_asc':
+        # При поиске по умолчанию сортируем по релевантности
+        if search_query and sort == 'newest':
+            sort = 'relevance'
+
+        if sort == 'relevance' and search_query:
+            qs = qs.annotate(
+                relevance=Case(
+                    When(name__istartswith=search_query, then=Value(3)),
+                    When(name__icontains=search_query, then=Value(2)),
+                    When(description__icontains=search_query, then=Value(1)),
+                    default=Value(0),
+                    output_field=IntegerField(),
+                )
+            ).order_by('-relevance', '-created_at')
+        elif sort == 'price_asc':
             qs = qs.order_by('price')
         elif sort == 'price_desc':
             qs = qs.order_by('-price')
         elif sort == 'name':
             qs = qs.order_by('name')
+        elif sort == 'popularity':
+            qs = qs.annotate(
+                favorited_count=Count('favorited_by', distinct=True),
+                cart_count=Count('cart_items', distinct=True),
+            ).annotate(
+                popularity=F('views_count') + F('favorited_count') * 5 + F('cart_count') * 3
+            ).order_by('-popularity', '-created_at')
+        elif sort == 'relevance' and not search_query:
+            qs = qs.order_by('-created_at')
+        else:
+            qs = qs.order_by('-created_at')
         return qs
 
     def _get_filter_base_queryset(self):
@@ -597,7 +622,11 @@ class ProductListView(ListView):
         context['catalog_sections'] = list(CatalogSection.objects.prefetch_related('categories').order_by('order', 'name'))
         context['current_tag'] = (self.request.GET.get('tag') or '').strip()
         context['product_tags'] = list(ProductTag.objects.order_by('order', 'name'))
-        context['current_sort'] = self.request.GET.get('sort', 'newest')
+        sort = self.request.GET.get('sort', 'newest')
+        search_query = (self.request.GET.get('q') or '').strip()
+        if search_query and sort == 'newest':
+            sort = 'relevance'
+        context['current_sort'] = sort
         context['search_query'] = (self.request.GET.get('q') or '').strip()
         context['price_min_filter'] = self.request.GET.get('price_min', '')
         context['price_max_filter'] = self.request.GET.get('price_max', '')
@@ -649,6 +678,12 @@ class ProductDetailView(DetailView):
     context_object_name = 'product'
     slug_url_kwarg = 'slug'
     template_name = 'catalog/product_detail.html'
+
+    def get(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        Product.objects.filter(pk=self.object.pk).update(views_count=F('views_count') + 1)
+        context = self.get_context_data(object=self.object)
+        return self.render_to_response(context)
 
     def get_queryset(self):
         return Product.objects.filter(is_active=True).prefetch_related(

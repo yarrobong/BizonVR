@@ -6,10 +6,9 @@ from django.db import migrations
 def create_sections(apps, schema_editor):
     CatalogSection = apps.get_model('catalog', 'CatalogSection')
     sections = [
-        (1, 'Решения для VR бизнеса', 'resheniya-dlya-vr-biznesa'),
-        (2, 'VR-аттракционы', 'vr-attrakciony'),
-        (3, 'VR-оборудование', 'vr-oborudovanie'),
-        (4, 'Цифровые товары', 'cifrovye-tovary'),
+        (1, 'VR-аттракционы', 'vr-attrakciony'),
+        (2, 'VR-оборудование', 'vr-oborudovanie'),
+        (3, 'Цифровые товары', 'cifrovye-tovary'),
     ]
     for order, name, slug in sections:
         CatalogSection.objects.get_or_create(slug=slug, defaults={'name': name, 'order': order})

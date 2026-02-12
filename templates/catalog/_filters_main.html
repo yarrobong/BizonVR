@@ -1,0 +1,50 @@
+{% load catalog_tags %}
+<div>
+  <div class="text-[10px] text-gray-500 uppercase mb-2">Категория</div>
+  <div class="space-y-1">
+    <a href="{% url 'catalog:product_list' %}{% filter_url category=filter_clear section=current_section tag=current_tag sort=current_sort q=search_query price_min=price_min_filter price_max=price_max_filter %}"
+       class="block text-sm py-1.5 rounded px-2 transition-colors {% if not current_category %}text-accent font-medium{% else %}text-gray-400 hover:text-white{% endif %}">Все</a>
+    {% for cat in categories %}
+    <a href="{% url 'catalog:product_list' %}?category={{ cat.slug }}{% if current_section %}&section={{ current_section }}{% endif %}{% if current_tag %}&tag={{ current_tag }}{% endif %}&sort={{ current_sort }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if price_min_filter %}&price_min={{ price_min_filter }}{% endif %}{% if price_max_filter %}&price_max={{ price_max_filter }}{% endif %}"
+       class="block text-sm py-1.5 rounded px-2 transition-colors {% if current_category == cat.slug %}text-accent font-medium{% else %}text-gray-400 hover:text-white{% endif %}">{{ cat.name }}</a>
+    {% endfor %}
+  </div>
+</div>
+
+{% if filter_price_min is not None and filter_price_max is not None and filter_price_max > filter_price_min %}
+<div>
+  <div class="text-[10px] text-gray-500 uppercase mb-2">Цена, ₽</div>
+  <form method="get" class="space-y-2">
+    <input type="hidden" name="category" value="{{ current_category }}">
+    <input type="hidden" name="section" value="{{ current_section }}">
+    <input type="hidden" name="tag" value="{{ current_tag }}">
+    <input type="hidden" name="sort" value="{{ current_sort }}">
+    <input type="hidden" name="q" value="{{ search_query }}">
+    {% for k, v in char_filters.items %}
+    <input type="hidden" name="char_{{ k }}" value="{{ v }}">
+    {% endfor %}
+    <div class="flex gap-2">
+      <input type="number" name="price_min" value="{{ price_min_filter }}" placeholder="{{ filter_price_min }}" min="{{ filter_price_min }}" max="{{ filter_price_max }}"
+             class="w-full bg-dark-700 text-white text-sm rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-accent">
+      <span class="text-gray-500 self-center">–</span>
+      <input type="number" name="price_max" value="{{ price_max_filter }}" placeholder="{{ filter_price_max }}" min="{{ filter_price_min }}" max="{{ filter_price_max }}"
+             class="w-full bg-dark-700 text-white text-sm rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-accent">
+    </div>
+    <button type="submit" class="w-full bg-accent hover:bg-accent-hover text-dark-900 font-bold py-2 rounded text-sm">Применить</button>
+  </form>
+</div>
+{% endif %}
+
+{% if product_tags %}
+<div>
+  <div class="text-[10px] text-gray-500 uppercase mb-2">Тег</div>
+  <div class="space-y-1">
+    <a href="{% url 'catalog:product_list' %}{% filter_url tag=filter_clear category=current_category section=current_section sort=current_sort q=search_query price_min=price_min_filter price_max=price_max_filter %}"
+       class="block text-sm py-1.5 rounded px-2 transition-colors {% if not current_tag %}text-accent font-medium{% else %}text-gray-400 hover:text-white{% endif %}">Все</a>
+    {% for tag in product_tags %}
+    <a href="{% url 'catalog:product_list' %}?tag={{ tag.slug }}{% if current_category %}&category={{ current_category }}{% endif %}{% if current_section %}&section={{ current_section }}{% endif %}&sort={{ current_sort }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if price_min_filter %}&price_min={{ price_min_filter }}{% endif %}{% if price_max_filter %}&price_max={{ price_max_filter }}{% endif %}"
+       class="block text-sm py-1.5 rounded px-2 transition-colors {% if current_tag == tag.slug %}text-accent font-medium{% else %}text-gray-400 hover:text-white{% endif %}">{{ tag.name }}</a>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}

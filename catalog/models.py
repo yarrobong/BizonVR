@@ -9,6 +9,11 @@ class CatalogSection(models.Model):
     name = models.CharField('Название', max_length=200)
     slug = models.SlugField('Slug', max_length=200, unique=True, blank=True)
     order = models.PositiveIntegerField('Порядок', default=0)
+    icon = models.TextField(
+        'SVG иконка',
+        blank=True,
+        help_text='SVG код иконки для отображения слева от названия раздела',
+    )
 
     class Meta:
         verbose_name = 'Раздел каталога'
@@ -24,6 +29,14 @@ class CatalogSection(models.Model):
         super().save(*args, **kwargs)
 
 
+TILE_SIZE_CHOICES = [
+    ('small', 'Маленький квадрат (1×1)'),
+    ('medium', 'Широкий (2×1)'),
+    ('large', 'Большой квадрат (2×2)'),
+    ('tall', 'Высокий (1×2)'),
+]
+
+
 class Category(models.Model):
     """Категория товаров (VR оборудование, VR аттракционы, Трейдин устройства)."""
     section = models.ForeignKey(
@@ -36,6 +49,17 @@ class Category(models.Model):
     )
     name = models.CharField('Название', max_length=200)
     slug = models.SlugField('Slug', max_length=200, unique=True, blank=True)
+    icon = models.TextField(
+        'SVG иконка',
+        blank=True,
+        help_text='SVG код иконки для отображения слева от названия категории',
+    )
+    tile_size = models.CharField(
+        'Размер плитки в меню',
+        max_length=10,
+        choices=TILE_SIZE_CHOICES,
+        default='small',
+    )
 
     class Meta:
         verbose_name = 'Категория'
@@ -97,6 +121,11 @@ class Product(models.Model):
         max_length=100,
         blank=True,
         help_text='Например: Цвет, Размер, Модель. Показывается над выбором варианта.',
+    )
+    views_count = models.PositiveIntegerField(
+        'Просмотры',
+        default=0,
+        help_text='Счётчик просмотров страницы товара для сортировки по популярности',
     )
     created_at = models.DateTimeField('Создан', auto_now_add=True)
     updated_at = models.DateTimeField('Обновлён', auto_now=True)

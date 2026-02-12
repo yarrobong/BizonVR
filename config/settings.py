@@ -82,25 +82,32 @@ TEMPLATES = [
 WSGI_APPLICATION = 'config.wsgi.application'
 
 
-# Database — только PostgreSQL
+# Database — только PostgreSQL (одна БД для сайта и админки)
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
-# Приоритет: DATABASE_URL (облако) → DB_* (локально или Docker).
+# DATABASE_URL (postgres://...) или DB_* — оба варианта ведут к одному PostgreSQL.
+
+def _get_postgresql_config():
+    return {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': config('DB_NAME', default='bizon'),
+        'USER': config('DB_USER', default='postgres'),
+        'PASSWORD': config('DB_PASSWORD', default=''),
+        'HOST': config('DB_HOST', default='localhost'),
+        'PORT': config('DB_PORT', default='5432'),
+    }
+
 
 _db_url = config('DATABASE_URL', default='')
 if _db_url:
     import dj_database_url
-    DATABASES = {'default': dj_database_url.parse(_db_url)}
+    _parsed = dj_database_url.parse(_db_url)
+    if 'postgresql' in _parsed.get('ENGINE', ''):
+        DATABASES = {'default': _parsed}
+    else:
+        # DATABASE_URL задан, но не PostgreSQL — используем только PostgreSQL из DB_*
+        DATABASES = {'default': _get_postgresql_config()}
 else:
-    DATABASES = {
-        'default': {
-            'ENGINE': config('DB_ENGINE', default='django.db.backends.postgresql'),
-            'NAME': config('DB_NAME', default='bizon'),
-            'USER': config('DB_USER', default='postgres'),
-            'PASSWORD': config('DB_PASSWORD', default=''),
-            'HOST': config('DB_HOST', default='localhost'),
-            'PORT': config('DB_PORT', default='5432'),
-        }
-    }
+    DATABASES = {'default': _get_postgresql_config()}
 
 
 # Password validation
