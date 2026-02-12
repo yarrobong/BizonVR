@@ -161,8 +161,8 @@
 </section>
 
 <!-- Лучшие предложения -->
-<div class="container mx-auto px-4 py-12">
-  <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+<div class="container mx-auto py-12 px-0">
+  <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 px-4 md:px-4">
     <h2 class="text-2xl md:text-3xl font-light text-white">Лучшие предложения</h2>
     <div class="flex flex-wrap gap-2 text-xs md:text-sm font-medium items-center">
       <a href="{% url 'home' %}" class="px-4 py-1.5 rounded transition-colors {% if not current_tag %}bg-accent text-dark-900{% else %}bg-dark-700 text-gray-300 hover:text-white{% endif %}">Все</a>
@@ -173,60 +173,9 @@
     </div>
   </div>
   {% if featured_products %}
-    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 md:gap-4 px-0">
       {% for product in featured_products %}
-        <article id="product-{{ product.pk }}" class="group bg-dark-900 md:bg-transparent md:hover:bg-dark-800 border border-transparent md:hover:border-dark-700 p-4 rounded-xl transition-all duration-300 relative flex flex-col h-full scroll-mt-40">
-          {% if product.tags.all %}
-          <div class="absolute top-4 left-4 z-10 flex flex-wrap gap-1">
-            {% for tag in product.tags.all %}
-            <span class="px-2 py-0.5 text-[10px] font-medium rounded-full
-              {% if tag.slug == 'bestseller' %}bg-amber-500/90 text-dark-900
-              {% elif tag.slug == 'expert-choice' %}bg-emerald-500/90 text-dark-900
-              {% elif tag.slug == 'new' %}bg-blue-500/90 text-white
-              {% elif tag.slug == 'sale' %}bg-red-500/90 text-white
-              {% else %}bg-dark-600 text-gray-300{% endif %}">{{ tag.name }}</span>
-            {% endfor %}
-          </div>
-          {% endif %}
-          <div class="absolute top-4 right-4 z-10 flex flex-col space-y-2 opacity-0 group-hover:opacity-100 transition-opacity">
-            <form action="{% url 'catalog:toggle_favorite' product.pk %}" method="post" class="inline" hx-boost="false">
-              {% csrf_token %}
-              <input type="hidden" name="next" value="{{ request.get_full_path }}" />
-              <button type="submit" class="bg-dark-700 p-1.5 rounded-full hover:bg-accent hover:text-dark-900 cursor-pointer text-gray-400 {% if product.id in favorite_product_ids %}text-red-400{% endif %}" title="{% if product.id in favorite_product_ids %}Убрать из избранного{% else %}В избранное{% endif %}">
-                <i data-lucide="heart" class="w-4 h-4 inline-block {% if product.id in favorite_product_ids %}fill-current{% endif %}"></i>
-              </button>
-            </form>
-            <div class="bg-dark-700 p-1.5 rounded-full hover:bg-accent hover:text-dark-900 cursor-pointer text-gray-400"><i data-lucide="git-compare" class="w-4 h-4 inline-block"></i></div>
-          </div>
-          <a href="{% url 'catalog:product_detail' product.slug %}" class="block relative w-full aspect-square mb-4 overflow-hidden rounded-lg bg-white/5 flex items-center justify-center">
-            {% if product.image %}
-              <img src="{{ product.image.url|absolute_uri:request }}" alt="{{ product.name }}" class="w-full h-full object-contain p-4 group-hover:scale-105 transition-transform duration-300 product-card-img" loading="lazy" onerror="this.classList.add('!hidden'); this.nextElementSibling.classList.remove('hidden'); if (typeof lucide !== 'undefined') lucide.createIcons();" />
-              <div class="hidden w-full h-full flex items-center justify-center text-gray-500 product-card-placeholder">
-                <i data-lucide="image-off" class="w-16 h-16 inline-block"></i>
-              </div>
-            {% else %}
-              <div class="w-full h-full flex items-center justify-center text-gray-500">
-                <i data-lucide="image-off" class="w-16 h-16 inline-block"></i>
-              </div>
-            {% endif %}
-          </a>
-          <div class="flex flex-col flex-grow">
-            <div class="flex items-center mb-2">
-              <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
-              <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
-              <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
-              <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
-              <i data-lucide="star" class="w-3 h-3 text-yellow-400 fill-yellow-400 mr-0.5 inline-block"></i>
-            </div>
-            <h3 class="text-white text-sm font-medium leading-tight mb-2 flex-grow line-clamp-2 hover:text-accent">
-              <a href="{% url 'catalog:product_detail' product.slug %}">{{ product.name }}</a>
-            </h3>
-            <div class="text-xs text-gray-400 mb-1">Категория: <span class="text-gray-300">{{ product.category.name }}</span></div>
-            <div class="mt-auto flex items-center justify-between">
-              <span class="text-lg font-bold text-white">{{ product.price|price_format }} ₽</span>
-            </div>
-          </div>
-        </article>
+        {% include "catalog/_product_card.html" %}
       {% endfor %}
     </div>
     <div class="flex justify-center mt-8">

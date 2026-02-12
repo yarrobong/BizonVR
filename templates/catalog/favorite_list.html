@@ -19,50 +19,9 @@
   </h1>
 
   {% if products %}
-    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 md:gap-3">
       {% for product in products %}
-        <article id="product-{{ product.pk }}" class="group bg-dark-900 md:bg-transparent md:hover:bg-dark-800 border border-transparent md:hover:border-dark-700 p-4 rounded-xl transition-all duration-300 relative flex flex-col h-full scroll-mt-40">
-          <div class="absolute top-4 right-4 z-10 flex flex-col space-y-2">
-            <form action="{% url 'catalog:toggle_favorite' product.pk %}" method="post" class="inline" hx-boost="false">
-              {% csrf_token %}
-              <input type="hidden" name="next" value="{% url 'catalog:favorites' %}" />
-              <button type="submit" class="bg-dark-700 p-1.5 rounded-full hover:bg-accent hover:text-dark-900 cursor-pointer text-red-400" title="Убрать из избранного">
-                <i data-lucide="heart" class="w-4 h-4 inline-block fill-current"></i>
-              </button>
-            </form>
-          </div>
-          <a href="{% url 'catalog:product_detail' product.slug %}" class="block relative w-full aspect-square mb-4 overflow-hidden rounded-lg bg-white/5 flex items-center justify-center">
-            {% if product.tags.all %}
-            <div class="absolute top-2 left-2 z-10 flex flex-wrap gap-1">
-              {% for tag in product.tags.all %}
-              <span class="px-2 py-0.5 text-[10px] font-medium rounded-full
-                {% if tag.slug == 'bestseller' %}bg-amber-500/90 text-dark-900
-                {% elif tag.slug == 'expert-choice' %}bg-emerald-500/90 text-dark-900
-                {% elif tag.slug == 'new' %}bg-blue-500/90 text-white
-                {% elif tag.slug == 'sale' %}bg-red-500/90 text-white
-                {% else %}bg-dark-600 text-gray-300{% endif %}">{{ tag.name }}</span>
-              {% endfor %}
-            </div>
-            {% endif %}
-            {% if product.image %}
-              <img src="{{ product.image.url|absolute_uri:request }}" alt="{{ product.name }}" class="w-full h-full object-contain p-4 group-hover:scale-105 transition-transform duration-300" />
-            {% else %}
-              <div class="w-full h-full flex items-center justify-center text-gray-500">
-                <i data-lucide="image-off" class="w-16 h-16 inline-block"></i>
-              </div>
-            {% endif %}
-          </a>
-          <div class="flex flex-col flex-grow">
-            <h3 class="text-white text-sm font-medium leading-tight mb-2 flex-grow line-clamp-2 hover:text-accent">
-              <a href="{% url 'catalog:product_detail' product.slug %}">{{ product.name }}</a>
-            </h3>
-            <div class="text-xs text-gray-400 mb-1">Категория: <span class="text-gray-300">{{ product.category.name }}</span></div>
-            <div class="mt-auto flex items-center justify-between gap-2">
-              <span class="text-lg font-bold text-white">{{ product.price|price_format }} ₽</span>
-              <a href="{% url 'catalog:product_detail' product.slug %}" class="text-xs font-medium text-accent hover:text-accent-hover whitespace-nowrap">В корзину →</a>
-            </div>
-          </div>
-        </article>
+        {% include "catalog/_product_card.html" with show_cart_link=True %}
       {% endfor %}
     </div>
   {% else %}

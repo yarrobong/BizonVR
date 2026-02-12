@@ -344,7 +344,7 @@
     .hero-carousel {
       --hero-gap: 24px;
       --hero-radius: 32px;
-      overflow: visible;
+      overflow-x: hidden; /* скрыть горизонтальный overflow от слайдов — убирает свайп в пустое пространство справа на мобильных */
       aspect-ratio: 16 / 5;
       min-height: 220px;
       margin-left: calc(var(--hero-gap) * -0.5);
