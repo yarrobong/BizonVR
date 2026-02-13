@@ -178,6 +178,12 @@ CACHES = {
 # Безопасность для продакшена (HTTPS, HSTS, cookies).
 # USE_HTTPS=False — без редиректа (Docker, разработка). USE_HTTPS=True — за Nginx с SSL.
 _use_https = config('USE_HTTPS', default='0', cast=bool)
+
+# Cross-Origin-Opener-Policy (COOP) - работает только для HTTPS или localhost
+# Для разработки на localhost это нормально, для продакшена нужен HTTPS
+# Возможные значения: 'same-origin', 'same-origin-allow-popups', 'unsafe-none'
+SECURE_CROSS_ORIGIN_OPENER_POLICY = 'same-origin-allow-popups'
+
 if not DEBUG:
     SECURE_SSL_REDIRECT = _use_https
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
