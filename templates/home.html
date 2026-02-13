@@ -69,7 +69,7 @@
 </div>
 
 
-<!-- Hero Carousel: карточки с собственным фоном, соотношение 16:5 на всех устройствах -->
+<!-- Hero Carousel: карточки с собственным фоном; на мобильных 16:10 и видны соседние слайды -->
 <section class="hero-carousel relative w-full max-w-full min-w-0 min-h-[200px] bg-dark-900 touch-pan-y md:mx-0 mt-4 md:mt-6"
          x-data="{
            current: 0,
@@ -149,43 +149,53 @@
 
     <!-- Точки-индикаторы -->
     <div class="absolute bottom-6 left-1/2 -translate-x-1/2 flex space-x-3 z-20">
-    <template x-for="(_, index) in Array(total)" :key="index">
+    <template x-for="idx in Array.from({ length: total }, (_, i) => i)" :key="idx">
       <button type="button"
-              @click="current = index"
+              @click="current = idx"
               class="w-2.5 h-2.5 rounded-full transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-dark-900"
-              :class="current === index ? 'bg-white scale-110' : 'bg-gray-500 hover:bg-gray-400'"
-              :aria-label="'Слайд ' + (index + 1)"></button>
+              :class="current === idx ? 'bg-white scale-110' : 'bg-gray-500 hover:bg-gray-400'"
+              :aria-label="'Слайд ' + (idx + 1)"></button>
     </template>
     </div>
   </div>
 </section>
 
-<!-- Лучшие предложения -->
-<div class="container mx-auto py-12 px-0">
-  <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 px-4 md:px-4">
-    <h2 class="text-2xl md:text-3xl font-light text-white">Лучшие предложения</h2>
-    <div class="flex flex-wrap gap-2 text-xs md:text-sm font-medium items-center">
-      <a href="{% url 'home' %}" class="px-4 py-1.5 rounded transition-colors {% if not current_tag %}bg-accent text-dark-900{% else %}bg-dark-700 text-gray-300 hover:text-white{% endif %}">Все</a>
-      {% for tag in product_tags %}
-      <a href="{% url 'home' %}?tag={{ tag.slug }}" class="px-4 py-1.5 rounded transition-colors {% if current_tag == tag.slug %}bg-accent text-dark-900{% else %}bg-dark-700 text-gray-300 hover:text-white{% endif %}">{{ tag.name }}</a>
-      {% endfor %}
-      <a href="{% url 'catalog:product_list' %}{% if current_tag %}?tag={{ current_tag }}{% endif %}" class="hidden md:inline text-gray-500 hover:text-white uppercase text-xs tracking-wider ml-4 self-center">Весь каталог</a>
+<!-- Кирпичики (быстрые ссылки, только мобильная версия) -->
+<section class="bricks-section md:hidden w-full">
+  <div class="container mx-auto px-4 py-4">
+    <div class="flex gap-3 md:gap-4 overflow-x-auto scrollbar-hide pb-1 -mx-4 px-4 md:mx-0 md:px-0 md:flex-wrap md:overflow-visible">
+      <a href="{% url 'catalog:product_list' %}" class="brick flex-shrink-0 w-[64px] h-[64px] flex flex-col items-center justify-center gap-1 rounded-lg bg-dark-800 hover:bg-dark-700 border border-dark-600/50 hover:border-accent/40 transition-all duration-200 group p-2">
+        <i data-lucide="layout-grid" class="w-5 h-5 text-accent group-hover:text-accent transition-colors flex-shrink-0"></i>
+        <span class="text-[9px] font-medium text-white text-center leading-tight truncate max-w-full">Каталог</span>
+      </a>
+      <a href="{% url 'arenda' %}" class="brick flex-shrink-0 w-[64px] h-[64px] flex flex-col items-center justify-center gap-1 rounded-lg bg-dark-800 hover:bg-dark-700 border border-dark-600/50 hover:border-accent/40 transition-all duration-200 group p-2">
+        <i data-lucide="glasses" class="w-5 h-5 text-accent group-hover:text-accent transition-colors flex-shrink-0"></i>
+        <span class="text-[9px] font-medium text-white text-center leading-tight truncate max-w-full">Аренда VR</span>
+      </a>
+      <a href="{% url 'contacts' %}" class="brick flex-shrink-0 w-[64px] h-[64px] flex flex-col items-center justify-center gap-1 rounded-lg bg-dark-800 hover:bg-dark-700 border border-dark-600/50 hover:border-accent/40 transition-all duration-200 group p-2">
+        <i data-lucide="phone" class="w-5 h-5 text-accent group-hover:text-accent transition-colors flex-shrink-0"></i>
+        <span class="text-[9px] font-medium text-white text-center leading-tight truncate max-w-full">Контакты</span>
+      </a>
     </div>
   </div>
+</section>
+
+<!-- Товары каталога -->
+<div class="container mx-auto pt-0 pb-8 md:py-8 px-4 md:px-4">
   {% if featured_products %}
-    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 md:gap-4 px-0">
-      {% for product in featured_products %}
-        {% include "catalog/_product_card.html" %}
-      {% endfor %}
-    </div>
-    <div class="flex justify-center mt-8">
-      <a href="{% url 'catalog:product_list' %}{% if current_tag %}?tag={{ current_tag }}{% endif %}" class="text-xs text-gray-400 border border-gray-700 rounded-full px-6 py-2 hover:border-white hover:text-white transition-colors">Весь каталог</a>
-    </div>
+  <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 md:gap-4">
+    {% for product in featured_products %}
+      {% include "catalog/_product_card.html" %}
+    {% endfor %}
+  </div>
+  <div class="flex justify-center mt-8">
+    <a href="{% url 'catalog:product_list' %}{% if current_tag %}?tag={{ current_tag }}{% endif %}" class="text-xs text-gray-400 border border-gray-700 rounded-full px-6 py-2 hover:border-white hover:text-white transition-colors">Весь каталог</a>
+  </div>
   {% else %}
-    <div class="text-center py-12 text-gray-400">
-      <p class="mb-4">Товаров пока нет.</p>
-      <a href="{% url 'catalog:product_list' %}" class="text-accent hover:text-accent-hover text-sm">Перейти в каталог</a>
-    </div>
+  <div class="text-center py-12 text-gray-400">
+    <p class="mb-4">Товаров пока нет.</p>
+    <a href="{% url 'catalog:product_list' %}" class="text-accent hover:text-accent-hover text-sm">Перейти в каталог</a>
+  </div>
   {% endif %}
 </div>
 
@@ -194,7 +204,7 @@
   <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 h-auto md:h-[400px]">
     {% with tile=marketing_tiles_map.quest_accessories %}
     <a href="{{ tile.url|default:request.path }}" class="lg:col-span-2 bg-[#1a2b4a] rounded-xl relative overflow-hidden group cursor-pointer h-64 md:h-auto">
-      <div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-105 opacity-60 mix-blend-overlay" style="background-image: url('{{ tile.bg_url|default:'' }}')"></div>
+      <div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-105 opacity-60 mix-blend-overlay" data-bg-url="{{ tile.bg_url|default:'' }}" x-init="if($el.dataset.bgUrl) $el.style.backgroundImage='url(\''+$el.dataset.bgUrl+'\')'"></div>
       {% if tile.image_url %}
       <img src="{{ tile.image_url }}" alt="{{ tile.alt|default:'Аксессуары для Oculus Quest 3' }}" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-3/4 object-contain z-10" loading="lazy" />
       {% endif %}
@@ -206,7 +216,7 @@
     {% endwith %}
     {% with tile=marketing_tiles_map.unitree_robot %}
     <a href="{{ tile.url|default:request.path }}" class="lg:col-span-1 bg-[#1a2b4a] rounded-xl relative overflow-hidden group cursor-pointer h-64 md:h-auto">
-      <div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-105 opacity-50" style="background-image: url('{{ tile.bg_url|default:'' }}')"></div>
+      <div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-105 opacity-50" data-bg-url="{{ tile.bg_url|default:'' }}" x-init="if($el.dataset.bgUrl) $el.style.backgroundImage='url(\''+$el.dataset.bgUrl+'\')'"></div>
       <div class="absolute bottom-6 left-6 z-20">
         <div class="text-[10px] uppercase text-gray-400 mb-1">Мировая премьера</div>
         <h3 class="text-xl font-medium text-white leading-tight">Бионический робот Unitree Go2</h3>
@@ -216,7 +226,7 @@
     <div class="lg:col-span-2 flex flex-col gap-4 h-full">
       {% with tile=marketing_tiles_map.gamepads %}
       <a href="{{ tile.url|default:request.path }}" class="flex-1 bg-[#1e293b] rounded-xl relative overflow-hidden group cursor-pointer block">
-        <div class="absolute right-0 top-0 bottom-0 w-1/2 bg-contain bg-no-repeat bg-center opacity-80" style="background-image: url('{{ tile.bg_url|default:'' }}')"></div>
+        <div class="absolute right-0 top-0 bottom-0 w-1/2 bg-contain bg-no-repeat bg-center opacity-80" data-bg-url="{{ tile.bg_url|default:'' }}" x-init="if($el.dataset.bgUrl) $el.style.backgroundImage='url(\''+$el.dataset.bgUrl+'\')'"></div>
         <div class="absolute bottom-6 left-6 z-20">
           <div class="text-[10px] uppercase text-gray-400 mb-1">Яркие эмоции</div>
           <h3 class="text-xl font-medium text-white">Геймпады</h3>
@@ -226,7 +236,7 @@
       <div class="flex-1 grid grid-cols-2 gap-4">
         {% with tile=marketing_tiles_map.portable_consoles %}
         <a href="{{ tile.url|default:request.path }}" class="bg-[#1e293b] rounded-xl relative overflow-hidden group cursor-pointer p-4">
-          <div class="absolute inset-0 bg-cover bg-center opacity-40 group-hover:opacity-50 transition-opacity" style="background-image: url('{{ tile.bg_url|default:'' }}')"></div>
+          <div class="absolute inset-0 bg-cover bg-center opacity-40 group-hover:opacity-50 transition-opacity" data-bg-url="{{ tile.bg_url|default:'' }}" x-init="if($el.dataset.bgUrl) $el.style.backgroundImage='url(\''+$el.dataset.bgUrl+'\')'"></div>
           <div class="relative z-10 mt-auto h-full flex flex-col justify-end">
             <div class="text-[8px] uppercase text-gray-400">Инновации в каждом касании</div>
             <h3 class="text-sm font-medium text-white leading-tight mt-1">Портативные консоли</h3>
@@ -235,7 +245,7 @@
         {% endwith %}
         {% with tile=marketing_tiles_map.vr_attractions %}
         <a href="{{ tile.url|default:request.path }}" class="bg-[#1e293b] rounded-xl relative overflow-hidden group cursor-pointer p-4">
-          <div class="absolute inset-0 bg-cover bg-center opacity-40 group-hover:opacity-50 transition-opacity" style="background-image: url('{{ tile.bg_url|default:'' }}')"></div>
+          <div class="absolute inset-0 bg-cover bg-center opacity-40 group-hover:opacity-50 transition-opacity" data-bg-url="{{ tile.bg_url|default:'' }}" x-init="if($el.dataset.bgUrl) $el.style.backgroundImage='url(\''+$el.dataset.bgUrl+'\')'"></div>
           <div class="relative z-10 mt-auto h-full flex flex-col justify-end">
             <div class="text-[8px] uppercase text-gray-400">Незабываемые приключения</div>
             <h3 class="text-sm font-medium text-white leading-tight mt-1">VR аттракционы</h3>
@@ -246,20 +256,60 @@
     </div>
   </div>
   {% if catalog_sections %}
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
-      {% for section in catalog_sections %}
-      {% for category in section.categories.all %}
-        {% with bg=category_bg_map|get_item:category.slug %}
-        <a href="{% url 'catalog:product_list' %}?category={{ category.slug }}" class="bg-[#1a2b4a] rounded-xl relative overflow-hidden group cursor-pointer h-40 flex flex-col justify-end p-6">
-          <div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-105 opacity-60" style="background-image: linear-gradient(135deg, rgba(15,20,34,0.9), rgba(12,15,24,0.85)){% if bg %}, url('{{ bg }}'){% endif %};"></div>
-          <div class="relative z-20">
-            <div class="text-[10px] uppercase text-gray-400 mb-1">Каталог</div>
-            <h3 class="text-lg font-medium text-white">{{ category.name }}</h3>
-          </div>
-        </a>
-        {% endwith %}
-      {% endfor %}
-      {% endfor %}
+    <div class="mt-8">
+      <h2 class="text-2xl md:text-3xl font-light text-white mb-6">Категории товаров</h2>
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
+        {% for section in catalog_sections %}
+          {% for category in section.categories.all %}
+            {% with preview_url=catalog_category_previews|get_dict_item:category.id %}
+            <a href="{% url 'catalog:product_list' %}?category={{ category.slug }}" 
+               class="relative overflow-hidden group cursor-pointer transition-all duration-300 hover:scale-[1.02] hover:shadow-xl hover:shadow-accent/20"
+               style="aspect-ratio: 1 / 1; border-radius: 20px;">
+              <!-- Фоновое изображение — contain, без обрезки -->
+              <div class="absolute inset-0 bg-dark-800" style="border-radius: inherit;">
+                {% if preview_url %}
+                <div class="absolute inset-0 bg-contain bg-center bg-no-repeat transition-transform duration-700 group-hover:scale-110" 
+                     style="background-image: url('{{ preview_url }}'); border-radius: inherit;"></div>
+                {% endif %}
+              </div>
+              
+              <!-- Затемнение только в области текста (нижняя часть) -->
+              <div class="absolute bottom-0 left-0 right-0 z-10" style="height: 55%; border-radius: inherit; background: linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.5) 50%, transparent 100%);"></div>
+              
+              <!-- Контент -->
+              <div class="absolute inset-0 p-4 md:p-6 flex flex-col justify-end z-20">
+                <!-- Иконка категории -->
+                {% if category.icon %}
+                <div class="mb-2 md:mb-3 opacity-60 group-hover:opacity-100 transition-opacity">
+                  <div class="w-8 h-8 md:w-10 md:h-10 text-accent/80 group-hover:text-accent transition-colors">
+                    {{ category.icon|safe }}
+                  </div>
+                </div>
+                {% endif %}
+                
+                <!-- Название раздела -->
+                <div class="text-[9px] md:text-[10px] uppercase text-gray-400 mb-1 tracking-wider font-medium">
+                  {{ section.name }}
+                </div>
+                
+                <!-- Название категории -->
+                <h3 class="text-sm md:text-lg font-semibold text-white group-hover:text-accent transition-colors duration-300 leading-tight">
+                  {{ category.name }}
+                </h3>
+                
+                <!-- Стрелка -->
+                <div class="mt-2 opacity-0 group-hover:opacity-100 transform translate-x-0 group-hover:translate-x-1 transition-all duration-300">
+                  <i data-lucide="arrow-right" class="w-4 h-4 md:w-5 md:h-5 text-accent inline-block"></i>
+                </div>
+              </div>
+              
+              <!-- Декоративный акцентный элемент -->
+              <div class="absolute top-0 right-0 w-20 h-20 bg-accent/5 rounded-bl-full transform translate-x-10 -translate-y-10 group-hover:translate-x-5 group-hover:-translate-y-5 transition-transform duration-500"></div>
+            </a>
+            {% endwith %}
+          {% endfor %}
+        {% endfor %}
+      </div>
     </div>
   {% endif %}
   {% with tile=marketing_tiles_map.pico_accessories %}

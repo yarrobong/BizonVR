@@ -1,0 +1,1343 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Аренда VR Meta Quest — BizonVR{% endblock %}
+{% block description %}Аренда VR-шлемов Meta Quest 3 и Quest 2. Без залога, доставка, Steam-библиотека. Выездные VR-мероприятия до 8 шлемов.{% endblock %}
+
+{% block content %}
+<link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --neon-purple: #b026ff;
+    --neon-blue: #00d4ff;
+    --neon-green: #0aff00;
+    --neon-pink: #ff0055;
+    --bg-dark: #050507;
+    --glass-bg: rgba(255, 255, 255, 0.03);
+    --glass-border: rgba(255, 255, 255, 0.1);
+  }
+
+  /* Глобальные стили */
+  body {
+    font-family: 'Inter', sans-serif;
+  }
+  
+  .arenda-page {
+    background-color: var(--bg-dark);
+    /* Сложный кибер-фон */
+    
+    background-size: 50px 50px, 50px 50px, 100% 100%;
+    color: #fff;
+    overflow-x: hidden;
+  }
+
+  .arenda-container {
+    max-width: 1280px;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+
+  /* Типографика и заголовки */
+  h1, h2, h3, h4 {
+    font-family: 'Orbitron', sans-serif; /* Техно-шрифт для заголовков */
+    letter-spacing: 0.02em;
+  }
+
+  /* Utility Classes для неона */
+  .text-glow-blue { text-shadow: 0 0 15px rgba(0, 212, 255, 0.6); }
+  .text-glow-purple { text-shadow: 0 0 15px rgba(176, 38, 255, 0.6); }
+  
+  /* Hero Section */
+  .arenda-hero {
+    position: relative;
+    min-height: 85vh; /* Чуть выше */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6rem 0;
+    overflow: hidden;
+  }
+  
+  /* Фоновый прожектор */
+  .arenda-hero::before {
+    content: '';
+    position: absolute;
+    top: -20%;
+    right: -10%;
+    width: 600px;
+    height: 600px;
+    background: radial-gradient(circle, rgba(0, 212, 255, 0.2) 0%, rgba(0,0,0,0) 70%);
+    filter: blur(80px);
+    z-index: 0;
+  }
+
+  .arenda-hero-inner {
+    display: grid;
+    gap: 4rem;
+    align-items: center;
+    position: relative;
+    z-index: 1;
+  }
+  @media (min-width: 992px) {
+    .arenda-hero-inner { grid-template-columns: 1fr 1fr; }
+  }
+
+  .arenda-hero-badge {
+    display: inline-block;
+    padding: 0.5rem 1.25rem;
+    border-radius: 9999px;
+    background: rgba(0, 0, 0, 0.6);
+    border: 1px solid var(--neon-purple);
+    color: #fff;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    box-shadow: 0 0 15px rgba(176, 38, 255, 0.4), inset 0 0 10px rgba(176, 38, 255, 0.2);
+    margin-bottom: 2rem;
+    animation: badge-pulse 3s infinite;
+  }
+  @keyframes badge-pulse {
+    0% { box-shadow: 0 0 15px rgba(176, 38, 255, 0.4); }
+    50% { box-shadow: 0 0 25px rgba(176, 38, 255, 0.7); }
+    100% { box-shadow: 0 0 15px rgba(176, 38, 255, 0.4); }
+  }
+
+  .arenda-hero-title {
+    font-size: 3.5rem;
+    font-weight: 900;
+    line-height: 1.1;
+    margin-bottom: 1.5rem;
+    text-transform: uppercase;
+  }
+  @media (min-width: 768px) {
+    .arenda-hero-title { font-size: 5rem; }
+  }
+
+  .arenda-hero-title-accent {
+    display: block;
+    background: linear-gradient(90deg, var(--neon-blue), #fff, var(--neon-purple));
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: gradient-text 3s linear infinite;
+    text-shadow: 0 0 30px rgba(0, 212, 255, 0.3);
+  }
+  @keyframes gradient-text {
+    to { background-position: 200% center; }
+  }
+
+  .arenda-hero-desc {
+    color: #cbd5e1;
+    font-size: 1.25rem;
+    margin-bottom: 2.5rem;
+    max-width: 34rem;
+    line-height: 1.6;
+    border-left: 3px solid var(--neon-blue);
+    padding-left: 1.5rem;
+  }
+
+  /* Кнопки - Неоновый стиль */
+  .arenda-hero-btns {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+  @media (min-width: 640px) {
+    .arenda-hero-btns { flex-direction: row; }
+  }
+
+  .arenda-btn-catalog {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    background: transparent;
+    color: var(--neon-green);
+    border: 2px solid var(--neon-green);
+    padding: 1.1rem 2.5rem;
+    border-radius: 0.5rem;
+    font-weight: 800;
+    font-family: 'Orbitron', sans-serif;
+    text-transform: uppercase;
+    transition: all 0.3s ease;
+    box-shadow: 0 0 10px rgba(10, 255, 0, 0.1);
+    overflow: hidden;
+  }
+  .arenda-btn-catalog:hover {
+    background: var(--neon-green);
+    color: #000;
+    box-shadow: 0 0 30px rgba(10, 255, 0, 0.6);
+    transform: translateY(-2px);
+  }
+
+  .arenda-btn-services {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.2);
+    color: #fff;
+    padding: 1.1rem 2.5rem;
+    border-radius: 0.5rem;
+    font-weight: 700;
+    transition: all 0.3s;
+  }
+  .arenda-btn-services:hover {
+    background: rgba(255,255,255,0.15);
+    border-color: #fff;
+    box-shadow: 0 0 20px rgba(255,255,255,0.2);
+  }
+
+  /* Изображение Hero */
+  .arenda-hero-img-wrap {
+    position: relative;
+    perspective: 1000px;
+  }
+  .arenda-hero-img-bg {
+    position: absolute;
+    inset: -20px;
+    background: radial-gradient(circle, var(--neon-purple), var(--neon-blue));
+    filter: blur(60px);
+    opacity: 0.4;
+    border-radius: 50%;
+    animation: pulse-bg 4s ease-in-out infinite alternate;
+    z-index: 0;
+  }
+  @keyframes pulse-bg {
+    0% { opacity: 0.3; transform: scale(0.9); }
+    100% { opacity: 0.6; transform: scale(1.1); }
+  }
+  .arenda-hero-img {
+    position: relative;
+    z-index: 10;
+    width: 100%;
+    border-radius: 2rem;
+    /* Стеклянная граница */
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 
+        0 20px 50px rgba(0,0,0,0.5),
+        0 0 0 1px rgba(255,255,255,0.1),
+        inset 0 0 40px rgba(176, 38, 255, 0.2); /* Внутреннее свечение */
+    transform: rotateY(-10deg) rotateX(5deg);
+    transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .arenda-hero-img:hover {
+    transform: rotateY(0) rotateX(0) scale(1.02);
+    box-shadow: 0 30px 60px rgba(176, 38, 255, 0.3);
+  }
+
+  /* Benefits - Glassmorphism Neon */
+  .arenda-benefits {
+    padding: 6rem 0;
+    background: #000;
+    position: relative;
+  }
+  .arenda-benefits::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--neon-blue), transparent);
+  }
+  .arenda-benefits-grid {
+    display: grid;
+    gap: 2rem;
+  }
+  @media (min-width: 768px) {
+    .arenda-benefits-grid { grid-template-columns: repeat(4, 1fr); }
+  }
+  .arenda-glass-card {
+    background: linear-gradient(145deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.01) 100%);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border);
+    padding: 2.5rem 1.5rem;
+    border-radius: 1.5rem;
+    text-align: center;
+    transition: all 0.4s ease;
+    position: relative;
+    overflow: hidden;
+  }
+  /* Эффект свечения при наведении на карточку */
+  .arenda-glass-card:hover {
+    transform: translateY(-10px);
+    border-color: rgba(255,255,255,0.3);
+    box-shadow: 0 10px 40px -10px rgba(0, 212, 255, 0.2);
+  }
+  .arenda-glass-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%;
+    width: 100%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+    transition: 0.5s;
+  }
+  .arenda-glass-card:hover::before {
+    left: 100%;
+  }
+
+  .arenda-benefit-icon {
+    width: 5rem;
+    height: 5rem;
+    border-radius: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 1.5rem;
+    font-size: 2rem;
+    /* Неоновые иконки */
+    background: rgba(0,0,0,0.3);
+    border: 1px solid rgba(255,255,255,0.1);
+    box-shadow: 0 0 20px rgba(0,0,0,0.5);
+  }
+  .arenda-benefit-icon.blue { color: var(--neon-blue); box-shadow: 0 0 15px rgba(0, 212, 255, 0.2); }
+  .arenda-benefit-icon.purple { color: var(--neon-purple); box-shadow: 0 0 15px rgba(176, 38, 255, 0.2); }
+  .arenda-benefit-icon.green { color: var(--neon-green); box-shadow: 0 0 15px rgba(10, 255, 0, 0.2); }
+  .arenda-benefit-icon.pink { color: var(--neon-pink); box-shadow: 0 0 15px rgba(255, 0, 85, 0.2); }
+
+  .arenda-benefit-card h3 {
+    font-size: 1.35rem;
+    font-weight: 700;
+    margin-bottom: 0.75rem;
+    color: #fff;
+  }
+
+  /* Models Section */
+  .arenda-section { padding: 8rem 0; }
+  .arenda-section-models { position: relative; }
+  
+  .arenda-models-grid {
+    display: grid;
+    gap: 5rem;
+    align-items: center;
+  }
+  @media (min-width: 992px) {
+    .arenda-models-grid { grid-template-columns: 1fr 1fr; }
+  }
+  
+  /* Изображения моделей */
+  .arenda-model-img-wrap {
+    position: relative;
+    padding: 10px;
+    border-radius: 2rem;
+    background: #000;
+    z-index: 2;
+  }
+  .arenda-model-img-wrap img {
+    width: 100%;
+    height: auto;
+    border-radius: 1.5rem;
+    display: block;
+    position: relative;
+    z-index: 2;
+  }
+  
+  /* Неоновые рамки для шлемов */
+  .arenda-model-img-wrap.quest3 {
+    border: 1px solid rgba(176, 38, 255, 0.5);
+    box-shadow: 0 0 50px rgba(176, 38, 255, 0.15);
+  }
+  /* Анимированная подсветка за шлемом */
+  .arenda-model-img-wrap.quest3::before {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    z-index: -1;
+    border-radius: 2.2rem;
+    background-size: 400%;
+    animation: border-glow 10s linear infinite;
+    filter: blur(8px);
+    opacity: 0.7;
+  }
+  @keyframes border-glow {
+    0% { background-position: 0 0; }
+    50% { background-position: 400% 0; }
+    100% { background-position: 0 0; }
+  }
+
+  .arenda-model-img-wrap.quest2 {
+    border: 1px solid rgba(0, 212, 255, 0.5);
+    box-shadow: 0 0 50px rgba(0, 212, 255, 0.15);
+  }
+  .arenda-model-img-wrap.quest2::before {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    z-index: -1;
+    border-radius: 2.1rem;
+    filter: blur(5px);
+    opacity: 0.4;
+  }
+  .arenda-model-img-wrap.quest2 img {
+    filter: grayscale(100%) contrast(1.2);
+    transition: 0.5s;
+  }
+  .arenda-model-img-wrap.quest2:hover img { filter: grayscale(0); }
+
+  .arenda-hit-badge {
+    position: absolute;
+    top: -1.5rem;
+    right: -1.5rem;
+    background: var(--neon-green);
+    color: #000;
+    padding: 0.5rem 1.5rem;
+    border-radius: 0.5rem;
+    font-weight: 900;
+    font-family: 'Orbitron', sans-serif;
+    transform: rotate(5deg);
+    box-shadow: 0 0 20px rgba(10, 255, 0, 0.5);
+    z-index: 10;
+  }
+  .arenda-hit-badge.blue {
+    background: var(--neon-blue);
+    color: #000;
+    box-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+  }
+
+  .arenda-model-title {
+    font-size: 3rem;
+    font-weight: 800;
+    margin-bottom: 1rem;
+    line-height: 1;
+  }
+  .arenda-model-subtitle {
+    display: block;
+    color: var(--neon-blue);
+    font-size: 1.25rem;
+    margin-top: 0.5rem;
+    font-family: 'Inter', sans-serif;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+  
+  .arenda-feature-list {
+    margin-top: 1.5rem;
+  }
+  .arenda-feature-list > div {
+    display: flex;
+    align-items: flex-start;
+    gap: 1.25rem;
+    margin-bottom: 1.5rem;
+  }
+  .arenda-feature-list > div > div {
+    flex: 1;
+    min-width: 0;
+  }
+  .arenda-feature-list .icon { 
+    color: var(--neon-purple); 
+    filter: drop-shadow(0 0 5px var(--neon-purple));
+    flex-shrink: 0;
+    width: 1.5rem;
+    min-width: 1.5rem;
+  }
+  .arenda-feature-list.arenda-feature-list-blue .icon { 
+    color: var(--neon-blue); 
+    filter: drop-shadow(0 0 5px var(--neon-blue));
+  }
+  
+  .arenda-btn-purple {
+    display: inline-block;
+    background: var(--neon-purple);
+    color: #fff;
+    padding: 1rem 2.5rem;
+    border-radius: 0.25rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    box-shadow: 0 0 20px rgba(176, 38, 255, 0.4);
+    transition: 0.3s;
+    border: 1px solid transparent;
+  }
+  .arenda-btn-purple:hover {
+    background: transparent;
+    border-color: var(--neon-purple);
+    box-shadow: 0 0 40px rgba(176, 38, 255, 0.6);
+    text-shadow: 0 0 10px #fff;
+  }
+
+  .arenda-btn-outline {
+    display: inline-block;
+    background: transparent;
+    border: 1px solid #fff;
+    color: #fff;
+    padding: 1rem 2.5rem;
+    border-radius: 0.25rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    transition: 0.3s;
+  }
+  .arenda-btn-outline:hover {
+    background: #fff;
+    color: #000;
+    box-shadow: 0 0 20px rgba(255,255,255,0.5);
+  }
+  .arenda-btn-blue {
+    display: inline-block;
+    background: var(--neon-blue);
+    color: #000;
+    padding: 1rem 2.5rem;
+    border-radius: 0.25rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    box-shadow: 0 0 20px rgba(0, 212, 255, 0.4);
+    transition: 0.3s;
+    border: 1px solid transparent;
+  }
+  .arenda-btn-blue:hover {
+    background: transparent;
+    border-color: var(--neon-blue);
+    color: var(--neon-blue);
+    box-shadow: 0 0 40px rgba(0, 212, 255, 0.6);
+  }
+
+  /* Pricing */
+  .arenda-pricing {
+    padding: 8rem 0;
+    background: #020202;
+    position: relative;
+    overflow: hidden;
+  }
+  /* Фоновая сетка для прайсинга */
+  .arenda-pricing::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: 
+      linear-gradient(transparent 95%, rgba(0, 212, 255, 0.1) 95%),
+      linear-gradient(90deg, transparent 95%, rgba(176, 38, 255, 0.1) 95%);
+    background-size: 40px 40px;
+    opacity: 0.5;
+    pointer-events: none;
+  }
+
+  .arenda-pricing-title {
+    font-size: 3rem;
+    text-align: center;
+    margin-bottom: 1rem;
+    text-shadow: 0 0 20px rgba(255,255,255,0.2);
+  }
+  
+  .arenda-pricing-grid {
+    display: grid;
+    gap: 2rem;
+    position: relative;
+    z-index: 2;
+  }
+  @media (min-width: 1024px) {
+    .arenda-pricing-grid { grid-template-columns: repeat(3, 1fr); align-items: start; }
+  }
+
+  .arenda-price-card {
+    background: rgba(10, 10, 15, 0.6);
+    backdrop-filter: blur(15px);
+    border: 1px solid rgba(255,255,255,0.08);
+    padding: 2rem;
+    border-radius: 1rem;
+    transition: 0.3s;
+  }
+  .arenda-price-card.border-gray { border-top: 3px solid #6b7280; }
+  .arenda-price-card.border-blue { border-top: 3px solid var(--neon-blue); }
+  .arenda-price-card:hover { background: rgba(20, 20, 30, 0.8); transform: translateY(-5px); }
+
+  /* Центральная карточка (Featured) */
+  .arenda-price-card-featured {
+    position: relative;
+    border-radius: 1rem;
+    padding: 3px; /* Место для градиентной рамки */
+    background: linear-gradient(180deg, var(--neon-purple), var(--neon-blue));
+    box-shadow: 0 0 50px rgba(176, 38, 255, 0.2);
+    transform: scale(1.05);
+    z-index: 10;
+  }
+  .arenda-price-card-featured-inner {
+    background: #0a0a0e;
+    padding: 2.5rem 2rem;
+    border-radius: 0.8rem;
+    height: 100%;
+    position: relative;
+  }
+  .arenda-price-card-featured .badge {
+    background: var(--neon-purple);
+    color: #fff;
+    padding: 0.4rem 1rem;
+    border-radius: 99px;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    box-shadow: 0 0 15px var(--neon-purple);
+  }
+
+  .arenda-price-row {
+    display: flex;
+    justify-content: space-between;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+    padding: 1rem 0;
+  }
+  
+  .arenda-price-line {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(255,255,255,0.03);
+    padding: 1rem;
+    border-radius: 0.5rem;
+    margin-bottom: 0.75rem;
+    border: 1px solid transparent;
+  }
+  .arenda-price-line.highlight {
+    border: 1px solid var(--neon-purple);
+    background: rgba(176, 38, 255, 0.05);
+    box-shadow: inset 0 0 15px rgba(176, 38, 255, 0.1);
+  }
+  .arenda-price-line .price-purple { color: #e0aaff; font-weight: 700; text-shadow: 0 0 5px var(--neon-purple); }
+  .arenda-price-line .price-green { color: var(--neon-green); font-size: 0.8rem; }
+
+  .arenda-cta-block a {
+    display: block;
+    width: 100%;
+    background: #fff;
+    color: #000;
+    font-weight: 800;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    text-align: center;
+    text-transform: uppercase;
+    transition: 0.3s;
+    font-family: 'Orbitron', sans-serif;
+  }
+  .arenda-cta-block a:hover {
+    background: var(--neon-blue);
+    box-shadow: 0 0 20px var(--neon-blue);
+  }
+
+  /* Delivery & Steps */
+  .arenda-delivery {
+    padding: 8rem 0;
+    background: linear-gradient(180deg, #000 0%, #080810 50%, #050508 100%);
+    position: relative;
+    overflow: hidden;
+  }
+  .arenda-delivery::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 80%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(0, 212, 255, 0.4), rgba(176, 38, 255, 0.4), transparent);
+    opacity: 0.6;
+  }
+  .arenda-delivery-grid {
+    display: grid;
+    gap: 4rem;
+    align-items: start;
+  }
+  @media (min-width: 992px) {
+    .arenda-delivery-grid { grid-template-columns: 1fr 1fr; }
+  }
+  .arenda-delivery h2,
+  .arenda-how h2 {
+    font-size: 2.25rem;
+    font-weight: 800;
+    color: #fff;
+    text-shadow: 0 0 20px rgba(255,255,255,0.1);
+    margin-bottom: 2rem;
+    position: relative;
+    display: inline-block;
+  }
+  .arenda-delivery h2::after,
+  .arenda-how h2::after {
+    content: '';
+    display: block;
+    width: 60px;
+    height: 3px;
+    margin-top: 0.75rem;
+    background: linear-gradient(90deg, var(--neon-blue), var(--neon-purple));
+    border-radius: 2px;
+    box-shadow: 0 0 15px rgba(0, 212, 255, 0.5);
+  }
+  .arenda-delivery-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+  .arenda-delivery-item {
+    background: linear-gradient(145deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.08);
+    padding: 1.5rem 1.75rem;
+    border-radius: 1.25rem;
+    display: flex;
+    align-items: flex-start;
+    gap: 1.5rem;
+    transition: all 0.3s ease;
+  }
+  .arenda-delivery-item:hover {
+    border-color: rgba(0, 212, 255, 0.5);
+    box-shadow: 0 0 30px rgba(0, 212, 255, 0.15), inset 0 0 20px rgba(0, 212, 255, 0.05);
+    transform: translateX(4px);
+  }
+  .arenda-delivery-item .icon {
+    flex-shrink: 0;
+    width: 2.5rem;
+    height: 2.5rem;
+    font-size: 2rem;
+  }
+  .arenda-delivery-item .icon.green { color: var(--neon-green); filter: drop-shadow(0 0 8px var(--neon-green)); }
+  .arenda-delivery-item .icon.purple { color: var(--neon-purple); filter: drop-shadow(0 0 8px var(--neon-purple)); }
+  .arenda-delivery-item .icon.blue { color: var(--neon-blue); filter: drop-shadow(0 0 8px var(--neon-blue)); }
+  .arenda-delivery-item h4 {
+    font-size: 1.2rem;
+    font-weight: 700;
+    margin-bottom: 0.35rem;
+  }
+  .arenda-delivery-item p {
+    font-size: 0.95rem;
+    line-height: 1.5;
+    margin: 0;
+  }
+  
+  .arenda-how {
+    background: linear-gradient(145deg, rgba(176, 38, 255, 0.06) 0%, rgba(0, 212, 255, 0.04) 100%);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 1.5rem;
+    padding: 2rem 2.5rem;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+  .arenda-steps {
+    border-left: none;
+    padding-left: 2.5rem;
+    position: relative;
+  }
+  .arenda-steps::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: linear-gradient(180deg, var(--neon-purple), var(--neon-blue));
+    border-radius: 2px;
+    box-shadow: 0 0 20px rgba(176, 38, 255, 0.4);
+  }
+  .arenda-step {
+    position: relative;
+    margin-bottom: 2.5rem;
+    padding: 1.5rem 1.75rem;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 1rem;
+    transition: all 0.3s ease;
+  }
+  .arenda-step:last-child { margin-bottom: 0; }
+  .arenda-step:hover {
+    background: rgba(176, 38, 255, 0.08);
+    border-color: rgba(176, 38, 255, 0.3);
+    box-shadow: 0 0 25px rgba(176, 38, 255, 0.15);
+  }
+  .arenda-step::before {
+    content: '';
+    position: absolute;
+    left: -2.75rem;
+    top: 1.75rem;
+    width: 1.25rem;
+    height: 1.25rem;
+    background: linear-gradient(135deg, var(--neon-purple), var(--neon-blue));
+    border: 2px solid #000;
+    border-radius: 50%;
+    box-shadow: 0 0 15px rgba(176, 38, 255, 0.6), 0 0 30px rgba(0, 212, 255, 0.3);
+  }
+  .arenda-step:nth-child(2)::before { background: linear-gradient(135deg, #9d4edd, var(--neon-blue)); }
+  .arenda-step:nth-child(3)::before { background: linear-gradient(135deg, var(--neon-blue), var(--neon-green)); }
+  .arenda-step h4 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    text-shadow: 0 0 10px rgba(255,255,255,0.2);
+  }
+  .arenda-step p {
+    font-size: 1rem;
+    line-height: 1.6;
+    margin: 0;
+    color: #9ca3af;
+  }
+
+  /* FAQ */
+  .arenda-faq {
+    padding: 7rem 0;
+    background: radial-gradient(900px 500px at 20% 20%, rgba(0, 212, 255, 0.08), transparent 55%),
+                radial-gradient(700px 450px at 85% 35%, rgba(176, 38, 255, 0.10), transparent 60%),
+                #050507;
+    position: relative;
+    overflow: hidden;
+  }
+  .arenda-faq::before,
+  .arenda-faq::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    width: 100%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(0, 212, 255, 0.7), transparent);
+    opacity: 0.5;
+  }
+  .arenda-faq::before { top: 0; }
+  .arenda-faq::after { bottom: 0; }
+
+  .arenda-faq h2 {
+    font-size: 3rem;
+    margin-bottom: 3rem;
+    text-shadow: 0 0 20px rgba(255,255,255,0.15);
+    position: relative;
+  }
+  .arenda-faq h2::after {
+    content: '';
+    display: block;
+    width: 120px;
+    height: 2px;
+    margin: 1.1rem auto 0;
+    background: linear-gradient(90deg, var(--neon-blue), var(--neon-purple));
+    box-shadow: 0 0 18px rgba(0, 212, 255, 0.25);
+    border-radius: 99px;
+  }
+
+  .arenda-faq details {
+    background: linear-gradient(145deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 1.2rem;
+    padding: 0;
+    margin-bottom: 1rem;
+    overflow: hidden;
+    transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
+  }
+  .arenda-faq details:hover {
+    transform: translateY(-3px);
+    border-color: rgba(255,255,255,0.18);
+    box-shadow: 0 18px 50px rgba(0,0,0,0.45);
+  }
+  .arenda-faq details[open] {
+    border-color: rgba(0, 212, 255, 0.45);
+    box-shadow:
+      0 20px 60px rgba(0,0,0,0.55),
+      0 0 0 1px rgba(0, 212, 255, 0.08),
+      inset 0 0 40px rgba(0, 212, 255, 0.06);
+  }
+
+  .arenda-faq summary {
+    color: #fff;
+    font-size: 1.1rem;
+    line-height: 1.35;
+    cursor: pointer;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 1.25rem;
+    padding: 1.25rem 1.25rem;
+    user-select: none;
+    list-style: none;
+  }
+  .arenda-faq summary::-webkit-details-marker { display: none; }
+  .arenda-faq details + details { margin-top: 1rem; }
+
+  .arenda-faq summary .arrow {
+    color: var(--neon-blue);
+    font-size: 0.95rem;
+    line-height: 1;
+    transition: transform 0.25s ease, color 0.25s ease, text-shadow 0.25s ease;
+    text-shadow: 0 0 10px rgba(0, 212, 255, 0.35);
+  }
+  .arenda-faq details[open] summary .arrow {
+    transform: rotate(180deg);
+    color: var(--neon-green);
+    text-shadow: 0 0 14px rgba(10, 255, 0, 0.35);
+  }
+
+  .arenda-faq details p {
+    margin: 0;
+    padding: 0 1.25rem 1.25rem;
+    color: #cbd5e1;
+    line-height: 1.7;
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+
+  .arenda-faq summary:focus-visible {
+    outline: 2px solid rgba(0, 212, 255, 0.55);
+    outline-offset: 3px;
+    border-radius: 0.9rem;
+  }
+
+  @media (max-width: 480px) {
+    .arenda-faq h2 { font-size: 2.4rem; }
+    .arenda-faq summary { padding: 1.05rem 1rem; font-size: 1.05rem; }
+    .arenda-faq details p { padding: 0 1rem 1rem; }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .arenda-faq details[open] p {
+      animation: arenda-faq-in 220ms ease-out;
+    }
+    @keyframes arenda-faq-in {
+      from { opacity: 0; transform: translateY(-4px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  }
+
+  /* Footer CTA */
+  .arenda-cta-section {
+    padding: 8rem 0;
+    background: #000;
+    position: relative;
+  }
+  .arenda-cta-section::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at 50% 50%, rgba(176, 38, 255, 0.2), transparent 70%);
+    z-index: 1;
+  }
+  .arenda-cta-inner {
+    position: relative;
+    z-index: 2;
+    text-align: center;
+  }
+  .arenda-cta-btns {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 1rem;
+  }
+  .arenda-cta-btns a {
+    font-family: 'Orbitron', sans-serif;
+    text-transform: uppercase;
+    border-radius: 0.5rem;
+    padding: 1.2rem 3rem;
+  }
+  .btn-green {
+    background: transparent !important;
+    border: 2px solid var(--neon-green);
+    color: var(--neon-green) !important;
+    box-shadow: 0 0 10px rgba(10, 255, 0, 0.2);
+  }
+  .btn-green:hover {
+    background: var(--neon-green) !important;
+    color: #000 !important;
+    box-shadow: 0 0 30px rgba(10, 255, 0, 0.8) !important;
+  }
+  .btn-blue {
+    background: var(--neon-blue) !important;
+    color: #000 !important;
+    box-shadow: 0 0 20px rgba(0, 212, 255, 0.4);
+  }
+  .btn-blue:hover {
+    background: #fff !important;
+    box-shadow: 0 0 40px rgba(0, 212, 255, 0.8) !important;
+  }
+  .arenda-callback-form {
+    max-width: 28rem;
+    margin: 2.5rem auto 0;
+    padding: 2rem;
+    background: rgba(255,255,255,0.04);
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 1rem;
+    backdrop-filter: blur(10px);
+  }
+  .arenda-callback-form p.hint {
+    font-size: 0.9rem;
+    color: #9ca3af;
+    margin-bottom: 1.25rem;
+    text-align: center;
+  }
+  .arenda-callback-form .arenda-callback-row {
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    min-width: 0;
+  }
+  .arenda-callback-form .arenda-callback-row:last-of-type { margin-bottom: 0; }
+  .arenda-callback-input {
+    flex: 1 1 0;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+    background: rgba(0,0,0,0.4);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 0.5rem;
+    padding: 1rem 1.25rem;
+    color: #fff;
+    font-size: 1rem;
+    outline: none;
+    transition: border-color 0.3s, box-shadow 0.3s;
+  }
+  .arenda-callback-input::placeholder { color: #6b7280; }
+  .arenda-callback-input:focus {
+    border-color: var(--neon-blue);
+    box-shadow: 0 0 15px rgba(0, 212, 255, 0.2);
+  }
+  .arenda-callback-submit {
+    width: 100%;
+    margin-top: 1rem;
+    background: linear-gradient(135deg, var(--neon-purple), #9d4edd);
+    color: #fff;
+    font-weight: 700;
+    font-family: 'Orbitron', sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 1rem 1.5rem;
+    border: none;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    transition: all 0.3s;
+    box-shadow: 0 0 20px rgba(176, 38, 255, 0.3);
+  }
+  .arenda-callback-submit:hover {
+    box-shadow: 0 0 35px rgba(176, 38, 255, 0.5);
+    transform: translateY(-2px);
+  }
+  .arenda-callback-form .errorlist { color: #f87171; font-size: 0.85rem; margin-top: 0.35rem; }
+  .arenda-callback-success {
+    padding: 1rem 1.5rem;
+    background: rgba(10, 255, 0, 0.15);
+    border: 1px solid rgba(10, 255, 0, 0.3);
+    border-radius: 0.5rem;
+    color: var(--neon-green);
+    text-align: center;
+    margin-top: 1rem;
+  }
+</style>
+
+<div class="arenda-page">
+<section class="arenda-hero">
+  <div class="arenda-container arenda-hero-inner">
+    <div data-aos="fade-right">
+      <span class="arenda-hero-badge">Next Gen Reality</span>
+      <h1 class="arenda-hero-title">
+        <span style="color:#fff; text-shadow: 0 0 20px rgba(255,255,255,0.3);">Аренда VR</span> <br>
+        <span class="arenda-hero-title-accent">META QUEST 3</span>
+      </h1>
+      <p class="arenda-hero-desc">
+        Погрузись в цифровую реальность без покупки оборудования. 
+        <span style="color:var(--neon-green)">Steam-библиотека</span>, выездные ивенты и доставка до двери.
+      </p>
+      <div class="arenda-hero-btns">
+        <a href="{% url 'catalog:product_list' %}" class="arenda-btn-catalog">
+          <i data-lucide="gamepad-2" class="w-5 h-5"></i> Каталог
+        </a>
+        <a href="#pricing" class="arenda-btn-services">Услуги</a>
+      </div>
+    </div>
+    <div class="arenda-hero-img-wrap" data-aos="zoom-in" data-aos-delay="200">
+      <div class="arenda-hero-img-bg"></div>
+      <img src="{{ quest3_image_url|default:'https://placehold.co/800x600/050505/FFF?text=Meta+Quest+3' }}" alt="Meta Quest 3" class="arenda-hero-img" loading="lazy">
+    </div>
+  </div>
+</section>
+
+<section id="benefits" class="arenda-benefits">
+  <div class="arenda-container">
+    <div class="arenda-benefits-grid">
+      <div class="arenda-glass-card arenda-benefit-card" data-aos="fade-up" data-aos-delay="0">
+        <div class="arenda-benefit-icon blue"><i data-lucide="monitor-play" class="w-10 h-10"></i></div>
+        <h3>4K Immersion</h3>
+        <p style="color:#9ca3af;">Кристально чистая картинка и полное погружение.</p>
+      </div>
+      <div class="arenda-glass-card arenda-benefit-card" data-aos="fade-up" data-aos-delay="100">
+        <div class="arenda-benefit-icon purple"><i data-lucide="zap" class="w-10 h-10"></i></div>
+        <h3>Party Mode</h3>
+        <p style="color:#9ca3af;">Разгоним скучную вечеринку за 5 минут.</p>
+      </div>
+      <div class="arenda-glass-card arenda-benefit-card" data-aos="fade-up" data-aos-delay="200">
+        <div class="arenda-benefit-icon green"><i data-lucide="package-check" class="w-10 h-10"></i></div>
+        <h3>All Inclusive</h3>
+        <p style="color:#9ca3af;">Шлем, батарейки, игры, кабели — всё внутри.</p>
+      </div>
+      <div class="arenda-glass-card arenda-benefit-card" data-aos="fade-up" data-aos-delay="300">
+        <div class="arenda-benefit-icon pink"><i data-lucide="users" class="w-10 h-10"></i></div>
+        <h3>Multiplayer</h3>
+        <p style="color:#9ca3af;">Сетевые баталии для компании до 8 человек.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="models" class="arenda-section arenda-section-models">
+  <div class="arenda-container">
+    <div class="arenda-models-grid">
+      <div class="arenda-model-img-wrap quest3" data-aos="fade-right">
+        <div class="arenda-hit-badge">TOP CHOICE</div>
+        <img src="{{ quest3_image_url|default:'https://placehold.co/600x800/111/FFF?text=Meta+Quest+3' }}" alt="Quest 3" loading="lazy">
+      </div>
+      <div class="arenda-model-text" data-aos="fade-left">
+        <h2 class="arenda-model-title text-glow-purple">Meta Quest 3 <span class="arenda-model-subtitle">Mixed Reality</span></h2>
+        <p class="arenda-model-desc" style="font-size:1.1rem; color:#d1d5db;">
+          Флагман VR-индустрии 2025 года. Цветная смешанная реальность, pancake-линзы и мощный процессор. Вы не просто играете — вы находитесь там.
+        </p>
+        <div class="arenda-feature-list">
+          <div>
+            <i data-lucide="cpu" class="icon w-6 h-6"></i>
+            <div>
+              <h4 style="color:#fff;">Snapdragon XR2 Gen 2</h4>
+              <p style="color:#9ca3af;">Графика уровня ПК в автономном шлеме.</p>
+            </div>
+          </div>
+          <div>
+            <i data-lucide="scan-face" class="icon w-6 h-6"></i>
+            <div>
+              <h4 style="color:#fff;">Комфорт BOBOVR S3</h4>
+              <p style="color:#9ca3af;">Профессиональное крепление с вентиляцией.</p>
+            </div>
+          </div>
+          <div>
+            <i data-lucide="gamepad" class="icon w-6 h-6"></i>
+            <div>
+              <h4 style="color:#fff;">Библиотека Хитов</h4>
+              <p style="color:#9ca3af;">Beat Saber, Alyx (через Link), Pavlov VR.</p>
+            </div>
+          </div>
+        </div>
+        <a href="#pricing" class="arenda-btn-purple">Арендовать Quest 3</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="arenda-section" style="background: rgba(255,255,255,0.02);">
+  <div class="arenda-container">
+    <div class="arenda-models-grid quest2-row">
+      <div class="arenda-model-img-wrap quest2" data-aos="fade-right">
+        <div class="arenda-hit-badge blue">BEST VALUE</div>
+        <img src="{{ quest2_image_url|default:'https://placehold.co/600x600/111/FFF?text=Quest+2' }}" alt="Quest 2" loading="lazy">
+      </div>
+      <div class="arenda-model-text" data-aos="fade-left">
+        <h2 class="arenda-model-title text-glow-blue">Quest 2 <span class="arenda-model-subtitle">Classic Experience</span></h2>
+        <p class="arenda-model-desc" style="font-size:1.1rem; color:#d1d5db;">
+          Легендарная классика, проверенная миллионами игроков. Идеальный старт в виртуальную реальность — легкий, понятный, полностью беспроводной. Доказанная надёжность и огромная библиотека проверенных хитов.
+        </p>
+        <div class="arenda-feature-list arenda-feature-list-blue">
+          <div>
+            <i data-lucide="wallet" class="icon w-6 h-6"></i>
+            <div>
+              <h4 style="color:#fff;">Бюджетный вход в VR</h4>
+              <p style="color:#9ca3af;">Отличное соотношение цены и качества. Оптимальный выбор для первого знакомства с VR.</p>
+            </div>
+          </div>
+          <div>
+            <i data-lucide="wifi" class="icon w-6 h-6"></i>
+            <div>
+              <h4 style="color:#fff;">Полная беспроводность</h4>
+              <p style="color:#9ca3af;">Работает без проводов и ПК. Свобода движений — играйте где угодно, без ограничений.</p>
+            </div>
+          </div>
+          <div>
+            <i data-lucide="library" class="icon w-6 h-6"></i>
+            <div>
+              <h4 style="color:#fff;">Библиотека хитов</h4>
+              <p style="color:#9ca3af;">Beat Saber, Superhot VR, Resident Evil 4, Among Us VR. Сотни игр на любой вкус.</p>
+            </div>
+          </div>
+        </div>
+        <a href="#pricing" class="arenda-btn-blue">Арендовать Quest 2</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="pricing" class="arenda-pricing">
+  <div class="arenda-container">
+    <h2 class="arenda-pricing-title">Тарифы <span style="color:var(--neon-purple)">BizonVR</span></h2>
+    <p class="arenda-pricing-subtitle" style="text-align:center; color:#9ca3af; margin-bottom:3rem;">
+      Level Up your weekend. Чем дольше — тем выгоднее.
+    </p>
+    <div class="arenda-pricing-grid">
+      
+      <div class="arenda-price-card border-gray" data-aos="fade-up" data-aos-delay="0">
+        <h3 style="color:#fff;">Add-ons</h3>
+        <p class="muted" style="color:#9ca3af; margin-bottom:1.5rem;">Опции и логистика</p>
+        <div class="arenda-price-row"><span style="color:#d1d5db">Доставка</span><span class="price" style="color:#fff; font-weight:700">400 ₽</span></div>
+        <div class="arenda-price-row"><span style="color:#d1d5db">Продление</span><span class="price" style="color:#fff; font-weight:700">100 ₽/час</span></div>
+        <div class="arenda-price-row"><span style="color:#d1d5db">Link Кабель</span><span class="price" style="color:var(--neon-green)">Бесплатно</span></div>
+      </div>
+
+      <div class="arenda-price-card-featured" data-aos="fade-up" data-aos-delay="100">
+        <div class="arenda-price-card-featured-inner">
+          <div style="text-align:center; margin-bottom:1rem;">
+            <span class="badge">BEST SELLER</span>
+          </div>
+          <h3 style="text-align:center; font-size:1.8rem; margin-bottom:0.2rem; color:#fff;">Quest 3</h3>
+          <p class="muted" style="text-align:center; color:#9ca3af; font-size:0.9rem; margin-bottom:1.5rem;">Полный боекомплект</p>
+          
+          <div class="arenda-price-line">
+            <span style="color:#fff">1 день</span>
+            <span class="price" style="font-weight:700; font-size:1.2rem; color:#fff;">1 000 ₽</span>
+          </div>
+          <div class="arenda-price-line">
+            <span style="color:#fff">2 дня</span>
+            <div style="text-align:right">
+              <span class="price" style="font-weight:700; color:#fff;">1 800 ₽</span><br>
+              <span class="price-green">900 ₽/день</span>
+            </div>
+          </div>
+          <div class="arenda-price-line highlight">
+            <span style="color:var(--neon-purple); font-weight:700;">3 дня</span>
+            <div style="text-align:right">
+              <span class="price-purple" style="font-size:1.3rem;">2 500 ₽</span><br>
+              <span style="font-size:0.75rem; color:#aaa">≈833 ₽/день</span>
+            </div>
+          </div>
+          <div class="arenda-price-line">
+            <span style="color:#fff">7 дней</span>
+            <div style="text-align:right">
+              <span class="price" style="font-weight:700; color:#fff;">4 300 ₽</span><br>
+              <span class="price-green">≈615 ₽/день</span>
+            </div>
+          </div>
+          
+          <div class="arenda-cta-block" style="margin-top:2rem;">
+            <a href="#contacts">Забронировать</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="arenda-price-card border-blue" data-aos="fade-up" data-aos-delay="200">
+        <h3 style="color:#fff;">VR Event</h3>
+        <p class="muted" style="color:#9ca3af; margin-bottom:1.5rem;">Корпоративы и праздники</p>
+        <ul class="arenda-events-list">
+          <li style="margin-bottom:1rem; display:flex; gap:0.5rem;"><i data-lucide="users" style="color:var(--neon-blue); width:20px;"></i> <span style="color:#d1d5db">До 8 шлемов в сеть</span></li>
+          <li style="margin-bottom:1rem; display:flex; gap:0.5rem;"><i data-lucide="clock" style="color:var(--neon-blue); width:20px;"></i> <span style="color:#d1d5db">От 2 часов игры</span></li>
+          <li style="margin-bottom:1rem; display:flex; gap:0.5rem;"><i data-lucide="user-check" style="color:var(--neon-blue); width:20px;"></i> <span style="color:#d1d5db">Техник на выезде</span></li>
+        </ul>
+        <div class="arenda-events-cta" style="border-top:1px solid rgba(255,255,255,0.1); padding-top:1.5rem; text-align:center;">
+          <span style="display:block; color:#9ca3af; font-size:0.875rem;">Цена за 1 шлем</span>
+          <span class="price" style="font-size:2rem; font-weight:800; color:var(--neon-blue); text-shadow:0 0 10px rgba(0,212,255,0.4);">800 ₽</span>
+          <span style="font-size:1rem; color:#fff">/ час</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="arenda-delivery">
+  <div class="arenda-container">
+    <div class="arenda-delivery-grid">
+      <div data-aos="fade-right">
+        <h2 style="margin-bottom:2rem;">Доставка и условия</h2>
+        <div class="arenda-delivery-list">
+        <div class="arenda-delivery-item">
+          <i data-lucide="rocket" class="icon green"></i>
+          <div><h4 style="color:#fff; margin-bottom:0.3rem;">Академический</h4><p style="color:#9ca3af; margin:0;">Бесплатная телепортация (доставка) по району.</p></div>
+        </div>
+        <div class="arenda-delivery-item">
+          <i data-lucide="map" class="icon blue"></i>
+          <div><h4 style="color:#fff; margin-bottom:0.3rem;">Город</h4><p style="color:#9ca3af; margin:0;">Доставка по Екатеринбургу — от 400 ₽.</p></div>
+        </div>
+        <div class="arenda-delivery-item">
+          <i data-lucide="shield-check" class="icon purple"></i>
+          <div><h4 style="color:#fff; margin-bottom:0.3rem;">Безопасно</h4><p style="color:#9ca3af; margin:0;">Договор аренды. Без залога для местных жителей.</p></div>
+        </div>
+        </div>
+      </div>
+      <div data-aos="fade-left" class="arenda-how">
+        <h2 style="margin-bottom:2rem;">Процесс запуска</h2>
+        <div class="arenda-steps">
+          <div class="arenda-step">
+            <h4 style="color:#fff; font-size:1.2rem;">1. Коннект</h4>
+            <p style="color:#9ca3af;">Пишите в мессенджер. Выбираем даты и экипировку.</p>
+          </div>
+          <div class="arenda-step">
+            <h4 style="color:#fff; font-size:1.2rem;">2. Подготовка</h4>
+            <p style="color:#9ca3af;">Заливаем топовые игры под вас. Заряжаем аккумуляторы.</p>
+          </div>
+          <div class="arenda-step">
+            <h4 style="color:#fff; font-size:1.2rem;">3. Погружение</h4>
+            <p style="color:#9ca3af;">Курьер привозит шлем. Инструктаж 5 минут. Игра началась.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="arenda-faq">
+  <div class="arenda-container" style="max-width:50rem;">
+    <h2 style="text-align:center; margin-bottom:3rem;">База знаний</h2>
+    <details>
+      <summary>Нужен ли мощный ПК? <span class="arrow">▼</span></summary>
+      <p>Нет! Quest 2 и Quest 3 — полностью автономные консоли. Компьютер не нужен, провода не мешают.</p>
+    </details>
+    <details>
+      <summary>Какие игры внутри? <span class="arrow">▼</span></summary>
+      <p>Мы устанавливаем хиты: Beat Saber, Superhot, Resident Evil 4, Pavlov, Job Simulator. Если нужно что-то конкретное — скажите при заказе.</p>
+    </details>
+    <details>
+      <summary>Можно ли играть в очках? <span class="arrow">▼</span></summary>
+      <p>Да, в комплекте есть специальная проставка для очков (Glasses Spacer), играть будет комфортно.</p>
+    </details>
+  </div>
+</section>
+
+<section id="contacts" class="arenda-cta-section">
+  <div class="arenda-container arenda-cta-inner">
+    <h2 style="font-size:3.5rem; text-shadow:0 0 20px rgba(176,38,255,0.5); margin-bottom:1.5rem;">READY PLAYER ONE?</h2>
+    <p class="lead" style="font-size:1.5rem; color:#d1d5db; margin-bottom:3rem;">
+      Выходные близко. Забронируйте свою реальность прямо сейчас.
+    </p>
+    <div class="arenda-cta-btns">
+      <a href="https://wa.me/79324910482" target="_blank" rel="noopener noreferrer" class="btn-green">WhatsApp</a>
+      <a href="https://t.me/bizon_order_manager" target="_blank" rel="noopener noreferrer" class="btn-blue">Telegram</a>
+      <a href="tel:+79324910482" class="btn-outline" style="border:1px solid #fff; color:#fff;">Позвонить</a>
+    </div>
+
+    <div class="arenda-callback-form">
+      <p class="hint">Или оставьте заявку — перезвоним в течение часа</p>
+      {% if messages %}
+      {% for message in messages %}
+      <div class="arenda-callback-success">{{ message }}</div>
+      {% endfor %}
+      {% else %}
+      <form method="post" action="{% url 'arenda' %}#contacts">
+        {% csrf_token %}
+        <input type="hidden" name="form_type" value="callback">
+        <div class="arenda-callback-row">
+          <input type="text" name="name" value="{{ callback_form.name.value|default:'' }}" class="arenda-callback-input" placeholder="Ваше имя" maxlength="150">
+          <input type="tel" name="phone" value="{{ callback_form.phone.value|default:'' }}" class="arenda-callback-input js-phone-mask" placeholder="+7 (999) 999-99-99" inputmode="tel" required>
+        </div>
+        {% if callback_form.phone.errors %}
+        <ul class="errorlist"><li>{{ callback_form.phone.errors.0 }}</li></ul>
+        {% endif %}
+        <button type="submit" class="arenda-callback-submit">Перезвоните мне</button>
+      </form>
+      {% endif %}
+    </div>
+
+    <p class="copy" style="margin-top:4rem; opacity:0.5;">© {% now "Y" %} BizonVR. Powered by Meta Quest.</p>
+  </div>
+</section>
+</div>
+
+<script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    if (typeof AOS !== 'undefined') {
+      AOS.init({ duration: 800, once: true });
+    }
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  });
+</script>
+{% endblock %}

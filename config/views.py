@@ -8,9 +8,9 @@ from django.core.cache import cache
 from django.http import FileResponse, Http404, HttpResponse, HttpResponseRedirect
 from django.shortcuts import redirect, render
 from django.urls import reverse
-from catalog.models import City, ContactRequest, Product, ProductTag
+from catalog.models import CallbackRequest, City, ContactRequest, Product, ProductTag
 
-from .forms import ContactForm
+from .forms import CallbackForm, ContactForm
 from catalog.cache_utils import CACHE_KEY_PRODUCT_TAGS
 
 _CACHE_TTL = 300  # 5 минут
@@ -52,6 +52,37 @@ def serve_media(request, path):
 def privacy_view(request):
     """Страница политики конфиденциальности."""
     return render(request, 'privacy.html')
+
+
+def arenda_view(request):
+    """Страница аренды VR-шлемов Meta Quest."""
+    from urllib.parse import quote
+    media_url = (settings.MEDIA_URL or '/media/').rstrip('/') + '/'
+
+    def build_media_url(relative_path):
+        if not relative_path:
+            return ''
+        # Кодируем путь для URL (пробелы в именах файлов)
+        encoded = '/'.join(quote(part, safe='') for part in relative_path.lstrip('/').split('/'))
+        return request.build_absolute_uri(media_url + encoded)
+
+    callback_form = CallbackForm()
+    if request.method == 'POST' and request.POST.get('form_type') == 'callback':
+        callback_form = CallbackForm(request.POST)
+        if callback_form.is_valid():
+            CallbackRequest.objects.create(
+                name=callback_form.cleaned_data.get('name', '').strip(),
+                phone=callback_form.cleaned_data['phone'],
+                source='arenda',
+            )
+            messages.success(request, 'Заявка отправлена! Мы перезвоним в ближайшее время.')
+            return redirect(reverse('arenda') + '#contacts')
+
+    return render(request, 'arenda.html', {
+        'quest3_image_url': build_media_url('rent/Quest 3.webp'),
+        'quest2_image_url': build_media_url('rent/Quest 2.webp'),
+        'callback_form': callback_form,
+    })
 
 
 def debug_cities_view(request):

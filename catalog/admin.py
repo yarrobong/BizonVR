@@ -13,6 +13,7 @@ from django.utils.html import format_html
 
 from .cache_utils import invalidate_catalog_cache
 from .models import (
+    CallbackRequest,
     CartItem,
     CatalogSection,
     Category,
@@ -555,6 +556,13 @@ class ContactRequestAdmin(admin.ModelAdmin):
     list_filter = ('created_at',)
     search_fields = ('name', 'email', 'message')
     readonly_fields = ('name', 'email', 'phone', 'message', 'created_at')
+
+
+@admin.register(CallbackRequest)
+class CallbackRequestAdmin(admin.ModelAdmin):
+    list_display = ('phone', 'name', 'source', 'created_at')
+    list_filter = ('source', 'created_at')
+    search_fields = ('phone', 'name')
 
 
 @admin.register(Favorite)

@@ -170,7 +170,89 @@
     display: block;
   }
 </style>
-<div class="container mx-auto px-4 py-4 md:py-8" x-data="productDetail()">
+<div class="container mx-auto px-4 py-4 md:py-8" x-data="{
+  data: {},
+  variants: [],
+  productPrice: 0,
+  selectedVariant: null,
+  selectedImageIndex: 0,
+  touchStartX: 0,
+  touchMoveX: 0,
+  init() {
+    try {
+      const el = document.getElementById('product-detail-data');
+      if (el) {
+        this.data = JSON.parse(el.textContent);
+        this.variants = this.data.variants || [];
+        this.productPrice = this.data.productPrice;
+        if (this.variants.length > 0) {
+          this.selectedVariant = this.variants[0];
+        }
+      }
+    } catch(e) { console.error('Error init product detail', e); }
+  },
+  get displayImages() {
+    let images = [];
+    if (this.selectedVariant && this.selectedVariant.imageUrl) {
+      images.push(this.selectedVariant.imageUrl);
+    }
+    if (this.data.productGallery) {
+      images = images.concat(this.data.productGallery);
+    }
+    return [...new Set(images)];
+  },
+  get effectiveImage() {
+    const images = this.displayImages;
+    if (images.length > 0) {
+      if (this.selectedImageIndex >= images.length) this.selectedImageIndex = 0;
+      return images[this.selectedImageIndex];
+    }
+    return this.data.productImage || null;
+  },
+  get displayCharacteristics() {
+    if (this.selectedVariant) {
+      const vChars = this.data.variantCharacteristics ? this.data.variantCharacteristics[this.selectedVariant.id] : null;
+      if (vChars && vChars.length > 0) return vChars;
+    }
+    return this.data.productCharacteristics || [];
+  },
+  get selectedCityName() {
+    return this.data.selectedCityName;
+  },
+  get stockInCity() {
+    if (this.selectedVariant) {
+      return (this.data.stockInCityByVariant && this.data.stockInCityByVariant[this.selectedVariant.id]) || 0;
+    }
+    return this.data.stockInCityProduct;
+  },
+  get stockTotal() {
+    if (this.selectedVariant) {
+      return (this.data.stockByVariant && this.data.stockByVariant[this.selectedVariant.id]) || 0;
+    }
+    return this.data.stockTotalProduct;
+  },
+  handleSwipe() {
+    if (this.touchMoveX === 0) return;
+    const diff = this.touchStartX - this.touchMoveX;
+    if (Math.abs(diff) > 50) {
+      if (diff > 0) {
+        if (this.selectedImageIndex < this.displayImages.length - 1) this.selectedImageIndex++;
+      } else {
+        if (this.selectedImageIndex > 0) this.selectedImageIndex--;
+      }
+    }
+    this.touchStartX = 0;
+    this.touchMoveX = 0;
+  },
+  shareProduct() {
+    if (navigator.share) {
+      navigator.share({
+        title: document.title,
+        url: window.location.href
+      }).catch(e => console.log(e));
+    }
+  }
+}">
   <!-- Mobile: Full-width image carousel with overlay buttons -->
   <div class="md:hidden -mx-4 mb-6">
     <div class="product-image-mobile-container"

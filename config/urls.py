@@ -19,11 +19,12 @@ from decouple import config
 from django.contrib import admin
 from django.urls import path, include, re_path
 
-from config.views import contacts_view, debug_cities_view, favicon_view, home_view, privacy_view, serve_media
+from config.views import arenda_view, contacts_view, debug_cities_view, favicon_view, home_view, privacy_view, serve_media
 
 urlpatterns = [
     path('favicon.ico', favicon_view),
     path('admin/', admin.site.urls),
+    path('arenda/', arenda_view, name='arenda'),
     path('contacts/', contacts_view, name='contacts'),
     path('privacy/', privacy_view, name='privacy'),
     path('page/oferta/', privacy_view, name='oferta'),

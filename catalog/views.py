@@ -514,7 +514,7 @@ class ProductListView(ListView):
     template_name = 'catalog/product_list.html'
 
     def get_queryset(self):
-        qs = Product.objects.filter(is_active=True).select_related('category').prefetch_related('tags', 'characteristics').order_by('-created_at')
+        qs = Product.objects.filter(is_active=True).select_related('category').prefetch_related('tags', 'characteristics', 'variants', 'images').order_by('-created_at')
         search_query = (self.request.GET.get('q') or '').strip()
         if search_query:
             qs = qs.filter(
@@ -583,7 +583,7 @@ class ProductListView(ListView):
 
     def _get_filter_base_queryset(self):
         """Базовый queryset для сбора опций фильтров (без пагинации, без char-фильтров)."""
-        qs = Product.objects.filter(is_active=True).select_related('category')
+        qs = Product.objects.filter(is_active=True).select_related('category').prefetch_related('variants', 'images')
         search_query = (self.request.GET.get('q') or '').strip()
         if search_query:
             qs = qs.filter(
@@ -791,7 +791,7 @@ class ProductDetailView(DetailView):
 @login_required
 def favorite_list_view(request):
     """Страница «Моё избранное»: список товаров, добавленных в избранное."""
-    favorites = Favorite.objects.filter(user=request.user).select_related('product', 'product__category').prefetch_related('product__tags')
+    favorites = Favorite.objects.filter(user=request.user).select_related('product', 'product__category').prefetch_related('product__tags', 'product__variants', 'product__images')
     products = [f.product for f in favorites if f.product.is_active]
     return render(request, 'catalog/favorite_list.html', {
         'products': products,

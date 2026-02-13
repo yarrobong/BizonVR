@@ -50,3 +50,35 @@ class ContactForm(forms.Form):
             if len(digits) < 10:
                 raise forms.ValidationError('Введите корректный номер телефона.')
         return value
+
+
+class CallbackForm(forms.Form):
+    """Форма заявки на обратный звонок (страница аренды)."""
+    name = forms.CharField(
+        label='Имя',
+        max_length=150,
+        required=False,
+        widget=forms.TextInput(attrs={
+            'placeholder': 'Ваше имя',
+            'class': 'arenda-callback-input',
+        }),
+    )
+    phone = forms.CharField(
+        label='Телефон',
+        max_length=20,
+        required=True,
+        widget=forms.TextInput(attrs={
+            'placeholder': '+7 (999) 999-99-99',
+            'inputmode': 'tel',
+            'class': 'arenda-callback-input',
+        }),
+    )
+
+    def clean_phone(self):
+        value = (self.cleaned_data.get('phone') or '').strip()
+        if not value:
+            raise forms.ValidationError('Укажите номер телефона.')
+        digits = re.sub(r'\D', '', value)
+        if len(digits) < 10:
+            raise forms.ValidationError('Введите корректный номер телефона.')
+        return value

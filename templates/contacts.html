@@ -4,75 +4,285 @@
 
 {% block content %}
 <style>
-  .contacts-grid { display: grid; grid-template-columns: 1fr; row-gap: 3rem; column-gap: 4rem; max-width: 80rem; margin-left: auto; margin-right: auto; }
-  @media (min-width: 1024px) { .contacts-grid { grid-template-columns: 1fr 1fr; } }
+  /* --- НАСТРОЙКИ ТЕМЫ --- */
+  :root {
+    --bg-dark: #0b0d11;       /* Очень темный фон */
+    --panel-bg: #151921;      /* Фон карточек */
+    --panel-border: rgba(255, 255, 255, 0.08);
+    --primary: #f59e0b;       /* Основной акцент (оранжевый Bizon) */
+    --primary-glow: rgba(245, 158, 11, 0.4);
+    --text-main: #ffffff;
+    --text-muted: #9ca3af;
+    --radius: 16px;
+  }
+
+  /* Основной контейнер сетки */
+  .contacts-wrapper {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 3rem;
+    max-width: 85rem;
+    margin: 0 auto;
+    position: relative;
+    z-index: 10;
+  }
+
+  @media (min-width: 1024px) {
+    .contacts-wrapper {
+      grid-template-columns: 5fr 4fr; /* Форма чуть шире контактов */
+      gap: 5rem;
+    }
+  }
+
+  /* --- СТИЛИ КАРТОЧЕК (Glassmorphism Lite) --- */
+  .tech-panel {
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius);
+    padding: 2.5rem;
+    box-shadow: 0 20px 40px -10px rgba(0,0,0,0.5);
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+  }
+
+  /* Декоративный "свет" сверху карточки */
+  .tech-panel::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--primary), transparent);
+    opacity: 0.5;
+  }
+
+  /* --- ТИПОГРАФИКА --- */
+  .section-title {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--text-main);
+    margin-bottom: 0.5rem;
+    letter-spacing: -0.02em;
+    text-shadow: 0 0 20px rgba(255,255,255,0.1);
+  }
+  
+  .section-subtitle {
+    color: var(--text-muted);
+    font-size: 0.95rem;
+    margin-bottom: 2rem;
+    font-weight: 400;
+  }
+
+  /* --- ПОЛЯ ВВОДА (INPUTS) --- */
+  .custom-field-group {
+    margin-bottom: 1.5rem;
+    position: relative;
+  }
+
+  .custom-field-group label {
+    display: block;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    transition: color 0.3s;
+  }
+
+  /* Стилизация Django inputs */
+  .custom-field-group input, 
+  .custom-field-group textarea,
+  .custom-field-group select {
+    width: 100%;
+    background-color: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    padding: 1rem 1.25rem;
+    color: white;
+    font-size: 1rem;
+    outline: none;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* Эффект фокуса */
+  .custom-field-group input:focus, 
+  .custom-field-group textarea:focus {
+    border-color: var(--primary);
+    background-color: rgba(0, 0, 0, 0.4);
+    box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.1); /* Полупрозрачная рамка */
+    transform: translateY(-2px);
+  }
+
+  .custom-field-group input:focus + label,
+  .custom-field-group:focus-within label {
+    color: var(--primary);
+  }
+
+  /* --- КНОПКА ОТПРАВКИ --- */
+  .submit-btn {
+    width: 100%;
+    background: linear-gradient(135deg, var(--primary) 0%, #d97706 100%);
+    color: #000;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 1.2rem;
+    border-radius: 12px;
+    border: none;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s ease;
+    box-shadow: 0 10px 20px -5px var(--primary-glow);
+  }
+
+  .submit-btn:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 15px 30px -5px var(--primary-glow);
+    filter: brightness(1.1);
+  }
+  
+  .submit-btn:active {
+    transform: translateY(-1px);
+  }
+
+  /* --- СПИСОК КОНТАКТОВ --- */
+  .contact-item {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 1.5rem;
+    padding-left: 1rem;
+    border-left: 2px solid rgba(255,255,255,0.1);
+    transition: border-color 0.3s;
+  }
+  
+  .contact-item:hover {
+    border-left-color: var(--primary);
+  }
+
+  .contact-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #6b7280;
+    margin-bottom: 0.25rem;
+  }
+
+  .contact-value {
+    color: #e5e7eb;
+    font-size: 1.1rem;
+    font-weight: 500;
+    text-decoration: none;
+    transition: color 0.2s;
+  }
+
+  .contact-value:hover {
+    color: var(--primary);
+  }
+  
+  .contact-sub {
+    font-size: 0.85rem;
+    color: #6b7280;
+    margin-top: 0.25rem;
+  }
+
+  /* --- КАРТА --- */
+  .map-container {
+    height: 300px;
+    border-radius: var(--radius);
+    overflow: hidden;
+    position: relative;
+    border: 1px solid var(--panel-border);
+    filter: grayscale(100%);
+    transition: filter 0.5s ease;
+  }
+  
+  .map-container:hover {
+    filter: grayscale(0%); /* Цвет при наведении */
+  }
+
+  .map-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(to bottom, transparent, rgba(0,0,0,0.8));
+    pointer-events: none;
+  }
 </style>
-<div class="container mx-auto px-4 py-12">
-  <div class="contacts-grid">
-    <!-- Форма обратной связи -->
-    <div>
-      <h2 class="text-xl font-semibold text-white mb-4">Напишите нам</h2>
-      <p class="text-gray-400 text-sm mb-6">Оставьте заявку — мы ответим в течение рабочего дня.</p>
+
+<div class="container mx-auto px-4 py-16">
+  <div class="contacts-wrapper">
+    
+    <div class="tech-panel">
+      <h2 class="section-title">Напишите нам</h2>
+      <p class="section-subtitle">Оставьте заявку — мы ответим в течение рабочего дня.</p>
 
       {% if messages %}
-      <div class="mb-6 space-y-2">
+      <div class="mb-8 space-y-3">
         {% for message in messages %}
-        <p class="text-accent text-sm py-2 px-4 bg-accent/10 rounded-lg">{{ message }}</p>
+        <div class="flex items-center p-4 rounded-lg bg-green-500/10 border border-green-500/20 text-green-400">
+            <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+            {{ message }}
+        </div>
         {% endfor %}
       </div>
       {% endif %}
 
-      <form method="post" action="{% url 'contacts' %}" class="space-y-4">
+      <form method="post" action="{% url 'contacts' %}" class="mt-6">
         {% csrf_token %}
         {% for field in form %}
-        <div>
-          <label for="{{ field.id_for_label }}" class="block text-sm text-gray-400 mb-1">{{ field.label }}</label>
+        <div class="custom-field-group">
+          <label for="{{ field.id_for_label }}">{{ field.label }}</label>
           {{ field }}
+          
           {% if field.errors %}
-          <p class="text-red-400 text-xs mt-1">{{ field.errors.0 }}</p>
+          <div class="text-red-500 text-xs mt-2 flex items-center animate-pulse">
+            <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path></svg>
+            {{ field.errors.0 }}
+          </div>
           {% endif %}
         </div>
         {% endfor %}
-        <button type="submit"
-                class="w-full bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-4 rounded-full transition-colors">
-          Отправить
+        
+        <button type="submit" class="submit-btn mt-4">
+          Отправить сообщение
         </button>
       </form>
     </div>
 
-    <!-- Наши контакты -->
-    <div>
-      <h2 class="text-xl font-semibold text-white mb-4">Наши контакты</h2>
-      <div class="space-y-6">
-        <div>
-          <div class="text-[10px] text-gray-500 uppercase mb-1">Адрес</div>
-          <p class="text-white font-medium">г. Москва, улица Академика Королева, 13с1</p>
-          <p class="text-sm text-gray-400 mt-1">Метро ВДНХ</p>
-        </div>
-        <div>
-          <div class="text-[10px] text-gray-500 uppercase mb-1">Режим работы</div>
-          <p class="text-gray-300">с 10:00 до 19:00</p>
-        </div>
-        <div>
-          <div class="text-[10px] text-gray-500 uppercase mb-1">Телефон</div>
-          <a href="tel:+79324910482" class="text-lg font-bold text-white hover:text-accent transition-colors">+7 (932) 491-04-82</a>
-        </div>
-        <div>
-          <div class="text-[10px] text-gray-500 uppercase mb-1">Email</div>
-          <a href="mailto:info@bizon-business.ru" class="text-gray-300 hover:text-accent transition-colors">info@bizon-business.ru</a>
-        </div>
-        <div>
-          <div class="text-[10px] text-gray-500 uppercase mb-1">Telegram</div>
-          <a href="https://t.me/bizon_order_manager" target="_blank" rel="noopener noreferrer" class="text-gray-300 hover:text-accent transition-colors">@bizon_order_manager</a>
+    <div class="space-y-8">
+      <div>
+        <h2 class="section-title mb-8">Контакты</h2>
+        <div class="space-y-6">
+            
+          <div class="contact-item">
+            <div class="contact-label">Адрес</div>
+            <p class="contact-value">Москва, ул. Академика Королева, 13с1</p>
+            <p class="contact-sub">Метро ВДНХ (10 мин)</p>
+          </div>
+
+          <div class="contact-item">
+             <div class="contact-label">Режим работы</div>
+             <p class="contact-value">Пн-Пт: с 10:00 до 19:00</p>
+             <p class="contact-sub">Сб-Вс: Выходной</p>
+          </div>
+
+          <div class="contact-item">
+            <div class="contact-label">Связь</div>
+            <a href="tel:+79324910482" class="contact-value text-2xl font-bold tracking-tight block mb-1">+7 (932) 491-04-82</a>
+            <a href="mailto:info@bizon-business.ru" class="contact-value text-base opacity-80 hover:opacity-100">info@bizon-business.ru</a>
+          </div>
+
+          <div class="contact-item" style="border-left-color: #229ED9;"> <div class="contact-label">Telegram</div>
+             <a href="https://t.me/bizon_order_manager" target="_blank" class="contact-value flex items-center gap-2">
+                <span>@bizon_order_manager</span>
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221l-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.16.16-.295.295-.605.295l.213-3.054 5.56-5.022c.242-.213-.054-.334-.373-.121l-6.869 4.326-2.96-.924c-.64-.203-.658-.64.135-.954l11.566-4.458c.538-.196 1.006.128.832.944z"/></svg>
+             </a>
+          </div>
+
         </div>
       </div>
 
-      <div class="mt-8 relative h-64 bg-dark-700 rounded-xl overflow-hidden grayscale opacity-80">
-        <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Map_of_Moscow_center.svg/2560px-Map_of_Moscow_center.svg.png" alt="Карта" class="w-full h-full object-cover opacity-50" />
-        <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
-          <i data-lucide="map-pin" class="w-10 h-10 text-accent drop-shadow-lg inline-block" style="fill: currentColor;"></i>
-        </div>
-      </div>
+      
+
     </div>
   </div>
 </div>

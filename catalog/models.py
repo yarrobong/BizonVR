@@ -151,6 +151,18 @@ class Product(models.Model):
     def get_absolute_url(self):
         return reverse('catalog:product_detail', kwargs={'slug': self.slug})
 
+    def get_display_image(self):
+        """Первое доступное изображение: основное, затем вариант, затем доп. фото. Для карточки товара."""
+        if self.image:
+            return self.image
+        for v in self.variants.all():
+            if v.image:
+                return v.image
+        first_extra = self.images.order_by('order', 'id').first()
+        if first_extra and first_extra.image:
+            return first_extra.image
+        return None
+
 
 class ProductVariant(models.Model):
     """Вариант товара: цвет, размер, модель и т.п. Своё фото и цена (опционально)."""
@@ -483,3 +495,19 @@ class ContactRequest(models.Model):
 
     def __str__(self):
         return f'{self.name} — {self.created_at:%d.%m.%Y %H:%M}'
+
+
+class CallbackRequest(models.Model):
+    """Заявка на обратный звонок (страница аренды и др.)."""
+    name = models.CharField('Имя', max_length=150, blank=True)
+    phone = models.CharField('Телефон', max_length=20)
+    source = models.CharField('Источник', max_length=50, default='arenda', blank=True)
+    created_at = models.DateTimeField('Создано', auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Заявка на обратный звонок'
+        verbose_name_plural = 'Заявки на обратный звонок'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.phone} — {self.created_at:%d.%m.%Y %H:%M}'

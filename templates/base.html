@@ -13,7 +13,7 @@
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Orbitron:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   
   <!-- Tailwind CSS -->
   <link rel="stylesheet" href="{% static 'css/tailwind.css' %}">
@@ -26,20 +26,37 @@
   <script src="https://unpkg.com/lucide@latest"></script>
 
   <style>
-    /* Custom Scrollbar */
-    ::-webkit-scrollbar {
-      width: 8px;
+    /* Скрыть полосу прокрутки на всём сайте (скролл остаётся) */
+    html, body {
+      scrollbar-width: none; /* Firefox */
+      -ms-overflow-style: none; /* IE/Edge */
     }
-    ::-webkit-scrollbar-track {
-      background: #0B0D14;
+    html::-webkit-scrollbar,
+    body::-webkit-scrollbar {
+      display: none; /* Chrome, Safari, Opera */
     }
-    ::-webkit-scrollbar-thumb {
-      background: #1F2532;
-      border-radius: 4px;
+    * {
+      scrollbar-width: none;
+      -ms-overflow-style: none;
     }
-    ::-webkit-scrollbar-thumb:hover {
-      background: #00D4FF;
+    *::-webkit-scrollbar {
+      display: none;
     }
+
+    :root {
+  /* Цветовая палитра BizonVR */
+  --bg-dark: #0f1115;       /* Глубокий темный фон */
+  --bg-panel: #181b21;      /* Фон элементов */
+  --text-main: #ffffff;
+  --text-muted: #9ca3af;
+  
+  /* Акцентный цвет (Неоновый фиолетовый/синий для VR) */
+  --accent: #8b5cf6;        
+  --accent-glow: rgba(139, 92, 246, 0.4);
+  
+  /* Размеры */
+  --safe-bottom: env(safe-area-inset-bottom);
+}
 
     /* Glassmorphism utilities */
     .bg-glass {
@@ -321,6 +338,11 @@
     .catalog-tile-large { grid-column: span 2; grid-row: span 2; }
     .catalog-tile-tall { grid-column: span 1; grid-row: span 2; }
 
+    /* Логотип в шапке */
+    .header-logo {
+      font-family: 'Orbitron', sans-serif;
+    }
+
     /* Header Nav Hover Effect */
     .header-nav a {
       position: relative;
@@ -340,11 +362,11 @@
       width: 100%;
     }
     
-    /* Hero Carousel Styles: один слайд на всю ширину, переключение по current */
+    /* Hero Carousel Styles: один слайд на всю ширину на десктопе; на мобильных — видимые соседи и 16:10 */
     .hero-carousel {
       --hero-gap: 24px;
       --hero-radius: 32px;
-      overflow-x: hidden; /* скрыть горизонтальный overflow от слайдов — убирает свайп в пустое пространство справа на мобильных */
+      overflow-x: hidden;
       aspect-ratio: 16 / 5;
       min-height: 220px;
       margin-left: calc(var(--hero-gap) * -0.5);
@@ -387,19 +409,44 @@
       background-clip: padding-box;
       box-shadow: 0 25px 60px rgba(0, 0, 0, 0.35);
     }
+    /* Мобильная версия: слайд 80% ширины (видны соседи), соотношение 16:10, центрирование через left */
     @media (max-width: 768px) {
       .hero-carousel {
         --hero-gap: 16px;
+        aspect-ratio: 16 / 10;
+        min-height: 0;
+      }
+      .hero-slides-track {
+        position: relative;
+        left: calc(10% - var(--hero-current, 0) * 82%);
+        width: calc(var(--hero-total, 1) * 82% - 2%);
+        min-width: 100%;
+        height: 100%;
+        transition: left 0.6s cubic-bezier(0.32, 0.72, 0, 1) !important;
+        transform: none;
+        gap: 2%;
+        display: flex;
+        align-items: stretch;
+      }
+      .hero-slide {
+        flex: 0 0 80%;
+        min-width: 80%;
+        padding: 0;
       }
       .hero-slide-card {
-        min-height: 200px;
+        aspect-ratio: 16 / 10;
+        min-height: 0;
+        width: 100%;
       }
     }
     .hero-slide-title {
-      text-shadow: 0 4px 12px rgba(0,0,0,0.6);
+      text-shadow: 0 0 2px rgba(0,0,0,1), 0 0 8px rgba(0,0,0,0.9), 0 2px 4px rgba(0,0,0,0.8), 0 4px 16px rgba(0,0,0,0.7);
     }
     .hero-slide-desc {
-      text-shadow: 0 2px 4px rgba(0,0,0,0.6);
+      text-shadow: 0 0 2px rgba(0,0,0,1), 0 0 6px rgba(0,0,0,0.8), 0 1px 3px rgba(0,0,0,0.7), 0 2px 8px rgba(0,0,0,0.6);
+    }
+    .hero-slide-btn {
+      text-shadow: 0 1px 2px rgba(0,0,0,0.5);
     }
     /* Поиск в основном хедере занимает всё свободное место */
     #main-body header .header-main-row form[action*="product_list"] {
@@ -407,6 +454,158 @@
       min-width: 0 !important;
       max-width: none !important;
     }
+
+
+    /* --- Основной Футер --- */
+.vr-footer {
+  background-color: var(--bg-dark);
+  border-top: 1px solid #2d3039;
+  color: var(--text-muted);
+  padding-top: 3rem;
+  padding-bottom: 3rem;
+  font-family: 'Inter', sans-serif; /* Или твой шрифт */
+}
+
+.vr-footer h3, 
+.vr-footer h4 {
+  color: var(--text-main);
+  font-weight: 700;
+  margin-bottom: 1.25rem;
+  letter-spacing: 0.02em;
+}
+
+.vr-footer ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.vr-footer li {
+  margin-bottom: 0.75rem;
+}
+
+.vr-footer a {
+  text-decoration: none;
+  color: var(--text-muted);
+  transition: all 0.3s ease;
+  position: relative;
+  display: inline-block;
+}
+
+/* Эффект ховера для ссылок: светлеет + сдвиг вправо */
+.vr-footer a:hover {
+  color: var(--accent);
+  transform: translateX(4px);
+  text-shadow: 0 0 8px var(--accent-glow);
+}
+
+.vr-copyright {
+  margin-top: 3rem;
+  padding-top: 2rem;
+  border-top: 1px solid #2d3039;
+  text-align: center;
+  font-size: 0.75rem;
+  opacity: 0.6;
+}
+
+/* Сетка футера */
+.footer-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2rem;
+}
+
+@media (min-width: 768px) {
+  .footer-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+/* --- Мобильное нижнее меню (Glassmorphism) --- */
+.mobile-dock {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  
+  /* Эффект стекла */
+  background: rgba(24, 27, 33, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 10px 20px;
+  
+  /* Учет "челки" и свайп-зоны на iPhone */
+  padding-bottom: max(0.8rem, var(--safe-bottom));
+}
+
+.dock-item {
+  color: var(--text-muted);
+  padding: 0.5rem;
+  border-radius: 12px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* При наведении или нажатии иконка "вспыхивает" */
+.dock-item:hover,
+.dock-item:active {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.dock-item:hover i {
+  filter: drop-shadow(0 0 5px var(--accent-glow));
+  transform: scale(1.1);
+}
+
+.dock-item i {
+  transition: transform 0.2s;
+}
+
+/* Бейджи (счетчики) */
+.badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 99px;
+  font-size: 9px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  border: 2px solid var(--bg-panel); /* Обводка под цвет фона */
+}
+
+.badge-accent {
+  background-color: var(--accent);
+  color: white;
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+
+.badge-gray {
+  background-color: #374151;
+  color: white;
+}
+
+/* Скрываем док на десктопе */
+@media (min-width: 768px) {
+  .mobile-dock {
+    display: none;
+  }
+}
   </style>
   <script>
     // Инициализация Lucide иконок после загрузки HTMX контента
@@ -416,15 +615,26 @@
       }
     }
     
+    function scrollToTop() {
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    }
     function initHtmxHandlers() {
       initLucide(); // иконки в шапке (каталог и др.) сразу при загрузке
       document.body.addEventListener('htmx:afterSettle', function(ev) {
         initLucide();
+        // Скролл вверх после полного обновления DOM (после Alpine, layout), чтобы не было сдвига вниз
+        if (ev.detail.target.id === 'main-content') {
+          requestAnimationFrame(function() {
+            requestAnimationFrame(scrollToTop);
+          });
+          window.dispatchEvent(new CustomEvent('header-expand'));
+        }
       });
       document.body.addEventListener('htmx:afterSwap', function(ev) {
         if (ev.detail.target.id === 'main-content') {
-          window.scrollTo(0, 0);
-          window.dispatchEvent(new CustomEvent('header-expand'));
+          scrollToTop(); // сразу в начало, после settle поправим ещё раз
           if (typeof Alpine !== 'undefined') Alpine.initTree(ev.detail.target);
           initLucide();
         }
@@ -610,7 +820,7 @@
     <div class="container mx-auto px-4 h-[80px] flex items-center justify-between">
       <!-- Логотип -->
       <a href="{% url 'home' %}" class="flex flex-col flex-shrink-0 cursor-pointer mr-6">
-        <h1 class="font-bold tracking-wider leading-none text-2xl text-white">BizonVR</h1>
+        <h1 class="header-logo font-bold tracking-wider leading-none text-2xl text-white">BizonVR</h1>
       </a>
 
       <!-- Кнопка каталога (sticky): не реагируем на клик 300ms после смены шапки -->
@@ -714,7 +924,7 @@
     <div id="header-main-row" class="header-main-row container mx-auto px-4 py-3 bg-dark-800">
       <div class="flex flex-wrap md:flex-nowrap items-center gap-3 md:gap-4">
         <a href="{% url 'home' %}" class="flex flex-col flex-shrink-0 cursor-pointer">
-          <h1 class="font-bold tracking-wider leading-none text-2xl">BizonVR</h1>
+          <h1 class="header-logo font-bold tracking-wider leading-none text-2xl text-white">BizonVR</h1>
           
         </a>
 
@@ -838,10 +1048,10 @@
             <ul class="header-nav flex items-center gap-6 md:gap-8">
               <li><a href="#" class="hover:text-accent transition-colors py-2 block">Блог</a></li>
               <li><a href="#" class="hover:text-accent transition-colors py-2 block">Клубы</a></li>
-              <li><a href="#" class="hover:text-accent transition-colors py-2 block">Аренда</a></li>
+              <li><a href="{% url 'arenda' %}" class="hover:text-accent transition-colors py-2 block">Аренда</a></li>
               <li><a href="#" class="hover:text-accent transition-colors py-2 block">Инструкции</a></li>
               <li><a href="#" class="hover:text-accent transition-colors py-2 block">Услуги</a></li>
-              <li><a href="#" class="hover:text-accent transition-colors py-2 block">Контакты</a></li>
+              <li><a href="{% url 'contacts' %}" class="hover:text-accent transition-colors py-2 block">Контакты</a></li>
             </ul>
           </div>
           <div class="relative flex-shrink-0 ml-auto" x-data="{ cityOpenNav: false }" @click.outside="cityOpenNav = false" data-cities-count="{{ cities|length }}">
@@ -895,65 +1105,71 @@
     {% endblock %}
   </div>
 
-  <footer class="bg-dark-800 border-t border-dark-600 text-gray-400 py-12">
-    <!-- Footer content omitted for brevity -->
+  <footer class="vr-footer">
     <div class="container mx-auto px-4">
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+      <div class="footer-grid">
         <div>
-          <h3 class="text-white font-bold mb-4">BizonVR</h3>
+          <h3>BizonVR</h3>
           <p class="text-sm">Магазин VR оборудования и аттракционов</p>
         </div>
+        
         <div>
-          <h4 class="text-white font-bold mb-4">Каталог</h4>
-          <ul class="space-y-2 text-sm">
-            <li><a href="#" class="hover:text-accent">VR шлемы</a></li>
-            <li><a href="#" class="hover:text-accent">Аксессуары</a></li>
-            <li><a href="#" class="hover:text-accent">Игры</a></li>
+          <h4>Каталог</h4>
+          <ul>
+            <li><a href="#">VR шлемы</a></li>
+            <li><a href="#">Аксессуары</a></li>
+            <li><a href="#">Игры</a></li>
           </ul>
         </div>
+  
         <div>
-          <h4 class="text-white font-bold mb-4">Клиентам</h4>
-          <ul class="space-y-2 text-sm">
-            <li><a href="#" class="hover:text-accent">О нас</a></li>
-            <li><a href="#" class="hover:text-accent">Доставка и оплата</a></li>
-            <li><a href="#" class="hover:text-accent">Контакты</a></li>
+          <h4>Клиентам</h4>
+          <ul>
+            <li><a href="#">О нас</a></li>
+            <li><a href="#">Доставка и оплата</a></li>
+            <li><a href="{% url 'contacts' %}">Контакты</a></li>
           </ul>
         </div>
+  
         <div>
-          <h4 class="text-white font-bold mb-4">Контакты</h4>
-          <ul class="space-y-2 text-sm">
+          <h4>Контакты</h4>
+          <ul>
             <li>+7 (932) 491-04-82</li>
             <li>info@bizonvr.ru</li>
             <li>Москва, ул. Академика Королева, 13с1</li>
           </ul>
         </div>
       </div>
-      <div class="mt-8 pt-8 border-t border-dark-600 text-center text-xs">
+  
+      <div class="vr-copyright">
         &copy; 2024 BizonVR. Все права защищены.
       </div>
     </div>
   </footer>
-
-  <!-- Мобильное нижнее меню -->
-  <div class="md:hidden fixed bottom-0 left-0 right-0 bg-dark-800 border-t border-dark-600 py-2 flex justify-between items-center z-50">
-    <a href="{% url 'home' %}" class="flex flex-col items-center gap-1 text-xs text-gray-400 hover:text-accent">
-      <i data-lucide="home" class="w-5 h-5"></i>
-      <span>Главная</span>
+  
+  <div class="mobile-dock">
+    <a href="{% url 'home' %}" class="dock-item" title="Главная">
+      <i data-lucide="home" width="24" height="24"></i>
     </a>
-    <a href="{% url 'catalog:product_list' %}" class="flex flex-col items-center gap-1 text-xs text-gray-400 hover:text-accent">
-      <i data-lucide="search" class="w-5 h-5"></i>
-      <span>Каталог</span>
+    
+    <a href="{% url 'catalog:product_list' %}" class="dock-item" title="Каталог">
+      <i data-lucide="search" width="24" height="24"></i>
     </a>
-    <a href="{% url 'catalog:cart' %}" class="flex flex-col items-center gap-1 text-xs text-gray-400 hover:text-accent relative">
-      <div class="relative">
-        <i data-lucide="shopping-cart" class="w-5 h-5"></i>
-        <span class="absolute -top-1 -right-1 w-3.5 h-3.5 bg-accent text-dark-900 rounded-full text-[9px] flex items-center justify-center font-bold" x-text="cartCount">{{ cart_count|default:0 }}</span>
-      </div>
-      <span>Корзина</span>
+    
+    <a href="{% url 'catalog:favorites' %}" class="dock-item" title="Избранное">
+      <i data-lucide="heart" width="24" height="24"></i>
+      {% if favorites_count %}
+        <span class="badge badge-gray">{{ favorites_count }}</span>
+      {% endif %}
     </a>
-    <a href="{% url 'accounts:profile' %}" class="flex flex-col items-center gap-1 text-xs text-gray-400 hover:text-accent">
-      <i data-lucide="user" class="w-5 h-5"></i>
-      <span>Профиль</span>
+    
+    <a href="{% url 'catalog:cart' %}" class="dock-item" title="Корзина">
+      <i data-lucide="shopping-cart" width="24" height="24"></i>
+      <span class="badge badge-accent" x-text="cartCount">{{ cart_count|default:0 }}</span>
+    </a>
+    
+    <a href="{% url 'accounts:profile' %}" class="dock-item" title="Профиль">
+      <i data-lucide="user" width="24" height="24"></i>
     </a>
   </div>
 </body>
