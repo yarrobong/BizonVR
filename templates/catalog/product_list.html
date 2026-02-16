@@ -3,6 +3,8 @@
 
 {% block title %}Каталог — BizonVR{% endblock %}
 
+{% block mobile_header %}{% endblock %}
+
 {% block content %}
 <style>
   .catalog-layout { display: flex; flex-direction: column; gap: 2rem; }
@@ -138,7 +140,7 @@
   {% if products %}
     <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 md:gap-3">
       {% for product in products %}
-        {% include "catalog/_product_card.html" %}
+        {% include "catalog/_product_card.html" with show_favorite=True favorite_product_ids=favorite_product_ids %}
       {% endfor %}
     </div>
 

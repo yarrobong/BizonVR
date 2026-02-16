@@ -12,7 +12,7 @@ from django.views.generic import DetailView, ListView
 from django_ratelimit.decorators import ratelimit
 
 from .cart_services import get_cart_count, get_cart_items, save_cart_to_db, save_cart_to_session
-from .models import CatalogSection, Category, City, Favorite, Product, ProductBundle, ProductBundleItem, ProductCharacteristic, ProductStock, ProductTag, ProductVariant
+from .models import CatalogSection, Category, City, Favorite, PickupPoint, Product, ProductBundle, ProductBundleItem, ProductCharacteristic, ProductStock, ProductTag, ProductVariant
 
 
 def _get_stock_in_city(city_id, product_id, variant_id=None):
@@ -692,8 +692,9 @@ class ProductDetailView(DetailView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        from .cart_services import is_favorite
+        from .cart_services import get_favorite_product_ids, is_favorite
         context['is_favorite'] = is_favorite(self.request, self.object.pk)
+        context['favorite_product_ids'] = get_favorite_product_ids(self.request)
         selected_city_id = self.request.session.get('selected_city_id')
 
         # Остатки: для товаров с вариантами — по варианту, иначе — по товару
@@ -717,6 +718,25 @@ class ProductDetailView(DetailView):
             context['stock_in_city_by_variant'] = {}
 
         context['selected_city'] = City.objects.filter(pk=selected_city_id).first() if selected_city_id else None
+        selected_city = context['selected_city']
+
+        # Точки выдачи по выбранному городу (превью для buy-box)
+        if selected_city:
+            pp_qs = PickupPoint.objects.filter(city=selected_city).order_by('order', 'name')
+            context['pickup_points_count'] = pp_qs.count()
+            context['pickup_points_preview'] = list(pp_qs[:3])
+        else:
+            context['pickup_points_count'] = 0
+            context['pickup_points_preview'] = []
+
+        # Рекомендации: товары из той же категории (6 шт.)
+        context['recommended_products'] = list(
+            Product.objects.filter(is_active=True, category=self.object.category)
+            .exclude(pk=self.object.pk)
+            .select_related('category')
+            .prefetch_related('tags', 'variants', 'images')
+            .order_by('-created_at')[:6]
+        )
 
         # Характеристики вариантов для шаблона
         context['variant_characteristics'] = {
@@ -788,11 +808,18 @@ class ProductDetailView(DetailView):
         return context
 
 
-@login_required
 def favorite_list_view(request):
-    """Страница «Моё избранное»: список товаров, добавленных в избранное."""
-    favorites = Favorite.objects.filter(user=request.user).select_related('product', 'product__category').prefetch_related('product__tags', 'product__variants', 'product__images')
-    products = [f.product for f in favorites if f.product.is_active]
+    """Страница «Моё избранное»: список товаров, добавленных в избранное. Поддержка анонимов (сессия)."""
+    from .cart_services import get_favorite_product_ids
+    favorite_ids = get_favorite_product_ids(request)
+    if not favorite_ids:
+        products = []
+    else:
+        products = list(
+            Product.objects.filter(pk__in=favorite_ids, is_active=True)
+            .select_related('category')
+            .prefetch_related('tags', 'variants', 'images')
+        )
     return render(request, 'catalog/favorite_list.html', {
         'products': products,
         'favorite_product_ids': set(p.pk for p in products),
@@ -815,6 +842,31 @@ def toggle_favorite_view(request, product_id):
             ids.add(product_id)
         request.session['favorite_product_ids'] = list(ids)
         request.session.modified = True
+
+    # HTMX: вернуть обновлённую кнопку без редиректа/перезагрузки страницы
+    if request.headers.get('HX-Request') == 'true':
+        from .cart_services import get_favorite_product_ids, is_favorite
+        favorite_ids = get_favorite_product_ids(request)
+        ctx = {'product': product, 'is_favorite': is_favorite(request, product.pk)}
+        button_html = render(request, 'catalog/partials/favorite_button.html', ctx).content.decode()
+        from django.http import HttpResponse
+        resp = HttpResponse(button_html)
+        if request.POST.get('from_favorites_page') == '1':
+            products_list = list(
+                Product.objects.filter(pk__in=favorite_ids, is_active=True)
+                .select_related('category')
+                .prefetch_related('tags', 'variants', 'images')
+            )
+            grid_html = render(request, 'catalog/partials/favorites_grid_oob.html', {
+                'products': products_list,
+                'favorite_product_ids': favorite_ids,
+            }).content.decode()
+            resp = HttpResponse(button_html + grid_html)
+        resp['HX-Trigger'] = json.dumps({
+            'favorites-updated': {'count': len(favorite_ids)},
+        })
+        return resp
+
     next_url = request.POST.get('next') or request.GET.get('next') or product.get_absolute_url()
     # Якорь #product-{id} — браузер прокрутит к карточке после перезагрузки
     if '#' in next_url:

@@ -3,7 +3,7 @@
 
 {% block title %}BizonVR — VR оборудование и аттракционы{% endblock %}
 
-{% block content %}
+{% block mobile_header %}
 <!-- Мобильная шапка: только на мобильных; на десктопе скрыта -->
 <div class="mobile-header md:hidden" x-data="{ cityOpen: false, showFixedSearch: false }" @click.outside="cityOpen = false"
      x-init="
@@ -14,7 +14,7 @@
        check();
        return () => window.removeEventListener('scroll', throttled);
      ">
-  <!-- Полоса города + поиск: при скролле город уезжает, поиск остаётся (стиль как Ozon, без лишних иконок) -->
+  <!-- Полоса города + поиск: при скролле город уезжает, поиск остаётся -->
   <div class="mobile-header-wrapper">
     <div class="mobile-header-city-strip">
       {% if cities %}
@@ -68,46 +68,184 @@
   </div>
 </div>
 
+{% endblock %}
 
-<!-- Hero Carousel: карточки с собственным фоном; на мобильных 16:10 и видны соседние слайды -->
-<section class="hero-carousel relative w-full max-w-full min-w-0 min-h-[200px] bg-dark-900 touch-pan-y md:mx-0 mt-4 md:mt-6"
+{% block content %}
+
+<!-- Hero Carousel: карточки с собственным фоном; на мобильных 16:5 и “подглядывает” следующий слайд -->
+<section class="hero-carousel relative w-full max-w-full min-w-0 bg-dark-900 touch-pan-y md:mx-0 mt-4 md:mt-6"
          x-data="{
            current: 0,
            total: {{ hero_slides|length }},
            timeId: null,
            touchStartX: 0,
            touchStartY: 0,
+           dragX: 0,
+           isTouching: false,
+           isDraggingX: false,
+           lockAxis: null, // null | 'x' | 'y'
+           rafId: null,
            scheduleNext() {
              if (this.timeId) clearTimeout(this.timeId);
              this.timeId = setTimeout(() => { this.current = (this.current + 1) % this.total }, 6000);
            },
+           getCarouselWidth() {
+             return this.$el?.getBoundingClientRect?.().width || 360;
+           },
+           getSlideWidth() {
+             const slide = this.$refs.track?.querySelector?.('.hero-slide');
+             return slide?.getBoundingClientRect?.().width || 0;
+           },
+           setDrag(x) {
+             if (!this.$refs.track) return;
+             this.$refs.track.style.setProperty('--hero-drag', `${x}px`);
+           },
+           clearInlineTransition() {
+             if (!this.$refs.track) return;
+             // возвращаемся к CSS transition (transform 0.6s ...)
+             this.$refs.track.style.transition = '';
+           },
+           setInlineTransition(v) {
+             if (!this.$refs.track) return;
+             this.$refs.track.style.transition = v;
+           },
+           waitForTransition(duration = 360) {
+             return new Promise((resolve) => {
+               const el = this.$refs.track;
+               if (!el) return resolve();
+               let done = false;
+               const cleanup = () => {
+                 if (done) return;
+                 done = true;
+                 el.removeEventListener('transitionend', onEnd);
+                 resolve();
+               };
+               const onEnd = (ev) => {
+                 if (ev && ev.target !== el) return;
+                 cleanup();
+               };
+               el.addEventListener('transitionend', onEnd);
+               setTimeout(cleanup, duration + 120);
+             });
+           },
+           applyDragTransform(x) {
+             // двигаем трек за пальцем (через CSS-переменную --hero-drag)
+             this.setDrag(x);
+           },
            handleTouchStart(e) {
+             // стопаем автоперелистывание, чтобы не мешало drag
+             if (this.timeId) clearTimeout(this.timeId);
+             this.timeId = null;
+             // на всякий случай сбрасываем drag/transition от предыдущего snap
+             this.clearInlineTransition();
+             this.setDrag(0);
              this.touchStartX = e.touches[0].clientX;
              this.touchStartY = e.touches[0].clientY;
+             this.dragX = 0;
+             this.isTouching = true;
+             this.isDraggingX = false;
+             this.lockAxis = null;
            },
-           handleTouchEnd(e) {
+           handleTouchMove(e) {
+             if (!this.isTouching) return;
+             const t = e.touches[0];
+             const dx = t.clientX - this.touchStartX;
+             const dy = t.clientY - this.touchStartY;
+
+             // определяем ось, чтобы не ломать вертикальный скролл
+             if (!this.lockAxis) {
+               const ax = Math.abs(dx);
+               const ay = Math.abs(dy);
+               if (ax > 8 && ax > ay + 4) this.lockAxis = 'x';
+               else if (ay > 8 && ay > ax + 4) this.lockAxis = 'y';
+             }
+             if (this.lockAxis !== 'x') return;
+             this.isDraggingX = true;
+
+             // горизонтальный drag — не даём странице скроллиться
+             e.preventDefault();
+             // drag должен быть приклеен к пальцу — без transition
+             this.setInlineTransition('none');
+
+             // лёгкое сопротивление по краям (на первом/последнем), чтобы не улетать
+             const atFirst = this.current === 0;
+             const atLast = this.current === (this.total - 1);
+             let x = dx;
+             if ((atFirst && dx > 0) || (atLast && dx < 0)) x = dx * 0.35;
+
+             this.dragX = x;
+             if (this.rafId) cancelAnimationFrame(this.rafId);
+             this.rafId = requestAnimationFrame(() => this.applyDragTransform(this.dragX));
+           },
+           async handleTouchEnd(e) {
+             if (this.rafId) cancelAnimationFrame(this.rafId);
+             this.rafId = null;
+
              const touchEndX = e.changedTouches[0].clientX;
              const touchEndY = e.changedTouches[0].clientY;
              const deltaX = touchEndX - this.touchStartX;
              const deltaY = touchEndY - this.touchStartY;
-             const minSwipe = 50;
-             if (Math.abs(deltaX) > minSwipe && Math.abs(deltaX) > Math.abs(deltaY)) {
-               if (deltaX > 0) {
-                 this.current = this.current === 0 ? this.total - 1 : this.current - 1;
-               } else {
-                 this.current = (this.current + 1) % this.total;
+
+             const wasHorizontal = this.lockAxis === 'x';
+             const wasDraggingX = this.isDraggingX;
+             this.isTouching = false;
+             // важно: пока не закончится snap, держим isDraggingX=true, чтобы left не анимировался
+             this.lockAxis = null;
+
+             if (!wasHorizontal) {
+               this.isDraggingX = false;
+               this.clearInlineTransition();
+               this.setDrag(0);
+               this.scheduleNext();
+               return;
+             }
+
+             // Порог: если протащили больше половины карточки — листаем.
+             // Берём реальную ширину слайда (а не проценты), чтобы ощущалось одинаково.
+             const slideW = this.getSlideWidth();
+             const threshold = slideW ? (slideW * 0.5) : (this.getCarouselWidth() * 0.45);
+
+             let nextIndex = this.current;
+             if (Math.abs(deltaX) > threshold && Math.abs(deltaX) > Math.abs(deltaY)) {
+               if (deltaX < 0 && this.current < (this.total - 1)) {
+                 nextIndex = this.current + 1;
+               } else if (deltaX > 0 && this.current > 0) {
+                 nextIndex = this.current - 1;
                }
              }
+
+             // Snap: анимируем один transform (позиция трека = current + --hero-drag)
+             // 1) включаем transition на transform
+             // 2) ставим drag=0 и обновляем current (если надо)
+             // 3) ждём завершения и чистим inline transition
+             if (wasDraggingX) {
+               const easing = 'cubic-bezier(0.32, 0.72, 0, 1)';
+               this.setInlineTransition(`transform 320ms ${easing}`);
+               this.setDrag(0);
+               this.current = nextIndex;
+               await this.waitForTransition(320);
+               this.clearInlineTransition();
+             } else {
+               this.clearInlineTransition();
+               this.setDrag(0);
+               this.current = nextIndex;
+             }
+
+             this.isDraggingX = false;
+             this.scheduleNext();
            }
          }"
          x-init="scheduleNext(); $watch('current', () => scheduleNext())"
          @touchstart="handleTouchStart($event)"
-         @touchend="handleTouchEnd($event)">
+         @touchmove="handleTouchMove($event)"
+         @touchend="handleTouchEnd($event)"
+         @touchcancel="handleTouchEnd($event)">
   <div class="hero-carousel-inner absolute inset-0">
     <div class="container mx-auto px-4 h-full flex flex-col justify-center relative z-10 min-w-0 w-full">
       <div class="hero-slides-track relative flex"
-           style="--hero-current: 0; --hero-total: {{ hero_slides|length }}; transition: transform 0.6s cubic-bezier(0.32, 0.72, 0, 1);"
-           :style="'--hero-current: ' + current + '; --hero-total: ' + total + '; transition: transform 0.6s cubic-bezier(0.32, 0.72, 0, 1);'">
+           x-ref="track"
+           style="--hero-current: 0; --hero-total: {{ hero_slides|length }};"
+           :style="'--hero-current: ' + current + '; --hero-total: ' + total + ';'">
         {% for slide in hero_slides %}
         <div class="hero-slide">
           <div class="hero-slide-card overflow-hidden"
@@ -127,54 +265,81 @@
         </div>
         {% endfor %}
       </div>
+
+      <!-- Кнопки влево/вправо: только на десктопе, на мобильных — свайп -->
+      <div class="absolute inset-y-0 left-0 right-0 z-20 pointer-events-none hidden md:block">
+        <button type="button"
+                @click="current = current === 0 ? total - 1 : current - 1"
+                class="hero-nav-btn hero-nav-btn--left pointer-events-auto absolute top-1/2 -translate-y-1/2 flex items-center justify-center flex-shrink-0"
+                aria-label="Предыдущий слайд">
+          <i data-lucide="chevron-left" class="w-6 h-6 inline-block"></i>
+        </button>
+        <button type="button"
+                @click="current = (current + 1) % total"
+                class="hero-nav-btn hero-nav-btn--right pointer-events-auto absolute top-1/2 -translate-y-1/2 flex items-center justify-center flex-shrink-0"
+                aria-label="Следующий слайд">
+          <i data-lucide="chevron-right" class="w-6 h-6 inline-block"></i>
+        </button>
+      </div>
     </div>
 
-    <!-- Кнопки влево/вправо: только на десктопе, на мобильных — свайп -->
-    <div class="absolute inset-y-0 left-0 z-20 w-0 pointer-events-none hidden md:block">
+    <!-- Точки-индикаторы: рендер на сервере, чтобы избежать дублирования при реактивных обновлениях Alpine -->
+    <div class="hero-dots-wrap absolute bottom-6 left-1/2 -translate-x-1/2 flex space-x-3 z-20">
+      {% for slide in hero_slides %}
       <button type="button"
-              @click="current = current === 0 ? total - 1 : current - 1"
-              class="pointer-events-auto absolute top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-dark-800/80 hover:bg-dark-700 border border-dark-600 flex items-center justify-center text-white transition-colors focus:outline-none focus:ring-2 focus:ring-accent flex-shrink-0"
-              style="left: 1rem; min-width: 3rem; min-height: 3rem;">
-        <i data-lucide="chevron-left" class="w-6 h-6 inline-block"></i>
-      </button>
-    </div>
-    <div class="absolute inset-y-0 right-0 z-20 w-0 pointer-events-none hidden md:block">
-      <button type="button"
-              @click="current = (current + 1) % total"
-              class="pointer-events-auto absolute top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-dark-800/80 hover:bg-dark-700 border border-dark-600 flex items-center justify-center text-white transition-colors focus:outline-none focus:ring-2 focus:ring-accent flex-shrink-0"
-              style="right: 1rem; min-width: 3rem; min-height: 3rem;">
-        <i data-lucide="chevron-right" class="w-6 h-6 inline-block"></i>
-      </button>
-    </div>
-
-    <!-- Точки-индикаторы -->
-    <div class="absolute bottom-6 left-1/2 -translate-x-1/2 flex space-x-3 z-20">
-    <template x-for="idx in Array.from({ length: total }, (_, i) => i)" :key="idx">
-      <button type="button"
-              @click="current = idx"
+              @click="current = {{ forloop.counter0 }}"
               class="w-2.5 h-2.5 rounded-full transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 focus:ring-offset-dark-900"
-              :class="current === idx ? 'bg-white scale-110' : 'bg-gray-500 hover:bg-gray-400'"
-              :aria-label="'Слайд ' + (idx + 1)"></button>
-    </template>
+              :class="current === {{ forloop.counter0 }} ? 'bg-white scale-110' : 'bg-gray-500 hover:bg-gray-400'"
+              :aria-label="'Слайд ' + ({{ forloop.counter0 }} + 1)"></button>
+      {% endfor %}
     </div>
   </div>
 </section>
 
-<!-- Кирпичики (быстрые ссылки, только мобильная версия) -->
+<!-- Быстрые ссылки (мобильная версия, структура как в маркетплейсах) -->
 <section class="bricks-section md:hidden w-full">
-  <div class="container mx-auto px-4 py-4">
-    <div class="flex gap-3 md:gap-4 overflow-x-auto scrollbar-hide pb-1 -mx-4 px-4 md:mx-0 md:px-0 md:flex-wrap md:overflow-visible">
-      <a href="{% url 'catalog:product_list' %}" class="brick flex-shrink-0 w-[64px] h-[64px] flex flex-col items-center justify-center gap-1 rounded-lg bg-dark-800 hover:bg-dark-700 border border-dark-600/50 hover:border-accent/40 transition-all duration-200 group p-2">
-        <i data-lucide="layout-grid" class="w-5 h-5 text-accent group-hover:text-accent transition-colors flex-shrink-0"></i>
-        <span class="text-[9px] font-medium text-white text-center leading-tight truncate max-w-full">Каталог</span>
+  <div class="container mx-auto px-4 pt-3 pb-4">
+    <div class="quicklinks-row flex gap-4 overflow-x-auto scrollbar-hide pb-1 -mx-4 px-4">
+      <a href="{% url 'catalog:product_list' %}" class="brick flex-shrink-0 w-[72px] flex flex-col items-center gap-2">
+        <span class="w-[54px] h-[54px] rounded-2xl bg-dark-800 border border-dark-600/50 shadow-lg shadow-black/20 flex items-center justify-center">
+          <i data-lucide="layout-grid" class="w-6 h-6 text-accent inline-block"></i>
+        </span>
+        <span class="text-[11px] font-medium text-white text-center leading-tight">Каталог</span>
       </a>
-      <a href="{% url 'arenda' %}" class="brick flex-shrink-0 w-[64px] h-[64px] flex flex-col items-center justify-center gap-1 rounded-lg bg-dark-800 hover:bg-dark-700 border border-dark-600/50 hover:border-accent/40 transition-all duration-200 group p-2">
-        <i data-lucide="glasses" class="w-5 h-5 text-accent group-hover:text-accent transition-colors flex-shrink-0"></i>
-        <span class="text-[9px] font-medium text-white text-center leading-tight truncate max-w-full">Аренда VR</span>
+
+      <a href="{% url 'arenda' %}" class="brick flex-shrink-0 w-[72px] flex flex-col items-center gap-2">
+        <span class="w-[54px] h-[54px] rounded-2xl bg-dark-800 border border-dark-600/50 shadow-lg shadow-black/20 flex items-center justify-center">
+          <i data-lucide="glasses" class="w-6 h-6 text-accent inline-block"></i>
+        </span>
+        <span class="text-[11px] font-medium text-white text-center leading-tight">Аренда</span>
       </a>
-      <a href="{% url 'contacts' %}" class="brick flex-shrink-0 w-[64px] h-[64px] flex flex-col items-center justify-center gap-1 rounded-lg bg-dark-800 hover:bg-dark-700 border border-dark-600/50 hover:border-accent/40 transition-all duration-200 group p-2">
-        <i data-lucide="phone" class="w-5 h-5 text-accent group-hover:text-accent transition-colors flex-shrink-0"></i>
-        <span class="text-[9px] font-medium text-white text-center leading-tight truncate max-w-full">Контакты</span>
+
+      <a href="{% url 'catalog:favorites' %}" class="brick flex-shrink-0 w-[72px] flex flex-col items-center gap-2">
+        <span class="w-[54px] h-[54px] rounded-2xl bg-dark-800 border border-dark-600/50 shadow-lg shadow-black/20 flex items-center justify-center">
+          <i data-lucide="heart" class="w-6 h-6 text-accent inline-block"></i>
+        </span>
+        <span class="text-[11px] font-medium text-white text-center leading-tight">Избранное</span>
+      </a>
+
+      <a href="{% url 'catalog:cart' %}" class="brick flex-shrink-0 w-[72px] flex flex-col items-center gap-2">
+        <span class="w-[54px] h-[54px] rounded-2xl bg-dark-800 border border-dark-600/50 shadow-lg shadow-black/20 flex items-center justify-center">
+          <i data-lucide="shopping-cart" class="w-6 h-6 text-accent inline-block"></i>
+        </span>
+        <span class="text-[11px] font-medium text-white text-center leading-tight">Корзина</span>
+      </a>
+
+      <a href="{% if user.is_authenticated %}{% url 'accounts:profile' %}{% else %}{% url 'accounts:login' %}{% endif %}" class="brick flex-shrink-0 w-[72px] flex flex-col items-center gap-2" hx-boost="false">
+        <span class="w-[54px] h-[54px] rounded-2xl bg-dark-800 border border-dark-600/50 shadow-lg shadow-black/20 flex items-center justify-center">
+          <i data-lucide="user" class="w-6 h-6 text-accent inline-block"></i>
+        </span>
+        <span class="text-[11px] font-medium text-white text-center leading-tight">{% if user.is_authenticated %}Профиль{% else %}Войти{% endif %}</span>
+      </a>
+
+      <a href="{% url 'contacts' %}" class="brick flex-shrink-0 w-[72px] flex flex-col items-center gap-2">
+        <span class="w-[54px] h-[54px] rounded-2xl bg-dark-800 border border-dark-600/50 shadow-lg shadow-black/20 flex items-center justify-center">
+          <i data-lucide="phone" class="w-6 h-6 text-accent inline-block"></i>
+        </span>
+        <span class="text-[11px] font-medium text-white text-center leading-tight">Контакты</span>
       </a>
     </div>
   </div>
@@ -185,7 +350,7 @@
   {% if featured_products %}
   <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 md:gap-4">
     {% for product in featured_products %}
-      {% include "catalog/_product_card.html" %}
+      {% include "catalog/_product_card.html" with show_favorite=True favorite_product_ids=favorite_product_ids %}
     {% endfor %}
   </div>
   <div class="flex justify-center mt-8">
@@ -199,62 +364,7 @@
   {% endif %}
 </div>
 
-<!-- Сетка категорий -->
 <div class="container mx-auto px-4 py-8">
-  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 h-auto md:h-[400px]">
-    {% with tile=marketing_tiles_map.quest_accessories %}
-    <a href="{{ tile.url|default:request.path }}" class="lg:col-span-2 bg-[#1a2b4a] rounded-xl relative overflow-hidden group cursor-pointer h-64 md:h-auto">
-      <div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-105 opacity-60 mix-blend-overlay" data-bg-url="{{ tile.bg_url|default:'' }}" x-init="if($el.dataset.bgUrl) $el.style.backgroundImage='url(\''+$el.dataset.bgUrl+'\')'"></div>
-      {% if tile.image_url %}
-      <img src="{{ tile.image_url }}" alt="{{ tile.alt|default:'Аксессуары для Oculus Quest 3' }}" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-3/4 object-contain z-10" loading="lazy" />
-      {% endif %}
-      <div class="absolute bottom-6 left-6 z-20">
-        <div class="text-[10px] uppercase text-gray-400 mb-1">Удобно, стильно и практично</div>
-        <h3 class="text-xl font-medium text-white">Аксессуары для Oculus Quest 3</h3>
-      </div>
-    </a>
-    {% endwith %}
-    {% with tile=marketing_tiles_map.unitree_robot %}
-    <a href="{{ tile.url|default:request.path }}" class="lg:col-span-1 bg-[#1a2b4a] rounded-xl relative overflow-hidden group cursor-pointer h-64 md:h-auto">
-      <div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-105 opacity-50" data-bg-url="{{ tile.bg_url|default:'' }}" x-init="if($el.dataset.bgUrl) $el.style.backgroundImage='url(\''+$el.dataset.bgUrl+'\')'"></div>
-      <div class="absolute bottom-6 left-6 z-20">
-        <div class="text-[10px] uppercase text-gray-400 mb-1">Мировая премьера</div>
-        <h3 class="text-xl font-medium text-white leading-tight">Бионический робот Unitree Go2</h3>
-      </div>
-    </a>
-    {% endwith %}
-    <div class="lg:col-span-2 flex flex-col gap-4 h-full">
-      {% with tile=marketing_tiles_map.gamepads %}
-      <a href="{{ tile.url|default:request.path }}" class="flex-1 bg-[#1e293b] rounded-xl relative overflow-hidden group cursor-pointer block">
-        <div class="absolute right-0 top-0 bottom-0 w-1/2 bg-contain bg-no-repeat bg-center opacity-80" data-bg-url="{{ tile.bg_url|default:'' }}" x-init="if($el.dataset.bgUrl) $el.style.backgroundImage='url(\''+$el.dataset.bgUrl+'\')'"></div>
-        <div class="absolute bottom-6 left-6 z-20">
-          <div class="text-[10px] uppercase text-gray-400 mb-1">Яркие эмоции</div>
-          <h3 class="text-xl font-medium text-white">Геймпады</h3>
-        </div>
-      </a>
-      {% endwith %}
-      <div class="flex-1 grid grid-cols-2 gap-4">
-        {% with tile=marketing_tiles_map.portable_consoles %}
-        <a href="{{ tile.url|default:request.path }}" class="bg-[#1e293b] rounded-xl relative overflow-hidden group cursor-pointer p-4">
-          <div class="absolute inset-0 bg-cover bg-center opacity-40 group-hover:opacity-50 transition-opacity" data-bg-url="{{ tile.bg_url|default:'' }}" x-init="if($el.dataset.bgUrl) $el.style.backgroundImage='url(\''+$el.dataset.bgUrl+'\')'"></div>
-          <div class="relative z-10 mt-auto h-full flex flex-col justify-end">
-            <div class="text-[8px] uppercase text-gray-400">Инновации в каждом касании</div>
-            <h3 class="text-sm font-medium text-white leading-tight mt-1">Портативные консоли</h3>
-          </div>
-        </a>
-        {% endwith %}
-        {% with tile=marketing_tiles_map.vr_attractions %}
-        <a href="{{ tile.url|default:request.path }}" class="bg-[#1e293b] rounded-xl relative overflow-hidden group cursor-pointer p-4">
-          <div class="absolute inset-0 bg-cover bg-center opacity-40 group-hover:opacity-50 transition-opacity" data-bg-url="{{ tile.bg_url|default:'' }}" x-init="if($el.dataset.bgUrl) $el.style.backgroundImage='url(\''+$el.dataset.bgUrl+'\')'"></div>
-          <div class="relative z-10 mt-auto h-full flex flex-col justify-end">
-            <div class="text-[8px] uppercase text-gray-400">Незабываемые приключения</div>
-            <h3 class="text-sm font-medium text-white leading-tight mt-1">VR аттракционы</h3>
-          </div>
-        </a>
-        {% endwith %}
-      </div>
-    </div>
-  </div>
   {% if catalog_sections %}
     <div class="mt-8">
       <h2 class="text-2xl md:text-3xl font-light text-white mb-6">Категории товаров</h2>

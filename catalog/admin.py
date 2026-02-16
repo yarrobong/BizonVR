@@ -320,7 +320,7 @@ class ProductAdmin(admin.ModelAdmin):
         extra_context['restore_backup_url'] = 'admin:catalog_product_restore_backup'
         return super().changelist_view(request, extra_context=extra_context)
 
-    @admin.action(description='📥 Скачать каталог с картинками (ZIP)')
+    @admin.action(description='Скачать каталог с картинками (ZIP)')
     def export_catalog_with_images(self, request, queryset):
         """
         Экспортирует выбранные товары (или все, если ничего не выбрано) в ZIP архив:
@@ -428,7 +428,7 @@ class ProductAdmin(admin.ModelAdmin):
 
         return response
 
-    @admin.action(description='💾 Создать полный бэкап каталога (ZIP)')
+    @admin.action(description='Создать полный бэкап каталога (ZIP)')
     def backup_full_catalog(self, request, queryset):
         """
         Создаёт полный бэкап всего каталога: все модели в JSON + изображения в ZIP архиве.

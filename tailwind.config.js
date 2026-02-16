@@ -9,7 +9,7 @@ module.exports = {
   ],
   theme: {
     extend: {
-      screens: { '2xl': '1535px' },
+      screens: { '2xl': '1440px' },
       fontFamily: {
         sans: [
           'Inter',

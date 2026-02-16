@@ -1,31 +1,20 @@
 {% load catalog_tags %}
-{# Ожидаемые переменные: product; опционально: favorite_product_ids, selected_city, product_stock_in_city, product_stock_total, show_cart_link #}
-<article id="product-{{ product.pk }}" class="group bg-dark-800/80 md:bg-dark-800/50 md:hover:bg-dark-800 border border-dark-600/50 md:hover:border-dark-600 p-3 rounded-xl transition-all duration-300 relative flex flex-col h-full scroll-mt-40">
-  {# Блок фото: квадрат, поверх бейджи слева и сердце справа #}
-  <a href="{% url 'catalog:product_detail' product.slug %}" class="block relative w-full aspect-square mb-3 overflow-hidden rounded-lg bg-dark-700 flex items-center justify-center flex-shrink-0">
-    {% if product.tags.all %}
-    <div class="absolute top-2 left-2 z-10 flex flex-wrap gap-1">
-      {% for tag in product.tags.all %}
-      <span class="px-2 py-0.5 text-[10px] font-medium rounded-full
-        {% if tag.slug == 'bestseller' %}bg-amber-500/90 text-dark-900
-        {% elif tag.slug == 'expert-choice' %}bg-emerald-500/90 text-dark-900
-        {% elif tag.slug == 'new' %}bg-accent/90 text-dark-900
-        {% elif tag.slug == 'sale' %}bg-accent text-dark-900
-        {% else %}bg-dark-600 text-gray-300{% endif %}">{{ tag.name }}</span>
-      {% endfor %}
+{# Ожидаемые переменные: product; опционально: selected_city, product_stock_in_city, product_stock_total, favorite_product_ids, show_favorite, from_favorites_page. #}
+<article id="product-{{ product.pk }}" class="group bg-dark-800/80 md:bg-dark-800/50 md:hover:bg-dark-800 border border-dark-700 rounded-xl transition-all duration-300 relative flex flex-col h-full scroll-mt-40 overflow-hidden">
+  {# Фото вплотную к верхнему и боковым краям, обводка rgb(31 37 50) #}
+  <div class="relative w-full aspect-square flex-shrink-0 overflow-hidden">
+    {% if show_favorite and favorite_product_ids is not None %}
+    <div class="top-2 right-2 md:top-3 md:right-3 z-20" style="position: absolute; left: auto !important; right: 0.5rem !important;" @click.stop>
+      {% if product.id in favorite_product_ids %}
+        {% include "catalog/partials/favorite_button.html" with product=product is_favorite=True from_favorites_page=from_favorites_page %}
+      {% else %}
+        {% include "catalog/partials/favorite_button.html" with product=product is_favorite=False from_favorites_page=from_favorites_page %}
+      {% endif %}
     </div>
     {% endif %}
-    <div class="absolute top-2 right-2 z-10">
-      <form action="{% url 'catalog:toggle_favorite' product.pk %}" method="post" class="inline" hx-boost="false">
-        {% csrf_token %}
-        <input type="hidden" name="next" value="{{ request.get_full_path }}" />
-        <button type="submit" class="w-8 h-8 rounded-full bg-dark-900/70 hover:bg-dark-700 flex items-center justify-center text-gray-300 hover:text-white transition-colors {% if favorite_product_ids and product.id in favorite_product_ids %}text-accent{% endif %}" title="{% if favorite_product_ids and product.id in favorite_product_ids %}Убрать из избранного{% else %}В избранное{% endif %}">
-          <i data-lucide="heart" class="w-4 h-4 inline-block {% if favorite_product_ids and product.id in favorite_product_ids %}fill-current{% endif %}"></i>
-        </button>
-      </form>
-    </div>
+  <a href="{% url 'catalog:product_detail' product.slug %}" class="absolute inset-0 flex items-center justify-center rounded-t-xl bg-dark-700 border-b border-dark-700">
     {% if product.image %}
-    <img src="{{ product.image.url|absolute_uri:request }}" alt="{{ product.name }}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 product-card-img" loading="lazy" onerror="this.classList.add('!hidden'); this.nextElementSibling.classList.remove('hidden'); if (typeof lucide !== 'undefined') lucide.createIcons();" />
+    <img src="{{ product.image.url|absolute_uri:request }}" alt="{{ product.name }}" class="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300 product-card-img" loading="lazy" onerror="this.classList.add('!hidden'); this.nextElementSibling.classList.remove('hidden'); if (typeof lucide !== 'undefined') lucide.createIcons();" />
     <div class="hidden absolute inset-0 w-full h-full flex items-center justify-center text-gray-500 product-card-placeholder bg-dark-700">
       <i data-lucide="image-off" class="w-12 h-12 inline-block"></i>
     </div>
@@ -35,30 +24,24 @@
     </div>
     {% endif %}
   </a>
+  </div>
 
-  <div class="flex flex-col flex-grow min-h-0">
-    {# Цена: крупно, акцентным цветом (наша палитра) #}
+  {# Блок цены, наличия, названия — тот же цвет что и обводка (rgb(31 37 50)) #}
+  <div class="flex flex-col flex-grow min-h-0 p-3 bg-dark-700">
     <div class="mb-1">
-      <span class="text-lg font-bold text-accent">{{ product.price|price_format }} ₽</span>
+      <span class="text-xl font-bold text-accent">{{ product.price|price_format }} ₽</span>
     </div>
-    {# Наличие: зелёный тон в духе Ozon, но приглушённо #}
     {% if selected_city %}
       {% with stock=product_stock_in_city|get_item:product.id stock_total=product_stock_total|get_item:product.id %}
-      <p class="text-xs text-emerald-400/90 mb-1">{% if stock %}В наличии ({{ selected_city.name }}): {{ stock }} шт.{% elif stock_total %}В наличии, доставка{% else %}<span class="text-accent">Под заказ</span>{% endif %}</p>
+      <p class="text-sm text-gray-400 mb-1.5">{% if stock %}В наличии: {{ stock }} шт.{% elif stock_total %}В наличии, доставка{% else %}<span class="text-accent">Под заказ</span>{% endif %}</p>
       {% endwith %}
     {% elif product_stock_total %}
       {% with stock=product_stock_total|get_item:product.id|default:0 %}
-      <p class="text-xs text-emerald-400/90 mb-1">{% if stock %}Доступно к отправке: {{ stock }} шт.{% else %}<span class="text-accent">Под заказ</span>{% endif %}</p>
+      <p class="text-sm text-gray-400 mb-1.5">{% if stock %}{{ stock }} шт. осталось{% else %}<span class="text-accent">Под заказ</span>{% endif %}</p>
       {% endwith %}
     {% endif %}
-    {# Название: до 2 строк #}
-    <h3 class="text-white text-sm font-medium leading-tight mb-2 flex-grow line-clamp-2">
+    <h3 class="text-white text-sm font-semibold leading-tight line-clamp-2">
       <a href="{% url 'catalog:product_detail' product.slug %}" class="hover:text-accent transition-colors">{{ product.name }}</a>
     </h3>
-    {% if show_cart_link %}
-    <div class="mt-auto pt-2 border-t border-dark-600/50">
-      <a href="{% url 'catalog:product_detail' product.slug %}" class="text-xs font-medium text-accent hover:text-accent-hover">В корзину →</a>
-    </div>
-    {% endif %}
   </div>
 </article>

@@ -1,0 +1,38 @@
+{# Ожидаемые переменные: product, request, is_favorite (bool); опционально: from_favorites_page (bool) #}
+<form action="{% url 'catalog:toggle_favorite' product.pk %}"
+      method="post"
+      class="inline"
+      hx-boost="false"
+      hx-post="{% url 'catalog:toggle_favorite' product.pk %}"
+      hx-target="closest form"
+      hx-select="form"
+      hx-swap="outerHTML"
+      hx-push-url="false"
+      @click.stop>
+  {% csrf_token %}
+  <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+  {% if from_favorites_page %}<input type="hidden" name="from_favorites_page" value="1" />{% endif %}
+  <button type="submit"
+          class="w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center select-none bg-transparent
+                 transition-all duration-300 ease-out
+                 hover:scale-110
+                 active:scale-95
+                 focus:outline-none focus:ring-2 focus:ring-accent/50"
+          aria-label="{% if is_favorite %}Убрать из избранного{% else %}Добавить в избранное{% endif %}"
+          title="{% if is_favorite %}Убрать из избранного{% else %}В избранное{% endif %}">
+    <svg xmlns="http://www.w3.org/2000/svg"
+         viewBox="0 0 24 24"
+         class="w-6 h-6 md:w-7 md:h-7"
+         {% if is_favorite %}
+           fill="#ef4444" stroke="none"
+         {% else %}
+           fill="#ffffff" stroke="#000000" stroke-width="2"
+         {% endif %}
+         stroke-linecap="round"
+         stroke-linejoin="round"
+         aria-hidden="true"
+         focusable="false">
+      <path d="M19.5 12.572 12 21l-7.5-8.428A4.5 4.5 0 1 1 12 6.006a4.5 4.5 0 1 1 7.5 6.572"/>
+    </svg>
+  </button>
+</form>

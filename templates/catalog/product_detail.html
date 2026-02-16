@@ -6,171 +6,501 @@
 {% block content %}
 {{ product_detail_data|json_script:"product-detail-data" }}
 <style>
-  /* Mobile: full-width image carousel */
-  .product-image-mobile-container {
-    position: relative;
-    width: 100vw;
-    margin-left: calc(-50vw + 50%);
-    margin-right: calc(-50vw + 50%);
-    height: 50vh;
-    min-height: 300px;
-    max-height: 500px;
-    background: #0d0f17;
-    overflow: hidden;
-    touch-action: pan-y;
+  html { scroll-behavior: smooth; }
+
+  .product-detail-scope {
+    --pd-accent: #00D4FF;
+    --pd-bg: #0d0f17;
+    --pd-card: #151923;
+    --pd-text: #ffffff;
+    --pd-muted: #9ca3af;
+    --pd-hover: #00B8E6;
+    --pd-success: rgba(16, 196, 76, 1);
+
+    font-family: 'GTEestiProDisplay', Arial, sans-serif;
+    background-color: var(--pd-bg);
+    color: var(--pd-text);
+    font-size: 14px;
   }
-  .product-image-mobile-slide {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: transform 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+
+  .product-detail-scope,
+  .product-detail-scope * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
   }
-  .product-image-mobile-slide img {
-    max-width: 100%;
-    max-height: 100%;
-    width: auto;
-    height: auto;
-    object-fit: contain;
+
+  .product-detail-scope a { text-decoration: none; color: inherit; }
+  .product-detail-scope ul { list-style: none; }
+  .product-detail-scope button { cursor: pointer; border: none; font-family: inherit; }
+
+  .product-detail-scope .container {
+    max-width: 1440px;
+    margin: 20px auto;
+    padding: 0 16px;
   }
-  .product-image-overlay-buttons {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    padding: 12px 16px;
-    padding-top: calc(12px + env(safe-area-inset-top));
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    z-index: 40;
-    pointer-events: none;
+
+  .product-detail-scope .breadcrumbs {
+    color: var(--pd-muted);
+    font-size: 12px;
+    margin-bottom: 16px;
   }
-  @media (min-width: 768px) {
-    .product-image-overlay-buttons {
-      position: absolute;
-      padding-top: 12px;
+  .product-detail-scope .breadcrumbs span { margin: 0 5px; }
+
+  .product-detail-scope .product-main {
+    display: grid;
+    grid-template-columns: 574px 1fr 388px;
+    column-gap: 24px;
+    row-gap: 30px;
+    margin-bottom: 40px;
+  }
+
+  @media (max-width: 1024px) {
+    .product-detail-scope .product-main {
+      grid-template-columns: 1fr;
+      gap: 18px;
+    }
+
+    .product-detail-scope .gallery-container {
+      position: relative;
+      top: 0;
+    }
+
+    .product-detail-scope .thumbs {
+      flex-direction: row;
+      overflow-x: auto;
+      padding-bottom: 6px;
+    }
+
+    .product-detail-scope .buy-box {
+      position: relative;
+      top: 0;
+    }
+
+    .product-detail-scope .cards-grid {
+      grid-template-columns: repeat(2, 1fr);
     }
   }
-  .product-image-overlay-buttons > * {
-    pointer-events: auto;
+
+  /* Gallery */
+  .product-detail-scope .gallery-container {
+    display: flex;
+    gap: 10px;
+    position: relative;
   }
-  .product-image-overlay-button {
+
+  @media (min-width: 1025px) {
+    .product-detail-scope .gallery-container {
+      position: sticky;
+      top: 20px;
+    }
+  }
+
+  .product-detail-scope .thumbs {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .product-detail-scope .thumb {
     width: 40px;
     height: 40px;
-    border-radius: 50%;
-    background: rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(8px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    object-fit: contain;
+    border-radius: 8px;
+    cursor: pointer;
+    border: 2px solid transparent;
+  }
+  .product-detail-scope .thumb.active { border-color: var(--pd-accent); }
+
+  .product-detail-scope .main-image-wrapper {
+    position: relative;
+    width: 100%;
+    margin-left: 16px;
+    height: auto;
+    aspect-ratio: 1 / 1;
+    background: var(--pd-card);
+    border-radius: 16px;
     display: flex;
     align-items: center;
     justify-content: center;
-    color: white;
-    cursor: pointer;
-    transition: background 0.2s;
-  }
-  .product-image-overlay-button:hover {
-    background: rgba(0, 0, 0, 0.7);
-  }
-  .product-image-overlay-buttons-right {
-    display: flex;
-    gap: 8px;
-  }
-  .product-image-carousel-indicators {
-    position: absolute;
-    bottom: 16px;
-    left: 50%;
-    transform: translateX(-50%);
-    display: flex;
-    gap: 8px;
-    z-index: 10;
-  }
-  .product-image-carousel-indicator {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.4);
-    transition: background 0.2s;
-  }
-  .product-image-carousel-indicator.active {
-    background: rgba(0, 212, 255, 1);
-  }
-  /* Desktop: original styles */
-  .product-image-container {
-    width: 300px !important;
-    height: 300px !important;
-    min-width: 300px !important;
-    min-height: 300px !important;
-    max-width: 300px !important;
-    max-height: 300px !important;
-    aspect-ratio: 1 / 1 !important;
-    flex-shrink: 0 !important;
-    box-sizing: border-box !important;
-  }
-  @media (min-width: 768px) {
-    .product-image-container {
-      width: 500px !important;
-      height: 500px !important;
-      min-width: 500px !important;
-      min-height: 500px !important;
-      max-width: 500px !important;
-      max-height: 500px !important;
-    }
-  }
-  @media (min-width: 1024px) {
-    .product-image-container {
-      width: 380px !important;
-      height: 380px !important;
-      min-width: 380px !important;
-      min-height: 380px !important;
-      max-width: 380px !important;
-      max-height: 380px !important;
-    }
-  }
-  @media (min-width: 1280px) {
-    .product-image-container {
-      width: 500px !important;
-      height: 500px !important;
-      min-width: 500px !important;
-      min-height: 500px !important;
-      max-width: 500px !important;
-      max-height: 500px !important;
-    }
-  }
-  .product-image-container img {
-    max-width: 100% !important;
-    max-height: 100% !important;
-    width: auto !important;
-    height: auto !important;
-    object-fit: contain !important;
-    object-position: center !important;
-  }
-  .product-thumbnail {
-    width: 65px;
-    height: 65px;
-    min-width: 65px;
-    min-height: 65px;
-    padding: 0;
-    border: 2px solid #333;
-    border-radius: 0.5rem;
     overflow: hidden;
-    background: #252525;
+    border: 1px solid rgba(255,255,255,0.08);
+    touch-action: pan-y;
+  }
+
+  .product-detail-scope .main-image {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
+
+  @media (min-width: 1025px) {
+    .product-detail-scope .main-image-wrapper {
+      width: 500px;
+      height: 500px;
+      min-width: 500px;
+    }
+    .product-detail-scope .main-image { max-width: 500px; max-height: 500px; }
+    .product-detail-scope .thumb { width: 48px; height: 48px; }
+  }
+
+  /* Center: Info */
+  .product-detail-scope .product-info h1 {
+    font-size: 28px;
+    margin-bottom: 10px;
+    line-height: 1.2;
+  }
+
+  .product-detail-scope .variants-title { font-size: 14px; margin-bottom: 8px; color: var(--pd-muted); }
+  .product-detail-scope .color-variants {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+
+  .product-detail-scope .color-opt {
+    width: 50px;
+    height: 50px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.12);
     cursor: pointer;
+    overflow: hidden;
+    background: rgba(255,255,255,0.04);
+  }
+  .product-detail-scope .color-opt img { width: 100%; height: 100%; object-fit: contain; }
+  .product-detail-scope .color-opt.selected { border: 2px solid var(--pd-accent); }
+
+  .product-detail-scope .short-specs { margin-top: 20px; }
+  .product-detail-scope .short-specs-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .product-detail-scope .short-specs-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--pd-text);
+  }
+  .product-detail-scope .short-specs-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 20px;
+    color: var(--pd-muted);
+    font-size: 13px;
+    font-weight: 500;
+    transition: background 0.2s;
+  }
+  .product-detail-scope .short-specs-link:hover {
+    background: rgba(255,255,255,0.12);
+    color: var(--pd-text);
+  }
+  .product-detail-scope .short-specs-list { display: flex; flex-direction: column; }
+  .product-detail-scope .short-specs .spec-line {
+    display: flex;
+    padding: 12px 0;
+    font-size: 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  .product-detail-scope .short-specs .spec-line:last-child { border-bottom: none; }
+  .product-detail-scope .short-specs .spec-line .spec-key {
+    color: var(--pd-muted);
+    width: 180px;
+    min-width: 180px;
     flex-shrink: 0;
   }
-  .product-thumbnail img {
+  .product-detail-scope .short-specs .spec-line .spec-value { color: var(--pd-text); flex: 1; }
+
+  /* Right column */
+  .product-detail-scope .right-col {
+    display: flex;
+    flex-direction: column;
+    row-gap: 24px;
+    margin-left: 8px;
+  }
+
+  .product-detail-scope .buy-box {
+    background: var(--pd-card);
+    padding: 24px;
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.35);
+    height: fit-content;
+    position: sticky;
+    top: 20px;
+    border: 1px solid rgba(255,255,255,0.08);
+    color: var(--pd-text);
+  }
+
+  .product-detail-scope .price-block { margin-bottom: 20px; }
+  .product-detail-scope .price-row { display: flex; align-items: baseline; gap: 8px; }
+  .product-detail-scope .main-price { font-size: 28px; font-weight: 800; color: var(--pd-success); }
+
+  .product-detail-scope .add-cart-btn {
+    background: var(--pd-accent);
+    color: #001a34;
+    width: 100%;
+    padding: 14px;
+    border-radius: 12px;
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 12px;
+  }
+  .product-detail-scope .add-cart-btn:hover { background: var(--pd-hover); }
+
+  .product-detail-scope .buy-now-btn {
+    width: 100%;
+    padding: 12px;
+    background: rgba(255,255,255,0.06);
+    color: var(--pd-accent);
+    border-radius: 8px;
+    font-weight: 700;
+    border: 1px solid rgba(255,255,255,0.12);
+  }
+  .product-detail-scope .buy-now-btn:hover {
+    border-color: rgba(0, 212, 255, 0.35);
+    background: rgba(0, 212, 255, 0.08);
+  }
+
+  .product-detail-scope .delivery-section {
+    background: var(--pd-card);
+    padding: 24px;
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.35);
+    border: 1px solid rgba(255,255,255,0.08);
+    font-size: 14px;
+    color: var(--pd-text);
+  }
+  .product-detail-scope .delivery-section-title {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 12px;
+  }
+  .product-detail-scope .delivery-row { display: flex; gap: 10px; margin-bottom: 12px; }
+  .product-detail-scope .delivery-row:last-child { margin-bottom: 0; }
+
+  /* Recommendations */
+  .product-detail-scope .section-title { font-size: 24px; margin: 40px 0 20px; font-weight: 800; }
+
+  .product-detail-scope .cards-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 15px;
+    margin-bottom: 40px;
+  }
+
+  .product-detail-scope .card {
+    background: var(--pd-card);
+    border-radius: 12px;
+    padding: 10px;
+    position: relative;
+    transition: 0.2s;
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+  .product-detail-scope .card:hover { box-shadow: 0 12px 30px rgba(0,0,0,0.35); border-color: rgba(0, 212, 255, 0.20); }
+
+  .product-detail-scope .card-img-wrapper {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    height: auto;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: var(--pd-card);
+  }
+  .product-detail-scope .card-img-wrapper a {
+    display: flex;
+    align-items: center;
+    justify-content: center;
     width: 100%;
     height: 100%;
-    object-fit: cover;
-    object-position: center;
-    display: block;
+  }
+  .product-detail-scope .card-img { max-width: 100%; max-height: 100%; object-fit: contain; }
+
+  .product-detail-scope .fav-icon {
+    /* Позиционирование задаём в шаблоне (tailwind-классами),
+       чтобы везде было одинаково: справа сверху + отступы на md+. */
+    position: absolute;
+    color: rgba(255,255,255,0.65);
+    cursor: pointer;
+  }
+
+  .product-detail-scope .card-price { font-weight: 800; font-size: 18px; color: var(--pd-accent); margin-bottom: 4px; }
+  .product-detail-scope .card-old-price { font-size: 12px; color: var(--pd-muted); text-decoration: line-through; }
+  .product-detail-scope .card-title {
+    font-size: 13px;
+    line-height: 1.4;
+    color: var(--pd-muted);
+    margin-bottom: 5px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* Description & Specs */
+  .product-detail-scope .details-section {
+    background: var(--pd-card);
+    padding: 30px;
+    border-radius: 16px;
+    margin-bottom: 50px;
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .product-detail-scope .desc-text {
+    font-size: 15px;
+    line-height: 1.6;
+    margin-bottom: 30px;
+    max-width: 800px;
+  }
+  .product-detail-scope .specs-title { font-size: 20px; font-weight: 800; margin-bottom: 20px; }
+  .product-detail-scope .specs-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 40px;
+    max-width: 900px;
+  }
+  .product-detail-scope .spec-item { margin-bottom: 15px; }
+  .product-detail-scope .spec-label { color: var(--pd-muted); font-size: 14px; margin-bottom: 4px; }
+  .product-detail-scope .details-section .spec-value { font-size: 15px; color: var(--pd-text); }
+
+  /* Shared visibility helpers */
+  @media (max-width: 768px) {
+    .product-detail-scope .desktop-only { display: none !important; }
+  }
+  @media (min-width: 769px) {
+    .product-detail-scope .mobile-only { display: none !important; }
+  }
+
+  /* Mobile overrides */
+  @media (max-width: 768px) {
+    .product-detail-scope .container {
+      padding: 0;
+      margin: 0;
+      max-width: 100%;
+    }
+
+    .product-detail-scope .breadcrumbs { display: none; }
+
+    .product-detail-scope .product-main {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 96px; /* space for floating bar */
+    }
+
+    .product-detail-scope .gallery-container {
+      flex-direction: column;
+      background: var(--pd-card);
+      padding-bottom: 14px;
+      border-radius: 0 0 24px 24px;
+    }
+
+    .product-detail-scope .thumbs { display: none; }
+
+    .product-detail-scope .main-image-wrapper {
+      margin-left: 0;
+      border-radius: 0;
+      border: none;
+      background: transparent;
+    }
+
+    .product-detail-scope .dots {
+      display: flex;
+      justify-content: center;
+      gap: 6px;
+      margin-top: 10px;
+    }
+    .product-detail-scope .dot {
+      width: 6px;
+      height: 6px;
+      background-color: var(--pd-muted);
+      border-radius: 50%;
+      opacity: 0.5;
+    }
+    .product-detail-scope .dot.active { background-color: var(--pd-text); opacity: 1; }
+
+    .product-detail-scope .mobile-card {
+      background: var(--pd-card);
+      padding: 16px;
+      border-radius: 24px;
+      margin: 8px 16px 0;
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .product-detail-scope .mobile-card:first-of-type { margin-top: 0; }
+
+    .product-detail-scope .mobile-price {
+      font-size: 28px;
+      font-weight: 900;
+      color: var(--pd-success);
+      line-height: 1.1;
+    }
+
+    .product-detail-scope .delivery-section {
+      padding: 16px;
+      border-radius: 24px;
+      box-shadow: none;
+    }
+    .product-detail-scope .delivery-section-title { font-size: 16px; margin-bottom: 10px; }
+
+    .product-detail-scope .section-title {
+      font-size: 20px;
+      margin: 24px 0 12px;
+      padding: 0 16px;
+    }
+
+    .product-detail-scope .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      padding: 0 16px;
+      margin: 0;
+    }
+
+    .product-detail-scope .details-section {
+      padding: 16px;
+      border-radius: 24px;
+      border: 1px solid rgba(255,255,255,0.06);
+      margin: 16px 16px 24px;
+    }
+
+    .product-detail-scope .floating-action {
+      position: fixed;
+      bottom: calc(64px + env(safe-area-inset-bottom));
+      left: 0;
+      width: 100%;
+      background: rgba(21, 25, 35, 0.92);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      padding: 12px 16px;
+      border-top: 1px solid rgba(255,255,255,0.10);
+      z-index: 900;
+      box-shadow: 0 -6px 18px rgba(0,0,0,0.25);
+    }
+
+    .product-detail-scope .cta-btn {
+      background-color: var(--pd-accent);
+      color: #001a34;
+      border: none;
+      border-radius: 12px;
+      height: 48px;
+      width: 100%;
+      font-size: 16px;
+      font-weight: 800;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s;
+    }
+    .product-detail-scope .cta-btn:active { background-color: var(--pd-hover); }
+    .product-detail-scope .cta-btn:disabled { opacity: 0.5; cursor: not-allowed; }
   }
 </style>
-<div class="container mx-auto px-4 py-4 md:py-8" x-data="{
+<div class="product-detail-scope" x-data="{
   data: {},
   variants: [],
   productPrice: 0,
@@ -253,219 +583,127 @@
     }
   }
 }">
-  <!-- Mobile: Full-width image carousel with overlay buttons -->
-  <div class="md:hidden -mx-4 mb-6">
-    <div class="product-image-mobile-container"
-         @touchstart="touchStartX = $event.touches[0].clientX"
-         @touchmove="touchMoveX = $event.touches[0].clientX"
-         @touchend="handleSwipe()">
-      <template x-for="(img, i) in displayImages" :key="i">
-        <div class="product-image-mobile-slide"
-             :style="`transform: translateX(${(i - selectedImageIndex) * 100}%);`">
-          <img :src="img" 
-               :alt="'{{ product.name|escapejs }} - фото ' + (i + 1)"
-               loading="eager" />
-        </div>
-      </template>
-      <template x-if="displayImages.length === 0">
-        <div class="product-image-mobile-slide">
-          <div class="text-gray-500 flex flex-col items-center gap-2">
-            <i data-lucide="image-off" class="w-20 h-20 inline-block"></i>
-            <span class="text-sm">Нет фото</span>
-          </div>
-        </div>
-      </template>
-      
-      <!-- Overlay buttons -->
-      <div class="product-image-overlay-buttons">
-        <button type="button" 
-                @click="history.back()" 
-                class="product-image-overlay-button"
-                title="Назад">
-          <i data-lucide="arrow-left" class="w-5 h-5 inline-block"></i>
-        </button>
-        <div class="product-image-overlay-buttons-right">
-          <button type="button" 
-                  @click="$dispatch('open-search')" 
-                  class="product-image-overlay-button"
-                  title="Поиск">
-            <i data-lucide="search" class="w-5 h-5 inline-block"></i>
-          </button>
-          <button type="button" 
-                  @click="shareProduct()" 
-                  class="product-image-overlay-button"
-                  title="Поделиться">
-            <i data-lucide="share-2" class="w-5 h-5 inline-block"></i>
-          </button>
-          <form action="{% url 'catalog:toggle_favorite' product.pk %}" method="post" class="inline" hx-boost="false">
-            {% csrf_token %}
-            <input type="hidden" name="next" value="{{ request.get_full_path }}" />
-            <button type="submit" 
-                    class="product-image-overlay-button {% if is_favorite %}text-red-400{% endif %}"
-                    title="{% if is_favorite %}Убрать из избранного{% else %}В избранное{% endif %}">
-              <i data-lucide="heart" class="w-5 h-5 inline-block {% if is_favorite %}fill-current{% endif %}"></i>
-            </button>
-          </form>
-        </div>
-      </div>
-      
-      <!-- Carousel indicators -->
-      <div x-show="displayImages.length > 1" 
-           class="product-image-carousel-indicators" 
-           x-cloak>
-        <template x-for="(img, i) in displayImages" :key="i">
-          <div class="product-image-carousel-indicator"
-               :class="selectedImageIndex === i ? 'active' : ''"
-               @click="selectedImageIndex = i"></div>
-        </template>
-      </div>
+  <main class="container">
+    <div class="breadcrumbs">
+      <a href="{% url 'catalog:product_list' %}?category={{ product.category.slug }}">{{ product.category.name }}</a>
+      <span>></span>
+      <span>{{ product.name }}</span>
     </div>
-  </div>
 
-  <!-- Desktop nav -->
-  <nav class="mb-6 hidden md:block">
-    <a href="{% url 'catalog:product_list' %}" class="text-gray-400 hover:text-accent text-sm flex items-center gap-1">
-      <i data-lucide="arrow-left" class="w-4 h-4 inline-block"></i>
-      В каталог
-    </a>
-  </nav>
-
-  <div class="grid grid-cols-1 lg:grid-cols-[minmax(500px,600px)_1fr] gap-8 lg:gap-10 2xl:grid-cols-[620px_1fr] 2xl:gap-12">
-    <div class="space-y-4 flex flex-col items-start hidden md:flex min-w-0 overflow-hidden">
-      <div class="flex flex-col gap-3 items-center lg:flex-row lg:items-start">
-        <div class="product-image-container rounded-xl overflow-hidden bg-dark-800/50 border border-dark-600 flex items-center justify-center flex-shrink-0 order-1 lg:order-2">
+    <div class="product-main">
+      <div class="gallery-container">
+        <div class="thumbs desktop-only" x-show="displayImages.length > 1" x-cloak>
+          <template x-for="(img, i) in displayImages" :key="i">
+            <img :src="img" class="thumb" :class="selectedImageIndex === i ? 'active' : ''" @click="selectedImageIndex = i" alt="" loading="lazy" />
+          </template>
+        </div>
+        <div class="main-image-wrapper"
+             @touchstart="touchStartX = $event.changedTouches[0].screenX"
+             @touchmove="touchMoveX = $event.changedTouches[0].screenX"
+             @touchend="handleSwipe()">
           <template x-if="effectiveImage">
-            <img :src="effectiveImage"
-                 alt="{{ product.name|escapejs }}"
-                 loading="eager"
-                 style="max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; object-position: center; display: block;" />
+            <img :src="effectiveImage" class="main-image" alt="{{ product.name|escapejs }}" loading="eager" />
           </template>
           <template x-if="!effectiveImage">
-            <div class="text-gray-400 flex flex-col items-center gap-2">
-              <i data-lucide="image-off" class="w-20 h-20 md:w-24 md:h-24 inline-block"></i>
-              <span class="text-sm">Нет фото</span>
-            </div>
+            <div style="color: var(--pd-muted);">Нет фото</div>
           </template>
         </div>
-        <div x-show="displayImages.length > 1" class="flex flex-row gap-2 flex-shrink-0 justify-center order-2 lg:order-1 lg:flex-col lg:justify-start" x-cloak>
-          <template x-for="(img, i) in displayImages" :key="i">
-            <button type="button"
-                    @click="selectedImageIndex = i"
-                    :class="selectedImageIndex === i ? 'ring-2 ring-accent ring-offset-2 ring-offset-dark-900' : 'hover:border-dark-500'"
-                    class="product-thumbnail">
-              <img :src="img" alt="" loading="lazy" />
-            </button>
-          </template>
+        <!-- Mobile Dots -->
+        <div class="dots mobile-only" x-show="displayImages.length > 1">
+            <template x-for="(img, i) in displayImages" :key="i">
+                <div class="dot" :class="selectedImageIndex === i ? 'active' : ''"></div>
+            </template>
         </div>
       </div>
-    </div>
 
-    <div class="min-w-0 w-full">
-      <p class="text-[10px] text-gray-500 uppercase tracking-widest mb-2">{{ product.category.name }}</p>
-      {% if product.tags.all %}
-      <div class="flex flex-wrap gap-2 mb-3">
-        {% for tag in product.tags.all %}
-        <span class="px-3 py-1 text-xs font-medium rounded-full
-          {% if tag.slug == 'bestseller' %}bg-amber-500/90 text-dark-900
-          {% elif tag.slug == 'expert-choice' %}bg-emerald-500/90 text-dark-900
-          {% elif tag.slug == 'new' %}bg-blue-500/90 text-white
-          {% elif tag.slug == 'sale' %}bg-red-500/90 text-white
-          {% else %}bg-dark-600 text-gray-300{% endif %}">{{ tag.name }}</span>
-        {% endfor %}
+      <!-- Mobile: minimal info from DB -->
+      <div class="mobile-card mobile-only">
+        <div class="mobile-price" x-text="(selectedVariant ? selectedVariant.price : productPrice).toLocaleString('ru-RU') + ' ₽'"></div>
       </div>
-      {% endif %}
-      <h1 class="text-2xl md:text-3xl font-medium text-white mb-4 leading-tight">{{ product.name }}</h1>
 
       {% if product.variants.all %}
-      <div class="mb-4">
-        <p class="text-[10px] text-gray-500 uppercase tracking-wider mb-2">{{ product.option_label|default:"Вариант" }}</p>
-        <div class="flex flex-wrap gap-2">
-          {% for v in product.variants.all %}
-          <button type="button"
-                  @click="selectedVariant = variants.find(x => x.id === {{ v.pk }})"
-                  :class="selectedVariant && selectedVariant.id === {{ v.pk }} ? 'border-accent text-accent bg-accent/10' : 'border-dark-600 text-gray-300 hover:border-dark-500'"
-                  class="flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors">
-            {% if v.image %}
-            <img src="{{ v.image.url|absolute_uri:request }}" alt="" class="w-6 h-6 rounded object-cover" />
-            {% endif %}
-            <span>{{ v.name }}</span>
-          </button>
-          {% endfor %}
-        </div>
-      </div>
-      {% endif %}
-
-      <div class="text-2xl font-bold text-white mb-6" x-text="(selectedVariant ? selectedVariant.price : productPrice).toLocaleString('ru-RU') + ' ₽'"></div>
-
-      <p class="text-sm text-gray-400 mb-4" x-show="selectedCityName">
-        <span x-show="stockInCity > 0">В наличии (<span x-text="selectedCityName"></span>): <span class="text-white font-medium" x-text="(stockInCity ?? 0) + ' шт.'"></span></span>
-        <span x-show="selectedCityName && stockInCity <= 0 && stockTotal > 0">В наличии, <span class="text-white font-medium">доставка</span> (<span x-text="stockTotal + ' шт. в России'"></span>)</span>
-        <span x-show="selectedCityName && stockTotal <= 0">Нет в наличии — <span class="text-accent font-medium">под заказ</span></span>
-      </p>
-      <p class="text-sm text-gray-400 mb-4" x-show="!selectedCityName">
-        <span x-show="stockTotal > 0">Доступно к отправке: <span class="text-white font-medium" x-text="stockTotal + ' шт.'"></span></span>
-        <span x-show="stockTotal <= 0">Нет в наличии — <span class="text-accent font-medium">под заказ</span></span>
-      </p>
-
-      {% if product.description %}
-        <div class="text-sm text-gray-300 leading-relaxed mb-6">{{ product.description|linebreaks }}</div>
-      {% endif %}
-
-      <div class="mb-8" x-show="displayCharacteristics.length > 0">
-        <h2 class="text-sm font-bold text-white mb-3 uppercase tracking-wide">Характеристики</h2>
-        <table class="w-full text-sm">
-          <template x-for="ch in displayCharacteristics" :key="ch[0] + ch[1]">
-            <tr class="border-b border-dark-600">
-              <td class="py-2 text-gray-400" x-text="ch[0]"></td>
-              <td class="py-2 text-white text-right" x-text="ch[1]"></td>
-            </tr>
-          </template>
-        </table>
-      </div>
-
-      {% if bundles %}
-      <div class="mb-8 pt-8 border-t border-dark-600">
-        <h2 class="text-sm font-bold text-white mb-4 uppercase tracking-wide">Купить набором</h2>
-        <div class="space-y-4 mb-6">
-          {% for bundle in bundles %}
-          <div class="bg-dark-800 border border-dark-600 rounded-xl p-4">
-            {% if bundle.name %}
-            <p class="text-sm text-gray-400 mb-2">{{ bundle.name }}</p>
-            {% endif %}
-            <div class="flex flex-wrap gap-3 items-center mb-3">
-              {% for item in bundle.items.all %}
-                <span class="flex items-center gap-2 p-2 rounded-lg bg-dark-700 min-w-0">
-                  {% if item.product.image %}
-                  <img src="{{ item.product.image.url|absolute_uri:request }}" alt="" class="w-12 h-12 rounded object-contain flex-shrink-0" />
-                  {% else %}
-                  <div class="w-12 h-12 rounded bg-dark-600 flex items-center justify-center flex-shrink-0">
-                    <i data-lucide="package" class="w-6 h-6 text-gray-500"></i>
-                  </div>
-                  {% endif %}
-                  <span class="text-sm text-white truncate">{{ item.product.name }}{% if item.quantity > 1 %} × {{ item.quantity }}{% endif %}</span>
-                  <span class="text-sm text-accent font-medium flex-shrink-0">{{ item.price|price_format }} ₽</span>
-                </span>
-              {% endfor %}
+      <div class="mobile-card mobile-only">
+        <div class="variants-title">{{ product.option_label|default:"Вариант" }}: <strong x-text="selectedVariant ? selectedVariant.name : ''"></strong></div>
+        <div class="color-variants">
+          <template x-for="v in variants" :key="v.id">
+            <div class="color-opt" :class="selectedVariant && selectedVariant.id === v.id ? 'selected' : ''" @click="selectedVariant = v; selectedImageIndex = 0">
+              <template x-if="v.imageUrl">
+                <img :src="v.imageUrl" alt="" loading="lazy" />
+              </template>
+              <template x-if="!v.imageUrl">
+                <div style="width: 100%; height: 100%; background: rgba(255,255,255,0.06);"></div>
+              </template>
             </div>
-            <form action="{% url 'catalog:add_bundle_to_cart' %}" method="post" class="inline"
-                  hx-post="{% url 'catalog:add_bundle_to_cart' %}"
-                  hx-target="#cart-modal-content"
-                  hx-swap="innerHTML">
-              {% csrf_token %}
-              <input type="hidden" name="bundle_id" value="{{ bundle.pk }}" />
-              <input type="hidden" name="next" value="{{ request.get_full_path }}" />
-              <button type="submit" class="bg-accent hover:bg-accent-hover text-dark-900 font-bold py-2 px-5 rounded-full text-sm uppercase tracking-wide">
-                Купить набор — {{ bundle.total_price|price_format }} ₽
-              </button>
-            </form>
-          </div>
-          {% endfor %}
+          </template>
         </div>
       </div>
       {% endif %}
 
-      <div class="flex flex-wrap gap-4 items-center">
-        <form action="{% url 'catalog:add_to_cart' product.pk %}" method="post" class="inline"
+      <div class="mobile-only" style="margin-top: 8px;">
+        <div class="delivery-section" style="margin: 0 16px; border-radius: 24px;">
+          <h3 class="delivery-section-title">Доставка</h3>
+          <div class="delivery-row">
+            <i data-lucide="map-pin" class="w-4 h-4 inline-block" style="vertical-align: middle;"></i>
+            <div>
+              <strong>{% if selected_city %}{{ selected_city.name }}{% else %}Укажите город{% endif %}</strong><br>
+              <span style="color: var(--pd-muted); font-size: 12px;" x-text="selectedCityName ? ('В наличии в городе: ' + (stockInCity ?? 0) + ' шт.') : ('Доступно к отправке: ' + (stockTotal ?? 0) + ' шт.')"></span>
+            </div>
+          </div>
+          <div class="delivery-row">
+            <i data-lucide="package" class="w-4 h-4 inline-block" style="vertical-align: middle;"></i>
+            <div>
+              <strong>Пункты выдачи</strong><br>
+              <span style="font-weight: bold;">{% if selected_city %}{{ pickup_points_count }}{% else %}—{% endif %}</span>
+            </div>
+            <span style="margin-left: auto; font-size: 12px; font-weight: bold;">Без доплат</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="product-info desktop-only">
+        <h1>{{ product.name }}</h1>
+
+        {% if product.variants.all %}
+          <div class="variants-title">{{ product.option_label|default:"Вариант" }}: <strong x-text="selectedVariant ? selectedVariant.name : ''"></strong></div>
+          <div class="color-variants">
+            <template x-for="v in variants" :key="v.id">
+              <div class="color-opt" :class="selectedVariant && selectedVariant.id === v.id ? 'selected' : ''" @click="selectedVariant = v; selectedImageIndex = 0">
+                <template x-if="v.imageUrl">
+                  <img :src="v.imageUrl" alt="" loading="lazy" />
+                </template>
+                <template x-if="!v.imageUrl">
+                  <div style="width: 100%; height: 100%; background: rgba(255,255,255,0.06);"></div>
+                </template>
+              </div>
+            </template>
+          </div>
+        {% endif %}
+
+        <div class="short-specs">
+          <div class="short-specs-header">
+            <span class="short-specs-title">О товаре</span>
+            <a href="#desc" class="short-specs-link">Перейти к описанию ›</a>
+          </div>
+          <div class="short-specs-list">
+            <template x-for="(ch, idx) in displayCharacteristics.slice(0, 4)" :key="ch[0] + ch[1]">
+              <div class="spec-line">
+                <span class="spec-key" x-text="ch[0]"></span>
+                <span class="spec-value" x-text="ch[1]"></span>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+
+      <div class="right-col desktop-only">
+      <div class="buy-box">
+        <div class="price-block">
+          <div class="price-row">
+            <span class="main-price" x-text="(selectedVariant ? selectedVariant.price : productPrice).toLocaleString('ru-RU') + ' ₽'"></span>
+          </div>
+        </div>
+
+        <form action="{% url 'catalog:add_to_cart' product.pk %}" method="post"
               hx-post="{% url 'catalog:add_to_cart' product.pk %}"
               hx-target="#cart-modal-content"
               hx-swap="innerHTML">
@@ -473,27 +711,103 @@
           <input type="hidden" name="quantity" value="1" />
           {% if product.variants.all %}
           <input type="hidden" name="variant_id" :value="selectedVariant ? selectedVariant.id : ''" />
-          <button type="submit" :disabled="!selectedVariant" class="bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-8 rounded-full transition-colors text-sm uppercase tracking-wide disabled:opacity-50 disabled:cursor-not-allowed" x-text="stockTotal > 0 ? 'Добавить в корзину' : 'Купить под заказ'">
-          </button>
+          <button type="submit" class="add-cart-btn" :disabled="!selectedVariant">В корзину</button>
           {% else %}
-          <button type="submit" class="bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-8 rounded-full transition-colors text-sm uppercase tracking-wide" x-text="stockTotal > 0 ? 'Добавить в корзину' : 'Купить под заказ'">
-          </button>
+          <button type="submit" class="add-cart-btn">В корзину</button>
           {% endif %}
         </form>
-        <form action="{% url 'catalog:toggle_favorite' product.pk %}" method="post" class="inline" hx-boost="false">
+
+        <form action="{% url 'catalog:add_to_cart' product.pk %}" method="post">
           {% csrf_token %}
-          <input type="hidden" name="next" value="{{ request.get_full_path }}" />
-          <button type="submit" class="inline-flex items-center gap-2 py-3 px-6 rounded-full border border-dark-600 text-gray-300 hover:border-accent hover:text-accent transition-colors text-sm {% if is_favorite %}text-red-400 border-red-400/50{% endif %}" title="{% if is_favorite %}Убрать из избранного{% else %}В избранное{% endif %}">
-            <i data-lucide="heart" class="w-5 h-5 inline-block {% if is_favorite %}fill-current{% endif %}"></i>
-            <span>{% if is_favorite %}В избранном{% else %}В избранное{% endif %}</span>
-          </button>
+          <input type="hidden" name="quantity" value="1" />
+          <input type="hidden" name="next" value="{% url 'orders:checkout' %}" />
+          {% if product.variants.all %}
+          <input type="hidden" name="variant_id" :value="selectedVariant ? selectedVariant.id : ''" />
+          <button type="submit" class="buy-now-btn" :disabled="!selectedVariant">Купить сейчас</button>
+          {% else %}
+          <button type="submit" class="buy-now-btn">Купить сейчас</button>
+          {% endif %}
         </form>
-        <a href="{% url 'catalog:product_list' %}?category={{ product.category.slug }}" class="inline-flex items-center gap-2 text-gray-400 hover:text-white text-sm">
-          Другие товары в «{{ product.category.name }}»
-          <i data-lucide="arrow-right" class="w-4 h-4 inline-block"></i>
-        </a>
+      </div>
+
+      <div class="delivery-section">
+          <h3 class="delivery-section-title">Доставка</h3>
+          <div class="delivery-row">
+            <i data-lucide="map-pin" class="w-4 h-4 inline-block" style="vertical-align: middle;"></i>
+            <div>
+              <strong>{% if selected_city %}{{ selected_city.name }}{% else %}Укажите город{% endif %}</strong><br>
+              <span style="color: #9ca3af; font-size: 12px;" x-text="selectedCityName ? ('В наличии в городе: ' + (stockInCity ?? 0) + ' шт.') : ('Доступно к отправке: ' + (stockTotal ?? 0) + ' шт.')"></span>
+            </div>
+          </div>
+          <div class="delivery-row">
+            <i data-lucide="package" class="w-4 h-4 inline-block" style="vertical-align: middle;"></i>
+            <div>
+              <strong>Пункты выдачи</strong><br>
+              <span style="font-weight: bold;">{% if selected_city %}{{ pickup_points_count }}{% else %}—{% endif %}</span>
+            </div>
+            <span style="margin-left: auto; font-size: 12px; font-weight: bold;">Без доплат</span>
+          </div>
+        </div>
       </div>
     </div>
-  </div>
+
+    <!-- Floating Action Bar (Mobile Only) -->
+    <div class="floating-action mobile-only">
+        <form action="{% url 'catalog:add_to_cart' product.pk %}" method="post"
+              hx-post="{% url 'catalog:add_to_cart' product.pk %}"
+              hx-target="#cart-modal-content"
+              hx-swap="innerHTML"
+              style="width: 100%;">
+          {% csrf_token %}
+          <input type="hidden" name="quantity" value="1" />
+          {% if product.variants.all %}
+          <input type="hidden" name="variant_id" :value="selectedVariant ? selectedVariant.id : ''" />
+          <button type="submit" class="cta-btn" :disabled="!selectedVariant">В корзину</button>
+          {% else %}
+          <button type="submit" class="cta-btn">В корзину</button>
+          {% endif %}
+        </form>
+    </div>
+
+    {% if recommended_products %}
+      <h2 class="section-title">Рекомендуем также</h2>
+      <div class="cards-grid">
+        {% for p in recommended_products %}
+          {% include "catalog/_product_card.html" with product=p show_favorite=True favorite_product_ids=favorite_product_ids %}
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <h2 class="section-title">Описание</h2>
+    <div class="details-section" id="desc">
+      <div class="desc-text">
+        {% if product.description %}
+          {{ product.description|linebreaks }}
+        {% else %}
+          <span style="color: var(--pd-muted);">Описание пока не добавлено.</span>
+        {% endif %}
+      </div>
+
+      <h3 class="specs-title">Характеристики</h3>
+      <div class="specs-grid">
+        <div class="col">
+          <template x-for="(ch, idx) in displayCharacteristics.filter((_, i) => i % 2 === 0)" :key="ch[0] + ch[1]">
+            <div class="spec-item">
+              <div class="spec-label" x-text="ch[0]"></div>
+              <div class="spec-value" x-text="ch[1]"></div>
+            </div>
+          </template>
+        </div>
+        <div class="col">
+          <template x-for="(ch, idx) in displayCharacteristics.filter((_, i) => i % 2 === 1)" :key="ch[0] + ch[1] + '-r'">
+            <div class="spec-item">
+              <div class="spec-label" x-text="ch[0]"></div>
+              <div class="spec-value" x-text="ch[1]"></div>
+            </div>
+          </template>
+        </div>
+      </div>
+    </div>
+  </main>
 </div>
 {% endblock %}

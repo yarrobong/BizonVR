@@ -10,6 +10,30 @@ from .models import CatalogSection, City, Product
 _CACHE_TTL = 300  # 5 минут
 
 
+def _get_active_section(request):
+    """Определяет активную секцию меню на основе текущего URL."""
+    path = request.path
+    
+    # Каталог/Поиск
+    if path.startswith('/catalog/') and not path.startswith('/catalog/favorites') and not path.startswith('/catalog/cart'):
+        return 'catalog'
+    
+    # Избранное
+    if path.startswith('/catalog/favorites'):
+        return 'favorites'
+    
+    # Корзина
+    if path.startswith('/catalog/cart'):
+        return 'cart'
+    
+    # Профиль (все страницы accounts)
+    if path.startswith('/accounts/'):
+        return 'profile'
+    
+    # Главная (по умолчанию для /, /arenda/, /contacts/, карточек товаров)
+    return 'home'
+
+
 def catalog_menu(request):
     """Разделы каталога с категориями для выпадающего меню в шапке; счётчик корзины; города."""
     sections = cache.get(CACHE_KEY_SECTIONS)
@@ -52,4 +76,8 @@ def catalog_menu(request):
     result['cities'] = list(City.objects.order_by('order', 'name'))
     selected_city_id = request.session.get('selected_city_id')
     result['selected_city'] = next((c for c in result['cities'] if c.pk == selected_city_id), None)
+    
+    # Активная секция для подсветки в мобильном меню
+    result['active_section'] = _get_active_section(request)
+    
     return result

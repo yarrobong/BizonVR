@@ -18,10 +18,11 @@
     {% if products %}<span class="text-gray-500 text-lg">({{ products|length }})</span>{% endif %}
   </h1>
 
+  <div id="favorites-content">
   {% if products %}
     <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 md:gap-3">
       {% for product in products %}
-        {% include "catalog/_product_card.html" with show_cart_link=True %}
+        {% include "catalog/_product_card.html" with show_cart_link=True show_favorite=True favorite_product_ids=favorite_product_ids from_favorites_page=True %}
       {% endfor %}
     </div>
   {% else %}
@@ -35,5 +36,6 @@
       </a>
     </div>
   {% endif %}
+  </div>
 </div>
 {% endblock %}

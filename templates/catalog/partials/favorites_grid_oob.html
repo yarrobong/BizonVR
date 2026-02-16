@@ -1,0 +1,20 @@
+{% load catalog_tags %}
+<div id="favorites-content" hx-swap-oob="true">
+  {% if products %}
+  <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 md:gap-3">
+    {% for product in products %}
+      {% include "catalog/_product_card.html" with show_cart_link=True show_favorite=True favorite_product_ids=favorite_product_ids from_favorites_page=True %}
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="text-center py-16 text-gray-400">
+    <i data-lucide="heart" class="w-16 h-16 mx-auto mb-4 opacity-50"></i>
+    <p class="mb-2">В избранном пока ничего нет.</p>
+    <p class="text-sm mb-6">Добавляйте понравившиеся товары кнопкой с сердечком в каталоге.</p>
+    <a href="{% url 'catalog:product_list' %}" class="inline-flex items-center gap-2 bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-6 rounded-full text-sm uppercase tracking-wide transition-colors">
+      Перейти в каталог
+      <i data-lucide="arrow-right" class="w-4 h-4 inline-block"></i>
+    </a>
+  </div>
+  {% endif %}
+</div>

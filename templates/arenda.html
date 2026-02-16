@@ -31,10 +31,12 @@
     background-size: 50px 50px, 50px 50px, 100% 100%;
     color: #fff;
     overflow-x: hidden;
+    position: relative; /* Добавляем для корректного позиционирования */
+    z-index: 1; /* Убедимся что контент поверх фона */
   }
 
   .arenda-container {
-    max-width: 1280px;
+    max-width: 1440px;
     margin-left: auto;
     margin-right: auto;
     padding-left: 1.5rem;
@@ -47,6 +49,13 @@
     letter-spacing: 0.02em;
   }
 
+  /* Fallback для элементов с AOS если библиотека не загрузилась */
+  [data-aos] {
+    opacity: 1 !important;
+    transform: none !important;
+    visibility: visible !important;
+  }
+
   /* Utility Classes для неона */
   .text-glow-blue { text-shadow: 0 0 15px rgba(0, 212, 255, 0.6); }
   .text-glow-purple { text-shadow: 0 0 15px rgba(176, 38, 255, 0.6); }
@@ -54,12 +63,12 @@
   /* Hero Section */
   .arenda-hero {
     position: relative;
-    min-height: 85vh; /* Чуть выше */
+    min-height: auto; /* Фиксим проблему с высотой */
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 6rem 0;
-    overflow: hidden;
+    overflow: visible; /* Изменено с hidden на visible */
   }
   
   /* Фоновый прожектор */
@@ -1334,10 +1343,47 @@
 <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
 <script>
   document.addEventListener('DOMContentLoaded', function() {
+    // Инициализация AOS с проверкой загрузки
     if (typeof AOS !== 'undefined') {
-      AOS.init({ duration: 800, once: true });
+      try {
+        AOS.init({ 
+          duration: 800, 
+          once: true,
+          offset: 50,
+          delay: 0,
+          startEvent: 'DOMContentLoaded'
+        });
+      } catch(e) {
+        console.warn('AOS init failed:', e);
+        // Показываем все элементы если AOS не работает
+        document.querySelectorAll('[data-aos]').forEach(el => {
+          el.style.opacity = '1';
+          el.style.transform = 'none';
+        });
+      }
+    } else {
+      // AOS не загрузилась - показываем все элементы
+      document.querySelectorAll('[data-aos]').forEach(el => {
+        el.style.opacity = '1';
+        el.style.transform = 'none';
+      });
     }
-    if (typeof lucide !== 'undefined') lucide.createIcons();
+    
+    // Инициализация Lucide icons
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons();
+    } else if (typeof initLucide === 'function') {
+      initLucide();
+    }
   });
+  
+  // Fallback: если через 2 секунды элементы все еще скрыты - показываем принудительно
+  setTimeout(function() {
+    document.querySelectorAll('[data-aos]:not(.aos-animate)').forEach(el => {
+      el.classList.add('aos-animate');
+      el.style.opacity = '1';
+      el.style.transform = 'none';
+    });
+  }, 2000);
 </script>
 {% endblock %}

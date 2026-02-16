@@ -43,6 +43,13 @@
       display: none;
     }
 
+    /* Максимальная ширина сайта на больших экранах */
+    @media (min-width: 1280px) {
+      .container {
+        max-width: 1440px !important;
+      }
+    }
+
     :root {
   /* Цветовая палитра BizonVR */
   --bg-dark: #0f1115;       /* Глубокий темный фон */
@@ -108,7 +115,7 @@
       border-color: rgba(0, 212, 255, 0.3);
     }
 
-    /* Мобильная шапка главной: полоса города (как Ozon), под ней поиск; при скролле город уезжает, поиск остаётся */
+    /* Мобильная шапка главной: полоса города, под ней поиск; при скролле город уезжает, поиск остаётся */
     .mobile-header {
       position: relative;
       z-index: 100;
@@ -362,81 +369,249 @@
       width: 100%;
     }
     
-    /* Hero Carousel Styles: один слайд на всю ширину на десктопе; на мобильных — видимые соседи и 16:10 */
+    /* Hero Carousel: базово 16:5, mobile — “подглядывает” следующий, desktop — один слайд */
     .hero-carousel {
-      --hero-gap: 24px;
-      --hero-radius: 32px;
-      overflow-x: hidden;
+      /* gap задаём переменной, чтобы desktop/mobile отличались без перелома логики */
+      --hero-gap: 2%;
+      --hero-radius: 16px;
+      --hero-slide-width: 88%;
+      --hero-step: 90%;
+      --hero-pad: 6%;
+      overflow: hidden;
       aspect-ratio: 16 / 5;
-      min-height: 220px;
-      margin-left: calc(var(--hero-gap) * -0.5);
-      margin-right: calc(var(--hero-gap) * -0.5);
-      padding-left: calc(var(--hero-gap) * 0.5);
-      padding-right: calc(var(--hero-gap) * 0.5);
+      min-height: 160px;
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    /* Чтобы hero не был шире шапки: синхроним max-width с Tailwind `.container` на каждом брейкпоинте */
+    @media (min-width: 768px) {
+      .hero-carousel {
+        max-width: 768px;
+        margin-left: auto;
+        margin-right: auto;
+      }
+    }
+    @media (min-width: 1024px) {
+      .hero-carousel {
+        max-width: 1024px;
+      }
+    }
+    @media (min-width: 1280px) {
+      .hero-carousel {
+        /* у нас `.container` на xl+ принудительно 1440px */
+        max-width: 1440px;
+      }
     }
     .hero-carousel-inner {
-      overflow: visible;
-      left: calc(var(--hero-gap) / -2);
-      right: calc(var(--hero-gap) / -2);
+      overflow: hidden;
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+    .hero-carousel-inner .container {
+      overflow-x: hidden;
+      height: 100%;
+      max-width: 100%;
+      width: 100%;
+      min-width: 0;
     }
     .hero-slides-track {
       display: flex;
       height: 100%;
-      width: calc(100% * var(--hero-total, 1));
-      min-width: 100%;
+      gap: var(--hero-gap);
+      align-items: stretch;
+      position: relative;
+      /* Важно: позиционируем трек через transform (композитор), а drag добавляем px-значением */
+      transform: translate3d(calc(var(--hero-pad) - var(--hero-current, 0) * var(--hero-step) + var(--hero-drag, 0px)), 0, 0);
+      /* IMPORTANT: проценты у flex-item должны считаться от ширины вьюпорта/контейнера,
+         а не от "max-content" ширины трека (иначе слайды едут и видны 2 больших сразу). */
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      flex-wrap: nowrap;
+      transition: transform 0.6s cubic-bezier(0.32, 0.72, 0, 1);
       will-change: transform;
-      transform: translateX(calc(-100% * var(--hero-current, 0) / var(--hero-total, 1)));
-      align-items: center;
-      margin: 0 calc(var(--hero-gap) / -2);
-      overflow: visible;
+      box-sizing: border-box;
     }
     .hero-slide {
-      flex: 0 0 calc(100% / var(--hero-total, 1));
+      flex: 0 0 var(--hero-slide-width);
+      width: var(--hero-slide-width);
+      max-width: 100%;
       min-width: 0;
-      padding: 0 calc(var(--hero-gap) / 2);
       box-sizing: border-box;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
     .hero-slide-card {
       position: relative;
       width: 100%;
+      max-width: 100%;
+      height: auto;
       aspect-ratio: 16 / 5;
-      min-height: 220px;
+      min-height: 120px;
+      max-height: 100%;
       border-radius: var(--hero-radius);
       overflow: hidden;
       background-size: cover;
       background-repeat: no-repeat;
       background-position: center center;
-      background-clip: padding-box;
-      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.35);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+      flex-shrink: 0;
     }
-    /* Мобильная версия: слайд 80% ширины (видны соседи), соотношение 16:10, центрирование через left */
-    @media (max-width: 768px) {
+    @media (min-width: 768px) {
       .hero-carousel {
-        --hero-gap: 16px;
-        aspect-ratio: 16 / 10;
-        min-height: 0;
+        /* Desktop: ровная “большая карточка”, без peek соседних слайдов */
+        --hero-gap: 0px;
+        --hero-radius: 24px;
+        --hero-slide-width: 100%;
+        --hero-step: 100%;
+        --hero-pad: 0%;
+        min-height: 200px;
+        max-height: 475px;
+        border-radius: var(--hero-radius);
       }
-      .hero-slides-track {
-        position: relative;
-        left: calc(10% - var(--hero-current, 0) * 82%);
-        width: calc(var(--hero-total, 1) * 82% - 2%);
-        min-width: 100%;
-        height: 100%;
-        transition: left 0.6s cubic-bezier(0.32, 0.72, 0, 1) !important;
-        transform: none;
-        gap: 2%;
-        display: flex;
-        align-items: stretch;
-      }
-      .hero-slide {
-        flex: 0 0 80%;
-        min-width: 80%;
-        padding: 0;
+      /* Убираем внутренние px-4 у hero-контейнера, чтобы не “подглядывали” соседи в боковые паддинги */
+      .hero-carousel-inner .container {
+        padding-left: 0;
+        padding-right: 0;
       }
       .hero-slide-card {
-        aspect-ratio: 16 / 10;
-        min-height: 0;
-        width: 100%;
+        min-height: 180px;
+        height: 100%;
+        max-height: 475px;
+        aspect-ratio: auto;
+        border-radius: var(--hero-radius);
+        
+      }
+      .hero-carousel-inner {
+        border-radius: inherit;
+      }
+
+      /* Desktop nav buttons: светлые, аккуратные, выровнены по краям баннера */
+      .hero-carousel .hero-nav-btn {
+        width: 40px;
+        height: 40px;
+        min-width: 40px;
+        min-height: 40px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.78);
+        color: rgba(17, 24, 39, 0.92);
+        border: 1px solid rgba(17, 24, 39, 0.10);
+        box-shadow:
+          0 10px 24px rgba(0, 0, 0, 0.22),
+          0 1px 0 rgba(255, 255, 255, 0.35) inset;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        transition: box-shadow 140ms ease, background 140ms ease, opacity 140ms ease, border-color 140ms ease;
+        outline: none;
+      }
+      /* чуть “спрятаны”, но всегда доступны */
+      .hero-carousel .hero-nav-btn {
+        opacity: 0.92;
+      }
+      .hero-carousel .hero-nav-btn:hover {
+        background: rgba(255, 255, 255, 0.90);
+        opacity: 1;
+        border-color: rgba(17, 24, 39, 0.14);
+        box-shadow:
+          0 14px 30px rgba(0, 0, 0, 0.26),
+          0 1px 0 rgba(255, 255, 255, 0.40) inset;
+      }
+      .hero-carousel .hero-nav-btn:active {
+        background: rgba(255, 255, 255, 0.86);
+      }
+      .hero-carousel .hero-nav-btn:focus-visible {
+        box-shadow:
+          0 0 0 2px rgba(139, 92, 246, 0.35),
+          0 10px 24px rgba(0, 0, 0, 0.22);
+      }
+      /* lucide превращает <i> в <svg> */
+      .hero-carousel .hero-nav-btn svg {
+        width: 18px;
+        height: 18px;
+        stroke-width: 2.25;
+      }
+      .hero-carousel .hero-nav-btn--left {
+        left: 14px;
+      }
+      .hero-carousel .hero-nav-btn--right {
+        right: 14px;
+      }
+    }
+    @media (max-width: 767px) {
+      .hero-carousel {
+        /* основной слайд слева, видно следующий справа */
+        --hero-slide-width: 92%;
+        --hero-step: 94%;
+        /* центрируем активный слайд */
+        --hero-pad: 4%;
+        --hero-radius: 12px;
+        --hero-gap: 2%;
+        min-height: 140px;
+        margin-top: 0.5rem;
+      }
+      .hero-carousel-inner .container {
+        /* привычные мобильные поля как в маркетплейсах */
+        padding-left: 1rem;
+        padding-right: 1rem;
+      }
+      .hero-slides-track {
+        /* позиционирование уже через transform (см. базовое правило) */
+      }
+      .hero-slide-card {
+        min-height: 120px;
+      }
+      .hero-carousel .hero-slide-content {
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+      }
+      .hero-carousel .hero-slide-title {
+        font-size: 1.125rem;
+        line-height: 1.3;
+        margin-bottom: 0.25rem;
+      }
+      .hero-carousel .hero-slide-desc {
+        font-size: 0.6875rem;
+        margin-bottom: 0.75rem;
+        line-height: 1.35;
+      }
+      .hero-carousel .hero-slide-btn {
+        padding: 0.5rem 0.75rem;
+        font-size: 0.625rem;
+      }
+      .hero-carousel .hero-dots-wrap {
+        bottom: 0.75rem;
+        gap: 0.375rem;
+      }
+      .hero-carousel .hero-dots-wrap button {
+        width: 6px;
+        height: 6px;
+        min-width: 6px;
+        min-height: 6px;
+      }
+
+      /* Быстрые ссылки (как в маркетплейсах): snap + приятный tap */
+      .quicklinks-row {
+        scroll-snap-type: x mandatory;
+        -webkit-overflow-scrolling: touch;
+      }
+      .quicklinks-row .brick {
+        scroll-snap-align: start;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .quicklinks-row .brick span:first-child {
+        transition: transform 0.12s ease, background-color 0.2s ease, border-color 0.2s ease;
+      }
+      .quicklinks-row .brick:active span:first-child {
+        transform: scale(0.96);
+        background-color: rgba(255, 255, 255, 0.08);
+        border-color: rgba(255, 255, 255, 0.18);
       }
     }
     .hero-slide-title {
@@ -447,6 +622,13 @@
     }
     .hero-slide-btn {
       text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+    }
+    .hero-slide-gradient {
+      background: linear-gradient(to top, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0.2) 40%, transparent 70%);
+    }
+    .hero-slide-text-wrap {
+      min-width: 0;
+      overflow: hidden;
     }
     /* Поиск в основном хедере занимает всё свободное место */
     #main-body header .header-main-row form[action*="product_list"] {
@@ -606,6 +788,21 @@
     display: none;
   }
 }
+
+/* Активная вкладка мобильного меню */
+.dock-item.active {
+  color: var(--accent);
+}
+
+.dock-item.active i {
+  color: var(--accent);
+  filter: drop-shadow(0 0 8px var(--accent-glow));
+  transform: scale(1.05);
+}
+
+.dock-item.active .badge {
+  border-color: rgba(139, 92, 246, 0.3);
+}
   </style>
   <script>
     // Инициализация Lucide иконок после загрузки HTMX контента
@@ -620,35 +817,207 @@
       document.body.scrollTop = 0;
       window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
     }
+    
+    // Проверка, нужно ли восстанавливать позицию скролла
+    function shouldRestoreScroll() {
+      // Не восстанавливаем скролл только если это первая загрузка или явный переход не через dock
+      const currentSection = document.body.dataset.activeSection;
+      const savedPositions = JSON.parse(sessionStorage.getItem('bizonvr_scroll_positions') || '{}');
+      return savedPositions[currentSection] !== undefined;
+    }
+    
+    // Функция для обновления активной вкладки в мобильном меню
+    function updateActiveDockItem() {
+      const activeSection = document.body.dataset.activeSection || 'home';
+      const dockItems = document.querySelectorAll('.mobile-dock .dock-item');
+      
+      // Убираем класс active у всех вкладок
+      dockItems.forEach(item => item.classList.remove('active'));
+      
+      // Определяем, какой пункт меню должен быть активным на основе URL или data-active-section
+      const currentPath = window.location.pathname;
+      
+      dockItems.forEach(item => {
+        const href = item.getAttribute('href');
+        let shouldBeActive = false;
+        
+        // Проверяем соответствие URL
+        if (href === '/' && (currentPath === '/' || activeSection === 'home')) {
+          shouldBeActive = true;
+        } else if (href.includes('/catalog/') && !href.includes('/favorites') && !href.includes('/cart') && (currentPath.includes('/catalog/') || activeSection === 'catalog')) {
+          shouldBeActive = true;
+        } else if (href.includes('/favorites') && (currentPath.includes('/favorites') || activeSection === 'favorites')) {
+          shouldBeActive = true;
+        } else if (href.includes('/cart') && (currentPath.includes('/cart') || activeSection === 'cart')) {
+          shouldBeActive = true;
+        } else if (href.includes('/accounts/profile') && (currentPath.includes('/accounts/profile') || activeSection === 'profile')) {
+          shouldBeActive = true;
+        }
+        
+        if (shouldBeActive) {
+          item.classList.add('active');
+        }
+      });
+    }
+    
     function initHtmxHandlers() {
       initLucide(); // иконки в шапке (каталог и др.) сразу при загрузке
+      
+      // Проверяем, что body уже существует
+      if (!document.body) {
+        console.warn('document.body is not available yet');
+        return;
+      }
+      
+      document.body.addEventListener('htmx:beforeSwap', function(ev) {
+        // Обновляем data-active-section перед заменой контента
+        if (ev.detail.target.id === 'main-content') {
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(ev.detail.xhr.responseText, 'text/html');
+          const newActiveSection = doc.body.dataset.activeSection;
+          if (newActiveSection) {
+            document.body.dataset.activeSection = newActiveSection;
+          }
+        }
+      });
       document.body.addEventListener('htmx:afterSettle', function(ev) {
         initLucide();
-        // Скролл вверх после полного обновления DOM (после Alpine, layout), чтобы не было сдвига вниз
+        // После полного обновления DOM
         if (ev.detail.target.id === 'main-content') {
-          requestAnimationFrame(function() {
-            requestAnimationFrame(scrollToTop);
-          });
           window.dispatchEvent(new CustomEvent('header-expand'));
+          // НЕ скроллим вверх - позицию восстановит скрипт ниже
+          // Обновляем активную вкладку в мобильном меню
+          updateActiveDockItem();
         }
       });
       document.body.addEventListener('htmx:afterSwap', function(ev) {
         if (ev.detail.target.id === 'main-content') {
-          scrollToTop(); // сразу в начало, после settle поправим ещё раз
-          if (typeof Alpine !== 'undefined') Alpine.initTree(ev.detail.target);
+          // НЕ скроллим вверх автоматически - позицию восстановит скрипт ниже
+          // Alpine.js автоматически обнаружит новые элементы с x-data через MutationObserver
+          // Поэтому initTree вызывать не обязательно и это может вызвать ошибки
           initLucide();
         }
       });
+      
+      // Обновляем активную вкладку при первой загрузке
+      updateActiveDockItem();
     }
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', initHtmxHandlers);
     } else {
       initHtmxHandlers();
     }
+
+    // Сохранение и восстановление позиции скролла для каждой секции
+    (function() {
+      const SCROLL_STORAGE_KEY = 'bizonvr_scroll_positions';
+      let isRestoringScroll = false;
+      let scrollRestoreAttempts = 0;
+      const MAX_RESTORE_ATTEMPTS = 5;
+      
+      // Получить текущую секцию из data-атрибута body
+      function getCurrentSection() {
+        return document.body?.dataset?.activeSection || 'home';
+      }
+      
+      // Сохранить позицию скролла для текущей секции
+      function saveScrollPosition() {
+        if (isRestoringScroll) return; // Не сохраняем во время восстановления
+        try {
+          const positions = JSON.parse(sessionStorage.getItem(SCROLL_STORAGE_KEY) || '{}');
+          positions[getCurrentSection()] = window.scrollY;
+          sessionStorage.setItem(SCROLL_STORAGE_KEY, JSON.stringify(positions));
+        } catch (e) {
+          console.warn('Failed to save scroll position:', e);
+        }
+      }
+      
+      // Восстановить позицию скролла для текущей секции
+      function restoreScrollPosition() {
+        try {
+          const positions = JSON.parse(sessionStorage.getItem(SCROLL_STORAGE_KEY) || '{}');
+          const section = getCurrentSection();
+          const savedPosition = positions[section];
+          
+          if (savedPosition !== undefined && savedPosition > 0) {
+            isRestoringScroll = true;
+            window.scrollTo(0, savedPosition);
+            
+            // Проверим, восстановилась ли позиция (иногда браузер игнорирует скролл пока контент не загружен)
+            setTimeout(() => {
+              const currentScroll = window.scrollY;
+              if (Math.abs(currentScroll - savedPosition) > 10 && scrollRestoreAttempts < MAX_RESTORE_ATTEMPTS) {
+                scrollRestoreAttempts++;
+                restoreScrollPosition(); // Повторная попытка
+              } else {
+                scrollRestoreAttempts = 0;
+                setTimeout(() => {
+                  isRestoringScroll = false;
+                }, 100);
+              }
+            }, 50);
+          } else {
+            // Если нет сохраненной позиции, скроллим вверх
+            window.scrollTo(0, 0);
+            scrollRestoreAttempts = 0;
+          }
+        } catch (e) {
+          console.warn('Failed to restore scroll position:', e);
+          window.scrollTo(0, 0);
+          scrollRestoreAttempts = 0;
+        }
+      }
+      
+      // Сохранять позицию при скролле (с дебаунсингом)
+      let scrollTimeout;
+      window.addEventListener('scroll', () => {
+        if (isRestoringScroll) return; // Не сохраняем во время восстановления
+        clearTimeout(scrollTimeout);
+        scrollTimeout = setTimeout(saveScrollPosition, 100);
+      }, { passive: true });
+      
+      // Сохранять позицию перед уходом со страницы
+      window.addEventListener('beforeunload', saveScrollPosition);
+      
+      // Функция для инициализации слушателей событий после загрузки DOM
+      function initScrollRestoreListeners() {
+        // Восстановить позицию после загрузки HTMX контента
+        document.body.addEventListener('htmx:afterSettle', (ev) => {
+          if (ev.detail.target.id === 'main-content') {
+            // Даем время на рендеринг, потом восстанавливаем позицию
+            scrollRestoreAttempts = 0;
+            requestAnimationFrame(() => {
+              requestAnimationFrame(() => {
+                setTimeout(restoreScrollPosition, 100);
+              });
+            });
+          }
+        });
+      }
+      
+      // Восстановить позицию при первой загрузке
+      scrollRestoreAttempts = 0;
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+          initScrollRestoreListeners();
+          setTimeout(restoreScrollPosition, 300);
+        });
+      } else {
+        initScrollRestoreListeners();
+        setTimeout(restoreScrollPosition, 300);
+      }
+      
+      // Дополнительное восстановление после полной загрузки (для медленных соединений)
+      window.addEventListener('load', () => {
+        scrollRestoreAttempts = 0;
+        setTimeout(restoreScrollPosition, 100);
+      });
+    })();
   </script>
 </head>
 <body class="min-h-screen bg-dark-900 text-white font-sans preload"
       id="main-body"
+      data-active-section="{{ active_section }}"
       hx-boost="true"
       hx-target="#main-content"
       hx-select="#main-content"
@@ -678,6 +1047,7 @@
       @open-search.window="searchOpen = true; $nextTick(() => setTimeout(() => typeof initLucide === 'function' && initLucide(), 80))"
      @open-cart.window="cartOpen = true"
      @cart-updated.window="cartCount = $event.detail.count; if ($event.detail.added_item) { miniCartData = $event.detail; miniCartOpen = true; cartOpen = false; setTimeout(() => miniCartOpen = false, 6000) }"
+     @favorites-updated.window="favoritesCount = $event.detail.count"
     @scroll.window.passive.throttle.50ms="
       if (!ready) return;
       const y = window.scrollY;
@@ -697,7 +1067,7 @@
      @header-expand.window="showStickyHeader = false; headerChangedAt = Date.now()"
      @keydown.escape.window="catalogOverlayOpen = false"
      x-init="
-       window.scrollTo(0, 0);
+       // НЕ скроллим вверх при инициализации - позицию восстановит скрипт
        showStickyHeader = false;
        scrolled = false;
        setTimeout(() => { ready = true; document.body.classList.remove('preload'); }, 150);
@@ -715,11 +1085,12 @@
          }
        });
      ">
-  <script>
+  <!-- Начальный скролл вверх НЕ используем, чтобы не конфликтовать с восстановлением позиции -->
+  <!-- <script>
     document.documentElement.scrollTop = 0;
     document.body.scrollTop = 0;
     window.scrollTo(0, 0);
-  </script>
+  </script> -->
 
   <!-- Глобальный полноэкранный оверлей каталога: телепорт в body, два варианта позиции без реактивного :style -->
   <template x-teleport="body">
@@ -802,6 +1173,73 @@
   </div>
   </template>
 
+  {% block mobile_header %}
+  <!-- Мобильная шапка: видна только на мобильных; на страницах с собственной шапкой можно переопределить блок `mobile_header` -->
+  <div class="mobile-header md:hidden" x-data="{ cityOpen: false, showFixedSearch: false }" @click.outside="cityOpen = false"
+       x-init="
+         const check = () => { showFixedSearch = window.scrollY > 100 };
+         let raf = null;
+         const throttled = () => { if (!raf) raf = requestAnimationFrame(() => { check(); raf = null; }); };
+         window.addEventListener('scroll', throttled, { passive: true });
+         check();
+         return () => window.removeEventListener('scroll', throttled);
+       ">
+    <div class="mobile-header-wrapper">
+      <div class="mobile-header-city-strip">
+        {% if cities %}
+        <div class="mobile-header-city-trigger-wrap">
+          <button type="button" @click="cityOpen = !cityOpen" class="mobile-header-city-btn" :class="{ 'open': cityOpen }" :aria-expanded="cityOpen" aria-haspopup="listbox">
+            <span class="mobile-header-city-text">Город: {% if selected_city %}{{ selected_city.name }}{% else %}Все регионы{% endif %}</span>
+            <i data-lucide="chevron-down" class="chevron"></i>
+          </button>
+          <div x-show="cityOpen" x-cloak class="mobile-header-city-dropdown"
+               x-transition:enter="transition ease-out duration-150"
+               x-transition:enter-start="opacity-0 -translate-y-1"
+               x-transition:enter-end="opacity-100 translate-y-0"
+               x-transition:leave="transition ease-in duration-100"
+               x-transition:leave-start="opacity-100 translate-y-0"
+               x-transition:leave-end="opacity-0 -translate-y-1">
+            <form method="post" action="{% url 'catalog:set_city' %}">
+              {% csrf_token %}
+              <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+              <button type="submit" name="city_id" value="" @click="cityOpen = false" class="{% if not selected_city %}bg-white/10 text-accent{% endif %}">
+                <i data-lucide="map-pin" class="w-4 h-4 opacity-60 flex-shrink-0"></i>
+                <span>Все регионы</span>
+              </button>
+              {% for city in cities %}
+              <button type="submit" name="city_id" value="{{ city.pk }}" @click="cityOpen = false" class="{% if selected_city and selected_city.pk == city.pk %}bg-white/10 text-accent{% endif %}">
+                <i data-lucide="map-pin" class="w-4 h-4 opacity-60 flex-shrink-0"></i>
+                <span>{{ city.name }}</span>
+              </button>
+              {% endfor %}
+            </form>
+          </div>
+        </div>
+        {% else %}
+        <span class="text-gray-500 text-sm">Город: —</span>
+        {% endif %}
+      </div>
+
+      <form action="{% url 'catalog:product_list' %}" method="get" class="mobile-header-search-form">
+        <button type="submit" class="mobile-header-search-btn" aria-label="Поиск">
+          <i data-lucide="search"></i>
+        </button>
+        <input type="search" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Искать на BizonVR" class="mobile-header-search-input" />
+      </form>
+    </div>
+
+    <!-- Фиксированный поиск: появляется при скролле -->
+    <div class="mobile-header-fixed-search" :class="{ 'visible': showFixedSearch }">
+      <form action="{% url 'catalog:product_list' %}" method="get" class="mobile-header-search-form">
+        <button type="submit" class="mobile-header-search-btn" aria-label="Поиск">
+          <i data-lucide="search"></i>
+        </button>
+        <input type="search" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Искать на BizonVR" class="mobile-header-search-input" />
+      </form>
+    </div>
+  </div>
+  {% endblock %}
+
   <!-- Sticky Header (Плавающий хедер): скрыт на мобильных -->
   <div class="hidden md:block">
   <div id="sticky-header"
@@ -853,7 +1291,7 @@
         <a href="{% url 'catalog:favorites' %}" class="flex flex-col items-center group flex-shrink-0" title="Избранное">
           <div class="relative">
             <i data-lucide="heart" class="text-white group-hover:text-accent transition-colors w-6 h-6 inline-block"></i>
-            <span class="absolute -top-1 -right-1 w-4 h-4 bg-dark-700 rounded-full text-[10px] flex items-center justify-center border border-dark-800">{{ favorites_count|default:0 }}</span>
+            <span class="absolute -top-1 -right-1 w-4 h-4 bg-dark-700 rounded-full text-[10px] flex items-center justify-center border border-dark-800" x-text="favoritesCount" x-show="favoritesCount > 0">{{ favorites_count|default:0 }}</span>
           </div>
         </a>
 
@@ -955,7 +1393,7 @@
           <a href="{% url 'catalog:favorites' %}" class="flex flex-col items-center group flex-shrink-0" title="Избранное">
             <div class="relative">
               <i data-lucide="heart" class="text-white group-hover:text-accent transition-colors w-6 h-6 inline-block"></i>
-              <span id="favorites-count" class="absolute -top-1 -right-1 w-4 h-4 bg-dark-700 rounded-full text-[10px] flex items-center justify-center border border-dark-800">{{ favorites_count|default:0 }}</span>
+              <span id="favorites-count" class="absolute -top-1 -right-1 w-4 h-4 bg-dark-700 rounded-full text-[10px] flex items-center justify-center border border-dark-800" x-text="favoritesCount" x-show="favoritesCount > 0">{{ favorites_count|default:0 }}</span>
             </div>
           </a>
           <!-- Профиль -->
@@ -1148,29 +1586,30 @@
   </footer>
   
   <div class="mobile-dock">
-    <a href="{% url 'home' %}" class="dock-item" title="Главная">
+    <a href="{% url 'home' %}" class="dock-item {% if active_section == 'home' %}active{% endif %}" title="Главная">
       <i data-lucide="home" width="24" height="24"></i>
     </a>
     
-    <a href="{% url 'catalog:product_list' %}" class="dock-item" title="Каталог">
+    <a href="{% url 'catalog:product_list' %}" class="dock-item {% if active_section == 'catalog' %}active{% endif %}" title="Каталог">
       <i data-lucide="search" width="24" height="24"></i>
     </a>
     
-    <a href="{% url 'catalog:favorites' %}" class="dock-item" title="Избранное">
+    <a href="{% url 'catalog:favorites' %}" class="dock-item {% if active_section == 'favorites' %}active{% endif %}" title="Избранное">
       <i data-lucide="heart" width="24" height="24"></i>
-      {% if favorites_count %}
-        <span class="badge badge-gray">{{ favorites_count }}</span>
-      {% endif %}
+      <span class="badge badge-gray" x-text="favoritesCount" x-show="favoritesCount > 0">{{ favorites_count|default:0 }}</span>
     </a>
     
-    <a href="{% url 'catalog:cart' %}" class="dock-item" title="Корзина">
+    <a href="{% url 'catalog:cart' %}" class="dock-item {% if active_section == 'cart' %}active{% endif %}" title="Корзина">
       <i data-lucide="shopping-cart" width="24" height="24"></i>
       <span class="badge badge-accent" x-text="cartCount">{{ cart_count|default:0 }}</span>
     </a>
     
-    <a href="{% url 'accounts:profile' %}" class="dock-item" title="Профиль">
+    <a href="{% url 'accounts:profile' %}" class="dock-item {% if active_section == 'profile' %}active{% endif %}" title="Профиль">
       <i data-lucide="user" width="24" height="24"></i>
     </a>
   </div>
+
+  <!-- Hidden container for HTMX cart responses -->
+  <div id="cart-modal-content" style="display: none;"></div>
 </body>
 </html>

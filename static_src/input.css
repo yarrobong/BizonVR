@@ -1,3 +1,21 @@
 @tailwind base;
+
+/* Убираем дефолтную обводку #e5e7eb у *, ::after, ::before из preflight */
+*, ::after, ::before {
+  border-color: transparent;
+}
+
 @tailwind components;
 @tailwind utilities;
+
+/* Fix для позиционирования сердечка избранного справа */
+article[id^="product-"] > div > div.absolute.top-2,
+article[id^="product-"] > div > div.absolute.top-3 {
+  left: auto !important;
+  right: 0.5rem !important;
+}
+@media (min-width: 768px) {
+  article[id^="product-"] > div > div.absolute.md\:top-3 {
+    right: 0.75rem !important;
+  }
+}
