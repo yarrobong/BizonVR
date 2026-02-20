@@ -4,16 +4,29 @@ import os
 from django.conf import settings
 from django.contrib import messages
 from django.db import connection
+from django.db.models import Q
 from django.core.cache import cache
 from django.http import FileResponse, Http404, HttpResponse, HttpResponseRedirect
 from django.shortcuts import redirect, render
 from django.urls import reverse
-from catalog.models import CallbackRequest, City, ContactRequest, Product, ProductTag
+from catalog.models import CallbackRequest, City, ContactRequest, Product, ProductTag, Service
 
 from .forms import CallbackForm, ContactForm
 from catalog.cache_utils import CACHE_KEY_PRODUCT_TAGS
 
 _CACHE_TTL = 300  # 5 минут
+_HOME_FEATURED_PROMO_TAG_KEYWORDS = (
+    'hit',
+    'хит',
+    'sale',
+    'распродаж',
+    'акци',
+    'скидк',
+    'bestseller',
+    'expert-choice',
+    'new',
+    'новин',
+)
 
 # Фоны hero по умолчанию (Unsplash), если нет своих в static
 _HERO_DEFAULT_BG = [
@@ -85,6 +98,32 @@ def arenda_view(request):
     })
 
 
+def uslugi_view(request):
+    """Страница услуг компании."""
+    services = Service.objects.filter(is_active=True).order_by('order', 'name')
+    callback_form = CallbackForm()
+
+    if request.method == 'POST' and request.POST.get('form_type') == 'callback':
+        callback_form = CallbackForm(request.POST)
+        if callback_form.is_valid():
+            CallbackRequest.objects.create(
+                name=callback_form.cleaned_data.get('name', '').strip(),
+                phone=callback_form.cleaned_data['phone'],
+                source='uslugi',
+            )
+            messages.success(request, 'Заявка отправлена! Мы перезвоним в ближайшее время.')
+            return redirect(reverse('uslugi') + '#contacts')
+
+    return render(
+        request,
+        'uslugi.html',
+        {
+            'services': services,
+            'callback_form': callback_form,
+        },
+    )
+
+
 def debug_cities_view(request):
     """Только при DEBUG: сколько городов в БД и какие — для проверки, что сайт и админка видят одну БД."""
     if not settings.DEBUG:
@@ -121,10 +160,16 @@ def contacts_view(request):
 
 def _home_view_impl(request):
     """Внутренняя реализация главной страницы."""
+    promo_tag_filter = Q()
+    for keyword in _HOME_FEATURED_PROMO_TAG_KEYWORDS:
+        promo_tag_filter |= Q(tags__slug__icontains=keyword) | Q(tags__name__icontains=keyword)
+
     featured_qs = (
         Product.objects.filter(is_active=True)
+        .filter(promo_tag_filter)
         .select_related('category')
         .prefetch_related('tags')
+        .distinct()
         .order_by('-created_at')
     )
     tag_slug = (request.GET.get('tag') or '').strip()

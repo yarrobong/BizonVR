@@ -1,0 +1,627 @@
+{% load catalog_tags %}
+<style>
+  .csm-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483000;
+    padding: 14px;
+    overflow-y: auto;
+    background: rgba(8, 18, 34, 0.52);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+  }
+
+  .csm-modal {
+    width: min(1180px, 100%);
+    margin: 0 auto;
+    background: #f6f8fc;
+    border: 1px solid #d6deea;
+    border-radius: 34px;
+    box-shadow: 0 36px 90px rgba(8, 22, 48, 0.28);
+    color: #0b2448;
+  }
+
+  .csm-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 26px 30px 0;
+  }
+
+  .csm-title {
+    margin: 0;
+    font-size: 54px;
+    line-height: 0.95;
+    font-weight: 800;
+    color: #071f45;
+    letter-spacing: -0.02em;
+  }
+
+  .csm-subtitle {
+    margin: 14px 0 0;
+    font-size: 16px;
+    color: #607187;
+  }
+
+  .csm-close {
+    width: 52px;
+    height: 52px;
+    border: 0;
+    border-radius: 999px;
+    background: #e2e8f1;
+    color: #5a687c;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.18s ease;
+  }
+
+  .csm-close:hover {
+    background: #d4deea;
+  }
+
+  .csm-body {
+    padding: 18px 30px 0;
+  }
+
+  .csm-alert {
+    border-radius: 16px;
+    border: 1px solid #f4b3b3;
+    background: #ffecec;
+    color: #bf2f2f;
+    font-size: 15px;
+    padding: 14px 16px;
+  }
+
+  .csm-alert-warning {
+    border-color: #f0d8a7;
+    background: #fff7e7;
+    color: #8b6223;
+  }
+
+  .csm-alert-muted {
+    border-color: #dbe2eb;
+    background: #ffffff;
+    color: #5d6e85;
+  }
+
+  .csm-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .csm-item {
+    border-bottom: 1px solid #d5dce7;
+    padding: 24px 0;
+  }
+
+  .csm-item:last-child {
+    border-bottom: 0;
+  }
+
+  .csm-item-grid {
+    display: grid;
+    grid-template-columns: 120px minmax(0, 1fr) 220px;
+    gap: 20px;
+    align-items: start;
+  }
+
+  .csm-thumb {
+    width: 104px;
+    height: 104px;
+    border-radius: 22px;
+    border: 1px solid #d7dee8;
+    background: #eef2f7;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .csm-thumb-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .csm-thumb-icon {
+    width: 30px;
+    height: 30px;
+    color: #8a96a6;
+  }
+
+  .csm-item-title {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+    margin: 0;
+    font-size: 42px;
+    line-height: 1.15;
+    color: #0a1f3f;
+    text-decoration: none;
+    font-weight: 500;
+    letter-spacing: -0.015em;
+  }
+
+  .csm-item-title:hover {
+    color: #0f4dbd;
+  }
+
+  .csm-item-variant {
+    margin: 10px 0 0;
+    font-size: 31px;
+    line-height: 1.1;
+    color: #5f7085;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+
+  .csm-item-qty {
+    margin: 8px 0 0;
+    font-size: 31px;
+    line-height: 1.1;
+    color: #5f7085;
+    letter-spacing: -0.01em;
+  }
+
+  .csm-item-stock-note {
+    margin: 8px 0 0;
+    font-size: 18px;
+    color: #f24a2d;
+  }
+
+  .csm-item-actions {
+    margin-top: 12px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .csm-action-btn {
+    border-radius: 999px;
+    border: 1px solid transparent;
+    height: 34px;
+    padding: 0 14px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: filter 0.2s ease;
+  }
+
+  .csm-action-btn:hover {
+    filter: brightness(0.96);
+  }
+
+  .csm-action-btn-primary {
+    background: #1a66f6;
+    color: #fff;
+  }
+
+  .csm-action-btn-secondary {
+    background: #fff;
+    border-color: #cdd6e3;
+    color: #2f4661;
+  }
+
+  .csm-price-col {
+    text-align: left;
+    padding-top: 2px;
+  }
+
+  .csm-item-price {
+    margin: 0;
+    font-size: 50px;
+    line-height: 1;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    white-space: nowrap;
+  }
+
+  .csm-item-price-low {
+    color: #f12c8f;
+  }
+
+  .csm-item-price-ok {
+    color: #00b341;
+  }
+
+  .csm-item-unit {
+    margin: 10px 0 0;
+    font-size: 34px;
+    line-height: 1;
+    color: #8c98a7;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+  }
+
+  .csm-link-block {
+    padding: 6px 30px 0;
+  }
+
+  .csm-link-label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 13px;
+    color: #6b7a8f;
+  }
+
+  .csm-link-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .csm-link-input {
+    flex: 1;
+    min-width: 0;
+    height: 44px;
+    border-radius: 12px;
+    border: 1px solid #ccd5e2;
+    background: #fff;
+    padding: 0 12px;
+    font-size: 14px;
+    color: #0d2348;
+  }
+
+  .csm-copy-btn {
+    height: 44px;
+    border: 0;
+    border-radius: 12px;
+    background: #eaf0f7;
+    color: #30445f;
+    padding: 0 16px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .csm-copy-btn:hover {
+    background: #dde7f2;
+  }
+
+  .csm-footer {
+    margin-top: 24px;
+    padding: 0 30px 30px;
+  }
+
+  .csm-footer-inner {
+    border-top: 1px solid #d5dce7;
+    padding-top: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+  }
+
+  .csm-primary-btn {
+    min-width: 360px;
+    min-height: 86px;
+    border: 0;
+    border-radius: 30px;
+    background: #1c66f7;
+    color: #fff;
+    text-align: left;
+    padding: 12px 24px;
+    cursor: pointer;
+  }
+
+  .csm-primary-btn:hover {
+    background: #1658d4;
+  }
+
+  .csm-primary-btn-title {
+    display: block;
+    font-size: 50px;
+    line-height: 0.92;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+  }
+
+  .csm-primary-btn-sub {
+    display: block;
+    margin-top: 4px;
+    font-size: 24px;
+    line-height: 1;
+    font-weight: 500;
+    opacity: 0.95;
+  }
+
+  .csm-footer-meta {
+    text-align: left;
+  }
+
+  .csm-total {
+    margin: 0;
+    font-size: 50px;
+    line-height: 1;
+    color: #00b341;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+  }
+
+  .csm-total-note {
+    margin: 8px 0 0;
+    font-size: 34px;
+    line-height: 1;
+    color: #8a97a7;
+    font-weight: 700;
+    letter-spacing: -0.015em;
+  }
+
+  .csm-form {
+    margin: 0;
+  }
+
+  @media (max-width: 1024px) {
+    .csm-title {
+      font-size: 40px;
+    }
+
+    .csm-item-grid {
+      grid-template-columns: 104px minmax(0, 1fr) 170px;
+      gap: 16px;
+    }
+
+    .csm-item-title {
+      font-size: 30px;
+    }
+
+    .csm-item-variant,
+    .csm-item-qty {
+      font-size: 24px;
+    }
+
+    .csm-item-price,
+    .csm-total {
+      font-size: 36px;
+    }
+
+    .csm-item-unit,
+    .csm-total-note {
+      font-size: 24px;
+    }
+
+    .csm-primary-btn {
+      min-width: 280px;
+      min-height: 72px;
+      border-radius: 24px;
+    }
+
+    .csm-primary-btn-title {
+      font-size: 34px;
+    }
+
+    .csm-primary-btn-sub {
+      font-size: 18px;
+    }
+  }
+
+  @media (max-width: 767.98px) {
+    .csm-overlay {
+      padding: 8px;
+    }
+
+    .csm-modal {
+      border-radius: 18px;
+    }
+
+    .csm-header,
+    .csm-body,
+    .csm-link-block,
+    .csm-footer {
+      padding-left: 14px;
+      padding-right: 14px;
+    }
+
+    .csm-header {
+      padding-top: 14px;
+    }
+
+    .csm-title {
+      font-size: 26px;
+      line-height: 1.05;
+    }
+
+    .csm-subtitle {
+      margin-top: 8px;
+      font-size: 13px;
+    }
+
+    .csm-close {
+      width: 38px;
+      height: 38px;
+    }
+
+    .csm-item {
+      padding: 14px 0;
+    }
+
+    .csm-item-grid {
+      grid-template-columns: 68px minmax(0, 1fr);
+      gap: 12px;
+    }
+
+    .csm-price-col {
+      grid-column: 2;
+      grid-row: 2;
+      text-align: left;
+      margin-top: -2px;
+    }
+
+    .csm-thumb {
+      width: 68px;
+      height: 68px;
+      border-radius: 14px;
+    }
+
+    .csm-item-title {
+      font-size: 16px;
+    }
+
+    .csm-item-variant,
+    .csm-item-qty {
+      font-size: 13px;
+      margin-top: 4px;
+    }
+
+    .csm-item-stock-note {
+      font-size: 12px;
+      margin-top: 4px;
+    }
+
+    .csm-item-price {
+      font-size: 21px;
+    }
+
+    .csm-item-unit {
+      font-size: 13px;
+      margin-top: 4px;
+    }
+
+    .csm-item-actions {
+      margin-top: 8px;
+      gap: 6px;
+    }
+
+    .csm-action-btn {
+      height: 30px;
+      padding: 0 11px;
+      font-size: 12px;
+    }
+
+    .csm-link-row {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .csm-copy-btn {
+      width: 100%;
+    }
+
+    .csm-footer {
+      margin-top: 12px;
+      padding-bottom: 16px;
+    }
+
+    .csm-footer-inner {
+      padding-top: 14px;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 12px;
+    }
+
+    .csm-primary-btn {
+      width: 100%;
+      min-width: 0;
+      min-height: 56px;
+      border-radius: 16px;
+      padding: 10px 14px;
+    }
+
+    .csm-primary-btn-title {
+      font-size: 24px;
+    }
+
+    .csm-primary-btn-sub {
+      margin-top: 2px;
+      font-size: 14px;
+    }
+
+    .csm-total {
+      font-size: 24px;
+    }
+
+    .csm-total-note {
+      margin-top: 4px;
+      font-size: 14px;
+    }
+  }
+</style>
+
+<div class="csm-overlay" data-share-modal>
+  <div class="csm-modal">
+    <div class="csm-header">
+      <div>
+        <h3 class="csm-title">Список товаров</h3>
+        {% if modal_mode == 'source' %}
+          <p class="csm-subtitle">Поделиться выбранными товарами вашей корзины</p>
+        {% elif not share_invalid %}
+          <p class="csm-subtitle">Откройте нужные позиции и добавьте их в корзину или избранное.</p>
+        {% endif %}
+      </div>
+      <button type="button" class="csm-close" data-share-close aria-label="Закрыть">
+        <i data-lucide="x"></i>
+      </button>
+    </div>
+
+    <div class="csm-body">
+      {% if share_error %}
+        <div class="csm-alert">{{ share_error }}</div>
+      {% endif %}
+
+      {% if share_invalid %}
+        <div class="csm-alert csm-alert-warning">Ссылка недействительна или истекла.</div>
+      {% elif share_items %}
+        <ul class="csm-list">
+          {% for item in share_items %}
+            {% include "catalog/partials/cart_share_item_card.html" with item=item modal_mode=modal_mode share_invalid=share_invalid %}
+          {% endfor %}
+        </ul>
+      {% elif not share_error %}
+        <div class="csm-alert csm-alert-muted">Нет товаров для отображения.</div>
+      {% endif %}
+    </div>
+
+    {% if modal_mode == 'source' and share_url %}
+      <div class="csm-link-block">
+        <label class="csm-link-label">Ссылка для отправки</label>
+        <div class="csm-link-row">
+          <input type="text" readonly value="{{ share_url }}" data-share-link-url class="csm-link-input" />
+          <button type="button" class="csm-copy-btn" data-copy-share-link>Копировать</button>
+        </div>
+      </div>
+    {% endif %}
+
+    <div class="csm-footer">
+      <div class="csm-footer-inner">
+        {% if modal_mode == 'source' and share_url %}
+          <button type="button" class="csm-primary-btn" data-native-share data-share-url="{{ share_url }}">
+            <span class="csm-primary-btn-title">Поделиться</span>
+            <span class="csm-primary-btn-sub">{{ share_quantity|default:0 }} товара</span>
+          </button>
+        {% elif modal_mode == 'recipient' and share_items and not share_invalid %}
+          <form action="{% url 'catalog:cart_share_add_all' %}" method="post"
+                class="csm-form"
+                hx-boost="false"
+                hx-post="{% url 'catalog:cart_share_add_all' %}"
+                hx-select="div[data-share-modal-close]"
+                hx-target="#cart-share-modal-slot"
+                hx-swap="innerHTML"
+                hx-push-url="false">
+            {% csrf_token %}
+            <input type="hidden" name="share_code" value="{{ share_code }}" />
+            <button type="submit" class="csm-primary-btn">
+              <span class="csm-primary-btn-title">Добавить в корзину</span>
+              <span class="csm-primary-btn-sub">{{ share_quantity|default:0 }} товара</span>
+            </button>
+          </form>
+        {% endif %}
+
+        {% if share_items and not share_invalid %}
+          <div class="csm-footer-meta">
+            <p class="csm-total">{{ share_total|default:0|price_format }} ₽</p>
+            <p class="csm-total-note">{{ share_quantity|default:0 }} товара в списке</p>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.conf import settings
 from django.db import models
 from django.urls import reverse
@@ -59,6 +61,11 @@ class Category(models.Model):
         max_length=10,
         choices=TILE_SIZE_CHOICES,
         default='small',
+    )
+    is_bundles_category = models.BooleanField(
+        'Показывать наборы товаров',
+        default=False,
+        help_text='Вместо товаров в этой категории отображаются комплекты (наборы). Добавьте категорию в нужный раздел каталога.',
     )
 
     class Meta:
@@ -258,12 +265,31 @@ class ProductCharacteristic(models.Model):
 
 
 class ProductBundle(models.Model):
-    """Набор товаров. Состав и цены задаются вручную через ProductBundleItem."""
+    """Набор товаров со своей страницей (описание, изображение) и составом через ProductBundleItem."""
     name = models.CharField(
         'Название набора',
         max_length=200,
         blank=True,
-        help_text='Для отображения в админке и на странице товара',
+        help_text='Отображается на странице набора и в каталоге',
+    )
+    slug = models.SlugField(
+        'Slug',
+        max_length=200,
+        unique=True,
+        blank=True,
+        help_text='URL страницы набора, например nabor-quest-3',
+    )
+    description = models.TextField(
+        'Описание',
+        blank=True,
+        help_text='Как у обычного товара: текст о наборе',
+    )
+    image = models.ImageField(
+        'Изображение',
+        upload_to='bundles/',
+        blank=True,
+        null=True,
+        help_text='Главное фото набора (если пусто — используется фото первого товара)',
     )
 
     class Meta:
@@ -271,16 +297,31 @@ class ProductBundle(models.Model):
         verbose_name_plural = 'Наборы товаров'
 
     def __str__(self):
-        if self.name:
-            return self.name
-        items = self.items.select_related('product').all()[:3]
-        names = [f'{i.product.name} ({i.price} ₽)' for i in items]
-        return ' + '.join(names) if names else f'Набор #{self.pk}'
+        return self.name or f'Набор #{self.pk}'
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            base = slugify(self.name or '', allow_unicode=True) or f'bundle-{self.pk or 0}'
+            self.slug = base
+            n = 1
+            while ProductBundle.objects.filter(slug=self.slug).exclude(pk=self.pk).exists():
+                self.slug = f'{base}-{n}'
+                n += 1
+        super().save(*args, **kwargs)
+
+    def get_absolute_url(self):
+        return reverse('catalog:bundle_detail', kwargs={'slug': self.slug})
 
     @property
     def total_price(self):
-        """Сумма цен всех позиций набора (price × quantity по каждой позиции)."""
-        total = sum(float(i.price) * i.quantity for i in self.items.all())
+        """Сумма цен всех позиций набора (со скидкой −5%)."""
+        total = sum(float(i.effective_price) * i.quantity for i in self.items.all())
+        return total
+
+    @property
+    def total_price_without_discount(self):
+        """Сумма по полным ценам товаров (без скидки)."""
+        total = sum(float(i.product.price) * i.quantity for i in self.items.all())
         return total
 
 
@@ -304,7 +345,9 @@ class ProductBundleItem(models.Model):
         'Цена в наборе (₽)',
         max_digits=12,
         decimal_places=2,
-        help_text='Цена за единицу при покупке в составе набора',
+        null=True,
+        blank=True,
+        help_text='Рассчитывается автоматически: −5% от цены товара при покупке полного набора',
     )
 
     class Meta:
@@ -318,8 +361,20 @@ class ProductBundleItem(models.Model):
             ),
         ]
 
+    def save(self, *args, **kwargs):
+        if self.product_id:
+            self.price = (Decimal(str(self.product.price)) * Decimal('0.95')).quantize(Decimal('0.01'))
+        super().save(*args, **kwargs)
+
+    @property
+    def effective_price(self):
+        """Цена за единицу в комплекте (автоматически −5% от цены товара)."""
+        if self.product_id:
+            return (Decimal(str(self.product.price)) * Decimal('0.95')).quantize(Decimal('0.01'))
+        return Decimal('0')
+
     def __str__(self):
-        return f'{self.product.name} × {self.quantity} — {self.price} ₽'
+        return f'{self.product.name} × {self.quantity} — {self.effective_price} ₽'
 
 
 class City(models.Model):
@@ -428,20 +483,36 @@ class CartItem(models.Model):
         verbose_name='Вариант',
     )
     quantity = models.PositiveIntegerField('Количество', default=1)
+    bundle = models.ForeignKey(
+        ProductBundle,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='cart_items',
+        verbose_name='Входит в комплект',
+    )
+    price_override = models.DecimalField(
+        'Цена (в комплекте со скидкой)',
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text='Если задана — в корзине используется эта цена вместо цены товара',
+    )
 
     class Meta:
         verbose_name = 'Позиция корзины'
         verbose_name_plural = 'Позиции корзины'
         constraints = [
             models.UniqueConstraint(
-                fields=['user', 'product'],
-                condition=models.Q(variant__isnull=True),
-                name='cart_user_product_no_variant_unique',
+                fields=['user', 'product', 'variant'],
+                condition=models.Q(bundle__isnull=True),
+                name='catalog_cartitem_standalone_unique',
             ),
             models.UniqueConstraint(
-                fields=['user', 'product', 'variant'],
-                condition=models.Q(variant__isnull=False),
-                name='cart_user_product_variant_unique',
+                fields=['user', 'product', 'variant', 'bundle'],
+                condition=models.Q(bundle__isnull=False),
+                name='catalog_cartitem_bundle_unique',
             ),
         ]
         ordering = ['product', 'variant']
@@ -450,6 +521,30 @@ class CartItem(models.Model):
         if self.variant:
             return f'{self.user} — {self.product.name} ({self.variant.name}) x {self.quantity}'
         return f'{self.user} — {self.product.name} x {self.quantity}'
+
+
+class CartShare(models.Model):
+    """Сохранённая ссылка на набор позиций корзины для шаринга."""
+    code = models.CharField('Код', max_length=7, unique=True, db_index=True)
+    items = models.JSONField('Позиции', default=list, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='created_cart_shares',
+        verbose_name='Создал',
+    )
+    created_at = models.DateTimeField('Создано', auto_now_add=True)
+    expires_at = models.DateTimeField('Действует до', db_index=True)
+
+    class Meta:
+        verbose_name = 'Шаринг корзины'
+        verbose_name_plural = 'Шаринг корзины'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.code} ({self.created_at:%d.%m.%Y %H:%M})'
 
 
 class Favorite(models.Model):
@@ -478,6 +573,38 @@ class Favorite(models.Model):
 
     def __str__(self):
         return f'{self.user} — {self.product.name}'
+
+
+class Service(models.Model):
+    """Услуга компании (страница услуг)."""
+    name = models.CharField('Название', max_length=200)
+    short_description = models.CharField('Краткое описание', max_length=255, blank=True)
+    description = models.TextField('Подробное описание', blank=True)
+    icon = models.CharField(
+        'Иконка (Lucide)',
+        max_length=50,
+        default='sparkles',
+        blank=True,
+        help_text='Название иконки Lucide, например: briefcase, headset, users, sparkles',
+    )
+    price_from = models.CharField(
+        'Цена/тариф',
+        max_length=80,
+        blank=True,
+        help_text='Например: от 15 000 ₽ или Индивидуально',
+    )
+    order = models.PositiveIntegerField('Порядок', default=0)
+    is_active = models.BooleanField('Активна', default=True)
+    created_at = models.DateTimeField('Создано', auto_now_add=True)
+    updated_at = models.DateTimeField('Обновлено', auto_now=True)
+
+    class Meta:
+        verbose_name = 'Услуга'
+        verbose_name_plural = 'Услуги'
+        ordering = ('order', 'name')
+
+    def __str__(self):
+        return self.name
 
 
 class ContactRequest(models.Model):

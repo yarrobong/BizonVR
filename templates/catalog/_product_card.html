@@ -1,8 +1,17 @@
 {% load catalog_tags %}
-{# Ожидаемые переменные: product; опционально: selected_city, product_stock_in_city, product_stock_total, favorite_product_ids, show_favorite, from_favorites_page. #}
-<article id="product-{{ product.pk }}" class="group bg-dark-800/80 md:bg-dark-800/50 md:hover:bg-dark-800 border border-dark-700 rounded-xl transition-all duration-300 relative flex flex-col h-full scroll-mt-40 overflow-hidden">
+{# Ожидаемые переменные: product; опционально: selected_city, product_stock_in_city, product_stock_total, favorite_product_ids, show_favorite, from_favorites_page, in_recommendations. #}
+<article id="product-{{ product.pk }}" class="group bg-dark-800/80 md:bg-dark-800/60 md:hover:bg-dark-800 border border-dark-700 rounded-xl transition-all duration-300 relative flex flex-col h-full scroll-mt-40 overflow-hidden hover:-translate-y-0.5 hover:border-accent/60 shadow-[0_10px_28px_rgba(0,0,0,0.28)]">
   {# Фото вплотную к верхнему и боковым краям, обводка rgb(31 37 50) #}
   <div class="relative w-full aspect-square flex-shrink-0 overflow-hidden">
+    {% if product.tags.all %}
+    <div class="absolute z-20 flex flex-col items-start gap-1 max-w-[70%]" style="top: 0.5rem; left: 0.5rem; right: auto !important;">
+      {% for tag in product.tags.all %}
+      <span class="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide backdrop-blur-sm" style="{{ tag|tag_badge_style }}">
+        {{ tag.name }}
+      </span>
+      {% endfor %}
+    </div>
+    {% endif %}
     {% if show_favorite and favorite_product_ids is not None %}
     <div class="top-2 right-2 md:top-3 md:right-3 z-20" style="position: absolute; left: auto !important; right: 0.5rem !important;" @click.stop>
       {% if product.id in favorite_product_ids %}
@@ -12,10 +21,10 @@
       {% endif %}
     </div>
     {% endif %}
-  <a href="{% url 'catalog:product_detail' product.slug %}" class="absolute inset-0 flex items-center justify-center rounded-t-xl bg-dark-700 border-b border-dark-700">
+  <a href="{% url 'catalog:product_detail' product.slug %}" class="absolute inset-0 flex items-center justify-center rounded-t-xl bg-dark-700 border-b border-dark-600">
     {% if product.image %}
-    <img src="{{ product.image.url|absolute_uri:request }}" alt="{{ product.name }}" class="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300 product-card-img" loading="lazy" onerror="this.classList.add('!hidden'); this.nextElementSibling.classList.remove('hidden'); if (typeof lucide !== 'undefined') lucide.createIcons();" />
-    <div class="hidden absolute inset-0 w-full h-full flex items-center justify-center text-gray-500 product-card-placeholder bg-dark-700">
+    <img src="{{ product.image.url|absolute_uri:request }}" alt="{{ product.name }}" class="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300 product-card-img" loading="lazy" onerror="this.classList.add('!hidden'); this.nextElementSibling.classList.remove('hidden'); this.nextElementSibling.classList.add('flex'); if (typeof lucide !== 'undefined') lucide.createIcons();" />
+    <div class="hidden absolute inset-0 w-full h-full items-center justify-center text-gray-500 product-card-placeholder bg-dark-700">
       <i data-lucide="image-off" class="w-12 h-12 inline-block"></i>
     </div>
     {% else %}
@@ -27,21 +36,46 @@
   </div>
 
   {# Блок цены, наличия, названия — тот же цвет что и обводка (rgb(31 37 50)) #}
-  <div class="flex flex-col flex-grow min-h-0 p-3 bg-dark-700">
-    <div class="mb-1">
+  <div class="flex flex-col flex-grow min-h-0 p-3 bg-dark-700/90" style="padding: 0.75rem;">
+    {% if recommendation_badge %}
+    <div class="mb-2">
+      <span class="inline-flex items-center px-2 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wider bg-accent/15 text-accent border border-accent/30">{{ recommendation_badge }}</span>
+    </div>
+    {% endif %}
+    <div class="mb-1" style="margin-bottom: 0.25rem;">
       <span class="text-xl font-bold text-accent">{{ product.price|price_format }} ₽</span>
     </div>
     {% if selected_city %}
       {% with stock=product_stock_in_city|get_item:product.id stock_total=product_stock_total|get_item:product.id %}
-      <p class="text-sm text-gray-400 mb-1.5">{% if stock %}В наличии: {{ stock }} шт.{% elif stock_total %}В наличии, доставка{% else %}<span class="text-accent">Под заказ</span>{% endif %}</p>
+      <p class="text-sm text-gray-400 mb-1.5" style="margin-bottom: 0.375rem;">{% if stock %}В наличии: {{ stock }} шт.{% elif stock_total %}В наличии, доставка{% else %}<span class="text-accent">Под заказ</span>{% endif %}</p>
       {% endwith %}
     {% elif product_stock_total %}
       {% with stock=product_stock_total|get_item:product.id|default:0 %}
-      <p class="text-sm text-gray-400 mb-1.5">{% if stock %}{{ stock }} шт. осталось{% else %}<span class="text-accent">Под заказ</span>{% endif %}</p>
+      <p class="text-sm text-gray-400 mb-1.5" style="margin-bottom: 0.375rem;">{% if stock %}{{ stock }} шт. осталось{% else %}<span class="text-accent">Под заказ</span>{% endif %}</p>
       {% endwith %}
     {% endif %}
-    <h3 class="text-white text-sm font-semibold leading-tight line-clamp-2">
+    <h3 class="text-white text-sm font-semibold leading-tight line-clamp-2"{% if in_recommendations %} style="margin-bottom: 0.375rem;"{% endif %}>
       <a href="{% url 'catalog:product_detail' product.slug %}" class="hover:text-accent transition-colors">{{ product.name }}</a>
     </h3>
+    {% if show_add_button %}
+    <form action="{% url 'catalog:add_to_cart' product.pk %}" method="post"
+          hx-post="{% url 'catalog:add_to_cart' product.pk %}"
+          hx-target="#cart-modal-content"
+          hx-swap="innerHTML"
+          class="mt-3">
+      {% csrf_token %}
+      <input type="hidden" name="quantity" value="1" />
+      <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+      {% with recommended_variant_id=recommended_variant_ids|get_item:product.id %}
+      {% if recommended_variant_id %}
+      <input type="hidden" name="variant_id" value="{{ recommended_variant_id }}" />
+      {% endif %}
+      {% endwith %}
+      <button type="submit"
+              class="w-full h-9 rounded-lg bg-accent hover:bg-accent-hover text-dark-900 text-xs font-bold uppercase tracking-wide transition-colors shadow-[0_8px_20px_rgba(0,212,255,0.24)]">
+        + В корзину
+      </button>
+    </form>
+    {% endif %}
   </div>
 </article>

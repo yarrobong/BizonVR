@@ -1,0 +1,735 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Услуги BizonVR — внедрение VR и выездные проекты{% endblock %}
+{% block description %}Услуги BizonVR: выездные VR-мероприятия, VR-зоны для бизнеса, сопровождение оборудования и подбор решений под задачи компании.{% endblock %}
+
+{% block content %}
+<link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --neon-purple: #b026ff;
+    --neon-blue: #00d4ff;
+    --neon-green: #0aff00;
+    --neon-pink: #ff0055;
+    --bg-dark: #050507;
+    --glass-bg: rgba(255, 255, 255, 0.03);
+    --glass-border: rgba(255, 255, 255, 0.1);
+  }
+
+  body {
+    font-family: 'Inter', sans-serif;
+  }
+
+  .arenda-page {
+    background-color: var(--bg-dark);
+    color: #fff;
+    overflow-x: hidden;
+    position: relative;
+    z-index: 1;
+  }
+
+  .arenda-container {
+    max-width: 1440px;
+    margin-left: auto;
+    margin-right: auto;
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+
+  h1, h2, h3, h4 {
+    font-family: 'Orbitron', sans-serif;
+    letter-spacing: 0.02em;
+  }
+
+  [data-aos] {
+    opacity: 1 !important;
+    transform: none !important;
+    visibility: visible !important;
+  }
+
+  .arenda-hero {
+    position: relative;
+    padding: 6rem 0;
+    overflow: visible;
+  }
+  .arenda-hero::before {
+    content: '';
+    position: absolute;
+    top: -20%;
+    right: -10%;
+    width: 600px;
+    height: 600px;
+    background: radial-gradient(circle, rgba(0, 212, 255, 0.2) 0%, rgba(0,0,0,0) 70%);
+    filter: blur(80px);
+    z-index: 0;
+  }
+  .arenda-hero-inner {
+    display: grid;
+    gap: 4rem;
+    align-items: center;
+    position: relative;
+    z-index: 1;
+  }
+  @media (min-width: 992px) {
+    .arenda-hero-inner { grid-template-columns: 1fr 1fr; }
+  }
+  .arenda-hero-badge {
+    display: inline-block;
+    padding: 0.5rem 1.25rem;
+    border-radius: 9999px;
+    background: rgba(0, 0, 0, 0.6);
+    border: 1px solid var(--neon-purple);
+    color: #fff;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    box-shadow: 0 0 15px rgba(176, 38, 255, 0.4), inset 0 0 10px rgba(176, 38, 255, 0.2);
+    margin-bottom: 2rem;
+  }
+  .arenda-hero-title {
+    font-size: 3.5rem;
+    font-weight: 900;
+    line-height: 1.1;
+    margin-bottom: 1.5rem;
+    text-transform: uppercase;
+  }
+  @media (min-width: 768px) {
+    .arenda-hero-title { font-size: 5rem; }
+  }
+  .arenda-hero-title-accent {
+    display: block;
+    background: linear-gradient(90deg, var(--neon-blue), #fff, var(--neon-purple));
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: gradient-text 3s linear infinite;
+    text-shadow: 0 0 30px rgba(0, 212, 255, 0.3);
+  }
+  @keyframes gradient-text {
+    to { background-position: 200% center; }
+  }
+  .arenda-hero-desc {
+    color: #cbd5e1;
+    font-size: 1.15rem;
+    margin-bottom: 2.5rem;
+    max-width: 36rem;
+    line-height: 1.6;
+    border-left: 3px solid var(--neon-blue);
+    padding-left: 1.5rem;
+  }
+  .arenda-hero-btns {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+  @media (min-width: 640px) {
+    .arenda-hero-btns { flex-direction: row; }
+  }
+  .arenda-btn-catalog {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    background: transparent;
+    color: var(--neon-green);
+    border: 2px solid var(--neon-green);
+    padding: 1.1rem 2.5rem;
+    border-radius: 0.5rem;
+    font-weight: 800;
+    font-family: 'Orbitron', sans-serif;
+    text-transform: uppercase;
+    transition: all 0.3s ease;
+  }
+  .arenda-btn-catalog:hover {
+    background: var(--neon-green);
+    color: #000;
+    box-shadow: 0 0 30px rgba(10, 255, 0, 0.6);
+  }
+  .arenda-btn-services {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.2);
+    color: #fff;
+    padding: 1.1rem 2.5rem;
+    border-radius: 0.5rem;
+    font-weight: 700;
+    transition: all 0.3s;
+  }
+  .arenda-btn-services:hover {
+    background: rgba(255,255,255,0.15);
+    border-color: #fff;
+  }
+  .hero-feature-panel {
+    background: linear-gradient(145deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.02) 100%);
+    backdrop-filter: blur(16px);
+    border: 1px solid var(--glass-border);
+    border-radius: 1.5rem;
+    padding: 2rem;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+  }
+  .hero-feature-panel .price {
+    color: var(--neon-green);
+    font-weight: 700;
+    text-shadow: 0 0 12px rgba(10, 255, 0, 0.35);
+  }
+
+  .arenda-benefits {
+    padding: 6rem 0;
+    background: #000;
+    position: relative;
+  }
+  .arenda-benefits::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--neon-blue), transparent);
+  }
+  .arenda-benefits-grid {
+    display: grid;
+    gap: 2rem;
+  }
+  @media (min-width: 768px) {
+    .arenda-benefits-grid { grid-template-columns: repeat(4, 1fr); }
+  }
+  .arenda-glass-card {
+    background: linear-gradient(145deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.01) 100%);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border);
+    padding: 2.2rem 1.5rem;
+    border-radius: 1.5rem;
+    text-align: center;
+    transition: all 0.3s ease;
+  }
+  .arenda-glass-card:hover {
+    transform: translateY(-8px);
+    border-color: rgba(255,255,255,0.3);
+  }
+  .arenda-benefit-icon {
+    width: 5rem;
+    height: 5rem;
+    border-radius: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 1.2rem;
+    background: rgba(0,0,0,0.3);
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+  .arenda-benefit-icon.blue { color: var(--neon-blue); }
+  .arenda-benefit-icon.purple { color: var(--neon-purple); }
+  .arenda-benefit-icon.green { color: var(--neon-green); }
+  .arenda-benefit-icon.pink { color: var(--neon-pink); }
+
+  .services-section {
+    padding: 7rem 0;
+    background: linear-gradient(180deg, #050507 0%, #0a0a11 100%);
+  }
+  .services-section-title {
+    font-size: 3rem;
+    text-align: center;
+    margin-bottom: 0.75rem;
+  }
+  .services-section-subtitle {
+    text-align: center;
+    color: #9ca3af;
+    margin-bottom: 3rem;
+  }
+  .services-grid {
+    display: grid;
+    gap: 1.5rem;
+  }
+  @media (min-width: 992px) {
+    .services-grid { grid-template-columns: repeat(3, 1fr); }
+  }
+  .service-card {
+    background: linear-gradient(145deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 1.25rem;
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+    transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+  }
+  .service-card:hover {
+    transform: translateY(-6px);
+    border-color: rgba(0, 212, 255, 0.45);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+  }
+  .service-icon {
+    width: 3rem;
+    height: 3rem;
+    border-radius: 0.75rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--neon-blue);
+    background: rgba(0, 212, 255, 0.08);
+    border: 1px solid rgba(0, 212, 255, 0.3);
+  }
+  .service-card h3 {
+    font-size: 1.2rem;
+    margin: 0;
+  }
+  .service-short {
+    color: #e5e7eb;
+    font-weight: 600;
+    margin: 0;
+  }
+  .service-desc {
+    color: #9ca3af;
+    line-height: 1.55;
+    margin: 0;
+    white-space: pre-line;
+  }
+  .service-footer {
+    margin-top: auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    border-top: 1px solid rgba(255,255,255,0.08);
+    padding-top: 0.9rem;
+  }
+  .service-price {
+    color: var(--neon-green);
+    font-weight: 700;
+  }
+  .service-link {
+    color: var(--neon-blue);
+    font-size: 0.9rem;
+    font-weight: 600;
+  }
+  .service-link:hover {
+    color: #fff;
+  }
+  .services-empty {
+    padding: 2rem;
+    border: 1px dashed rgba(255,255,255,0.25);
+    border-radius: 1rem;
+    color: #9ca3af;
+    text-align: center;
+  }
+
+  .arenda-delivery {
+    padding: 7rem 0;
+    background: #050508;
+  }
+  .arenda-delivery-grid {
+    display: grid;
+    gap: 3rem;
+    align-items: start;
+  }
+  @media (min-width: 992px) {
+    .arenda-delivery-grid { grid-template-columns: 1fr 1fr; }
+  }
+  .arenda-how {
+    background: linear-gradient(145deg, rgba(176, 38, 255, 0.06) 0%, rgba(0, 212, 255, 0.04) 100%);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 1.5rem;
+    padding: 2rem 2.5rem;
+  }
+  .arenda-steps {
+    padding-left: 2.2rem;
+    position: relative;
+  }
+  .arenda-steps::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: linear-gradient(180deg, var(--neon-purple), var(--neon-blue));
+    border-radius: 2px;
+  }
+  .arenda-step {
+    position: relative;
+    margin-bottom: 1.25rem;
+    padding: 1.2rem 1.25rem;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 1rem;
+  }
+  .arenda-step:last-child { margin-bottom: 0; }
+
+  .arenda-faq {
+    padding: 6rem 0;
+    background: radial-gradient(900px 500px at 20% 20%, rgba(0, 212, 255, 0.08), transparent 55%),
+                radial-gradient(700px 450px at 85% 35%, rgba(176, 38, 255, 0.10), transparent 60%),
+                #050507;
+  }
+  .arenda-faq details {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 1rem;
+    margin-bottom: 1rem;
+    overflow: hidden;
+  }
+  .arenda-faq summary {
+    color: #fff;
+    font-size: 1.06rem;
+    cursor: pointer;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 1rem;
+    padding: 1.1rem 1.25rem;
+    list-style: none;
+  }
+  .arenda-faq summary::-webkit-details-marker { display: none; }
+  .arenda-faq details p {
+    margin: 0;
+    padding: 0 1.25rem 1.2rem;
+    color: #cbd5e1;
+    line-height: 1.6;
+  }
+  .arenda-faq summary .arrow {
+    color: var(--neon-blue);
+    transition: transform 0.2s ease;
+  }
+  .arenda-faq details[open] summary .arrow {
+    transform: rotate(180deg);
+  }
+
+  .arenda-cta-section {
+    padding: 7rem 0;
+    background: #000;
+    position: relative;
+  }
+  .arenda-cta-inner {
+    position: relative;
+    z-index: 2;
+    text-align: center;
+  }
+  .arenda-cta-btns {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 1rem;
+  }
+  .arenda-cta-btns a {
+    font-family: 'Orbitron', sans-serif;
+    text-transform: uppercase;
+    border-radius: 0.5rem;
+    padding: 1.1rem 2.6rem;
+  }
+  .btn-green {
+    background: transparent !important;
+    border: 2px solid var(--neon-green);
+    color: var(--neon-green) !important;
+  }
+  .btn-green:hover {
+    background: var(--neon-green) !important;
+    color: #000 !important;
+  }
+  .btn-blue {
+    background: var(--neon-blue) !important;
+    color: #000 !important;
+  }
+  .btn-blue:hover {
+    background: #fff !important;
+  }
+  .arenda-callback-form {
+    max-width: 28rem;
+    margin: 2.3rem auto 0;
+    padding: 2rem;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 1rem;
+    backdrop-filter: blur(10px);
+  }
+  .arenda-callback-form p.hint {
+    font-size: 0.9rem;
+    color: #9ca3af;
+    margin-bottom: 1.25rem;
+    text-align: center;
+  }
+  .arenda-callback-form .arenda-callback-row {
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
+  .arenda-callback-input {
+    flex: 1 1 0;
+    min-width: 0;
+    background: rgba(0,0,0,0.4);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 0.5rem;
+    padding: 1rem 1.25rem;
+    color: #fff;
+    outline: none;
+  }
+  .arenda-callback-input:focus {
+    border-color: var(--neon-blue);
+    box-shadow: 0 0 15px rgba(0, 212, 255, 0.2);
+  }
+  .arenda-callback-submit {
+    width: 100%;
+    margin-top: 1rem;
+    background: linear-gradient(135deg, var(--neon-purple), #9d4edd);
+    color: #fff;
+    font-weight: 700;
+    font-family: 'Orbitron', sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 1rem 1.5rem;
+    border: none;
+    border-radius: 0.5rem;
+    cursor: pointer;
+  }
+  .arenda-callback-form .errorlist { color: #f87171; font-size: 0.85rem; margin-top: 0.35rem; }
+  .arenda-callback-success {
+    padding: 1rem 1.5rem;
+    background: rgba(10, 255, 0, 0.15);
+    border: 1px solid rgba(10, 255, 0, 0.3);
+    border-radius: 0.5rem;
+    color: var(--neon-green);
+    text-align: center;
+    margin-top: 1rem;
+  }
+</style>
+
+<div class="arenda-page">
+  <section class="arenda-hero">
+    <div class="arenda-container arenda-hero-inner">
+      <div data-aos="fade-right">
+        <span class="arenda-hero-badge">BizonVR Services</span>
+        <h1 class="arenda-hero-title">
+          <span style="color:#fff; text-shadow: 0 0 20px rgba(255,255,255,0.3);">Услуги</span>
+          <span class="arenda-hero-title-accent">ДЛЯ VR-ПРОЕКТОВ</span>
+        </h1>
+        <p class="arenda-hero-desc">
+          Под ключ закрываем задачи бизнеса и мероприятий: от выездных VR-активаций до проектирования постоянной VR-зоны.
+        </p>
+        <div class="arenda-hero-btns">
+          <a href="#services" class="arenda-btn-catalog">
+            <i data-lucide="briefcase" class="w-5 h-5"></i> Смотреть услуги
+          </a>
+          <a href="#contacts" class="arenda-btn-services">Оставить заявку</a>
+        </div>
+      </div>
+      <div class="hero-feature-panel" data-aos="zoom-in" data-aos-delay="200">
+        {% with featured_service=services|first %}
+          {% if featured_service %}
+            <p style="color:#9ca3af; margin-bottom:0.6rem;">Фокус-услуга</p>
+            <h3 style="font-size:2rem; margin-bottom:0.8rem;">{{ featured_service.name }}</h3>
+            {% if featured_service.short_description %}
+              <p style="color:#e5e7eb; margin-bottom:0.8rem;">{{ featured_service.short_description }}</p>
+            {% endif %}
+            {% if featured_service.description %}
+              <p style="color:#9ca3af; margin-bottom:1rem; white-space:pre-line;">{{ featured_service.description }}</p>
+            {% endif %}
+            {% if featured_service.price_from %}
+              <p class="price">{{ featured_service.price_from }}</p>
+            {% endif %}
+          {% else %}
+            <p style="color:#9ca3af; margin-bottom:0.8rem;">Фокус-услуга</p>
+            <h3 style="font-size:2rem; margin-bottom:0.8rem;">Выездные VR-мероприятия</h3>
+            <p style="color:#e5e7eb; margin-bottom:0.8rem;">Корпоративы, промо-акции, активности в ТЦ и на выставках.</p>
+            <p style="color:#9ca3af; margin-bottom:1rem;">Добавьте услуги через админку, и этот блок заполнится автоматически.</p>
+            <p class="price">Индивидуальный расчёт</p>
+          {% endif %}
+        {% endwith %}
+      </div>
+    </div>
+  </section>
+
+  <section class="arenda-benefits">
+    <div class="arenda-container">
+      <div class="arenda-benefits-grid">
+        <div class="arenda-glass-card" data-aos="fade-up" data-aos-delay="0">
+          <div class="arenda-benefit-icon blue"><i data-lucide="target" class="w-10 h-10"></i></div>
+          <h3>Под задачи</h3>
+          <p style="color:#9ca3af;">Собираем формат услуги под ваш бюджет, аудиторию и KPI.</p>
+        </div>
+        <div class="arenda-glass-card" data-aos="fade-up" data-aos-delay="100">
+          <div class="arenda-benefit-icon purple"><i data-lucide="settings-2" class="w-10 h-10"></i></div>
+          <h3>Под ключ</h3>
+          <p style="color:#9ca3af;">От подготовки оборудования до сопровождения и отчётов.</p>
+        </div>
+        <div class="arenda-glass-card" data-aos="fade-up" data-aos-delay="200">
+          <div class="arenda-benefit-icon green"><i data-lucide="shield-check" class="w-10 h-10"></i></div>
+          <h3>Надёжно</h3>
+          <p style="color:#9ca3af;">Договор, прозрачные условия, резервные сценарии на площадке.</p>
+        </div>
+        <div class="arenda-glass-card" data-aos="fade-up" data-aos-delay="300">
+          <div class="arenda-benefit-icon pink"><i data-lucide="sparkles" class="w-10 h-10"></i></div>
+          <h3>Вау-эффект</h3>
+          <p style="color:#9ca3af;">Сценарии, которые вовлекают гостей и усиливают бренд.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="services" class="services-section">
+    <div class="arenda-container">
+      <h2 class="services-section-title">Наши услуги</h2>
+      <p class="services-section-subtitle">Контент блока редактируется через админку: раздел «Услуги».</p>
+
+      {% if services %}
+        <div class="services-grid">
+          {% for service in services %}
+            <article class="service-card" data-aos="fade-up" data-aos-delay="{{ forloop.counter0|add:1 }}00">
+              <div class="service-icon">
+                <i data-lucide="{{ service.icon|default:'sparkles' }}" class="w-6 h-6"></i>
+              </div>
+              <h3>{{ service.name }}</h3>
+              {% if service.short_description %}
+                <p class="service-short">{{ service.short_description }}</p>
+              {% endif %}
+              {% if service.description %}
+                <p class="service-desc">{{ service.description }}</p>
+              {% endif %}
+              <div class="service-footer">
+                <span class="service-price">{% if service.price_from %}{{ service.price_from }}{% else %}По запросу{% endif %}</span>
+                <a href="#contacts" class="service-link">Обсудить</a>
+              </div>
+            </article>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="services-empty">
+          Услуги пока не добавлены. Заполните их в админке, и карточки появятся здесь автоматически.
+        </div>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="arenda-delivery">
+    <div class="arenda-container arenda-delivery-grid">
+      <div data-aos="fade-right">
+        <h2 style="font-size:2.2rem; margin-bottom:1.4rem;">Как мы работаем</h2>
+        <div style="display:flex; flex-direction:column; gap:1rem;">
+          <div style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08); border-radius:1rem; padding:1rem 1.2rem;">
+            <h4 style="margin:0 0 0.35rem;">Аудит задачи</h4>
+            <p style="margin:0; color:#9ca3af;">Уточняем формат, площадку, количество участников и ожидания по результату.</p>
+          </div>
+          <div style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08); border-radius:1rem; padding:1rem 1.2rem;">
+            <h4 style="margin:0 0 0.35rem;">Подготовка решения</h4>
+            <p style="margin:0; color:#9ca3af;">Формируем состав оборудования, софт, сценарии и тайминг под конкретный кейс.</p>
+          </div>
+          <div style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08); border-radius:1rem; padding:1rem 1.2rem;">
+            <h4 style="margin:0 0 0.35rem;">Запуск и сопровождение</h4>
+            <p style="margin:0; color:#9ca3af;">Выезжаем на площадку, проводим запуск, поддерживаем и обучаем команду.</p>
+          </div>
+        </div>
+      </div>
+      <div class="arenda-how" data-aos="fade-left">
+        <h2 style="font-size:2rem; margin-bottom:1.5rem;">Этапы проекта</h2>
+        <div class="arenda-steps">
+          <div class="arenda-step">
+            <h4 style="margin-bottom:0.4rem;">1. Бриф</h4>
+            <p style="margin:0; color:#9ca3af;">Собираем требования, сроки и бюджет.</p>
+          </div>
+          <div class="arenda-step">
+            <h4 style="margin-bottom:0.4rem;">2. План</h4>
+            <p style="margin:0; color:#9ca3af;">Согласуем состав услуг и смету.</p>
+          </div>
+          <div class="arenda-step">
+            <h4 style="margin-bottom:0.4rem;">3. Реализация</h4>
+            <p style="margin:0; color:#9ca3af;">Проводим проект и передаём результаты.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="arenda-faq">
+    <div class="arenda-container" style="max-width:50rem;">
+      <h2 style="text-align:center; margin-bottom:2.5rem; font-size:2.6rem;">Частые вопросы</h2>
+      <details>
+        <summary>Можно ли адаптировать услугу под наш формат? <span class="arrow">▼</span></summary>
+        <p>Да, все услуги настраиваются под конкретную задачу: площадку, аудиторию, длительность и целевые метрики.</p>
+      </details>
+      <details>
+        <summary>Работаете только в Екатеринбурге? <span class="arrow">▼</span></summary>
+        <p>Базово работаем в Екатеринбурге, но можем организовать выезд в другие города по согласованию.</p>
+      </details>
+      <details>
+        <summary>Есть ли обслуживание после запуска? <span class="arrow">▼</span></summary>
+        <p>Да, можем включить пост-сопровождение: консультации, обновления контента и техническую поддержку.</p>
+      </details>
+    </div>
+  </section>
+
+  <section id="contacts" class="arenda-cta-section">
+    <div class="arenda-container arenda-cta-inner">
+      <h2 style="font-size:3rem; text-shadow:0 0 20px rgba(176,38,255,0.5); margin-bottom:1rem;">ОБСУДИМ ВАШ ПРОЕКТ?</h2>
+      <p style="font-size:1.2rem; color:#d1d5db; margin-bottom:2.5rem;">
+        Напишите нам, и предложим рабочий формат услуги под вашу задачу.
+      </p>
+      <div class="arenda-cta-btns">
+        <a href="https://wa.me/79324910482" target="_blank" rel="noopener noreferrer" class="btn-green">WhatsApp</a>
+        <a href="https://t.me/bizon_order_manager" target="_blank" rel="noopener noreferrer" class="btn-blue">Telegram</a>
+        <a href="tel:+79324910482" style="border:1px solid #fff; color:#fff;">Позвонить</a>
+      </div>
+
+      <div class="arenda-callback-form">
+        <p class="hint">Или оставьте заявку — перезвоним в течение часа</p>
+        {% if messages %}
+          {% for message in messages %}
+            <div class="arenda-callback-success">{{ message }}</div>
+          {% endfor %}
+        {% else %}
+          <form method="post" action="{% url 'uslugi' %}#contacts">
+            {% csrf_token %}
+            <input type="hidden" name="form_type" value="callback">
+            <div class="arenda-callback-row">
+              <input type="text" name="name" value="{{ callback_form.name.value|default:'' }}" class="arenda-callback-input" placeholder="Ваше имя" maxlength="150">
+              <input type="tel" name="phone" value="{{ callback_form.phone.value|default:'' }}" class="arenda-callback-input js-phone-mask" placeholder="+7 (999) 999-99-99" inputmode="tel" required>
+            </div>
+            {% if callback_form.phone.errors %}
+              <ul class="errorlist"><li>{{ callback_form.phone.errors.0 }}</li></ul>
+            {% endif %}
+            <button type="submit" class="arenda-callback-submit">Перезвоните мне</button>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+</div>
+
+<script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    if (typeof AOS !== 'undefined') {
+      try {
+        AOS.init({
+          duration: 800,
+          once: true,
+          offset: 50,
+          delay: 0,
+          startEvent: 'DOMContentLoaded'
+        });
+      } catch (e) {
+        document.querySelectorAll('[data-aos]').forEach(el => {
+          el.style.opacity = '1';
+          el.style.transform = 'none';
+        });
+      }
+    } else {
+      document.querySelectorAll('[data-aos]').forEach(el => {
+        el.style.opacity = '1';
+        el.style.transform = 'none';
+      });
+    }
+
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons();
+    } else if (typeof initLucide === 'function') {
+      initLucide();
+    }
+  });
+</script>
+{% endblock %}

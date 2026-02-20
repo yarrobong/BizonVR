@@ -1,101 +1,1417 @@
 {% load catalog_tags %}
-<nav class="mb-6">
-  <a href="{% url 'catalog:product_list' %}" class="text-gray-400 hover:text-accent text-sm flex items-center gap-1">
-    <i data-lucide="arrow-left" class="w-4 h-4 inline-block"></i>
-    В каталог
-  </a>
-</nav>
+<style>
+  .cart-page {
+    --cart-mobile-dock-offset: 72px;
+    --cart-mobile-bar-height: 0px;
+    --cart-bottom-space: calc(1rem + env(safe-area-inset-bottom));
+    color: #f3f4f6;
+    max-width: 100%;
+    margin: 0 auto;
+    padding-bottom: var(--cart-bottom-space);
+  }
 
-<h1 class="text-2xl font-light text-white mb-8">Корзина</h1>
+  .cart-title {
+    margin: 0 0 1rem;
+    font-size: 2rem;
+    line-height: 1.1;
+    font-weight: 800;
+    color: #fff;
+  }
 
-{% if cart_items %}
-  <div class="bg-dark-800 border border-dark-600 rounded-xl overflow-hidden">
-    <ul class="divide-y divide-dark-600">
-      {% for item in cart_items %}
-        <li class="p-4 flex flex-wrap gap-4 items-center">
-          <div class="w-20 h-20 rounded-lg bg-dark-600 flex-shrink-0 overflow-hidden">
-            {% if item.image_url %}
-              <img src="{{ item.image_url|absolute_uri:request }}" alt="" class="w-full h-full object-cover" />
-            {% else %}
-              <div class="w-full h-full flex items-center justify-center text-gray-500">
-                <i data-lucide="package" class="w-8 h-8"></i>
+  .cart-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+  }
+
+  .cart-main,
+  .cart-sidebar {
+    background: #181b21;
+    border: 1px solid #2c3240;
+    border-radius: 1.25rem;
+  }
+
+  .cart-main {
+    overflow: hidden;
+  }
+
+  .cart-toolbar {
+    padding: 1rem;
+    border-bottom: 1px solid #2c3240;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+
+  .cart-select-all {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.625rem;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #fff;
+  }
+
+  .cart-checkbox {
+    width: 1.125rem;
+    height: 1.125rem;
+    accent-color: #00d4ff;
+    cursor: pointer;
+  }
+
+  .cart-item-checkbox {
+    position: absolute;
+    top: 0.35rem;
+    left: 0.35rem;
+    z-index: 4;
+    width: 1.375rem;
+    height: 1.375rem;
+    margin: 0;
+    appearance: none;
+    -webkit-appearance: none;
+    border: 1px solid rgba(0, 212, 255, 0.45);
+    border-radius: 0.4rem;
+    background: rgba(15, 23, 42, 0.78);
+    box-shadow: 0 6px 16px rgba(2, 6, 23, 0.45);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
+  }
+
+  .cart-item-checkbox:hover {
+    border-color: rgba(34, 211, 238, 0.9);
+    background: rgba(6, 182, 212, 0.18);
+    transform: translateY(-1px);
+  }
+
+  .cart-item-checkbox:checked {
+    background: linear-gradient(135deg, #22d3ee 0%, #06b6d4 100%);
+    border-color: transparent;
+    box-shadow: 0 0 0 1px rgba(6, 182, 212, 0.32), 0 8px 20px rgba(6, 182, 212, 0.32);
+  }
+
+  .cart-item-checkbox:checked::after {
+    content: "";
+    width: 0.3rem;
+    height: 0.62rem;
+    border: solid #0f172a;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg) translate(-1px, -1px);
+  }
+
+  .cart-item-checkbox:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(6, 182, 212, 0.25), 0 0 0 4px rgba(15, 23, 42, 0.8);
+  }
+
+  .cart-toolbar-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .cart-toolbar-btn {
+    width: 2.5rem;
+    height: 2.5rem;
+    border: 0;
+    border-radius: 0.75rem;
+    background: #252b37;
+    color: #cbd5e1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s ease, color 0.2s ease;
+  }
+
+  .cart-toolbar-btn:hover {
+    background: #313a4a;
+    color: #fff;
+  }
+
+  .cart-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .cart-item {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas:
+      "media main"
+      "controls controls";
+    gap: 0.875rem 1rem;
+    padding: 1rem;
+    border-bottom: 1px solid #2c3240;
+    align-items: start;
+  }
+
+  .cart-item:last-child {
+    border-bottom: 0;
+  }
+
+  .cart-item.is-unselected {
+    opacity: 0.56;
+  }
+
+  .cart-media-col {
+    grid-area: media;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.625rem;
+  }
+
+  .cart-thumb {
+    width: 6rem;
+    height: 7.5rem;
+    border-radius: 0.875rem;
+    border: 1px solid #343b4a;
+    background: #0f1115;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .cart-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+  }
+
+  .cart-thumb-placeholder {
+    color: #6b7280;
+  }
+
+  .cart-item-main {
+    grid-area: main;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+
+  .cart-item-meta {
+    min-width: 0;
+  }
+
+  .cart-item-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .cart-name {
+    margin: 0;
+    color: #fff;
+    text-decoration: none;
+    font-size: 1.0625rem;
+    line-height: 1.35;
+    font-weight: 500;
+    display: block;
+    overflow-wrap: anywhere;
+  }
+
+  .cart-name:hover {
+    color: #67e8f9;
+  }
+
+  .cart-tags {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    margin-top: 0.5rem;
+  }
+
+  .cart-tag {
+    border-radius: 999px;
+    padding: 0.2rem 0.625rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    border: 1px solid transparent;
+  }
+
+  .cart-tag-ok {
+    background: rgba(34, 197, 94, 0.15);
+    color: #86efac;
+    border-color: rgba(74, 222, 128, 0.3);
+  }
+
+  .cart-tag-low {
+    background: rgba(245, 158, 11, 0.16);
+    color: #fcd34d;
+    border-color: rgba(251, 191, 36, 0.32);
+  }
+
+  .cart-tag-order {
+    background: rgba(148, 163, 184, 0.16);
+    color: #cbd5e1;
+    border-color: rgba(148, 163, 184, 0.3);
+  }
+
+  .cart-stock-note {
+    margin-top: 0.5rem;
+    font-size: 0.8125rem;
+    color: #f59e0b;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+
+  .cart-variant {
+    margin-top: 0.375rem;
+    font-size: 0.8125rem;
+    color: #9ca3af;
+    overflow-wrap: anywhere;
+  }
+
+  .cart-price-col {
+    min-width: 8rem;
+    margin-left: auto;
+    text-align: right;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.125rem;
+  }
+
+  .cart-price-current {
+    font-size: 1.25rem;
+    line-height: 1.1;
+    color: #fff;
+    font-weight: 800;
+  }
+
+  .cart-price-unit {
+    font-size: 0.8125rem;
+    color: #94a3b8;
+  }
+
+  .cart-buy-btn {
+    margin-top: 0.1rem;
+    min-height: 2rem;
+    border: 0;
+    border-radius: 0.5625rem;
+    padding: 0 0.8rem;
+    background: #00d4ff;
+    color: #0f172a;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.78rem;
+    font-weight: 700;
+    align-self: flex-start;
+    transition: transform 0.2s ease, background 0.2s ease;
+  }
+
+  .cart-buy-btn:hover {
+    transform: translateY(-1px);
+    background: #22ddff;
+  }
+
+  .cart-controls {
+    grid-area: controls;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    padding-top: 0.35rem;
+  }
+
+  .cart-controls .cart-qty {
+    margin-left: 0;
+  }
+
+  .cart-controls .cart-buy-btn {
+    margin-left: auto;
+    margin-top: 0;
+    align-self: center;
+  }
+
+  .cart-icon-btn {
+    width: 2.125rem;
+    height: 2.125rem;
+    border: 0;
+    border-radius: 0.625rem;
+    background: #252b37;
+    color: #cbd5e1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s ease, color 0.2s ease;
+  }
+
+  .cart-icon-btn:hover {
+    background: #313a4a;
+    color: #fff;
+  }
+
+  .cart-qty {
+    height: 2.125rem;
+    border-radius: 0.625rem;
+    background: #252b37;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.1875rem;
+    padding: 0 0.3125rem;
+  }
+
+  .cart-qty-btn {
+    width: 1.6875rem;
+    height: 1.6875rem;
+    border: 0;
+    border-radius: 0.5rem;
+    background: transparent;
+    color: #e5e7eb;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .cart-qty-value {
+    min-width: 1.6875rem;
+    text-align: center;
+    font-size: 0.92rem;
+    font-weight: 700;
+    color: #fff;
+  }
+
+  .cart-sidebar {
+    padding: 1rem;
+    align-self: start;
+  }
+
+  .cart-checkout-btn {
+    width: 100%;
+    min-height: 3rem;
+    border: 0;
+    border-radius: 0.875rem;
+    background: #00d4ff;
+    color: #0f172a;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 0.95rem;
+    transition: transform 0.2s ease, background 0.2s ease, opacity 0.2s ease;
+  }
+
+  .cart-checkout-btn:hover {
+    transform: translateY(-1px);
+    background: #22ddff;
+  }
+
+  .cart-checkout-btn.is-disabled {
+    opacity: 0.45;
+    pointer-events: none;
+  }
+
+  .cart-side-note {
+    margin-top: 0.75rem;
+    color: #9ca3af;
+    font-size: 0.8125rem;
+    line-height: 1.35;
+  }
+
+  .cart-summary {
+    margin-top: 1rem;
+    border-top: 1px solid #2c3240;
+    padding-top: 1rem;
+  }
+
+  .cart-summary-title {
+    margin: 0 0 0.75rem;
+    font-size: 1.375rem;
+    line-height: 1.2;
+    color: #fff;
+    font-weight: 800;
+  }
+
+  .cart-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    font-size: 0.95rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .cart-row span:first-child {
+    color: #cbd5e1;
+  }
+
+  .cart-row strong {
+    color: #fff;
+    font-weight: 700;
+  }
+
+  .cart-row-discount strong {
+    color: #38bdf8;
+  }
+
+  .cart-total {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid #2c3240;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+
+  .cart-total-label {
+    font-size: 1rem;
+    color: #fff;
+    font-weight: 700;
+  }
+
+  .cart-total-value {
+    font-size: 1.65rem;
+    line-height: 1;
+    color: #22c55e;
+    font-weight: 800;
+  }
+
+  .cart-empty {
+    background: #181b21;
+    border: 1px solid #2c3240;
+    border-radius: 1.25rem;
+    padding: 3rem 1rem;
+    text-align: center;
+    color: #94a3b8;
+  }
+
+  .cart-empty p {
+    margin: 0;
+  }
+
+  .cart-empty .title {
+    font-size: 1.125rem;
+    color: #fff;
+    margin-bottom: 0.5rem;
+  }
+
+  .cart-empty-link {
+    margin-top: 1rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    min-height: 2.75rem;
+    border-radius: 999px;
+    background: #00d4ff;
+    color: #0f172a;
+    text-decoration: none;
+    font-weight: 700;
+    padding: 0 1.125rem;
+  }
+
+  .cart-mobile-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: var(--cart-mobile-dock-offset);
+    z-index: 45;
+    display: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
+    background: rgba(15, 17, 21, 0.95);
+    border-top: 1px solid rgba(148, 163, 184, 0.22);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow: 0 -10px 25px rgba(2, 6, 23, 0.45);
+  }
+
+  .cart-mobile-total {
+    min-width: 0;
+  }
+
+  .cart-mobile-total-row {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.45rem;
+  }
+
+  .cart-mobile-total-value {
+    margin: 0;
+    font-size: 1.15rem;
+    line-height: 1;
+    color: #22c55e;
+    font-weight: 800;
+  }
+
+  .cart-mobile-items {
+    margin: 0;
+    font-size: 0.75rem;
+    color: #9ca3af;
+  }
+
+  @media (min-width: 1024px) {
+    .cart-layout {
+      grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
+      align-items: start;
+    }
+
+    .cart-thumb {
+      width: 6rem;
+      height: 6rem;
+    }
+
+    .cart-sidebar {
+      position: sticky;
+      top: 1.5rem;
+    }
+
+    .cart-page {
+      --cart-bottom-space: 0;
+    }
+  }
+
+  @media (min-width: 768px) and (max-width: 1023.98px) {
+    .cart-page {
+      --cart-bottom-space: calc(1.25rem + env(safe-area-inset-bottom));
+    }
+
+    .cart-layout {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .cart-sidebar {
+      display: block;
+      position: static;
+    }
+
+    .cart-thumb {
+      width: 5.5rem;
+      height: 6.25rem;
+    }
+
+    .cart-price-current {
+      font-size: 1.15rem;
+    }
+  }
+
+  @media (max-width: 767.98px) {
+    .cart-page {
+      --cart-bottom-space: calc(var(--cart-mobile-dock-offset) + var(--cart-mobile-bar-height) + 1rem + env(safe-area-inset-bottom));
+    }
+
+    .cart-title {
+      font-size: 1.55rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .cart-main,
+    .cart-sidebar {
+      border-radius: 1rem;
+    }
+
+    .cart-toolbar {
+      padding: 0.75rem;
+    }
+
+    .cart-select-all {
+      font-size: 0.93rem;
+      gap: 0.5rem;
+    }
+
+    .cart-toolbar-btn {
+      width: 2.25rem;
+      height: 2.25rem;
+      border-radius: 0.65rem;
+    }
+
+    .cart-item {
+      grid-template-columns: 4.9rem minmax(0, 1fr);
+      grid-template-areas:
+        "media main"
+        "controls controls";
+      gap: 0.6rem 0.75rem;
+      padding: 0.75rem;
+      align-items: stretch;
+    }
+
+    .cart-media-col {
+      width: 4.9rem;
+      gap: 0.45rem;
+    }
+
+    .cart-item-checkbox {
+      top: 0.24rem;
+      left: 0.24rem;
+      width: 1.28rem;
+      height: 1.28rem;
+    }
+
+    .cart-thumb {
+      width: 4.9rem;
+      height: 4.9rem;
+      border-radius: 0.68rem;
+    }
+
+    .cart-item-head {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.35rem;
+    }
+
+    .cart-item-meta {
+      order: 1;
+    }
+
+    .cart-price-col {
+      order: 0;
+      margin-left: 0;
+      width: 100%;
+      min-width: 0;
+      align-items: flex-start;
+      text-align: left;
+    }
+
+    .cart-name {
+      font-size: 0.95rem;
+      line-height: 1.3;
+    }
+
+    .cart-tags {
+      margin-top: 0.35rem;
+      gap: 0.3rem;
+    }
+
+    .cart-tag {
+      font-size: 0.675rem;
+      padding: 0.15rem 0.48rem;
+    }
+
+    .cart-stock-note {
+      margin-top: 0.35rem;
+      font-size: 0.75rem;
+    }
+
+    .cart-variant {
+      margin-top: 0.25rem;
+      font-size: 0.75rem;
+    }
+
+    .cart-controls {
+      justify-content: flex-start;
+      gap: 0.35rem;
+      padding-top: 0.55rem;
+    }
+
+    .cart-controls .cart-buy-btn {
+      margin-left: auto;
+    }
+
+    .cart-icon-btn {
+      width: 2rem;
+      height: 2rem;
+      border-radius: 0.55rem;
+    }
+
+    .cart-qty {
+      height: 2rem;
+      border-radius: 0.55rem;
+      padding: 0 0.2rem;
+    }
+
+    .cart-qty-btn {
+      width: 1.6rem;
+      height: 1.6rem;
+      border-radius: 0.45rem;
+    }
+
+    .cart-qty-value {
+      min-width: 1.5rem;
+      font-size: 0.88rem;
+    }
+
+    .cart-price-current {
+      font-size: 1.03rem;
+    }
+
+    .cart-price-unit {
+      display: none;
+    }
+
+    .cart-buy-btn {
+      min-height: 1.95rem;
+      border-radius: 0.52rem;
+      padding: 0 0.68rem;
+      font-size: 0.75rem;
+    }
+
+    .cart-sidebar {
+      display: none;
+    }
+
+    .cart-mobile-bar {
+      display: flex;
+    }
+
+    .cart-mobile-bar .cart-checkout-btn {
+      width: auto;
+      min-width: 10rem;
+      min-height: 2.75rem;
+      border-radius: 0.72rem;
+      font-size: 0.9rem;
+      padding: 0 0.95rem;
+      flex-shrink: 0;
+    }
+  }
+
+  @media (max-width: 379.98px) {
+    .cart-item {
+      grid-template-columns: 4.3rem minmax(0, 1fr);
+      gap: 0.45rem 0.6rem;
+    }
+
+    .cart-media-col {
+      width: 4.3rem;
+    }
+
+    .cart-thumb {
+      width: 4.3rem;
+      height: 4.3rem;
+    }
+
+    .cart-icon-btn {
+      width: 1.85rem;
+      height: 1.85rem;
+    }
+
+    .cart-qty {
+      height: 1.85rem;
+      padding: 0 0.12rem;
+    }
+
+    .cart-qty-btn {
+      width: 1.5rem;
+      height: 1.5rem;
+    }
+
+    .cart-qty-value {
+      min-width: 1.25rem;
+      font-size: 0.82rem;
+    }
+  }
+</style>
+
+<div class="cart-page" data-cart-root>
+  {% if cart_items %}
+    <h1 class="cart-title">Корзина <span class="text-gray-400">{{ cart_items|length }}</span></h1>
+
+    <div class="cart-layout">
+      <section class="cart-main">
+        <div class="cart-toolbar">
+          <label class="cart-select-all">
+            <input type="checkbox" class="cart-checkbox" data-select-all checked>
+            Доступны для заказа
+          </label>
+
+          <div class="cart-toolbar-actions">
+            <form action="{% url 'catalog:cart_share_create' %}" method="post" class="inline"
+                  data-share-form
+                  hx-boost="false"
+                  hx-post="{% url 'catalog:cart_share_create' %}"
+                  hx-select="[data-share-modal]"
+                  hx-target="#cart-share-modal-slot"
+                  hx-swap="innerHTML"
+                  hx-push-url="false">
+              {% csrf_token %}
+              <input type="hidden" name="selected_item_keys" value="" data-share-keys-input />
+              <button type="submit" class="cart-toolbar-btn" data-share-btn aria-label="Поделиться корзиной">
+                <i data-lucide="share-2" class="w-4 h-4"></i>
+              </button>
+            </form>
+
+            <form action="{% url 'catalog:cart_clear' %}" method="post" class="inline"
+                  hx-post="{% url 'catalog:cart_clear' %}"
+                  hx-target="#main-content"
+                  hx-swap="outerHTML"
+                  hx-push-url="{% url 'catalog:cart' %}">
+              {% csrf_token %}
+              <input type="hidden" name="next" value="{% url 'catalog:cart' %}" />
+              <button type="submit" class="cart-toolbar-btn" aria-label="Очистить корзину">
+                <i data-lucide="trash-2" class="w-4 h-4"></i>
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <ul class="cart-list" data-cart-list>
+          {% for item in cart_items reversed %}
+            <li class="cart-item"
+                data-cart-item
+                data-subtotal="{{ item.subtotal }}"
+                data-qty="{{ item.quantity }}"
+                data-quantity="{{ item.quantity }}"
+                data-product-id="{{ item.product_id }}"
+                data-variant-id="{{ item.variant_id|default_if_none:'none' }}"
+                data-share-key="{{ item.product_id }}:{{ item.variant_id|default_if_none:'none' }}">
+              <div class="cart-media-col">
+                <input type="checkbox" class="cart-checkbox cart-item-checkbox" data-item-select checked aria-label="Выбрать товар">
+                <div class="cart-thumb">
+                  {% if item.image_url %}
+                    <img src="{{ item.image_url|absolute_uri:request }}" alt="{{ item.name }}" />
+                  {% else %}
+                    <div class="cart-thumb-placeholder">
+                      <i data-lucide="package" class="w-7 h-7"></i>
+                    </div>
+                  {% endif %}
+                </div>
               </div>
-            {% endif %}
+
+              <div class="cart-item-main">
+                <div class="cart-item-meta">
+                  <div class="cart-item-head">
+                    {% if item.product_slug %}
+                      <a href="{% url 'catalog:product_detail' item.product_slug %}" class="cart-name line-clamp-3">{{ item.name }}</a>
+                    {% else %}
+                      <span class="cart-name line-clamp-3">{{ item.name }}</span>
+                    {% endif %}
+                    <div class="cart-price-col">
+                      <div class="cart-price-current">{{ item.subtotal|price_format }} ₽</div>
+                    </div>
+                  </div>
+
+                  {% if item.variant_name %}
+                    <div class="cart-variant">{{ item.variant_name }}</div>
+                  {% endif %}
+                  {% if item.bundle_name %}
+                    <div class="cart-variant text-accent">Входит в комплект: {{ item.bundle_name }}</div>
+                    {% if item.original_price and item.original_price != item.price %}
+                      <div class="text-xs text-gray-400 mt-0.5">{{ item.quantity }} × <span class="line-through">{{ item.original_price|price_format }} ₽</span> → {{ item.price|price_format }} ₽ <span class="text-green-400">−5%</span></div>
+                    {% endif %}
+                  {% endif %}
+
+                  <div class="cart-tags">
+                    {% if selected_city and item.stock_in_city is not None %}
+                      {% if item.stock_in_city > 4 %}
+                        <span class="cart-tag cart-tag-ok">В наличии</span>
+                      {% elif item.stock_in_city > 0 %}
+                        <span class="cart-tag cart-tag-low">Заканчивается</span>
+                      {% elif item.stock_total > 0 %}
+                        <span class="cart-tag cart-tag-low">В другом городе</span>
+                      {% else %}
+                        <span class="cart-tag cart-tag-order">Под заказ</span>
+                      {% endif %}
+                    {% elif item.stock_total > 4 %}
+                      <span class="cart-tag cart-tag-ok">В наличии</span>
+                    {% elif item.stock_total > 0 %}
+                      <span class="cart-tag cart-tag-low">Заканчивается</span>
+                    {% else %}
+                      <span class="cart-tag cart-tag-order">Под заказ</span>
+                    {% endif %}
+                  </div>
+
+                  {% if selected_city and item.stock_in_city is not None and item.stock_in_city > 0 and item.stock_in_city < 5 %}
+                    <div class="cart-stock-note">Количество ограничено</div>
+                  {% elif item.stock_total > 0 and item.stock_total < 5 %}
+                    <div class="cart-stock-note">Количество ограничено</div>
+                  {% endif %}
+                </div>
+
+              </div>
+
+              <div class="cart-controls">
+                <form action="{% url 'catalog:toggle_favorite' item.product_id %}" method="post" class="inline"
+                      hx-post="{% url 'catalog:toggle_favorite' item.product_id %}"
+                      hx-target="#main-content"
+                      hx-swap="outerHTML"
+                      hx-push-url="false">
+                  {% csrf_token %}
+                  <input type="hidden" name="next" value="{% url 'catalog:cart' %}" />
+                  <button type="submit" class="cart-icon-btn" aria-label="В избранное">
+                    <i data-lucide="heart" class="w-4 h-4"></i>
+                  </button>
+                </form>
+
+                <form action="{% url 'catalog:cart_update' %}" method="post" class="inline"
+                      hx-post="{% url 'catalog:cart_update' %}"
+                      hx-target="#main-content"
+                      hx-swap="outerHTML"
+                      hx-push-url="{% url 'catalog:cart' %}">
+                  {% csrf_token %}
+                  <input type="hidden" name="product_id" value="{{ item.product_id }}" />
+                  {% if item.variant_id %}<input type="hidden" name="variant_id" value="{{ item.variant_id }}" />{% endif %}
+                  <input type="hidden" name="quantity" value="0" />
+                  <input type="hidden" name="next" value="{% url 'catalog:cart' %}" />
+                  <button type="submit" class="cart-icon-btn" aria-label="Удалить товар">
+                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                  </button>
+                </form>
+
+                <div class="cart-qty">
+                  <form action="{% url 'catalog:cart_update' %}" method="post" class="inline"
+                        hx-post="{% url 'catalog:cart_update' %}"
+                        hx-target="#main-content"
+                        hx-swap="outerHTML"
+                        hx-push-url="{% url 'catalog:cart' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="product_id" value="{{ item.product_id }}" />
+                    {% if item.variant_id %}<input type="hidden" name="variant_id" value="{{ item.variant_id }}" />{% endif %}
+                    <input type="hidden" name="quantity" value="{% if item.quantity > 1 %}{{ item.quantity|add:'-1' }}{% else %}1{% endif %}" />
+                    <input type="hidden" name="next" value="{% url 'catalog:cart' %}" />
+                    <button type="submit" class="cart-qty-btn" aria-label="Уменьшить">
+                      <i data-lucide="minus" class="w-4 h-4"></i>
+                    </button>
+                  </form>
+
+                  <span class="cart-qty-value">{{ item.quantity }}</span>
+
+                  <form action="{% url 'catalog:cart_update' %}" method="post" class="inline"
+                        hx-post="{% url 'catalog:cart_update' %}"
+                        hx-target="#main-content"
+                        hx-swap="outerHTML"
+                        hx-push-url="{% url 'catalog:cart' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="product_id" value="{{ item.product_id }}" />
+                    {% if item.variant_id %}<input type="hidden" name="variant_id" value="{{ item.variant_id }}" />{% endif %}
+                    <input type="hidden" name="quantity" value="{% if item.quantity < 99 %}{{ item.quantity|add:'1' }}{% else %}99{% endif %}" />
+                    <input type="hidden" name="next" value="{% url 'catalog:cart' %}" />
+                    <button type="submit" class="cart-qty-btn" aria-label="Увеличить">
+                      <i data-lucide="plus" class="w-4 h-4"></i>
+                    </button>
+                  </form>
+                </div>
+
+                <a href="{% url 'orders:checkout' %}" class="cart-buy-btn">
+                  Купить
+                </a>
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      </section>
+
+      <aside class="cart-sidebar" data-summary>
+        <a href="{% url 'orders:checkout' %}" class="cart-checkout-btn" data-checkout-btn>
+          Перейти к оформлению
+        </a>
+        <p class="cart-side-note">Способ доставки и оплаты можно выбрать при оформлении заказа.</p>
+
+        <div class="cart-summary">
+          <h2 class="cart-summary-title">Ваша корзина</h2>
+          <div class="cart-row">
+            <span>Товары (<span data-selected-items>0</span>)</span>
+            <strong data-selected-sum>{{ total|price_format }} ₽</strong>
           </div>
-          <div class="flex-1 min-w-0">
-            {% if item.product_slug %}
-              <a href="{% url 'catalog:product_detail' item.product_slug %}" class="text-white hover:text-accent font-medium line-clamp-2">{{ item.name }}</a>
-            {% else %}
-              <span class="text-white font-medium line-clamp-2">{{ item.name }}</span>
-            {% endif %}
-            <p class="text-sm text-gray-400 mt-0.5">{{ item.price|price_format }} ₽ за шт.</p>
-            {% if selected_city and item.stock_in_city is not None %}
-              {% if item.stock_in_city > 0 %}
-            <p class="text-xs text-gray-500 mt-0.5">В наличии ({{ selected_city.name }}): {{ item.stock_in_city }} шт.</p>
-              {% elif item.stock_total > 0 %}
-            <p class="text-xs text-gray-500 mt-0.5">В наличии, доставка</p>
-              {% else %}
-            <p class="text-xs text-accent mt-0.5">Под заказ</p>
-              {% endif %}
-            {% elif item.stock_total > 0 %}
-            <p class="text-xs text-gray-500 mt-0.5">Доступно к отправке: {{ item.stock_total }} шт.</p>
-            {% elif item.stock_total == 0 %}
-            <p class="text-xs text-accent mt-0.5">Под заказ</p>
-            {% endif %}
+          <div class="cart-row cart-row-discount">
+            <span>Скидка</span>
+            <strong data-selected-discount>0 ₽</strong>
           </div>
-          <div class="flex items-center gap-3 flex-shrink-0">
-            <form action="{% url 'catalog:cart_update' %}" method="post" class="flex items-center gap-2"
-                  hx-post="{% url 'catalog:cart_update' %}"
-                  hx-target="#main-content"
-                  hx-swap="outerHTML"
-                  hx-push-url="{% url 'catalog:cart' %}"
-                  hx-include="this">
-              {% csrf_token %}
-              <input type="hidden" name="product_id" value="{{ item.product_id }}" />
-              <input type="hidden" name="next" value="{% url 'catalog:cart' %}" />
-              <label class="sr-only">Количество</label>
-              <input type="number" name="quantity" value="{{ item.quantity }}" min="1" max="{% if item.stock_in_city is not None and item.stock_in_city > 0 %}{{ item.stock_in_city }}{% elif item.stock_total > 0 %}{{ item.stock_total }}{% else %}99{% endif %}"
-                     class="w-16 bg-dark-600 border border-dark-500 text-white text-center rounded-lg py-2 px-2 text-sm focus:outline-none focus:ring-1 focus:ring-accent" />
-              <button type="submit" class="text-gray-400 hover:text-accent text-sm whitespace-nowrap">Изменить</button>
-            </form>
-            <form action="{% url 'catalog:cart_update' %}" method="post" class="inline"
-                  hx-post="{% url 'catalog:cart_update' %}"
-                  hx-target="#main-content"
-                  hx-swap="outerHTML"
-                  hx-push-url="{% url 'catalog:cart' %}"
-                  hx-include="this">
-              {% csrf_token %}
-              <input type="hidden" name="product_id" value="{{ item.product_id }}" />
-              {% if item.variant_id %}<input type="hidden" name="variant_id" value="{{ item.variant_id }}" />{% endif %}
-              <input type="hidden" name="quantity" value="0" />
-              <input type="hidden" name="next" value="{% url 'catalog:cart' %}" />
-              <button type="submit" class="text-red-400 hover:text-red-300 text-sm">Удалить</button>
-            </form>
+          <div class="cart-total">
+            <span class="cart-total-label">Итого</span>
+            <span class="cart-total-value" data-selected-total>{{ total|price_format }} ₽</span>
           </div>
-          <div class="text-right w-24 flex-shrink-0">
-            <span class="font-bold text-white">{{ item.subtotal|price_format }} ₽</span>
-          </div>
-        </li>
-      {% endfor %}
-    </ul>
-    <div class="p-4 border-t border-dark-600 flex flex-wrap items-center justify-between gap-4">
-      <p class="text-lg font-bold text-white">Итого: {{ total|price_format }} ₽</p>
-      <a href="{% url 'orders:checkout' %}" class="bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-6 rounded-full text-sm uppercase tracking-wide transition-colors inline-flex items-center gap-2">
-        Оставить заявку
-        <i data-lucide="arrow-right" class="w-4 h-4"></i>
+        </div>
+      </aside>
+    </div>
+
+    <div class="cart-mobile-bar" data-mobile-bar>
+      <div class="cart-mobile-total">
+        <div class="cart-mobile-total-row">
+          <p class="cart-mobile-total-value" data-selected-total-mobile>{{ total|price_format }} ₽</p>
+          <p class="cart-mobile-items"><span data-selected-items-mobile>{{ cart_items|length }}</span> шт.</p>
+        </div>
+      </div>
+      <a href="{% url 'orders:checkout' %}" class="cart-checkout-btn" data-checkout-btn>
+        Перейти к оформлению
       </a>
     </div>
-  </div>
-{% else %}
-  <div class="bg-dark-800 border border-dark-600 rounded-xl p-12 text-center">
-    <div class="flex flex-col items-center justify-center text-gray-400">
-      <i data-lucide="shopping-cart" class="w-20 h-20 mb-4 opacity-50"></i>
-      <p class="text-lg mb-2">Корзина пуста</p>
-      <p class="text-sm mb-6">Добавьте товары из каталога, чтобы оформить заказ.</p>
-      <a href="{% url 'catalog:product_list' %}" class="inline-flex items-center gap-2 bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-6 rounded-full text-sm uppercase tracking-wide transition-colors">
+  {% else %}
+    <div class="cart-empty">
+      <p class="title">Корзина пуста</p>
+      <p>Добавьте товары из каталога, чтобы оформить заказ.</p>
+      <a href="{% url 'catalog:product_list' %}" class="cart-empty-link">
         Перейти в каталог
         <i data-lucide="arrow-right" class="w-4 h-4"></i>
       </a>
     </div>
+  {% endif %}
+
+  <div id="cart-share-modal-slot">
+    {% if shared_modal_open %}
+      {% include "catalog/partials/cart_share_modal.html" with modal_mode="recipient" share_items=shared_cart_items share_code=shared_cart_code share_invalid=shared_invalid share_total=shared_total share_quantity=shared_quantity %}
+    {% endif %}
   </div>
-{% endif %}
+</div>
+
+<script>
+  (function initCartPage() {
+    const root = document.querySelector('[data-cart-root]');
+    if (!root || root.dataset.initialized === '1') {
+      return;
+    }
+
+    const cleanupKey = '__bizonCartPageCleanup';
+    if (typeof window[cleanupKey] === 'function') {
+      window[cleanupKey]();
+    }
+
+    root.dataset.initialized = '1';
+
+    const formatRub = (value) => {
+      const safe = Number.isFinite(value) ? value : 0;
+      return `${new Intl.NumberFormat('ru-RU').format(Math.round(safe))} ₽`;
+    };
+
+    const parseNum = (value) => {
+      if (!value) {
+        return 0;
+      }
+      const parsed = parseFloat(String(value).replace(/\s+/g, '').replace(',', '.'));
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+
+    const selectAll = root.querySelector('[data-select-all]');
+    const itemChecks = Array.from(root.querySelectorAll('[data-item-select]'));
+    const itemRows = Array.from(root.querySelectorAll('[data-cart-item]'));
+    const selectedItemsNode = root.querySelector('[data-selected-items]');
+    const selectedSumNode = root.querySelector('[data-selected-sum]');
+    const selectedDiscountNode = root.querySelector('[data-selected-discount]');
+    const selectedTotalNode = root.querySelector('[data-selected-total]');
+    const selectedTotalMobileNode = root.querySelector('[data-selected-total-mobile]');
+    const selectedItemsMobileNode = root.querySelector('[data-selected-items-mobile]');
+    const checkoutButtons = Array.from(root.querySelectorAll('[data-checkout-btn]'));
+    const shareForm = root.querySelector('[data-share-form]');
+    const shareKeysInput = root.querySelector('[data-share-keys-input]');
+    const shareBtn = root.querySelector('[data-share-btn]');
+    const modalSlot = document.getElementById('cart-share-modal-slot');
+    const mobileBar = root.querySelector('[data-mobile-bar]');
+    const teardown = [];
+    let isDestroyed = false;
+
+    const bind = (target, eventName, handler) => {
+      if (!target) {
+        return;
+      }
+      target.addEventListener(eventName, handler);
+      teardown.push(() => target.removeEventListener(eventName, handler));
+    };
+
+    const setScrollLock = (locked) => {
+      document.documentElement.classList.toggle('overflow-hidden', Boolean(locked));
+      document.body.classList.toggle('overflow-hidden', Boolean(locked));
+    };
+
+    const cleanup = () => {
+      if (isDestroyed) {
+        return;
+      }
+      isDestroyed = true;
+      while (teardown.length) {
+        const unbind = teardown.pop();
+        try {
+          unbind();
+        } catch (error) {
+          // Ignore cleanup failures.
+        }
+      }
+      setScrollLock(false);
+      if (window[cleanupKey] === cleanup) {
+        delete window[cleanupKey];
+      }
+    };
+    window[cleanupKey] = cleanup;
+
+    const setShareHint = (message) => {
+      if (!shareBtn) {
+        return;
+      }
+      shareBtn.title = message || '';
+      if (message) {
+        setTimeout(() => {
+          if (shareBtn.title === message) {
+            shareBtn.title = '';
+          }
+        }, 1800);
+      }
+    };
+
+    const getSelectedShareKeys = () => {
+      const keys = [];
+      itemRows.forEach((row, index) => {
+        const checkbox = itemChecks[index];
+        if (!checkbox || !checkbox.checked) {
+          return;
+        }
+        const key = (row.dataset.shareKey || '').trim();
+        if (key) {
+          keys.push(key);
+        }
+      });
+      return keys;
+    };
+
+    const getActiveShareModal = () => document.querySelector('[data-share-modal]');
+
+    const closeShareModal = () => {
+      const activeModal = getActiveShareModal();
+      if (activeModal) {
+        activeModal.remove();
+      }
+      if (modalSlot) {
+        modalSlot.innerHTML = '';
+      }
+      setScrollLock(false);
+      try {
+        const url = new URL(window.location.href);
+        if (url.searchParams.has('share')) {
+          url.searchParams.delete('share');
+          const nextUrl = `${url.pathname}${url.search}${url.hash}`;
+          window.history.replaceState({}, '', nextUrl || '/catalog/cart/');
+        }
+      } catch (error) {
+        // Ignore URL rewrite issues.
+      }
+    };
+
+    const openShareModal = () => {
+      const modalInSlot = modalSlot ? modalSlot.querySelector('[data-share-modal]') : null;
+      if (modalInSlot && modalInSlot.parentNode !== document.body) {
+        document.body.appendChild(modalInSlot);
+      }
+      const activeModal = getActiveShareModal();
+      if (!activeModal) {
+        setScrollLock(false);
+        return;
+      }
+      setScrollLock(true);
+      if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+      }
+    };
+
+    const syncMobileLayoutMetrics = () => {
+      if (isDestroyed || !root.isConnected) {
+        return;
+      }
+      const dock = document.querySelector('[data-mobile-dock]') || document.querySelector('.mobile-dock');
+      const dockHeight = dock ? Math.ceil(dock.getBoundingClientRect().height) : 72;
+      root.style.setProperty('--cart-mobile-dock-offset', `${dockHeight}px`);
+
+      if (!mobileBar) {
+        root.style.setProperty('--cart-mobile-bar-height', '0px');
+        return;
+      }
+      const mobileBarHeight = Math.ceil(mobileBar.getBoundingClientRect().height);
+      root.style.setProperty('--cart-mobile-bar-height', `${mobileBarHeight}px`);
+    };
+
+    bind(window, 'resize', syncMobileLayoutMetrics);
+    bind(window, 'orientationchange', syncMobileLayoutMetrics);
+    bind(document.body, 'htmx:beforeSwap', (event) => {
+      if (event.detail?.target?.id === 'main-content') {
+        cleanup();
+      }
+    });
+    bind(document.body, 'htmx:afterSwap', (event) => {
+      if (event.detail?.target?.id === 'cart-share-modal-slot') {
+        openShareModal();
+      }
+    });
+
+    const updateSummary = () => {
+      let selectedCount = 0;
+      let selectedQty = 0;
+      let subtotal = 0;
+
+      itemRows.forEach((row, index) => {
+        const checked = itemChecks[index] && itemChecks[index].checked;
+        row.classList.toggle('is-unselected', !checked);
+        if (!checked) {
+          return;
+        }
+        selectedCount += 1;
+        selectedQty += parseNum(row.dataset.qty);
+        subtotal += parseNum(row.dataset.subtotal);
+      });
+
+      if (selectAll) {
+        selectAll.checked = selectedCount > 0 && selectedCount === itemChecks.length;
+        selectAll.indeterminate = selectedCount > 0 && selectedCount < itemChecks.length;
+      }
+
+      const discount = 0;
+      const total = subtotal - discount;
+
+      if (selectedItemsNode) {
+        selectedItemsNode.textContent = String(selectedQty);
+      }
+      if (selectedItemsMobileNode) {
+        selectedItemsMobileNode.textContent = String(selectedQty);
+      }
+      if (selectedSumNode) {
+        selectedSumNode.textContent = formatRub(subtotal);
+      }
+      if (selectedDiscountNode) {
+        selectedDiscountNode.textContent = discount > 0 ? `-${formatRub(discount)}` : '0 ₽';
+      }
+      if (selectedTotalNode) {
+        selectedTotalNode.textContent = formatRub(total);
+      }
+      if (selectedTotalMobileNode) {
+        selectedTotalMobileNode.textContent = formatRub(total);
+      }
+
+      const hasSelected = selectedCount > 0;
+      checkoutButtons.forEach((btn) => {
+        btn.classList.toggle('is-disabled', !hasSelected);
+        btn.setAttribute('aria-disabled', hasSelected ? 'false' : 'true');
+      });
+
+      syncMobileLayoutMetrics();
+    };
+
+    if (selectAll) {
+      bind(selectAll, 'change', () => {
+        itemChecks.forEach((checkbox) => {
+          checkbox.checked = selectAll.checked;
+        });
+        updateSummary();
+      });
+    }
+
+    itemChecks.forEach((checkbox) => {
+      bind(checkbox, 'change', updateSummary);
+    });
+
+    checkoutButtons.forEach((btn) => {
+      bind(btn, 'click', (event) => {
+        if (btn.classList.contains('is-disabled')) {
+          event.preventDefault();
+        }
+      });
+    });
+
+    if (shareForm && shareKeysInput) {
+      const syncShareKeys = () => {
+        const keys = getSelectedShareKeys();
+        shareKeysInput.value = keys.join(',');
+        return keys;
+      };
+
+      if (shareBtn) {
+        bind(shareBtn, 'click', (event) => {
+          const keys = syncShareKeys();
+          if (!keys.length) {
+            event.preventDefault();
+            setShareHint('Выберите хотя бы один товар');
+          }
+        });
+      }
+
+      bind(shareForm, 'submit', (event) => {
+        const keys = syncShareKeys();
+        if (!keys.length) {
+          event.preventDefault();
+          setShareHint('Выберите хотя бы один товар');
+        }
+      });
+
+      bind(shareForm, 'htmx:configRequest', (event) => {
+        const keys = syncShareKeys();
+        if (!keys.length) {
+          event.preventDefault();
+          setShareHint('Выберите хотя бы один товар');
+          return;
+        }
+        if (event.detail && event.detail.parameters) {
+          event.detail.parameters.selected_item_keys = keys.join(',');
+        }
+      });
+    }
+
+    bind(document.body, 'click', async (event) => {
+      const activeModal = getActiveShareModal();
+      if (!activeModal) {
+        return;
+      }
+
+      if (event.target === activeModal) {
+        closeShareModal();
+        return;
+      }
+
+      const closeBtn = event.target.closest('[data-share-close]');
+      if (closeBtn && activeModal.contains(closeBtn)) {
+        event.preventDefault();
+        closeShareModal();
+        return;
+      }
+
+      const nativeShareBtn = event.target.closest('[data-native-share]');
+      if (nativeShareBtn && activeModal.contains(nativeShareBtn)) {
+        event.preventDefault();
+        const url = nativeShareBtn.getAttribute('data-share-url') || '';
+        if (!url) {
+          return;
+        }
+        if (navigator.share) {
+          try {
+            await navigator.share({
+              title: 'Корзина BizonVR',
+              text: 'Посмотри товары в моей корзине BizonVR',
+              url,
+            });
+            return;
+          } catch (error) {
+            // Ignore cancellation and fallback to copy.
+          }
+        }
+        try {
+          await navigator.clipboard.writeText(url);
+          setShareHint('Ссылка скопирована');
+        } catch (error) {
+          setShareHint('Не удалось скопировать');
+        }
+        return;
+      }
+
+      const copyBtn = event.target.closest('[data-copy-share-link]');
+      if (copyBtn && activeModal.contains(copyBtn)) {
+        event.preventDefault();
+        const input = activeModal.querySelector('[data-share-link-url]');
+        const url = input ? input.value : '';
+        if (!url) {
+          return;
+        }
+        try {
+          await navigator.clipboard.writeText(url);
+          copyBtn.textContent = 'Скопировано';
+          setTimeout(() => {
+            copyBtn.textContent = 'Копировать';
+          }, 1400);
+          setShareHint('Ссылка скопирована');
+        } catch (error) {
+          setShareHint('Не удалось скопировать');
+        }
+      }
+    });
+
+    bind(window, 'keydown', (event) => {
+      if (event.key === 'Escape' && getActiveShareModal()) {
+        closeShareModal();
+      }
+    });
+
+    updateSummary();
+    openShareModal();
+    requestAnimationFrame(syncMobileLayoutMetrics);
+  })();
+</script>

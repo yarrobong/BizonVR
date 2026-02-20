@@ -9,17 +9,18 @@ User = get_user_model()
 
 
 def _cart_item_to_dict(item, product=None, variant=None):
-    """Преобразовать CartItem в dict формата сессии."""
-    if hasattr(item, 'product_id'):
-        # CartItem from DB
-        p = item.product if product is None else product
-        v = item.variant if variant is None else variant
-    else:
-        # dict from session
+    """Преобразовать CartItem в dict формата сессии (включая bundle и скидку)."""
+    if not hasattr(item, 'product_id'):
         return item
+    p = item.product if product is None else product
+    v = item.variant if variant is None else variant
     display_name = f'{p.name} ({v.name})' if v else p.name
-    price = float(v.price) if v else float(p.price)
-    image_url = ''
+    original_price = float(v.price) if v else float(p.price)
+    price = float(item.price_override) if getattr(item, 'price_override', None) is not None else original_price
+    bundle = getattr(item, 'bundle', None)
+    bundle_id = bundle.pk if bundle else None
+    bundle_name = bundle.name if bundle else None
+    image_url = (v.image.url if v and v.image else p.image.url) if p.image else ''
     if v and v.image:
         image_url = v.image.url
     elif p.image:
@@ -30,9 +31,12 @@ def _cart_item_to_dict(item, product=None, variant=None):
         'variant_name': v.name if v else None,
         'name': display_name,
         'price': price,
-        'quantity': item.quantity if hasattr(item, 'quantity') else item.get('quantity', 1),
+        'quantity': item.quantity,
         'image_url': image_url,
-        'subtotal': 0,  # заполним ниже
+        'subtotal': 0,
+        'bundle_id': bundle_id,
+        'bundle_name': bundle_name,
+        'original_price': original_price,
     }
 
 
@@ -50,7 +54,13 @@ def get_cart_items(request):
     Возвращает список dict с ключами product_id, variant_id, name, price, quantity, subtotal, image_url.
     """
     if request.user.is_authenticated:
-        items = CartItem.objects.filter(user=request.user).select_related('product', 'variant')
+        # Явно сохраняем порядок вставки позиций в корзину.
+        items = (
+            CartItem.objects
+            .filter(user=request.user)
+            .select_related('product', 'variant', 'bundle')
+            .order_by('id')
+        )
         result = []
         for ci in items:
             if not ci.product.is_active:
@@ -92,6 +102,7 @@ def save_cart_to_db(request, cart_items):
         product_id = item.get('product_id')
         variant_id = item.get('variant_id')
         quantity = item.get('quantity', 1)
+        bundle_id = item.get('bundle_id')
         if not product_id or quantity <= 0:
             continue
         product = Product.objects.filter(pk=product_id, is_active=True).first()
@@ -100,11 +111,22 @@ def save_cart_to_db(request, cart_items):
         variant = None
         if variant_id:
             variant = ProductVariant.objects.filter(product_id=product_id, pk=variant_id).first()
+        bundle = None
+        if bundle_id:
+            from .models import ProductBundle
+            bundle = ProductBundle.objects.filter(pk=bundle_id).first()
+        # Цена в комплекте сохраняем как price_override
+        override = None
+        if bundle_id and item.get('price') is not None:
+            from decimal import Decimal
+            override = Decimal(str(item['price']))
         CartItem.objects.create(
             user=request.user,
             product=product,
             variant=variant,
             quantity=quantity,
+            bundle=bundle,
+            price_override=override,
         )
 
 
@@ -116,10 +138,16 @@ def merge_session_cart_into_user(request):
     session_items = request.session.get('cart_items', []) or []
     if not session_items:
         return
+    from .models import ProductBundle
+    from decimal import Decimal
     for item in session_items:
         product_id = item.get('product_id')
         variant_id = item.get('variant_id')
         quantity = item.get('quantity', 1)
+        bundle_id = item.get('bundle_id')
+        price_override = None
+        if bundle_id and item.get('price') is not None:
+            price_override = Decimal(str(item['price']))
         if not product_id or quantity <= 0:
             continue
         product = Product.objects.filter(pk=product_id, is_active=True).first()
@@ -128,11 +156,15 @@ def merge_session_cart_into_user(request):
         variant = None
         if variant_id:
             variant = ProductVariant.objects.filter(product_id=product_id, pk=variant_id).first()
+        bundle = None
+        if bundle_id:
+            bundle = ProductBundle.objects.filter(pk=bundle_id).first()
         cart_item, created = CartItem.objects.get_or_create(
             user=user,
             product=product,
             variant=variant,
-            defaults={'quantity': quantity},
+            bundle=bundle,
+            defaults={'quantity': quantity, 'price_override': price_override},
         )
         if not created:
             cart_item.quantity += quantity

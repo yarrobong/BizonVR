@@ -1,0 +1,66 @@
+{% load catalog_tags %}
+<li class="csm-item">
+  <div class="csm-item-grid">
+    <div class="csm-thumb-wrap">
+      <div class="csm-thumb">
+        {% if item.image_url %}
+          <img src="{{ item.image_url|absolute_uri:request }}" alt="{{ item.name }}" class="csm-thumb-image" />
+        {% else %}
+          <i data-lucide="package" class="csm-thumb-icon"></i>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="csm-item-content">
+      {% if item.product_slug %}
+        <a href="{% url 'catalog:product_detail' item.product_slug %}" class="csm-item-title">{{ item.name }}</a>
+      {% else %}
+        <p class="csm-item-title">{{ item.name }}</p>
+      {% endif %}
+
+      {% if item.variant_name %}
+        <p class="csm-item-variant">{{ item.variant_name }}</p>
+      {% endif %}
+      <p class="csm-item-qty">{{ item.quantity }} ед</p>
+
+      {% if item.stock_in_city is not None and item.stock_in_city > 0 and item.stock_in_city < 5 %}
+        <p class="csm-item-stock-note">Количество ограничено</p>
+      {% elif item.stock_total > 0 and item.stock_total < 5 %}
+        <p class="csm-item-stock-note">Количество ограничено</p>
+      {% endif %}
+
+      {% if modal_mode == 'recipient' and not share_invalid %}
+        <div class="csm-item-actions">
+          <form action="{% url 'catalog:add_to_cart' item.product_id %}" method="post"
+                hx-post="{% url 'catalog:add_to_cart' item.product_id %}"
+                hx-target="#cart-modal-content"
+                hx-swap="none"
+                hx-push-url="false">
+            {% csrf_token %}
+            <input type="hidden" name="quantity" value="{{ item.quantity }}" />
+            {% if item.variant_id %}<input type="hidden" name="variant_id" value="{{ item.variant_id }}" />{% endif %}
+            <input type="hidden" name="next" value="{% url 'catalog:cart' %}" />
+            <button type="submit" class="csm-action-btn csm-action-btn-primary">В корзину</button>
+          </form>
+
+          <form action="{% url 'catalog:toggle_favorite' item.product_id %}" method="post"
+                hx-post="{% url 'catalog:toggle_favorite' item.product_id %}"
+                hx-swap="none"
+                hx-push-url="false">
+            {% csrf_token %}
+            <button type="submit" class="csm-action-btn csm-action-btn-secondary">В избранное</button>
+          </form>
+        </div>
+      {% endif %}
+    </div>
+
+    <div class="csm-price-col">
+      {% if item.stock_in_city is not None and item.stock_in_city > 0 and item.stock_in_city < 5 or item.stock_total > 0 and item.stock_total < 5 %}
+        <p class="csm-item-price csm-item-price-low">{{ item.subtotal|price_format }} ₽</p>
+      {% else %}
+        <p class="csm-item-price csm-item-price-ok">{{ item.subtotal|price_format }} ₽</p>
+      {% endif %}
+      <p class="csm-item-unit">{{ item.price|price_format }} ₽ / шт.</p>
+    </div>
+  </div>
+</li>

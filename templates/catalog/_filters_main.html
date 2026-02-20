@@ -1,15 +1,211 @@
 {% load catalog_tags %}
-<div>
+{% if defer_category_apply %}
+<div x-data="{ pendingSection: '{{ current_section_effective|default:''|escapejs }}', pendingCategory: '{{ current_category|default:''|escapejs }}', showAllSectionCategories: false }">
   <div class="text-[10px] text-gray-500 uppercase mb-2">Категория</div>
-  <div class="space-y-1">
-    <a href="{% url 'catalog:product_list' %}{% filter_url category=filter_clear section=current_section tag=current_tag sort=current_sort q=search_query price_min=price_min_filter price_max=price_max_filter %}"
-       class="block text-sm py-1.5 rounded px-2 transition-colors {% if not current_category %}text-accent font-medium{% else %}text-gray-400 hover:text-white{% endif %}">Все</a>
-    {% for cat in categories %}
-    <a href="{% url 'catalog:product_list' %}?category={{ cat.slug }}{% if current_section %}&section={{ current_section }}{% endif %}{% if current_tag %}&tag={{ current_tag }}{% endif %}&sort={{ current_sort }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if price_min_filter %}&price_min={{ price_min_filter }}{% endif %}{% if price_max_filter %}&price_max={{ price_max_filter }}{% endif %}"
-       class="block text-sm py-1.5 rounded px-2 transition-colors {% if current_category == cat.slug %}text-accent font-medium{% else %}text-gray-400 hover:text-white{% endif %}">{{ cat.name }}</a>
+
+  <div class="mb-3">
+    <button type="button"
+            @click="pendingSection = ''; pendingCategory = ''; showAllSectionCategories = false; mobileFiltersDirty = true"
+            class="w-full flex items-center justify-between text-sm py-1.5 rounded px-2 text-left transition-colors"
+            :class="pendingSection === '' && pendingCategory === '' ? 'text-accent font-medium bg-dark-700/70 border border-accent/40' : 'text-gray-400 hover:text-white'">
+      <span>Весь каталог</span>
+      <span class="w-5 h-5 rounded-full border flex items-center justify-center ml-3 shrink-0"
+            :class="pendingSection === '' && pendingCategory === '' ? 'border-accent' : 'border-gray-500'">
+        <span class="w-2 h-2 rounded-full bg-accent" x-show="pendingSection === '' && pendingCategory === ''"></span>
+      </span>
+    </button>
+  </div>
+
+  <div class="space-y-1 mb-3" x-show="pendingSection === ''">
+    {% for section in catalog_sections %}
+    <button type="button"
+            @click="pendingSection = '{{ section.slug|escapejs }}'; pendingCategory = ''; showAllSectionCategories = false; mobileFiltersDirty = true"
+            class="w-full flex items-center justify-between text-sm py-1.5 rounded px-2 text-left transition-colors text-gray-400 hover:text-white">
+      <span>{{ section.name }}</span>
+      <span class="w-5 h-5 rounded-full border border-gray-500 flex items-center justify-center ml-3 shrink-0"></span>
+    </button>
+    {% endfor %}
+  </div>
+
+  <div class="space-y-1 mb-3">
+    {% for section in catalog_sections %}
+    <template x-if="pendingSection === '{{ section.slug|escapejs }}'">
+      <div>
+        <button type="button"
+                @click="pendingCategory = ''; showAllSectionCategories = false; mobileFiltersDirty = true"
+                class="w-full flex items-center justify-between text-sm py-1.5 rounded px-2 text-left transition-colors text-accent font-medium bg-dark-700/70 border border-accent/40">
+          <span>{{ section.name }}</span>
+          <span class="w-5 h-5 rounded-full border border-accent flex items-center justify-center ml-3 shrink-0">
+            <span class="w-2 h-2 rounded-full bg-accent"></span>
+          </span>
+        </button>
+
+        <div class="space-y-1 ml-5 pl-2 border-l border-dark-600/80">
+          {% for cat in section.categories.all %}
+          <button type="button"
+                  x-show="pendingCategory === '{{ cat.slug|escapejs }}'"
+                  @click="pendingSection = '{{ section.slug|escapejs }}'; pendingCategory = '{{ cat.slug|escapejs }}'; showAllSectionCategories = false; mobileFiltersDirty = true"
+                  class="w-full flex items-center justify-between text-sm py-1.5 rounded px-3 text-left transition-colors text-accent font-medium bg-dark-700/70 border border-accent/40">
+            <span>{{ cat.name }}</span>
+            <span class="w-5 h-5 rounded-full border border-accent flex items-center justify-center ml-3 shrink-0">
+              <span class="w-2 h-2 rounded-full bg-accent"></span>
+            </span>
+          </button>
+          {% endfor %}
+
+          {% for cat in section.categories.all %}
+          {% if forloop.counter <= 3 %}
+          <button type="button"
+                  x-show="pendingCategory !== '{{ cat.slug|escapejs }}'"
+                  @click="pendingSection = '{{ section.slug|escapejs }}'; pendingCategory = '{{ cat.slug|escapejs }}'; showAllSectionCategories = false; mobileFiltersDirty = true"
+                  class="w-full flex items-center justify-between text-sm py-1.5 rounded px-3 text-left transition-colors text-gray-400 hover:text-white"
+                  :class="pendingCategory === '{{ cat.slug|escapejs }}' ? 'text-accent font-medium bg-dark-700/70 border border-accent/40' : ''">
+            <span>{{ cat.name }}</span>
+            <span class="w-5 h-5 rounded-full border flex items-center justify-center ml-3 shrink-0"
+                  :class="pendingCategory === '{{ cat.slug|escapejs }}' ? 'border-accent' : 'border-gray-500'">
+              <span class="w-2 h-2 rounded-full bg-accent" x-show="pendingCategory === '{{ cat.slug|escapejs }}'"></span>
+            </span>
+          </button>
+          {% endif %}
+          {% endfor %}
+        </div>
+
+        <div class="mt-2 ml-3" x-show="!showAllSectionCategories">
+          <button type="button"
+                  class="text-sm py-1.5 rounded px-2 transition-colors text-accent hover:text-accent-hover"
+                  @click="showAllSectionCategories = true">
+            Все категории
+          </button>
+        </div>
+
+        <div class="space-y-1 ml-5 pl-2 border-l border-dark-600/80 mt-1" x-show="showAllSectionCategories">
+          {% for cat in section.categories.all %}
+          {% if forloop.counter > 3 %}
+          <button type="button"
+                  x-show="pendingCategory !== '{{ cat.slug|escapejs }}'"
+                  @click="pendingSection = '{{ section.slug|escapejs }}'; pendingCategory = '{{ cat.slug|escapejs }}'; mobileFiltersDirty = true"
+                  class="w-full flex items-center justify-between text-sm py-1.5 rounded px-3 text-left transition-colors text-gray-400 hover:text-white"
+                  :class="pendingCategory === '{{ cat.slug|escapejs }}' ? 'text-accent font-medium bg-dark-700/70 border border-accent/40' : ''">
+            <span>{{ cat.name }}</span>
+            <span class="w-5 h-5 rounded-full border flex items-center justify-center ml-3 shrink-0"
+                  :class="pendingCategory === '{{ cat.slug|escapejs }}' ? 'border-accent' : 'border-gray-500'">
+              <span class="w-2 h-2 rounded-full bg-accent" x-show="pendingCategory === '{{ cat.slug|escapejs }}'"></span>
+            </span>
+          </button>
+          {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+    </template>
+    {% endfor %}
+  </div>
+
+  <form id="{{ category_form_id|default:'mobile-category-filter-form' }}" method="get" action="{% url 'catalog:product_list' %}" class="hidden">
+    <input type="hidden" name="section" :value="pendingSection">
+    <input type="hidden" name="category" :value="pendingCategory">
+    {% if current_tag %}<input type="hidden" name="tag" value="{{ current_tag }}">{% endif %}
+    {% if current_sort %}<input type="hidden" name="sort" value="{{ current_sort }}">{% endif %}
+    {% if search_query %}<input type="hidden" name="q" value="{{ search_query }}">{% endif %}
+    {% if price_min_filter %}<input type="hidden" name="price_min" value="{{ price_min_filter }}">{% endif %}
+    {% if price_max_filter %}<input type="hidden" name="price_max" value="{{ price_max_filter }}">{% endif %}
+    {% for k, v in char_filters.items %}
+    <input type="hidden" name="char_{{ k }}" value="{{ v }}">
+    {% endfor %}
+  </form>
+</div>
+{% else %}
+<div x-data="{ showAllSectionCategories: false }">
+  <div class="text-[10px] text-gray-500 uppercase mb-2">Категория</div>
+
+  <div class="mb-3">
+    <a href="{% url 'catalog:product_list' %}{% filter_url section=filter_clear category=filter_clear %}"
+       class="w-full flex items-center justify-between text-sm py-1.5 rounded px-2 transition-colors {% if not current_section and not current_category %}text-accent font-medium bg-dark-700/70 border border-accent/40{% else %}text-gray-400 hover:text-white{% endif %}">
+      <span>Весь каталог</span>
+      <span class="w-5 h-5 rounded-full border {% if not current_section and not current_category %}border-accent{% else %}border-gray-500{% endif %} flex items-center justify-center ml-3 shrink-0">
+        {% if not current_section and not current_category %}<span class="w-2 h-2 rounded-full bg-accent"></span>{% endif %}
+      </span>
+    </a>
+  </div>
+
+  {% if not current_section_effective %}
+  <div class="space-y-1 mb-3">
+    {% for section in catalog_sections %}
+    <a href="{% url 'catalog:product_list' %}{% filter_url section=section.slug category=filter_clear %}"
+       class="w-full flex items-center justify-between text-sm py-1.5 rounded px-2 transition-colors text-gray-400 hover:text-white">
+      <span>{{ section.name }}</span>
+      <span class="w-5 h-5 rounded-full border border-gray-500 flex items-center justify-center ml-3 shrink-0"></span>
+    </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="space-y-1 mb-3">
+    {% for section in catalog_sections %}
+    {% if section.slug == current_section_effective %}
+    <a href="{% url 'catalog:product_list' %}{% filter_url section=section.slug category=filter_clear %}"
+       class="w-full flex items-center justify-between text-sm py-1.5 rounded px-2 transition-colors text-accent font-medium bg-dark-700/70 border border-accent/40">
+      <span>{{ section.name }}</span>
+      <span class="w-5 h-5 rounded-full border border-accent flex items-center justify-center ml-3 shrink-0">
+        <span class="w-2 h-2 rounded-full bg-accent"></span>
+      </span>
+    </a>
+
+    <div class="space-y-1 ml-5 pl-2 border-l border-dark-600/80">
+      {% for cat in section.categories.all %}
+      {% if current_category == cat.slug %}
+      <a href="{% url 'catalog:product_list' %}{% filter_url section=section.slug category=cat.slug %}"
+         class="flex items-center justify-between text-sm py-1.5 rounded px-3 transition-colors text-accent font-medium bg-dark-700/70 border border-accent/40">
+        <span>{{ cat.name }}</span>
+        <span class="w-5 h-5 rounded-full border border-accent flex items-center justify-center ml-3 shrink-0">
+          <span class="w-2 h-2 rounded-full bg-accent"></span>
+        </span>
+      </a>
+      {% endif %}
+      {% endfor %}
+
+      {% for cat in section.categories.all %}
+      {% if forloop.counter <= 3 %}
+      {% if current_category != cat.slug %}
+      <a href="{% url 'catalog:product_list' %}{% filter_url section=section.slug category=cat.slug %}"
+         class="flex items-center justify-between text-sm py-1.5 rounded px-3 transition-colors {% if current_category == cat.slug %}text-accent font-medium bg-dark-700/70 border border-accent/40{% else %}text-gray-400 hover:text-white{% endif %}">
+        <span>{{ cat.name }}</span>
+        <span class="w-5 h-5 rounded-full border {% if current_category == cat.slug %}border-accent{% else %}border-gray-500{% endif %} flex items-center justify-center ml-3 shrink-0">
+          {% if current_category == cat.slug %}<span class="w-2 h-2 rounded-full bg-accent"></span>{% endif %}
+        </span>
+      </a>
+      {% endif %}
+      {% endif %}
+      {% endfor %}
+    </div>
+
+    <div class="mt-2 ml-3" x-show="!showAllSectionCategories">
+      <button type="button"
+              class="text-sm py-1.5 rounded px-2 transition-colors text-accent hover:text-accent-hover"
+              @click="showAllSectionCategories = true">
+        Все категории
+      </button>
+    </div>
+
+    <div class="space-y-1 ml-5 pl-2 border-l border-dark-600/80 mt-1" x-show="showAllSectionCategories">
+      {% for cat in section.categories.all %}
+      {% if forloop.counter > 3 %}
+      {% if current_category != cat.slug %}
+      <a href="{% url 'catalog:product_list' %}{% filter_url section=section.slug category=cat.slug %}"
+         class="flex items-center justify-between text-sm py-1.5 rounded px-3 transition-colors {% if current_category == cat.slug %}text-accent font-medium bg-dark-700/70 border border-accent/40{% else %}text-gray-400 hover:text-white{% endif %}">
+        <span>{{ cat.name }}</span>
+        <span class="w-5 h-5 rounded-full border {% if current_category == cat.slug %}border-accent{% else %}border-gray-500{% endif %} flex items-center justify-center ml-3 shrink-0">
+          {% if current_category == cat.slug %}<span class="w-2 h-2 rounded-full bg-accent"></span>{% endif %}
+        </span>
+      </a>
+      {% endif %}
+      {% endif %}
+      {% endfor %}
+    </div>
+    {% endif %}
     {% endfor %}
   </div>
 </div>
+{% endif %}
 
 {% if filter_price_min is not None and filter_price_max is not None and filter_price_max > filter_price_min %}
 <div>
@@ -30,7 +226,6 @@
       <input type="number" name="price_max" value="{{ price_max_filter }}" placeholder="{{ filter_price_max }}" min="{{ filter_price_min }}" max="{{ filter_price_max }}"
              class="w-full bg-dark-700 text-white text-sm rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-accent">
     </div>
-    <button type="submit" class="w-full bg-accent hover:bg-accent-hover text-dark-900 font-bold py-2 rounded text-sm">Применить</button>
   </form>
 </div>
 {% endif %}
@@ -38,13 +233,24 @@
 {% if product_tags %}
 <div>
   <div class="text-[10px] text-gray-500 uppercase mb-2">Тег</div>
-  <div class="space-y-1">
+  <div class="flex flex-wrap gap-2">
+    {% if defer_category_apply %}
+    <button type="button"
+       @click="pendingFiltersUrl = '{% url 'catalog:product_list' %}{% filter_url tag=filter_clear category=current_category section=current_section sort=current_sort q=search_query price_min=price_min_filter price_max=price_max_filter %}'; mobileFiltersDirty = true"
+       class="inline-flex items-center text-sm py-1.5 px-3 rounded-full border transition-colors {% if not current_tag %}border-accent text-accent font-medium{% else %}border-dark-600 text-gray-400 hover:text-white{% endif %}">Все</button>
+    {% for tag in product_tags %}
+    <button type="button"
+       @click="pendingFiltersUrl = '{% url 'catalog:product_list' %}?tag={{ tag.slug }}{% if current_category %}&category={{ current_category }}{% endif %}{% if current_section %}&section={{ current_section }}{% endif %}&sort={{ current_sort }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if price_min_filter %}&price_min={{ price_min_filter }}{% endif %}{% if price_max_filter %}&price_max={{ price_max_filter }}{% endif %}'; mobileFiltersDirty = true"
+       class="inline-flex items-center text-sm py-1.5 px-3 rounded-full border transition-colors {% if current_tag == tag.slug %}border-accent text-accent font-medium{% else %}border-dark-600 text-gray-400 hover:text-white{% endif %}">{{ tag.name }}</button>
+    {% endfor %}
+    {% else %}
     <a href="{% url 'catalog:product_list' %}{% filter_url tag=filter_clear category=current_category section=current_section sort=current_sort q=search_query price_min=price_min_filter price_max=price_max_filter %}"
-       class="block text-sm py-1.5 rounded px-2 transition-colors {% if not current_tag %}text-accent font-medium{% else %}text-gray-400 hover:text-white{% endif %}">Все</a>
+       class="inline-flex items-center text-sm py-1.5 px-3 rounded-full border transition-colors {% if not current_tag %}border-accent text-accent font-medium{% else %}border-dark-600 text-gray-400 hover:text-white{% endif %}">Все</a>
     {% for tag in product_tags %}
     <a href="{% url 'catalog:product_list' %}?tag={{ tag.slug }}{% if current_category %}&category={{ current_category }}{% endif %}{% if current_section %}&section={{ current_section }}{% endif %}&sort={{ current_sort }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if price_min_filter %}&price_min={{ price_min_filter }}{% endif %}{% if price_max_filter %}&price_max={{ price_max_filter }}{% endif %}"
-       class="block text-sm py-1.5 rounded px-2 transition-colors {% if current_tag == tag.slug %}text-accent font-medium{% else %}text-gray-400 hover:text-white{% endif %}">{{ tag.name }}</a>
+       class="inline-flex items-center text-sm py-1.5 px-3 rounded-full border transition-colors {% if current_tag == tag.slug %}border-accent text-accent font-medium{% else %}border-dark-600 text-gray-400 hover:text-white{% endif %}">{{ tag.name }}</a>
     {% endfor %}
+    {% endif %}
   </div>
 </div>
 {% endif %}

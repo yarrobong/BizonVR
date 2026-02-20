@@ -4,7 +4,7 @@
 {% endif %}
 {% if cart_items %}
   <ul class="space-y-4">
-    {% for item in cart_items %}
+    {% for item in cart_items reversed %}
       <li class="flex gap-4 p-3 bg-dark-700/50 rounded-lg">
         <div class="w-16 h-16 rounded bg-dark-600 flex-shrink-0 flex items-center justify-center overflow-hidden">
           {% if item.image_url %}
@@ -15,7 +15,16 @@
         </div>
         <div class="flex-1 min-w-0">
           <p class="text-sm font-medium text-white line-clamp-2">{{ item.name }}</p>
-          <p class="text-xs text-gray-400 mt-0.5">{{ item.quantity }} × {{ item.price|price_format }} ₽</p>
+          {% if item.bundle_name %}
+            <p class="text-xs text-accent mt-0.5">Входит в комплект: {{ item.bundle_name }}</p>
+          {% endif %}
+          <p class="text-xs text-gray-400 mt-0.5">
+            {{ item.quantity }} × {{ item.price|price_format }} ₽
+            {% if item.original_price and item.original_price != item.price %}
+              <span class="line-through text-gray-500 ml-1">{{ item.original_price|price_format }} ₽</span>
+              <span class="text-green-400 ml-1">−5%</span>
+            {% endif %}
+          </p>
         </div>
         <div class="text-sm font-bold text-white">{{ item.subtotal|price_format }} ₽</div>
       </li>

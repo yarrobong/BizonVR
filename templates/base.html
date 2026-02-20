@@ -31,6 +31,9 @@
       scrollbar-width: none; /* Firefox */
       -ms-overflow-style: none; /* IE/Edge */
     }
+    html {
+      overflow-anchor: none; /* Не дёргать скролл при подгрузке «Еще товары» */
+    }
     html::-webkit-scrollbar,
     body::-webkit-scrollbar {
       display: none; /* Chrome, Safari, Opera */
@@ -95,6 +98,7 @@
     .search-input-glass {
       background: rgba(255, 255, 255, 0.05);
       border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 9999px;
       backdrop-filter: blur(4px);
       transition: all 0.3s ease;
     }
@@ -124,6 +128,11 @@
       padding: 0 1rem;
       padding-top: max(0.5rem, env(safe-area-inset-top));
       padding-bottom: 0.75rem;
+      background: rgba(13, 15, 23, 0.92);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 0 0 24px 24px;
     }
     /* Верхняя полоса: только город + стрелка, без карточки */
     .mobile-header-city-strip {
@@ -216,7 +225,7 @@
       gap: 0.5rem;
       background: rgba(255, 255, 255, 0.06);
       border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 12px;
+      border-radius: 9999px;
       padding: 0 0.75rem;
       min-height: 2.75rem;
       transition: border-color 0.2s, box-shadow 0.2s;
@@ -269,7 +278,9 @@
       padding-top: max(0.5rem, env(safe-area-inset-top));
       background: rgba(13, 15, 23, 0.97);
       backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
       border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 0 0 24px 24px;
       opacity: 0;
       pointer-events: none;
       transform: translateY(-8px);
@@ -290,8 +301,55 @@
       background-size: 60px 60px;
       color: #ffffff;
       padding-top: 0;
-      padding-bottom: 64px;
+      padding-bottom: 0;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
       overflow-x: hidden;
+      position: relative;
+      isolation: isolate;
+    }
+
+    #main-content {
+      flex: 1 0 auto;
+    }
+
+    .ambient-lights {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      min-height: 100%;
+      z-index: -1;
+    }
+
+    .ambient-light {
+      content: "";
+      position: absolute;
+      top: -50%;
+      right: -20%;
+      width: 680px;
+      height: 680px;
+      background: radial-gradient(circle, rgba(0, 4, 172, 0.7) 0%, transparent 56%);
+      border-radius: 50%;
+      filter: blur(42px);
+      z-index: 0;
+    }
+
+    .ambient-light:nth-child(1) { top: -50%; right: -20%; }
+    .ambient-light:nth-child(2) { top: 58%; right: 64%; width: 620px; height: 620px; }
+    .ambient-light:nth-child(3) { top: 26%; right: 8%; width: 560px; height: 560px; }
+    .ambient-light:nth-child(4) { top: -28%; right: 52%; width: 740px; height: 740px; }
+    .ambient-light:nth-child(5) { top: 82%; right: -12%; width: 640px; height: 640px; }
+    .ambient-light:nth-child(6) { top: 8%; right: 78%; width: 600px; height: 600px; }
+    .ambient-light:nth-child(7) { top: 72%; right: 32%; width: 500px; height: 500px; }
+    .ambient-light:nth-child(8) { top: 42%; right: -30%; width: 700px; height: 700px; }
+
+    @media (max-width: 768px) {
+      .ambient-light {
+        width: 440px;
+        height: 440px;
+        filter: blur(34px);
+      }
     }
     
     /* Preload: отключаем анимации до стабилизации страницы */
@@ -561,9 +619,6 @@
         padding-left: 1rem;
         padding-right: 1rem;
       }
-      .hero-slides-track {
-        /* позиционирование уже через transform (см. базовое правило) */
-      }
       .hero-slide-card {
         min-height: 120px;
       }
@@ -716,11 +771,10 @@
   z-index: 50;
   
   /* Эффект стекла */
-  background: rgba(24, 27, 33, 0.85);
+  background: #0f1115;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
   padding: 10px 20px;
   
   /* Учет "челки" и свайп-зоны на iPhone */
@@ -738,16 +792,21 @@
   justify-content: center;
 }
 
-/* При наведении или нажатии иконка "вспыхивает" */
-.dock-item:hover,
+/* При нажатии на мобильных только меняем цвет, без фоновой плашки */
 .dock-item:active {
   color: var(--text-main);
-  background: rgba(255, 255, 255, 0.05);
 }
 
-.dock-item:hover i {
-  filter: drop-shadow(0 0 5px var(--accent-glow));
-  transform: scale(1.1);
+/* Hover-эффекты только для устройств с реальным hover (не touch) */
+@media (hover: hover) {
+  .dock-item:hover {
+    color: var(--text-main);
+  }
+
+  .dock-item:hover i {
+    filter: drop-shadow(0 0 5px var(--accent-glow));
+    transform: scale(1.1);
+  }
 }
 
 .dock-item i {
@@ -803,6 +862,105 @@
 .dock-item.active .badge {
   border-color: rgba(139, 92, 246, 0.3);
 }
+
+/* --- Плашка согласия с cookies и ПД --- */
+.cookie-consent-banner {
+  position: fixed;
+  left: 0.75rem;
+  right: 0.75rem;
+  bottom: calc(max(0.75rem, var(--safe-bottom)) + 4.75rem);
+  z-index: 70;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.875rem;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(21, 25, 35, 0.96);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(calc(100% + 1rem));
+  transition:
+    opacity 0.36s ease,
+    transform 0.36s ease,
+    visibility 0s linear 0.36s;
+}
+
+.cookie-consent-banner.is-visible {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateY(0);
+  transition:
+    opacity 0.36s ease,
+    transform 0.36s ease,
+    visibility 0s linear 0s;
+}
+
+.cookie-consent-text {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.cookie-consent-link {
+  color: #00D4FF;
+  text-decoration: underline;
+}
+
+.cookie-consent-link:hover {
+  color: #00B8E6;
+}
+
+.cookie-consent-btn {
+  flex-shrink: 0;
+  align-self: center;
+  border: none;
+  border-radius: 10px;
+  background: #00D4FF;
+  color: #0b0d14;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0.625rem 0.875rem;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.cookie-consent-btn:hover {
+  background: #00B8E6;
+}
+
+.cookie-consent-btn:active {
+  transform: scale(0.98);
+}
+
+@media (min-width: 768px) {
+  .cookie-consent-banner {
+    left: 1rem;
+    right: 1rem;
+    width: auto;
+    max-width: 680px;
+    margin-left: auto;
+    margin-right: auto;
+    bottom: max(1rem, var(--safe-bottom));
+    padding: 1rem 1.125rem;
+  }
+
+  .cookie-consent-text {
+    font-size: 0.875rem;
+  }
+
+  .cookie-consent-btn {
+    margin-left: 0.75rem;
+  }
+}
   </style>
   <script>
     // Инициализация Lucide иконок после загрузки HTMX контента
@@ -817,13 +975,49 @@
       document.body.scrollTop = 0;
       window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
     }
-    
-    // Проверка, нужно ли восстанавливать позицию скролла
-    function shouldRestoreScroll() {
-      // Не восстанавливаем скролл только если это первая загрузка или явный переход не через dock
-      const currentSection = document.body.dataset.activeSection;
-      const savedPositions = JSON.parse(sessionStorage.getItem('bizonvr_scroll_positions') || '{}');
-      return savedPositions[currentSection] !== undefined;
+
+    function initCookieConsentBanner() {
+      const banner = document.getElementById('cookie-consent-banner');
+      const acceptBtn = document.getElementById('cookie-consent-accept');
+      if (!banner || !acceptBtn) return;
+
+      const STORAGE_KEY = 'bizonvr_cookie_consent_v1';
+      const hideBanner = () => {
+        banner.classList.remove('is-visible');
+        banner.setAttribute('aria-hidden', 'true');
+      };
+      const showBanner = () => {
+        banner.setAttribute('aria-hidden', 'false');
+        // Двойной RAF гарантирует отдельный кадр для скрытого состояния,
+        // чтобы входная анимация не "съедалась" на первом рендере.
+        banner.classList.remove('is-visible');
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            banner.classList.add('is-visible');
+          });
+        });
+      };
+
+      let isAccepted = false;
+      try {
+        isAccepted = window.localStorage.getItem(STORAGE_KEY) === '1';
+      } catch (e) {
+        isAccepted = false;
+      }
+
+      if (isAccepted) hideBanner();
+      else showBanner();
+
+      if (acceptBtn.dataset.cookieConsentBound === '1') return;
+      acceptBtn.addEventListener('click', () => {
+        try {
+          window.localStorage.setItem(STORAGE_KEY, '1');
+        } catch (e) {
+          // Если localStorage недоступен, просто скрываем плашку в текущем рендере.
+        }
+        hideBanner();
+      });
+      acceptBtn.dataset.cookieConsentBound = '1';
     }
     
     // Функция для обновления активной вкладки в мобильном меню
@@ -834,35 +1028,68 @@
       // Убираем класс active у всех вкладок
       dockItems.forEach(item => item.classList.remove('active'));
       
-      // Определяем, какой пункт меню должен быть активным на основе URL или data-active-section
-      const currentPath = window.location.pathname;
+      // Определяем, какой пункт меню должен быть активным.
+      // Важно: сначала определяем по URL (строгий приоритет), и только если не получилось — fallback на data-active-section.
+      const currentPath = window.location.pathname || '/';
+      const normalizedPath = currentPath.endsWith('/') ? currentPath : `${currentPath}/`;
+
+      function resolveSectionByPath(pathname) {
+        if (pathname === '/') return 'home';
+        if (pathname.startsWith('/catalog/favorites/')) return 'favorites';
+        if (pathname.startsWith('/catalog/cart/')) return 'cart';
+        if (pathname.startsWith('/accounts/profile/')) return 'profile';
+        if (pathname.startsWith('/catalog/')) return 'catalog';
+        return null;
+      }
+
+      function resolveSectionByHref(href) {
+        if (href === '/') return 'home';
+        if (href.includes('/catalog/favorites/')) return 'favorites';
+        if (href.includes('/catalog/cart/')) return 'cart';
+        if (href.includes('/accounts/profile/')) return 'profile';
+        if (href.includes('/catalog/')) return 'catalog';
+        return null;
+      }
+
+      const sectionByPath = resolveSectionByPath(normalizedPath);
+      const targetSection = sectionByPath || activeSection;
       
       dockItems.forEach(item => {
         const href = item.getAttribute('href');
-        let shouldBeActive = false;
-        
-        // Проверяем соответствие URL
-        if (href === '/' && (currentPath === '/' || activeSection === 'home')) {
-          shouldBeActive = true;
-        } else if (href.includes('/catalog/') && !href.includes('/favorites') && !href.includes('/cart') && (currentPath.includes('/catalog/') || activeSection === 'catalog')) {
-          shouldBeActive = true;
-        } else if (href.includes('/favorites') && (currentPath.includes('/favorites') || activeSection === 'favorites')) {
-          shouldBeActive = true;
-        } else if (href.includes('/cart') && (currentPath.includes('/cart') || activeSection === 'cart')) {
-          shouldBeActive = true;
-        } else if (href.includes('/accounts/profile') && (currentPath.includes('/accounts/profile') || activeSection === 'profile')) {
-          shouldBeActive = true;
-        }
-        
-        if (shouldBeActive) {
+        const itemSection = resolveSectionByHref(href || '');
+        if (itemSection && itemSection === targetSection) {
           item.classList.add('active');
         }
+      });
+    }
+
+    function initPhonePrefixBrackets(root) {
+      const scope = root || document;
+      const wrappers = scope.querySelectorAll('.phone-input-wrapper');
+
+      wrappers.forEach(wrapper => {
+        const input = wrapper.querySelector('.js-phone-mask');
+        const bracket = wrapper.querySelector('.phone-prefix-bracket');
+        if (!input || !bracket) return;
+
+        const updateBracketVisibility = () => {
+          const hasDigits = (input.value || '').replace(/\D/g, '').length > 0;
+          bracket.style.display = hasDigits ? '' : 'none';
+        };
+
+        if (!input.dataset.phoneBracketBound) {
+          input.addEventListener('input', updateBracketVisibility);
+          input.dataset.phoneBracketBound = '1';
+        }
+
+        updateBracketVisibility();
       });
     }
     
     function initHtmxHandlers() {
       initLucide(); // иконки в шапке (каталог и др.) сразу при загрузке
-      
+      initPhonePrefixBrackets(document);
+      initCookieConsentBanner();
       // Проверяем, что body уже существует
       if (!document.body) {
         console.warn('document.body is not available yet');
@@ -882,10 +1109,14 @@
       });
       document.body.addEventListener('htmx:afterSettle', function(ev) {
         initLucide();
+        initPhonePrefixBrackets(document);
         // После полного обновления DOM
         if (ev.detail.target.id === 'main-content') {
           window.dispatchEvent(new CustomEvent('header-expand'));
-          // НЕ скроллим вверх - позицию восстановит скрипт ниже
+          // Для обычных переходов всегда начинаем страницу сверху.
+          // Если нужно спец-восстановление (каталог -> карточка -> назад),
+          // отдельный обработчик ниже восстановит сохранённую позицию.
+          scrollToTop();
           // Обновляем активную вкладку в мобильном меню
           updateActiveDockItem();
         }
@@ -896,6 +1127,7 @@
           // Alpine.js автоматически обнаружит новые элементы с x-data через MutationObserver
           // Поэтому initTree вызывать не обязательно и это может вызвать ошибки
           initLucide();
+          initPhonePrefixBrackets(document);
         }
       });
       
@@ -908,110 +1140,108 @@
       initHtmxHandlers();
     }
 
-    // Сохранение и восстановление позиции скролла для каждой секции
+    // Сохраняем скролл только для сценария:
+    // список каталога -> карточка товара -> возврат в тот же список.
     (function() {
-      const SCROLL_STORAGE_KEY = 'bizonvr_scroll_positions';
-      let isRestoringScroll = false;
-      let scrollRestoreAttempts = 0;
-      const MAX_RESTORE_ATTEMPTS = 5;
-      
-      // Получить текущую секцию из data-атрибута body
-      function getCurrentSection() {
-        return document.body?.dataset?.activeSection || 'home';
+      const STORAGE_KEY = 'bizonvr_catalog_list_return_scroll';
+      let pendingNavigation = null;
+
+      function getCurrentFullPath() {
+        return `${window.location.pathname}${window.location.search}`;
       }
-      
-      // Сохранить позицию скролла для текущей секции
-      function saveScrollPosition() {
-        if (isRestoringScroll) return; // Не сохраняем во время восстановления
+
+      function getFullPathFromUrl(url) {
         try {
-          const positions = JSON.parse(sessionStorage.getItem(SCROLL_STORAGE_KEY) || '{}');
-          positions[getCurrentSection()] = window.scrollY;
-          sessionStorage.setItem(SCROLL_STORAGE_KEY, JSON.stringify(positions));
+          const parsed = new URL(url, window.location.origin);
+          return `${parsed.pathname}${parsed.search}`;
+        } catch (e) {
+          return getCurrentFullPath();
+        }
+      }
+
+      function isCatalogListPath(path) {
+        return path.startsWith('/catalog/')
+          && !path.startsWith('/catalog/product/')
+          && !path.startsWith('/catalog/favorites')
+          && !path.startsWith('/catalog/cart')
+          && !path.startsWith('/catalog/set-city/');
+      }
+
+      function isCatalogProductPath(path) {
+        return path.startsWith('/catalog/product/');
+      }
+
+      function saveCatalogListScroll(path) {
+        try {
+          if (!isCatalogListPath(path)) return;
+          const payload = {
+            path,
+            scrollY: window.scrollY
+          };
+          sessionStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
         } catch (e) {
           console.warn('Failed to save scroll position:', e);
         }
       }
-      
-      // Восстановить позицию скролла для текущей секции
-      function restoreScrollPosition() {
+
+      function restoreCatalogListScroll(destinationPath, sourcePath) {
         try {
-          const positions = JSON.parse(sessionStorage.getItem(SCROLL_STORAGE_KEY) || '{}');
-          const section = getCurrentSection();
-          const savedPosition = positions[section];
-          
-          if (savedPosition !== undefined && savedPosition > 0) {
-            isRestoringScroll = true;
-            window.scrollTo(0, savedPosition);
-            
-            // Проверим, восстановилась ли позиция (иногда браузер игнорирует скролл пока контент не загружен)
-            setTimeout(() => {
-              const currentScroll = window.scrollY;
-              if (Math.abs(currentScroll - savedPosition) > 10 && scrollRestoreAttempts < MAX_RESTORE_ATTEMPTS) {
-                scrollRestoreAttempts++;
-                restoreScrollPosition(); // Повторная попытка
-              } else {
-                scrollRestoreAttempts = 0;
-                setTimeout(() => {
-                  isRestoringScroll = false;
-                }, 100);
-              }
-            }, 50);
-          } else {
-            // Если нет сохраненной позиции, скроллим вверх
-            window.scrollTo(0, 0);
-            scrollRestoreAttempts = 0;
-          }
+          const raw = sessionStorage.getItem(STORAGE_KEY);
+          if (!raw) return;
+          const saved = JSON.parse(raw);
+          if (!saved || typeof saved.path !== 'string') return;
+          if (!isCatalogProductPath(sourcePath || '')) return;
+          if (destinationPath !== saved.path) return;
+          if (typeof saved.scrollY !== 'number' || saved.scrollY <= 0) return;
+
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              window.scrollTo(0, saved.scrollY);
+            });
+          });
         } catch (e) {
           console.warn('Failed to restore scroll position:', e);
-          window.scrollTo(0, 0);
-          scrollRestoreAttempts = 0;
         }
       }
-      
-      // Сохранять позицию при скролле (с дебаунсингом)
-      let scrollTimeout;
-      window.addEventListener('scroll', () => {
-        if (isRestoringScroll) return; // Не сохраняем во время восстановления
-        clearTimeout(scrollTimeout);
-        scrollTimeout = setTimeout(saveScrollPosition, 100);
-      }, { passive: true });
-      
-      // Сохранять позицию перед уходом со страницы
-      window.addEventListener('beforeunload', saveScrollPosition);
-      
-      // Функция для инициализации слушателей событий после загрузки DOM
+
       function initScrollRestoreListeners() {
-        // Восстановить позицию после загрузки HTMX контента
+        document.body.addEventListener('htmx:beforeRequest', (ev) => {
+          if (ev.detail.target?.id !== 'main-content') return;
+
+          const sourcePath = getCurrentFullPath();
+          const destinationPath = ev.detail?.pathInfo?.requestPath
+            ? getFullPathFromUrl(ev.detail.pathInfo.requestPath)
+            : null;
+
+          if (isCatalogListPath(sourcePath) && isCatalogProductPath(destinationPath || '')) {
+            saveCatalogListScroll(sourcePath);
+          }
+
+          pendingNavigation = {
+            fromPath: sourcePath
+          };
+        });
+
         document.body.addEventListener('htmx:afterSettle', (ev) => {
           if (ev.detail.target.id === 'main-content') {
-            // Даем время на рендеринг, потом восстанавливаем позицию
-            scrollRestoreAttempts = 0;
-            requestAnimationFrame(() => {
-              requestAnimationFrame(() => {
-                setTimeout(restoreScrollPosition, 100);
-              });
-            });
+            const destinationPath = ev.detail?.xhr?.responseURL
+              ? getFullPathFromUrl(ev.detail.xhr.responseURL)
+              : getCurrentFullPath();
+            const sourcePath = pendingNavigation?.fromPath || null;
+            pendingNavigation = null;
+
+            restoreCatalogListScroll(destinationPath, sourcePath);
           }
         });
       }
-      
-      // Восстановить позицию при первой загрузке
-      scrollRestoreAttempts = 0;
+
       if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', () => {
           initScrollRestoreListeners();
-          setTimeout(restoreScrollPosition, 300);
         });
       } else {
         initScrollRestoreListeners();
-        setTimeout(restoreScrollPosition, 300);
       }
-      
-      // Дополнительное восстановление после полной загрузки (для медленных соединений)
-      window.addEventListener('load', () => {
-        scrollRestoreAttempts = 0;
-        setTimeout(restoreScrollPosition, 100);
-      });
     })();
   </script>
 </head>
@@ -1020,8 +1250,8 @@
       data-active-section="{{ active_section }}"
       hx-boost="true"
       hx-target="#main-content"
-      hx-select="#main-content"
-      hx-swap="innerHTML"
+      hx-select="#mobile-header-slot,#main-content"
+      hx-swap="innerHTML show:none"
       hx-push-url="true"
       hx-timeout="15000"
       x-data="{ 
@@ -1035,7 +1265,8 @@
         miniCartData: null, 
         searchOpen: false, 
         catalogOverlayOpen: false, 
-        catalogHoverSection: null, 
+        catalogDefaultSection: {% if catalog_sections %}{{ catalog_sections.0.pk }}{% else %}null{% endif %},
+        catalogHoverSection: {% if catalog_sections %}{{ catalog_sections.0.pk }}{% else %}null{% endif %}, 
         catalogHoverTimeout: null,
         stickyHeaderJustShownAt: 0,
         lastScrollAt: 0,
@@ -1077,6 +1308,9 @@
          document.body.style.overflow = v ? 'hidden' : '';
          document.documentElement.style.overflow = v ? 'hidden' : '';
          if (v) {
+           if (catalogDefaultSection !== null) {
+             catalogHoverSection = catalogDefaultSection;
+           }
            $nextTick(() => {
              const el = document.getElementById('header-main-row');
              catalogTopPx = el ? (el.getBoundingClientRect().bottom + 'px') : '5.5rem';
@@ -1085,6 +1319,17 @@
          }
        });
      ">
+  <div class="ambient-lights" aria-hidden="true">
+    <span class="ambient-light"></span>
+    <span class="ambient-light"></span>
+    <span class="ambient-light"></span>
+    <span class="ambient-light"></span>
+    <span class="ambient-light"></span>
+    <span class="ambient-light"></span>
+    <span class="ambient-light"></span>
+    <span class="ambient-light"></span>
+  </div>
+
   <!-- Начальный скролл вверх НЕ используем, чтобы не конфликтовать с восстановлением позиции -->
   <!-- <script>
     document.documentElement.scrollTop = 0;
@@ -1097,12 +1342,6 @@
   <div id="catalog-overlay"
        x-show="catalogOverlayOpen"
        x-cloak
-       x-transition:enter="transition ease-out duration-200"
-       x-transition:enter-start="opacity-0"
-       x-transition:enter-end="opacity-100"
-       x-transition:leave="transition ease-in duration-150"
-       x-transition:leave-start="opacity-100"
-       x-transition:leave-end="opacity-0"
        @mouseleave="catalogHoverSection = null; if (catalogHoverTimeout) { clearTimeout(catalogHoverTimeout); catalogHoverTimeout = null; }"
        @click.outside="
          if (catalogOpenedAt && (Date.now() - catalogOpenedAt) < 400) return;
@@ -1120,7 +1359,8 @@
             {% for section in catalog_sections %}
             <li>
               <a href="{% url 'catalog:product_list' %}?section={{ section.slug }}"
-                 class="group flex items-center gap-2.5 py-2.5 px-3 rounded-lg text-white hover:bg-dark-600 hover:text-accent transition-colors -mx-3"
+                 class="group flex items-center gap-2.5 py-2.5 px-3 rounded-lg transition-colors -mx-3"
+                 :class="catalogHoverSection === {{ section.pk }} ? 'bg-dark-600 text-accent' : 'text-white hover:bg-dark-600 hover:text-accent'"
                  @mouseenter="
                    if (catalogHoverTimeout) { clearTimeout(catalogHoverTimeout); }
                    catalogHoverTimeout = setTimeout(() => { catalogHoverSection = {{ section.pk }}; catalogHoverTimeout = null; }, 300);
@@ -1146,10 +1386,7 @@
           {% for section in catalog_sections %}
           <div x-show="catalogHoverSection === {{ section.pk }}"
                x-cloak
-               x-transition:enter="transition ease-out duration-200"
-               x-transition:enter-start="opacity-0 translate-x-2"
-               x-transition:enter-end="opacity-100 translate-x-0"
-               class="catalog-tiles-grid animate-fade-in">
+               class="catalog-tiles-grid">
             {% for category in section.categories.all %}
             {% with preview_url=catalog_category_previews|get_dict_item:category.id %}
             <a href="{% url 'catalog:product_list' %}?category={{ category.slug }}"
@@ -1173,78 +1410,82 @@
   </div>
   </template>
 
-  {% block mobile_header %}
-  <!-- Мобильная шапка: видна только на мобильных; на страницах с собственной шапкой можно переопределить блок `mobile_header` -->
-  <div class="mobile-header md:hidden" x-data="{ cityOpen: false, showFixedSearch: false }" @click.outside="cityOpen = false"
-       x-init="
-         const check = () => { showFixedSearch = window.scrollY > 100 };
-         let raf = null;
-         const throttled = () => { if (!raf) raf = requestAnimationFrame(() => { check(); raf = null; }); };
-         window.addEventListener('scroll', throttled, { passive: true });
-         check();
-         return () => window.removeEventListener('scroll', throttled);
-       ">
-    <div class="mobile-header-wrapper">
-      <div class="mobile-header-city-strip">
-        {% if cities %}
-        <div class="mobile-header-city-trigger-wrap">
-          <button type="button" @click="cityOpen = !cityOpen" class="mobile-header-city-btn" :class="{ 'open': cityOpen }" :aria-expanded="cityOpen" aria-haspopup="listbox">
-            <span class="mobile-header-city-text">Город: {% if selected_city %}{{ selected_city.name }}{% else %}Все регионы{% endif %}</span>
-            <i data-lucide="chevron-down" class="chevron"></i>
-          </button>
-          <div x-show="cityOpen" x-cloak class="mobile-header-city-dropdown"
-               x-transition:enter="transition ease-out duration-150"
-               x-transition:enter-start="opacity-0 -translate-y-1"
-               x-transition:enter-end="opacity-100 translate-y-0"
-               x-transition:leave="transition ease-in duration-100"
-               x-transition:leave-start="opacity-100 translate-y-0"
-               x-transition:leave-end="opacity-0 -translate-y-1">
-            <form method="post" action="{% url 'catalog:set_city' %}">
-              {% csrf_token %}
-              <input type="hidden" name="next" value="{{ request.get_full_path }}" />
-              <button type="submit" name="city_id" value="" @click="cityOpen = false" class="{% if not selected_city %}bg-white/10 text-accent{% endif %}">
-                <i data-lucide="map-pin" class="w-4 h-4 opacity-60 flex-shrink-0"></i>
-                <span>Все регионы</span>
-              </button>
-              {% for city in cities %}
-              <button type="submit" name="city_id" value="{{ city.pk }}" @click="cityOpen = false" class="{% if selected_city and selected_city.pk == city.pk %}bg-white/10 text-accent{% endif %}">
-                <i data-lucide="map-pin" class="w-4 h-4 opacity-60 flex-shrink-0"></i>
-                <span>{{ city.name }}</span>
-              </button>
-              {% endfor %}
-            </form>
+  <div id="mobile-header-slot" hx-swap-oob="outerHTML">
+    {% block mobile_header %}
+    <!-- Мобильная шапка: видна только на мобильных; на страницах с собственной шапкой можно переопределить блок `mobile_header` -->
+    {% if not request.resolver_match or request.resolver_match.url_name != 'cart' %}
+    <div class="mobile-header md:hidden" x-data="{ cityOpen: false, showFixedSearch: false }" @click.outside="cityOpen = false"
+         x-init="
+           const check = () => { showFixedSearch = window.scrollY > 100 };
+           let raf = null;
+           const throttled = () => { if (!raf) raf = requestAnimationFrame(() => { check(); raf = null; }); };
+           window.addEventListener('scroll', throttled, { passive: true });
+           check();
+           return () => window.removeEventListener('scroll', throttled);
+         ">
+      <div class="mobile-header-wrapper">
+        <div class="mobile-header-city-strip">
+          {% if cities %}
+          <div class="mobile-header-city-trigger-wrap">
+            <button type="button" @click="cityOpen = !cityOpen" class="mobile-header-city-btn" :class="{ 'open': cityOpen }" :aria-expanded="cityOpen" aria-haspopup="listbox">
+              <span class="mobile-header-city-text">Город: {% if selected_city %}{{ selected_city.name }}{% else %}Все регионы{% endif %}</span>
+              <i data-lucide="chevron-down" class="chevron"></i>
+            </button>
+            <div x-show="cityOpen" x-cloak class="mobile-header-city-dropdown"
+                 x-transition:enter="transition ease-out duration-150"
+                 x-transition:enter-start="opacity-0 -translate-y-1"
+                 x-transition:enter-end="opacity-100 translate-y-0"
+                 x-transition:leave="transition ease-in duration-100"
+                 x-transition:leave-start="opacity-100 translate-y-0"
+                 x-transition:leave-end="opacity-0 -translate-y-1">
+              <form method="post" action="{% url 'catalog:set_city' %}">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+                <button type="submit" name="city_id" value="" @click="cityOpen = false" class="{% if not selected_city %}bg-white/10 text-accent{% endif %}">
+                  <i data-lucide="map-pin" class="w-4 h-4 opacity-60 flex-shrink-0"></i>
+                  <span>Все регионы</span>
+                </button>
+                {% for city in cities %}
+                <button type="submit" name="city_id" value="{{ city.pk }}" @click="cityOpen = false" class="{% if selected_city and selected_city.pk == city.pk %}bg-white/10 text-accent{% endif %}">
+                  <i data-lucide="map-pin" class="w-4 h-4 opacity-60 flex-shrink-0"></i>
+                  <span>{{ city.name }}</span>
+                </button>
+                {% endfor %}
+              </form>
+            </div>
           </div>
+          {% else %}
+          <span class="text-gray-500 text-sm">Город: —</span>
+          {% endif %}
         </div>
-        {% else %}
-        <span class="text-gray-500 text-sm">Город: —</span>
-        {% endif %}
+
+        <form action="{% url 'catalog:product_list' %}" method="get" class="mobile-header-search-form">
+          <button type="submit" class="mobile-header-search-btn" aria-label="Поиск">
+            <i data-lucide="search"></i>
+          </button>
+          <input type="search" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Искать на BizonVR" class="mobile-header-search-input" />
+        </form>
       </div>
 
-      <form action="{% url 'catalog:product_list' %}" method="get" class="mobile-header-search-form">
-        <button type="submit" class="mobile-header-search-btn" aria-label="Поиск">
-          <i data-lucide="search"></i>
-        </button>
-        <input type="search" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Искать на BizonVR" class="mobile-header-search-input" />
-      </form>
+      <!-- Фиксированный поиск: появляется при скролле -->
+      <div class="mobile-header-fixed-search" :class="{ 'visible': showFixedSearch }">
+        <form action="{% url 'catalog:product_list' %}" method="get" class="mobile-header-search-form">
+          <button type="submit" class="mobile-header-search-btn" aria-label="Поиск">
+            <i data-lucide="search"></i>
+          </button>
+          <input type="search" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Искать на BizonVR" class="mobile-header-search-input" />
+        </form>
+      </div>
     </div>
-
-    <!-- Фиксированный поиск: появляется при скролле -->
-    <div class="mobile-header-fixed-search" :class="{ 'visible': showFixedSearch }">
-      <form action="{% url 'catalog:product_list' %}" method="get" class="mobile-header-search-form">
-        <button type="submit" class="mobile-header-search-btn" aria-label="Поиск">
-          <i data-lucide="search"></i>
-        </button>
-        <input type="search" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Искать на BizonVR" class="mobile-header-search-input" />
-      </form>
-    </div>
+    {% endif %}
+    {% endblock %}
   </div>
-  {% endblock %}
 
   <!-- Sticky Header (Плавающий хедер): скрыт на мобильных -->
   <div class="hidden md:block">
   <div id="sticky-header"
        class="fixed top-0 left-0 right-0 w-full bg-dark-900/95 backdrop-blur-md border-b border-white/10 shadow-xl transform transition-transform duration-300 ease-in-out"
-       style="z-index: 50001;"
+       style="z-index: 50001; display: none; border-radius: 0 0 24px 24px;"
        x-show="showStickyHeader"
        x-transition:enter="transition ease-out duration-300"
        x-transition:enter-start="-translate-y-full"
@@ -1252,8 +1493,7 @@
        x-transition:leave="transition ease-in duration-300"
        x-transition:leave-start="translate-y-0"
        x-transition:leave-end="-translate-y-full"
-       x-cloak
-       style="display: none;">
+       x-cloak>
        
     <div class="container mx-auto px-4 h-[80px] flex items-center justify-between">
       <!-- Логотип -->
@@ -1267,7 +1507,9 @@
                 if (headerChangedAt && (Date.now() - headerChangedAt) < 300) return;
                 catalogOpenedAt = Date.now();
                 if (!showStickyHeader) { const el = document.getElementById('header-main-row'); if (el) catalogTopPx = el.getBoundingClientRect().bottom + 'px'; }
-                catalogOverlayOpen = !catalogOverlayOpen;
+                const nextCatalogState = !catalogOverlayOpen;
+                catalogOverlayOpen = nextCatalogState;
+                if (nextCatalogState && catalogDefaultSection !== null) { catalogHoverSection = catalogDefaultSection; }
               "
               class="flex items-center gap-2 px-4 py-2 rounded-xl bg-dark-700 hover:bg-accent text-white transition-colors cursor-pointer font-medium text-sm flex-shrink-0 mr-6"
               :class="catalogOverlayOpen && 'bg-accent'">
@@ -1308,7 +1550,7 @@
 
         <!-- Корзина -->
         <div class="relative">
-          <a href="{% url 'catalog:cart' %}" class="flex flex-col items-center group focus:outline-none">
+          <a href="{% url 'catalog:cart' %}" class="flex items-center group focus:outline-none">
             <div class="relative">
               <i data-lucide="shopping-cart" class="text-white group-hover:text-accent transition-colors w-6 h-6 inline-block"></i>
               <span class="absolute -top-1 -right-1 w-4 h-4 bg-dark-700 rounded-full text-[10px] flex items-center justify-center border border-dark-800" x-text="cartCount">{{ cart_count|default:0 }}</span>
@@ -1371,7 +1613,9 @@
                   if (headerChangedAt && (Date.now() - headerChangedAt) < 300) return;
                   catalogOpenedAt = Date.now();
                   if (!showStickyHeader) { const el = document.getElementById('header-main-row'); if (el) catalogTopPx = el.getBoundingClientRect().bottom + 'px'; }
-                  catalogOverlayOpen = !catalogOverlayOpen;
+                  const nextCatalogState = !catalogOverlayOpen;
+                  catalogOverlayOpen = nextCatalogState;
+                  if (nextCatalogState && catalogDefaultSection !== null) { catalogHoverSection = catalogDefaultSection; }
                 "
                 class="flex items-center gap-2 px-4 py-2 rounded-xl bg-dark-700 hover:bg-accent text-white transition-colors cursor-pointer font-medium text-sm flex-shrink-0"
                 :class="catalogOverlayOpen && 'bg-accent'">
@@ -1408,7 +1652,7 @@
           {% endif %}
           <div class="relative">
             <a href="{% url 'catalog:cart' %}"
-               class="flex flex-col items-center group focus:outline-none">
+               class="flex items-center group focus:outline-none">
               <div class="relative">
                 <i data-lucide="shopping-cart" class="text-white group-hover:text-accent transition-colors w-6 h-6 inline-block"></i>
                 <span id="cart-count" class="absolute -top-1 -right-1 w-4 h-4 bg-dark-700 rounded-full text-[10px] flex items-center justify-center border border-dark-800" x-text="cartCount">{{ cart_count|default:0 }}</span>
@@ -1488,7 +1732,7 @@
               <li><a href="#" class="hover:text-accent transition-colors py-2 block">Клубы</a></li>
               <li><a href="{% url 'arenda' %}" class="hover:text-accent transition-colors py-2 block">Аренда</a></li>
               <li><a href="#" class="hover:text-accent transition-colors py-2 block">Инструкции</a></li>
-              <li><a href="#" class="hover:text-accent transition-colors py-2 block">Услуги</a></li>
+              <li><a href="{% url 'uslugi' %}" class="hover:text-accent transition-colors py-2 block">Услуги</a></li>
               <li><a href="{% url 'contacts' %}" class="hover:text-accent transition-colors py-2 block">Контакты</a></li>
             </ul>
           </div>
@@ -1543,28 +1787,36 @@
     {% endblock %}
   </div>
 
+  {% include "catalog/partials/footer_products_entry.html" %}
+
   <footer class="vr-footer">
     <div class="container mx-auto px-4">
       <div class="footer-grid">
         <div>
-          <h3>BizonVR</h3>
-          <p class="text-sm">Магазин VR оборудования и аттракционов</p>
+          <h3>{{ site_brand }}</h3>
+          <p class="text-sm">{{ site_description }}</p>
+          {% if site_work_hours %}
+            <p class="text-sm mt-2">{{ site_work_hours }}</p>
+          {% endif %}
         </div>
         
         <div>
           <h4>Каталог</h4>
           <ul>
-            <li><a href="#">VR шлемы</a></li>
-            <li><a href="#">Аксессуары</a></li>
-            <li><a href="#">Игры</a></li>
+            {% for section in catalog_sections|slice:":3" %}
+              <li><a href="{% url 'catalog:product_list' %}?section={{ section.slug }}">{{ section.name }}</a></li>
+            {% empty %}
+              <li><a href="{% url 'catalog:product_list' %}">Все товары</a></li>
+            {% endfor %}
           </ul>
         </div>
   
         <div>
           <h4>Клиентам</h4>
           <ul>
-            <li><a href="#">О нас</a></li>
-            <li><a href="#">Доставка и оплата</a></li>
+            <li><a href="{% url 'home' %}">Главная</a></li>
+            <li><a href="{% url 'catalog:product_list' %}">Каталог</a></li>
+            <li><a href="{% url 'privacy' %}">Политика конфиденциальности</a></li>
             <li><a href="{% url 'contacts' %}">Контакты</a></li>
           </ul>
         </div>
@@ -1572,20 +1824,37 @@
         <div>
           <h4>Контакты</h4>
           <ul>
-            <li>+7 (932) 491-04-82</li>
-            <li>info@bizonvr.ru</li>
-            <li>Москва, ул. Академика Королева, 13с1</li>
+            {% if site_contact_phone %}
+              <li><a href="tel:{{ site_contact_phone_href|default:site_contact_phone }}">{{ site_contact_phone }}</a></li>
+            {% endif %}
+            {% if site_contact_email %}
+              <li><a href="mailto:{{ site_contact_email }}">{{ site_contact_email }}</a></li>
+            {% endif %}
+            {% if site_contact_telegram %}
+              <li><a href="{{ site_contact_telegram }}" target="_blank" rel="noopener noreferrer">{{ site_contact_telegram_handle|default:site_contact_telegram }}</a></li>
+            {% endif %}
+            {% if site_contact_address %}
+              <li>{{ site_contact_address }}</li>
+            {% endif %}
           </ul>
         </div>
       </div>
   
       <div class="vr-copyright">
-        &copy; 2024 BizonVR. Все права защищены.
+        &copy; {{ current_year }} {{ site_brand }}. Все права защищены.
       </div>
     </div>
   </footer>
+
+  <div id="cookie-consent-banner" class="cookie-consent-banner" role="region" aria-label="Согласие с cookies" aria-live="polite" aria-hidden="true">
+    <p class="cookie-consent-text">
+      Продолжая пользоваться сайтом, вы даете согласие на использование cookies и обработку персональных данных в соответствии с
+      <a href="{% url 'privacy' %}" class="cookie-consent-link">Политикой конфиденциальности</a>.
+    </p>
+    <button id="cookie-consent-accept" type="button" class="cookie-consent-btn">Ок</button>
+  </div>
   
-  <div class="mobile-dock">
+  <div class="mobile-dock" data-mobile-dock>
     <a href="{% url 'home' %}" class="dock-item {% if active_section == 'home' %}active{% endif %}" title="Главная">
       <i data-lucide="home" width="24" height="24"></i>
     </a>

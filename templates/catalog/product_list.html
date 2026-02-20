@@ -12,10 +12,34 @@
     .catalog-layout { flex-direction: row; }
     .catalog-filters { width: 244px; flex-shrink: 0; }
   }
+  .mobile-filters-modal .mobile-filters-content > div {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding-bottom: 1rem;
+    margin-bottom: 1rem;
+  }
+  .mobile-filters-modal .mobile-filters-content > div:last-child {
+    border-bottom: 0;
+    margin-bottom: 0;
+    padding-bottom: 0;
+  }
 </style>
-<div class="container mx-auto px-0 md:px-4 pt-0 pb-8 md:py-8" x-data="{ filtersModalOpen: false, sortDropdownOpen: false }" @keydown.escape.window="filtersModalOpen = false; sortDropdownOpen = false">
+<div class="container mx-auto px-0 md:px-4 pt-0 pb-8 md:py-8"
+     x-data="{ filtersModalOpen: false, sortDropdownOpen: false, mobileFiltersDirty: false, pendingFiltersUrl: '' }"
+     x-effect="document.documentElement.classList.toggle('overflow-hidden', filtersModalOpen && window.innerWidth < 1024); document.body.classList.toggle('overflow-hidden', filtersModalOpen && window.innerWidth < 1024); if (!filtersModalOpen) mobileFiltersDirty = false"
+     @keydown.escape.window="filtersModalOpen = false; sortDropdownOpen = false">
+  {% if is_catalog_root %}
+  <!-- Мобильный корень каталога: только поиск сверху -->
+  <div x-show="!filtersModalOpen"
+       class="md:hidden sticky top-0 z-[99998] px-3 py-3 mb-4 bg-dark-900/80 backdrop-blur-md border-b border-dark-600/50" style="border-radius: 0 0 24px 24px;">
+    <form action="{% url 'catalog:product_list' %}" method="get" class="relative">
+      <input type="search" name="q" value="{{ search_query }}" placeholder="Поиск по товарам" class="search-input-glass w-full text-white rounded-full pl-4 pr-10 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-accent" />
+      <button type="submit" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white w-[18px] h-[18px] flex items-center justify-center" aria-label="Искать"><i data-lucide="search" class="w-[18px] h-[18px]"></i></button>
+    </form>
+  </div>
+  {% else %}
   <!-- Мобильная фиксированная панель: назад, поиск, поделиться — остаётся при скролле -->
-  <div class="lg:hidden sticky top-0 z-[99998] px-3 h-[60px] flex items-center mb-4 bg-dark-900/80 backdrop-blur-md border-b border-dark-600/50">
+  <div x-show="!filtersModalOpen"
+       class="lg:hidden sticky top-0 z-[99998] px-3 h-[60px] flex items-center mb-4 bg-dark-900/80 backdrop-blur-md border-b border-dark-600/50" style="border-radius: 0 0 24px 24px;">
     <div class="flex items-center gap-2 w-full">
       <a href="javascript:history.back()" class="flex-shrink-0 w-10 h-10 rounded-full bg-dark-800 hover:bg-dark-700 flex items-center justify-center text-white transition-colors" aria-label="Назад">
         <i data-lucide="arrow-left" class="w-5 h-5"></i>
@@ -43,13 +67,21 @@
       </button>
     </div>
   </div>
+  {% endif %}
   <div class="catalog-layout">
     <!-- Левая панель фильтров: только на десктопе -->
     <aside class="catalog-filters w-full hidden lg:block">
-      <div class="bg-dark-800 rounded-xl p-4 space-y-6 sticky top-24">
+      <div class="bg-dark-800 rounded-xl p-4 space-y-6 sticky top-24"
+           @click.capture="const link = $event.target.closest('a[href]'); if (link) { $event.preventDefault(); pendingFiltersUrl = link.getAttribute('href'); mobileFiltersDirty = true; }">
         <h3 class="text-sm font-bold text-white uppercase tracking-wider">Фильтры</h3>
 
-        {% include "catalog/_filters_main.html" %}
+        {% include "catalog/_filters_main.html" with defer_category_apply=True category_form_id="desktop-sidebar-category-filter-form" %}
+
+        <button type="button"
+                class="w-full py-2.5 rounded-lg bg-accent hover:bg-accent-hover text-dark-900 text-sm font-semibold transition-colors"
+                @click="if (pendingFiltersUrl) { location.href = pendingFiltersUrl; } else { document.getElementById('desktop-sidebar-category-filter-form')?.requestSubmit(); }">
+          Применить
+        </button>
 
         <button type="button"
                 class="flex w-full items-center justify-center gap-2 py-2.5 rounded-lg bg-dark-700 hover:bg-dark-600 text-gray-300 hover:text-white text-sm font-medium transition-colors"
@@ -62,8 +94,9 @@
 
     <!-- Основной контент -->
     <div class="flex-1 min-w-0">
+  {% if not is_catalog_root %}
   <!-- Мобильная панель: круглые иконки сортировки и фильтров + скруглённые чипы — уезжают при скролле -->
-  <div class="lg:hidden relative">
+  <div x-show="!filtersModalOpen" class="lg:hidden relative">
     <div class="flex flex-wrap items-center gap-2 mb-6">
       <div class="flex items-center gap-2 flex-shrink-0">
         <button type="button" @click="sortDropdownOpen = !sortDropdownOpen; filtersModalOpen = false"
@@ -118,8 +151,42 @@
        class="block px-4 py-2 text-sm {% if current_sort == 'name' %}text-accent font-medium{% else %}text-gray-300 hover:text-white{% endif %}">По названию</a>
   </div>
   </div>
+  {% endif %}
 
-  <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 lg:mb-8">
+  {% if is_catalog_root %}
+    <div class="md:hidden mb-8 px-3">
+      <h2 class="text-2xl font-light text-white mb-4">Категории</h2>
+      <div class="grid" style="grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem;">
+        {% for section in catalog_sections %}
+          {% for category in section.categories.all %}
+            {% with preview_url=catalog_category_previews|get_dict_item:category.id %}
+            <a href="{% url 'catalog:product_list' %}?category={{ category.slug }}"
+               class="relative overflow-hidden group cursor-pointer transition-all duration-300 hover:scale-[1.02]"
+               style="aspect-ratio: 1 / 1; border-radius: 16px;">
+              <div class="absolute inset-0 bg-dark-800" style="border-radius: inherit;">
+                {% if preview_url %}
+                <div class="absolute inset-0 bg-contain bg-center bg-no-repeat transition-transform duration-700 group-hover:scale-110"
+                     style="background-image: url('{{ preview_url }}'); border-radius: inherit;"></div>
+                {% else %}
+                <div class="absolute inset-0 bg-gradient-to-br from-dark-700 to-dark-900" style="border-radius: inherit;"></div>
+                {% endif %}
+              </div>
+              <div class="absolute bottom-0 left-0 right-0 z-10"
+                   style="height: 58%; border-radius: inherit; background: linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.5) 50%, transparent 100%);"></div>
+              <div class="absolute inset-0 z-20 p-2">
+                <h3 class="text-[10px] leading-tight font-semibold text-white text-left">
+                  {{ category.name }}
+                </h3>
+              </div>
+            </a>
+            {% endwith %}
+          {% endfor %}
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+
+  <div class="{% if is_catalog_root %}hidden md:flex{% else %}flex{% endif %} flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 lg:mb-8">
     <h2 class="text-2xl md:text-3xl font-light text-white">
       {% if search_query %}Результаты поиска по запросу «{{ search_query }}»{% else %}Каталог{% endif %}
     </h2>
@@ -137,7 +204,34 @@
     </div>
   </div>
 
-  {% if products %}
+  <div class="{% if is_catalog_root %}hidden md:block{% else %}block{% endif %}">
+  {% if is_bundles_category %}
+    {% if bundles %}
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 md:gap-3">
+        {% for bundle in bundles %}
+          {% include "catalog/_bundle_card.html" %}
+        {% endfor %}
+      </div>
+      {% if bundle_page_obj.has_other_pages %}
+        <nav class="flex justify-center gap-2 mt-12 flex-wrap">
+          {% if bundle_page_obj.has_previous %}
+            <a href="{% url 'catalog:product_list' %}{% filter_url_pagination bundle_page_obj.previous_page_number %}"
+               class="px-4 py-2 rounded-lg bg-dark-700 text-gray-300 hover:text-white hover:bg-dark-600 transition-colors text-sm">← Назад</a>
+          {% endif %}
+          <span class="px-4 py-2 text-gray-400 text-sm self-center">Стр. {{ bundle_page_obj.number }} из {{ bundle_page_obj.paginator.num_pages }}</span>
+          {% if bundle_page_obj.has_next %}
+            <a href="{% url 'catalog:product_list' %}{% filter_url_pagination bundle_page_obj.next_page_number %}"
+               class="px-4 py-2 rounded-lg bg-dark-700 text-gray-300 hover:text-white hover:bg-dark-600 transition-colors text-sm">Вперёд →</a>
+          {% endif %}
+        </nav>
+      {% endif %}
+    {% else %}
+      <div class="text-center py-16 text-gray-400">
+        <i data-lucide="package" class="w-16 h-16 mx-auto mb-4 opacity-50"></i>
+        <p>Наборов пока нет.</p>
+      </div>
+    {% endif %}
+  {% elif products %}
     <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 md:gap-3">
       {% for product in products %}
         {% include "catalog/_product_card.html" with show_favorite=True favorite_product_ids=favorite_product_ids %}
@@ -163,10 +257,11 @@
       <p>Товаров пока нет.</p>
     </div>
   {% endif %}
+  </div>
     </div>
   </div>
 
-  <!-- Модалка «Все фильтры» (десктоп) -->
+  <!-- Модалка «Все фильтры» -->
   <div x-show="filtersModalOpen"
        x-cloak
        x-effect="filtersModalOpen && typeof lucide !== 'undefined' && lucide.createIcons()"
@@ -176,28 +271,65 @@
        x-transition:leave="transition ease-in duration-150"
        x-transition:leave-start="opacity-100"
        x-transition:leave-end="opacity-0"
-       @click.outside="filtersModalOpen = false"
-       class="fixed inset-0 z-[60000] flex items-start justify-center p-4 pt-20 bg-black/60 backdrop-blur-sm"
+       @click="if (window.innerWidth < 1024 && $event.target === $el) filtersModalOpen = false"
+       class="fixed inset-0 z-[60000] bg-black/60 backdrop-blur-sm"
        style="display: none;">
-    <div @click.stop
-         x-transition:enter="transition ease-out duration-200"
-         x-transition:enter-start="opacity-0 scale-95"
-         x-transition:enter-end="opacity-100 scale-100"
-         class="bg-dark-800 rounded-xl shadow-2xl border border-dark-600 w-full max-w-md max-h-[calc(100vh-6rem)] flex flex-col">
-      <div class="flex items-center justify-between p-4 border-b border-dark-600 flex-shrink-0">
-        <h3 class="text-lg font-bold text-white">Все фильтры</h3>
-        <button type="button"
-                class="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-dark-600 transition-colors"
-                @click="filtersModalOpen = false"
-                aria-label="Закрыть">
-          <i data-lucide="x" class="w-5 h-5"></i>
-        </button>
-      </div>
-      <div class="p-4 space-y-6 overflow-y-auto flex-1 min-h-0">
-        {% include "catalog/_filters_main.html" %}
-        {% include "catalog/_filters_characteristics.html" %}
+    <div class="hidden lg:flex items-start justify-center p-4 pt-20 w-full h-full">
+      <div @click.stop
+           @click.outside="filtersModalOpen = false"
+           x-transition:enter="transition ease-out duration-200"
+           x-transition:enter-start="opacity-0 scale-95"
+           x-transition:enter-end="opacity-100 scale-100"
+           class="bg-dark-800 rounded-xl shadow-2xl border border-dark-600 w-full max-w-md max-h-[calc(100vh-6rem)] flex flex-col">
+        <div class="flex items-center justify-between p-4 border-b border-dark-600 flex-shrink-0">
+          <h3 class="text-lg font-bold text-white">Все фильтры</h3>
+          <button type="button"
+                  class="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-dark-600 transition-colors"
+                  @click="filtersModalOpen = false"
+                  aria-label="Закрыть">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+        <div class="p-4 space-y-6 overflow-y-auto flex-1 min-h-0"
+             @click.capture="const link = $event.target.closest('a[href]'); if (link) { $event.preventDefault(); pendingFiltersUrl = link.getAttribute('href'); mobileFiltersDirty = true; }">
+          {% include "catalog/_filters_main.html" with defer_category_apply=True category_form_id="desktop-modal-category-filter-form" %}
+          {% include "catalog/_filters_characteristics.html" with defer_category_apply=True %}
+        </div>
+        <div class="p-4 border-t border-dark-600 flex-shrink-0">
+          <button type="button"
+                  class="w-full rounded-xl bg-accent hover:bg-accent-hover text-dark-900 text-sm font-semibold py-2.5 transition-colors"
+                  @click="if (pendingFiltersUrl) { location.href = pendingFiltersUrl; } else { document.getElementById('desktop-modal-category-filter-form')?.requestSubmit(); }">
+            Применить
+          </button>
+        </div>
       </div>
     </div>
+
+    <div class="lg:hidden fixed inset-0 mobile-filters-modal bg-dark-900 flex flex-col"
+         @input.capture="if ($event.target.matches('input,select,textarea')) mobileFiltersDirty = true"
+         @change.capture="if ($event.target.matches('input,select,textarea')) mobileFiltersDirty = true"
+         style="padding-top: max(0.5rem, env(safe-area-inset-top)); padding-bottom: max(0.5rem, env(safe-area-inset-bottom));">
+      <div class="flex items-center justify-between px-4 py-3">
+        <div class="w-16"></div>
+        <h3 class="text-[34px] leading-none font-semibold text-center text-white">Фильтры</h3>
+        <button type="button" class="text-[17px] text-blue-600 font-medium" @click="filtersModalOpen = false">Отмена</button>
+      </div>
+      <div class="flex-1 min-h-0 overflow-y-auto px-3 pb-3">
+        <div class="p-4 mobile-filters-content space-y-4 bg-dark-800 rounded-2xl"
+             @click.capture="const link = $event.target.closest('a[href]'); if (link) { $event.preventDefault(); pendingFiltersUrl = link.getAttribute('href'); mobileFiltersDirty = true; }">
+          {% include "catalog/_filters_main.html" with defer_category_apply=True category_form_id="mobile-category-filter-form" %}
+          {% include "catalog/_filters_characteristics.html" with defer_category_apply=True %}
+        </div>
+      </div>
+      <div class="px-4 pt-2">
+        <button type="button"
+                class="w-full rounded-2xl bg-accent text-dark-900 text-lg font-semibold py-3.5"
+                @click="if (pendingFiltersUrl) { location.href = pendingFiltersUrl; return; } if (mobileFiltersDirty) { const modal = $el.closest('.mobile-filters-modal'); const categoryForm = document.getElementById('mobile-category-filter-form'); if (categoryForm) { const minInput = modal.querySelector('input[name=price_min][type=number]'); const maxInput = modal.querySelector('input[name=price_max][type=number]'); if (minInput) { let hiddenMin = categoryForm.querySelector('input[name=price_min]'); if (!hiddenMin) { hiddenMin = document.createElement('input'); hiddenMin.type = 'hidden'; hiddenMin.name = 'price_min'; categoryForm.appendChild(hiddenMin); } hiddenMin.value = minInput.value || ''; } if (maxInput) { let hiddenMax = categoryForm.querySelector('input[name=price_max]'); if (!hiddenMax) { hiddenMax = document.createElement('input'); hiddenMax.type = 'hidden'; hiddenMax.name = 'price_max'; categoryForm.appendChild(hiddenMax); } hiddenMax.value = maxInput.value || ''; } categoryForm.requestSubmit(); } else { const form = modal.querySelector('form'); if (form) { form.requestSubmit(); } else { filtersModalOpen = false; } } } else { filtersModalOpen = false; }"
+                x-text="mobileFiltersDirty ? 'Применить' : 'Закрыть'">
+        </button>
+      </div>
+    </div>
+
   </div>
 </div>
 {% endblock %}

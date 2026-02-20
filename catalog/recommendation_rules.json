@@ -1,0 +1,39 @@
+{
+  "default_max_per_section": 6,
+  "alternatives_limit": 5,
+  "sections": {
+    "frequently_bought": {
+      "title": "С этим часто покупают",
+      "badge": "Часто берут вместе",
+      "enabled": true
+    },
+    "compatible_accessories": {
+      "title": "Аксессуары, которые подходят",
+      "badge": "Совместимо",
+      "enabled": true
+    },
+    "alternatives": {
+      "title": "Альтернативы",
+      "badge": "Альтернатива",
+      "enabled": true
+    }
+  },
+  "type_rules": {
+    "strap": {
+      "target_types": ["battery", "dock", "protection", "case", "cable"],
+      "per_type_limit": 2
+    },
+    "battery": {
+      "target_types": ["dock", "cable", "strap"],
+      "per_type_limit": 2
+    },
+    "headset": {
+      "target_types": ["strap", "battery", "protection", "case"],
+      "per_type_limit": 2
+    },
+    "default": {
+      "target_types": ["strap", "battery", "dock", "protection", "case", "cable", "accessory"],
+      "per_type_limit": 2
+    }
+  }
+}

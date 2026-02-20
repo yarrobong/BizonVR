@@ -281,7 +281,6 @@ class Command(BaseCommand):
                                 bundle=bundle,
                                 product=product,
                                 quantity=item['quantity'],
-                                price=Decimal(item['price']),
                             )
                     
                     # 11. Города

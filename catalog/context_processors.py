@@ -1,5 +1,8 @@
 """Context processors для каталога."""
 
+from datetime import date
+
+from django.conf import settings
 from django.core.cache import cache
 from django.db.models import Min
 
@@ -79,5 +82,17 @@ def catalog_menu(request):
     
     # Активная секция для подсветки в мобильном меню
     result['active_section'] = _get_active_section(request)
+
+    # Общие публичные данные сайта для шаблонов
+    result['site_brand'] = getattr(settings, 'SITE_BRAND', 'BizonVR')
+    result['site_description'] = getattr(settings, 'SITE_DESCRIPTION', '')
+    result['site_contact_phone'] = getattr(settings, 'SITE_CONTACT_PHONE', '')
+    result['site_contact_phone_href'] = getattr(settings, 'SITE_CONTACT_PHONE_HREF', '')
+    result['site_contact_email'] = getattr(settings, 'SITE_CONTACT_EMAIL', '')
+    result['site_contact_address'] = getattr(settings, 'SITE_CONTACT_ADDRESS', '')
+    result['site_contact_telegram'] = getattr(settings, 'SITE_CONTACT_TELEGRAM', '')
+    result['site_contact_telegram_handle'] = getattr(settings, 'SITE_CONTACT_TELEGRAM_HANDLE', '')
+    result['site_work_hours'] = getattr(settings, 'SITE_WORK_HOURS', '')
+    result['current_year'] = date.today().year
     
     return result

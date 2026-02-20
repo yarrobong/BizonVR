@@ -185,7 +185,7 @@ class Command(BaseCommand):
                 'bundle_id': item.bundle_id,
                 'product_id': item.product_id,
                 'quantity': item.quantity,
-                'price': str(item.price),
+                'price': str(item.effective_price),
             })
         backup_data['models']['product_bundle_items'] = bundle_items_data
         

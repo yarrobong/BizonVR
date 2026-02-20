@@ -30,6 +30,7 @@ from .models import (
     ProductTag,
     ProductVariant,
     ProductVariantCharacteristic,
+    Service,
 )
 
 
@@ -193,12 +194,12 @@ class ProductStockAdmin(admin.ModelAdmin):
 
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
-    list_display = ('name', 'slug', 'section', 'tile_size', 'has_icon')
+    list_display = ('name', 'slug', 'section', 'tile_size', 'is_bundles_category', 'has_icon')
     list_editable = ('tile_size',)
-    list_filter = ('section',)
+    list_filter = ('section', 'is_bundles_category')
     prepopulated_fields = {'slug': ('name',)}
     search_fields = ('name',)
-    fields = ('name', 'slug', 'section', 'icon', 'tile_size')
+    fields = ('name', 'slug', 'section', 'icon', 'tile_size', 'is_bundles_category')
     
     def has_icon(self, obj):
         return bool(obj.icon)
@@ -222,13 +223,50 @@ class ProductBundleItemInline(admin.TabularInline):
     model = ProductBundleItem
     extra = 1
     autocomplete_fields = ('product',)
+    fields = ('product', 'quantity', 'price_preview')
+    readonly_fields = ('price_preview',)
+
+    def price_preview(self, obj):
+        if obj and obj.product_id:
+            return f'{obj.effective_price} ₽ (−5%)'
+        return '—'
+    price_preview.short_description = 'Цена в комплекте'
+
+
+class ProductBundleItemInlineForProduct(admin.TabularInline):
+    """Участие товара в комплектах — редактируется при редактировании товара."""
+    model = ProductBundleItem
+    fk_name = 'product'
+    extra = 1
+    autocomplete_fields = ('bundle',)
+    fields = ('bundle', 'quantity', 'price_preview')
+    readonly_fields = ('price_preview',)
+    verbose_name = 'Позиция в комплекте'
+    verbose_name_plural = 'Участие в комплектах'
+
+    def price_preview(self, obj):
+        if obj and obj.product_id:
+            return f'{obj.effective_price} ₽ (−5%)'
+        return '—'
+    price_preview.short_description = 'Цена в комплекте'
 
 
 @admin.register(ProductBundle)
 class ProductBundleAdmin(admin.ModelAdmin):
-    list_display = ('name', 'items_count', 'bundle_total')
+    list_display = ('name', 'slug', 'items_count', 'bundle_total')
     inlines = (ProductBundleItemInline,)
     search_fields = ('name',)
+    prepopulated_fields = {'slug': ('name',)}
+    readonly_fields = ('image_preview',)
+    fieldsets = (
+        (None, {
+            'fields': ('name', 'slug', 'description', 'image_preview', 'image'),
+        }),
+    )
+
+    def image_preview(self, obj):
+        return _admin_image_preview(obj, width=120, height=120)
+    image_preview.short_description = 'Превью'
 
     def items_count(self, obj):
         return obj.items.count() if obj.pk else 0
@@ -237,7 +275,7 @@ class ProductBundleAdmin(admin.ModelAdmin):
 
     def bundle_total(self, obj):
         if obj.pk:
-            total = sum(float(i.price) * i.quantity for i in obj.items.all())
+            total = sum(float(i.effective_price) * i.quantity for i in obj.items.all())
             return f'{total:,.0f} ₽'.replace(',', ' ')
         return '—'
 
@@ -297,7 +335,7 @@ class ProductAdmin(admin.ModelAdmin):
     list_filter = ('category', 'is_active', 'tags')
     search_fields = ('name', 'description')
     prepopulated_fields = {'slug': ('name',)}
-    inlines = (ProductVariantInline, ProductImageInline, ProductCharacteristicInline, ProductStockInlineForProduct)
+    inlines = (ProductVariantInline, ProductImageInline, ProductCharacteristicInline, ProductStockInlineForProduct, ProductBundleItemInlineForProduct)
     readonly_fields = ('created_at', 'updated_at', 'image_preview')
     filter_horizontal = ('tags',)
     actions = ('export_catalog_with_images', 'backup_full_catalog',)
@@ -563,6 +601,15 @@ class CallbackRequestAdmin(admin.ModelAdmin):
     list_display = ('phone', 'name', 'source', 'created_at')
     list_filter = ('source', 'created_at')
     search_fields = ('phone', 'name')
+
+
+@admin.register(Service)
+class ServiceAdmin(admin.ModelAdmin):
+    list_display = ('name', 'price_from', 'order', 'is_active')
+    list_editable = ('order', 'is_active')
+    list_filter = ('is_active',)
+    search_fields = ('name', 'short_description', 'description')
+    fields = ('name', 'short_description', 'description', 'icon', 'price_from', 'order', 'is_active')
 
 
 @admin.register(Favorite)

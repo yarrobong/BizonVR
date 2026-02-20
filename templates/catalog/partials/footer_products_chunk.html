@@ -1,0 +1,21 @@
+{% if products %}
+  <div class="footer-products-grid">
+    {% for product in products %}
+      {% include "catalog/_product_card.html" with product=product show_favorite=True favorite_product_ids=favorite_product_ids show_add_button=False %}
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="rounded-xl border border-dark-700 bg-dark-800/50 p-4 text-sm text-gray-400">
+    Товары пока не найдены.
+  </div>
+{% endif %}
+
+{% if has_next %}
+  <div class="h-8 mt-3" data-footer-products-next data-next-url="{% url 'catalog:footer_products_feed' %}?page={{ next_page }}&layout={{ footer_products_layout }}"></div>
+{% elif has_more_after_limit %}
+  <div class="mt-4 text-center" data-footer-products-end>
+    <a href="{% url 'catalog:product_list' %}" class="inline-flex items-center justify-center rounded-lg bg-accent hover:bg-accent-hover text-dark-900 text-xs font-bold uppercase tracking-wide px-4 py-2 transition-colors">
+      Показать все товары
+    </a>
+  </div>
+{% endif %}

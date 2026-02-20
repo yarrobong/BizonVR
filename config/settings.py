@@ -168,6 +168,17 @@ NOWPAYMENTS_API_BASE = config('NOWPAYMENTS_API_BASE', default='https://api.nowpa
 # Для IPN webhook и callback нужен абсолютный URL сайта (в продакшене обязательно)
 SITE_URL = config('SITE_URL', default='http://localhost:8000').rstrip('/')
 
+# Публичные данные сайта (используются в футере и общих шаблонах)
+SITE_BRAND = config('SITE_BRAND', default='BizonVR')
+SITE_DESCRIPTION = config('SITE_DESCRIPTION', default='Магазин VR оборудования и аттракционов')
+SITE_CONTACT_PHONE = config('SITE_CONTACT_PHONE', default='+7 (932) 491-04-82')
+SITE_CONTACT_PHONE_HREF = config('SITE_CONTACT_PHONE_HREF', default='+79324910482')
+SITE_CONTACT_EMAIL = config('SITE_CONTACT_EMAIL', default='info@bizon-business.ru')
+SITE_CONTACT_ADDRESS = config('SITE_CONTACT_ADDRESS', default='Москва, ул. Академика Королева, 13с1')
+SITE_CONTACT_TELEGRAM = config('SITE_CONTACT_TELEGRAM', default='https://t.me/bizon_order_manager')
+SITE_CONTACT_TELEGRAM_HANDLE = config('SITE_CONTACT_TELEGRAM_HANDLE', default='@bizon_order_manager')
+SITE_WORK_HOURS = config('SITE_WORK_HOURS', default='Пн-Пт: 10:00-19:00')
+
 # Кэш для django-ratelimit (ограничение частоты запросов). В продакшене лучше Redis.
 CACHES = {
     'default': {

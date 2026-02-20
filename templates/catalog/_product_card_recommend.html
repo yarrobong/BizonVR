@@ -2,6 +2,15 @@
 {# Ожидаемые переменные: product, request, favorite_product_ids #}
 <div class="card">
   <div class="card-img-wrapper relative" style="position: relative;">
+    {% if product.tags.all %}
+    <div class="absolute z-20 flex flex-col items-start gap-1 max-w-[70%]" style="top: 0.5rem; left: 0.5rem; right: auto !important;">
+      {% for tag in product.tags.all %}
+      <span class="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide backdrop-blur-sm" style="{{ tag|tag_badge_style }}">
+        {{ tag.name }}
+      </span>
+      {% endfor %}
+    </div>
+    {% endif %}
     <div class="fav-icon z-20 top-2 right-2 md:top-3 md:right-3" style="z-index: 40; position: absolute; left: auto !important; right: 0.5rem !important;" @click.stop>
       {% if favorite_product_ids and product.id in favorite_product_ids %}
         {% include "catalog/partials/favorite_button.html" with product=product is_favorite=True %}

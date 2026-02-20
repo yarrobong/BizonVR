@@ -71,6 +71,42 @@
 {% endblock %}
 
 {% block content %}
+<style>
+  .home-featured-products-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+  /* Mobile: 2 колонки * 5 рядов = 10 карточек */
+  .home-featured-item:nth-child(n + 11) {
+    display: none;
+  }
+  @media (min-width: 768px) {
+    .home-featured-products-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.75rem;
+    }
+    /* Medium: 3 колонки * 4 ряда = 12 карточек */
+    .home-featured-item:nth-child(-n + 12) {
+      display: block;
+    }
+    .home-featured-item:nth-child(n + 13) {
+      display: none;
+    }
+  }
+  @media (min-width: 1024px) {
+    .home-featured-products-grid {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+    /* Desktop: 5 колонок * 3 ряда = 15 карточек */
+    .home-featured-item:nth-child(-n + 15) {
+      display: block;
+    }
+    .home-featured-item:nth-child(n + 16) {
+      display: none;
+    }
+  }
+</style>
 
 <!-- Hero Carousel: карточки с собственным фоном; на мобильных 16:5 и “подглядывает” следующий слайд -->
 <section class="hero-carousel relative w-full max-w-full min-w-0 bg-dark-900 touch-pan-y md:mx-0 mt-4 md:mt-6"
@@ -304,7 +340,7 @@
         <span class="w-[54px] h-[54px] rounded-2xl bg-dark-800 border border-dark-600/50 shadow-lg shadow-black/20 flex items-center justify-center">
           <i data-lucide="layout-grid" class="w-6 h-6 text-accent inline-block"></i>
         </span>
-        <span class="text-[11px] font-medium text-white text-center leading-tight">Каталог</span>
+        <span class="text-[11px] font-medium text-white text-center leading-tight">Сортировка</span>
       </a>
 
       <a href="{% url 'arenda' %}" class="brick flex-shrink-0 w-[72px] flex flex-col items-center gap-2">
@@ -312,6 +348,13 @@
           <i data-lucide="glasses" class="w-6 h-6 text-accent inline-block"></i>
         </span>
         <span class="text-[11px] font-medium text-white text-center leading-tight">Аренда</span>
+      </a>
+
+      <a href="{% url 'uslugi' %}" class="brick flex-shrink-0 w-[72px] flex flex-col items-center gap-2">
+        <span class="w-[54px] h-[54px] rounded-2xl bg-dark-800 border border-dark-600/50 shadow-lg shadow-black/20 flex items-center justify-center">
+          <i data-lucide="briefcase" class="w-6 h-6 text-accent inline-block"></i>
+        </span>
+        <span class="text-[11px] font-medium text-white text-center leading-tight">Услуги</span>
       </a>
 
       <a href="{% url 'catalog:favorites' %}" class="brick flex-shrink-0 w-[72px] flex flex-col items-center gap-2">
@@ -325,7 +368,7 @@
         <span class="w-[54px] h-[54px] rounded-2xl bg-dark-800 border border-dark-600/50 shadow-lg shadow-black/20 flex items-center justify-center">
           <i data-lucide="shopping-cart" class="w-6 h-6 text-accent inline-block"></i>
         </span>
-        <span class="text-[11px] font-medium text-white text-center leading-tight">Корзина</span>
+        <span class="text-[11px] font-medium text-white text-center leading-tight" x-text="`Корзина ${cartCount}`">Корзина {{ cart_count|default:0 }}</span>
       </a>
 
       <a href="{% if user.is_authenticated %}{% url 'accounts:profile' %}{% else %}{% url 'accounts:login' %}{% endif %}" class="brick flex-shrink-0 w-[72px] flex flex-col items-center gap-2" hx-boost="false">
@@ -348,10 +391,14 @@
 <!-- Товары каталога -->
 <div class="container mx-auto pt-0 pb-8 md:py-8 px-4 md:px-4">
   {% if featured_products %}
-  <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 md:gap-4">
-    {% for product in featured_products %}
-      {% include "catalog/_product_card.html" with show_favorite=True favorite_product_ids=favorite_product_ids %}
-    {% endfor %}
+  <div class="max-w-[1140px] mx-auto">
+    <div class="home-featured-products-grid">
+      {% for product in featured_products %}
+        <div class="home-featured-item">
+          {% include "catalog/_product_card.html" with show_favorite=True favorite_product_ids=favorite_product_ids %}
+        </div>
+      {% endfor %}
+    </div>
   </div>
   <div class="flex justify-center mt-8">
     <a href="{% url 'catalog:product_list' %}{% if current_tag %}?tag={{ current_tag }}{% endif %}" class="text-xs text-gray-400 border border-gray-700 rounded-full px-6 py-2 hover:border-white hover:text-white transition-colors">Весь каталог</a>

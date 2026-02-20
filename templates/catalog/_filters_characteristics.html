@@ -3,13 +3,24 @@
 {% with char_key="char_"|add:ch_name %}
 <div>
   <div class="text-[10px] text-gray-500 uppercase mb-2">{{ ch_name }}</div>
-  <div class="space-y-1">
+  <div class="flex flex-wrap gap-2">
+    {% if defer_category_apply %}
+    <button type="button"
+            @click="pendingFiltersUrl = '{% url 'catalog:product_list' %}{% filter_url_unset char_key %}'; mobileFiltersDirty = true"
+            class="inline-flex items-center text-sm py-1.5 px-3 rounded-full border transition-colors {% if not char_filters|get_item:ch_name %}border-accent text-accent font-medium{% else %}border-dark-600 text-gray-400 hover:text-white{% endif %}">Все</button>
+    {% for val in ch_values %}
+    <button type="button"
+            @click="pendingFiltersUrl = '{% url 'catalog:product_list' %}{% filter_url_set char_key val %}'; mobileFiltersDirty = true"
+            class="inline-flex items-center text-sm py-1.5 px-3 rounded-full border transition-colors {% if char_filters|get_item:ch_name == val %}border-accent text-accent font-medium{% else %}border-dark-600 text-gray-400 hover:text-white{% endif %}">{{ val }}</button>
+    {% endfor %}
+    {% else %}
     <a href="{% url 'catalog:product_list' %}{% filter_url_unset char_key %}"
-       class="block text-sm py-1.5 rounded px-2 transition-colors {% if not char_filters|get_item:ch_name %}text-accent font-medium{% else %}text-gray-400 hover:text-white{% endif %}">Все</a>
+       class="inline-flex items-center text-sm py-1.5 px-3 rounded-full border transition-colors {% if not char_filters|get_item:ch_name %}border-accent text-accent font-medium{% else %}border-dark-600 text-gray-400 hover:text-white{% endif %}">Все</a>
     {% for val in ch_values %}
     <a href="{% url 'catalog:product_list' %}{% filter_url_set char_key val %}"
-       class="block text-sm py-1.5 rounded px-2 transition-colors {% if char_filters|get_item:ch_name == val %}text-accent font-medium{% else %}text-gray-400 hover:text-white{% endif %}">{{ val }}</a>
+       class="inline-flex items-center text-sm py-1.5 px-3 rounded-full border transition-colors {% if char_filters|get_item:ch_name == val %}border-accent text-accent font-medium{% else %}border-dark-600 text-gray-400 hover:text-white{% endif %}">{{ val }}</a>
     {% endfor %}
+    {% endif %}
   </div>
 </div>
 {% endwith %}

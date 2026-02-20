@@ -3,524 +3,167 @@
 
 {% block title %}{{ product.name }} — BizonVR{% endblock %}
 
+{% block mobile_header %}
+<div class="pd-mobile-header md:hidden"
+     x-data="{
+       mobileSearchOpen: false,
+       isFavorite: {% if is_favorite %}true{% else %}false{% endif %},
+       mobileVariantName: '',
+       headerFilled: false,
+       updateHeaderFilled() {
+         const photoEl = document.querySelector('.product-detail-scope .main-image-wrapper');
+         if (!photoEl) {
+           this.headerFilled = window.scrollY > 8;
+           return;
+         }
+         const rect = photoEl.getBoundingClientRect();
+         const threshold = 64;
+         this.headerFilled = rect.bottom <= threshold;
+       }
+     }"
+     x-init="$nextTick(() => updateHeaderFilled())"
+     @scroll.window.passive="updateHeaderFilled()"
+     @resize.window="updateHeaderFilled()"
+     @pd-variant-change.window="mobileVariantName = ($event.detail && $event.detail.name) ? $event.detail.name : ''">
+  <div class="pd-mobile-header-bar" :class="{ 'is-filled': headerFilled }">
+    <button type="button"
+            class="pd-mobile-icon-btn"
+            aria-label="Назад"
+            @click="if (window.history.length > 1) { window.history.back(); } else { window.location.href = '{% url 'catalog:product_list' %}'; }">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M15 18l-6-6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+      </svg>
+    </button>
+    <div class="pd-mobile-header-actions">
+      <button type="button"
+              class="pd-mobile-icon-btn"
+              aria-label="Поиск"
+              @click="mobileSearchOpen = true; $nextTick(() => { if ($refs.searchInput) $refs.searchInput.focus(); })">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"></circle>
+          <path d="M20 20l-3.5-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+        </svg>
+      </button>
+      <button type="button"
+              class="pd-mobile-icon-btn"
+              aria-label="Поделиться"
+              @click="
+                if (navigator.share) {
+                  navigator.share({ title: document.title, url: window.location.href }).catch(() => {});
+                } else if (navigator.clipboard && navigator.clipboard.writeText) {
+                  navigator.clipboard.writeText(window.location.href).catch(() => {});
+                }
+              ">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="18" cy="5" r="3" fill="none" stroke="currentColor" stroke-width="2"></circle>
+          <circle cx="6" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"></circle>
+          <circle cx="18" cy="19" r="3" fill="none" stroke="currentColor" stroke-width="2"></circle>
+          <path d="M8.6 10.8l6.8-3.6M8.6 13.2l6.8 3.6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+        </svg>
+      </button>
+      <form action="{% url 'catalog:toggle_favorite' product.pk %}"
+            method="post"
+            hx-boost="false"
+            hx-post="{% url 'catalog:toggle_favorite' product.pk %}"
+            hx-swap="none"
+            hx-push-url="false"
+            @htmx:after-request="if ($event.detail.successful) { isFavorite = !isFavorite; }"
+            class="pd-mobile-favorite-form">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+        <button type="submit"
+                class="pd-mobile-icon-btn"
+                :aria-label="isFavorite ? 'Убрать из избранного' : 'Добавить в избранное'"
+                :title="isFavorite ? 'Убрать из избранного' : 'Добавить в избранное'">
+          <svg viewBox="0 0 24 24" aria-hidden="true" :fill="isFavorite ? '#ef4444' : 'none'" :stroke="isFavorite ? '#ef4444' : 'currentColor'" stroke-width="2">
+            <path d="M19.5 12.572 12 21l-7.5-8.428A4.5 4.5 0 1 1 12 6.006a4.5 4.5 0 1 1 7.5 6.572" stroke-linecap="round" stroke-linejoin="round"></path>
+          </svg>
+        </button>
+      </form>
+    </div>
+    <div class="pd-mobile-header-center"
+         x-show="headerFilled"
+         x-transition:enter="transition ease-out duration-180"
+         x-transition:enter-start="opacity-0 -translate-y-2"
+         x-transition:enter-end="opacity-100 translate-y-0"
+         x-transition:leave="transition ease-in duration-120"
+         x-transition:leave-start="opacity-100 translate-y-0"
+         x-transition:leave-end="opacity-0 -translate-y-2">
+      <div class="pd-mobile-header-title">{{ product.name }}</div>
+      <div class="pd-mobile-header-variant" x-show="mobileVariantName" x-text="mobileVariantName"></div>
+    </div>
+  </div>
+
+  <div class="pd-mobile-search-overlay" x-show="mobileSearchOpen" x-cloak x-transition.opacity>
+    <div class="pd-mobile-search-row">
+      <form action="{% url 'catalog:product_list' %}" method="get" class="pd-mobile-search-form">
+        <button type="submit" class="pd-mobile-search-submit" aria-label="Искать">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"></circle>
+            <path d="M20 20l-3.5-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+          </svg>
+        </button>
+        <input x-ref="searchInput" type="search" name="q" placeholder="Поиск по товарам" class="pd-mobile-search-input" />
+      </form>
+      <button type="button" class="pd-mobile-cancel-btn" @click="mobileSearchOpen = false">Отмена</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
 {% block content %}
 {{ product_detail_data|json_script:"product-detail-data" }}
-<style>
-  html { scroll-behavior: smooth; }
-
-  .product-detail-scope {
-    --pd-accent: #00D4FF;
-    --pd-bg: #0d0f17;
-    --pd-card: #151923;
-    --pd-text: #ffffff;
-    --pd-muted: #9ca3af;
-    --pd-hover: #00B8E6;
-    --pd-success: rgba(16, 196, 76, 1);
-
-    font-family: 'GTEestiProDisplay', Arial, sans-serif;
-    background-color: var(--pd-bg);
-    color: var(--pd-text);
-    font-size: 14px;
-  }
-
-  .product-detail-scope,
-  .product-detail-scope * {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-  }
-
-  .product-detail-scope a { text-decoration: none; color: inherit; }
-  .product-detail-scope ul { list-style: none; }
-  .product-detail-scope button { cursor: pointer; border: none; font-family: inherit; }
-
-  .product-detail-scope .container {
-    max-width: 1440px;
-    margin: 20px auto;
-    padding: 0 16px;
-  }
-
-  .product-detail-scope .breadcrumbs {
-    color: var(--pd-muted);
-    font-size: 12px;
-    margin-bottom: 16px;
-  }
-  .product-detail-scope .breadcrumbs span { margin: 0 5px; }
-
-  .product-detail-scope .product-main {
-    display: grid;
-    grid-template-columns: 574px 1fr 388px;
-    column-gap: 24px;
-    row-gap: 30px;
-    margin-bottom: 40px;
-  }
-
-  @media (max-width: 1024px) {
-    .product-detail-scope .product-main {
-      grid-template-columns: 1fr;
-      gap: 18px;
-    }
-
-    .product-detail-scope .gallery-container {
-      position: relative;
-      top: 0;
-    }
-
-    .product-detail-scope .thumbs {
-      flex-direction: row;
-      overflow-x: auto;
-      padding-bottom: 6px;
-    }
-
-    .product-detail-scope .buy-box {
-      position: relative;
-      top: 0;
-    }
-
-    .product-detail-scope .cards-grid {
-      grid-template-columns: repeat(2, 1fr);
-    }
-  }
-
-  /* Gallery */
-  .product-detail-scope .gallery-container {
-    display: flex;
-    gap: 10px;
-    position: relative;
-  }
-
-  @media (min-width: 1025px) {
-    .product-detail-scope .gallery-container {
-      position: sticky;
-      top: 20px;
-    }
-  }
-
-  .product-detail-scope .thumbs {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-
-  .product-detail-scope .thumb {
-    width: 40px;
-    height: 40px;
-    object-fit: contain;
-    border-radius: 8px;
-    cursor: pointer;
-    border: 2px solid transparent;
-  }
-  .product-detail-scope .thumb.active { border-color: var(--pd-accent); }
-
-  .product-detail-scope .main-image-wrapper {
-    position: relative;
-    width: 100%;
-    margin-left: 16px;
-    height: auto;
-    aspect-ratio: 1 / 1;
-    background: var(--pd-card);
-    border-radius: 16px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-    border: 1px solid rgba(255,255,255,0.08);
-    touch-action: pan-y;
-  }
-
-  .product-detail-scope .main-image {
-    max-width: 100%;
-    max-height: 100%;
-    object-fit: contain;
-  }
-
-  @media (min-width: 1025px) {
-    .product-detail-scope .main-image-wrapper {
-      width: 500px;
-      height: 500px;
-      min-width: 500px;
-    }
-    .product-detail-scope .main-image { max-width: 500px; max-height: 500px; }
-    .product-detail-scope .thumb { width: 48px; height: 48px; }
-  }
-
-  /* Center: Info */
-  .product-detail-scope .product-info h1 {
-    font-size: 28px;
-    margin-bottom: 10px;
-    line-height: 1.2;
-  }
-
-  .product-detail-scope .variants-title { font-size: 14px; margin-bottom: 8px; color: var(--pd-muted); }
-  .product-detail-scope .color-variants {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 20px;
-    flex-wrap: wrap;
-  }
-
-  .product-detail-scope .color-opt {
-    width: 50px;
-    height: 50px;
-    border-radius: 8px;
-    border: 1px solid rgba(255,255,255,0.12);
-    cursor: pointer;
-    overflow: hidden;
-    background: rgba(255,255,255,0.04);
-  }
-  .product-detail-scope .color-opt img { width: 100%; height: 100%; object-fit: contain; }
-  .product-detail-scope .color-opt.selected { border: 2px solid var(--pd-accent); }
-
-  .product-detail-scope .short-specs { margin-top: 20px; }
-  .product-detail-scope .short-specs-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 16px;
-  }
-  .product-detail-scope .short-specs-title {
-    font-size: 16px;
-    font-weight: 700;
-    color: var(--pd-text);
-  }
-  .product-detail-scope .short-specs-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 14px;
-    background: rgba(255,255,255,0.08);
-    border-radius: 20px;
-    color: var(--pd-muted);
-    font-size: 13px;
-    font-weight: 500;
-    transition: background 0.2s;
-  }
-  .product-detail-scope .short-specs-link:hover {
-    background: rgba(255,255,255,0.12);
-    color: var(--pd-text);
-  }
-  .product-detail-scope .short-specs-list { display: flex; flex-direction: column; }
-  .product-detail-scope .short-specs .spec-line {
-    display: flex;
-    padding: 12px 0;
-    font-size: 14px;
-    border-bottom: 1px solid rgba(255,255,255,0.08);
-  }
-  .product-detail-scope .short-specs .spec-line:last-child { border-bottom: none; }
-  .product-detail-scope .short-specs .spec-line .spec-key {
-    color: var(--pd-muted);
-    width: 180px;
-    min-width: 180px;
-    flex-shrink: 0;
-  }
-  .product-detail-scope .short-specs .spec-line .spec-value { color: var(--pd-text); flex: 1; }
-
-  /* Right column */
-  .product-detail-scope .right-col {
-    display: flex;
-    flex-direction: column;
-    row-gap: 24px;
-    margin-left: 8px;
-  }
-
-  .product-detail-scope .buy-box {
-    background: var(--pd-card);
-    padding: 24px;
-    border-radius: 16px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.35);
-    height: fit-content;
-    position: sticky;
-    top: 20px;
-    border: 1px solid rgba(255,255,255,0.08);
-    color: var(--pd-text);
-  }
-
-  .product-detail-scope .price-block { margin-bottom: 20px; }
-  .product-detail-scope .price-row { display: flex; align-items: baseline; gap: 8px; }
-  .product-detail-scope .main-price { font-size: 28px; font-weight: 800; color: var(--pd-success); }
-
-  .product-detail-scope .add-cart-btn {
-    background: var(--pd-accent);
-    color: #001a34;
-    width: 100%;
-    padding: 14px;
-    border-radius: 12px;
-    font-size: 16px;
-    font-weight: 700;
-    margin-bottom: 12px;
-  }
-  .product-detail-scope .add-cart-btn:hover { background: var(--pd-hover); }
-
-  .product-detail-scope .buy-now-btn {
-    width: 100%;
-    padding: 12px;
-    background: rgba(255,255,255,0.06);
-    color: var(--pd-accent);
-    border-radius: 8px;
-    font-weight: 700;
-    border: 1px solid rgba(255,255,255,0.12);
-  }
-  .product-detail-scope .buy-now-btn:hover {
-    border-color: rgba(0, 212, 255, 0.35);
-    background: rgba(0, 212, 255, 0.08);
-  }
-
-  .product-detail-scope .delivery-section {
-    background: var(--pd-card);
-    padding: 24px;
-    border-radius: 16px;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.35);
-    border: 1px solid rgba(255,255,255,0.08);
-    font-size: 14px;
-    color: var(--pd-text);
-  }
-  .product-detail-scope .delivery-section-title {
-    font-size: 18px;
-    font-weight: 700;
-    margin-bottom: 12px;
-  }
-  .product-detail-scope .delivery-row { display: flex; gap: 10px; margin-bottom: 12px; }
-  .product-detail-scope .delivery-row:last-child { margin-bottom: 0; }
-
-  /* Recommendations */
-  .product-detail-scope .section-title { font-size: 24px; margin: 40px 0 20px; font-weight: 800; }
-
-  .product-detail-scope .cards-grid {
-    display: grid;
-    grid-template-columns: repeat(6, 1fr);
-    gap: 15px;
-    margin-bottom: 40px;
-  }
-
-  .product-detail-scope .card {
-    background: var(--pd-card);
-    border-radius: 12px;
-    padding: 10px;
-    position: relative;
-    transition: 0.2s;
-    border: 1px solid rgba(255,255,255,0.06);
-  }
-  .product-detail-scope .card:hover { box-shadow: 0 12px 30px rgba(0,0,0,0.35); border-color: rgba(0, 212, 255, 0.20); }
-
-  .product-detail-scope .card-img-wrapper {
-    position: relative;
-    aspect-ratio: 1 / 1;
-    height: auto;
-    margin-bottom: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-    background: var(--pd-card);
-  }
-  .product-detail-scope .card-img-wrapper a {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    height: 100%;
-  }
-  .product-detail-scope .card-img { max-width: 100%; max-height: 100%; object-fit: contain; }
-
-  .product-detail-scope .fav-icon {
-    /* Позиционирование задаём в шаблоне (tailwind-классами),
-       чтобы везде было одинаково: справа сверху + отступы на md+. */
-    position: absolute;
-    color: rgba(255,255,255,0.65);
-    cursor: pointer;
-  }
-
-  .product-detail-scope .card-price { font-weight: 800; font-size: 18px; color: var(--pd-accent); margin-bottom: 4px; }
-  .product-detail-scope .card-old-price { font-size: 12px; color: var(--pd-muted); text-decoration: line-through; }
-  .product-detail-scope .card-title {
-    font-size: 13px;
-    line-height: 1.4;
-    color: var(--pd-muted);
-    margin-bottom: 5px;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-
-  /* Description & Specs */
-  .product-detail-scope .details-section {
-    background: var(--pd-card);
-    padding: 30px;
-    border-radius: 16px;
-    margin-bottom: 50px;
-    border: 1px solid rgba(255,255,255,0.08);
-  }
-  .product-detail-scope .desc-text {
-    font-size: 15px;
-    line-height: 1.6;
-    margin-bottom: 30px;
-    max-width: 800px;
-  }
-  .product-detail-scope .specs-title { font-size: 20px; font-weight: 800; margin-bottom: 20px; }
-  .product-detail-scope .specs-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 40px;
-    max-width: 900px;
-  }
-  .product-detail-scope .spec-item { margin-bottom: 15px; }
-  .product-detail-scope .spec-label { color: var(--pd-muted); font-size: 14px; margin-bottom: 4px; }
-  .product-detail-scope .details-section .spec-value { font-size: 15px; color: var(--pd-text); }
-
-  /* Shared visibility helpers */
-  @media (max-width: 768px) {
-    .product-detail-scope .desktop-only { display: none !important; }
-  }
-  @media (min-width: 769px) {
-    .product-detail-scope .mobile-only { display: none !important; }
-  }
-
-  /* Mobile overrides */
-  @media (max-width: 768px) {
-    .product-detail-scope .container {
-      padding: 0;
-      margin: 0;
-      max-width: 100%;
-    }
-
-    .product-detail-scope .breadcrumbs { display: none; }
-
-    .product-detail-scope .product-main {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      margin-bottom: 96px; /* space for floating bar */
-    }
-
-    .product-detail-scope .gallery-container {
-      flex-direction: column;
-      background: var(--pd-card);
-      padding-bottom: 14px;
-      border-radius: 0 0 24px 24px;
-    }
-
-    .product-detail-scope .thumbs { display: none; }
-
-    .product-detail-scope .main-image-wrapper {
-      margin-left: 0;
-      border-radius: 0;
-      border: none;
-      background: transparent;
-    }
-
-    .product-detail-scope .dots {
-      display: flex;
-      justify-content: center;
-      gap: 6px;
-      margin-top: 10px;
-    }
-    .product-detail-scope .dot {
-      width: 6px;
-      height: 6px;
-      background-color: var(--pd-muted);
-      border-radius: 50%;
-      opacity: 0.5;
-    }
-    .product-detail-scope .dot.active { background-color: var(--pd-text); opacity: 1; }
-
-    .product-detail-scope .mobile-card {
-      background: var(--pd-card);
-      padding: 16px;
-      border-radius: 24px;
-      margin: 8px 16px 0;
-      border: 1px solid rgba(255,255,255,0.06);
-    }
-    .product-detail-scope .mobile-card:first-of-type { margin-top: 0; }
-
-    .product-detail-scope .mobile-price {
-      font-size: 28px;
-      font-weight: 900;
-      color: var(--pd-success);
-      line-height: 1.1;
-    }
-
-    .product-detail-scope .delivery-section {
-      padding: 16px;
-      border-radius: 24px;
-      box-shadow: none;
-    }
-    .product-detail-scope .delivery-section-title { font-size: 16px; margin-bottom: 10px; }
-
-    .product-detail-scope .section-title {
-      font-size: 20px;
-      margin: 24px 0 12px;
-      padding: 0 16px;
-    }
-
-    .product-detail-scope .cards-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 12px;
-      padding: 0 16px;
-      margin: 0;
-    }
-
-    .product-detail-scope .details-section {
-      padding: 16px;
-      border-radius: 24px;
-      border: 1px solid rgba(255,255,255,0.06);
-      margin: 16px 16px 24px;
-    }
-
-    .product-detail-scope .floating-action {
-      position: fixed;
-      bottom: calc(64px + env(safe-area-inset-bottom));
-      left: 0;
-      width: 100%;
-      background: rgba(21, 25, 35, 0.92);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      padding: 12px 16px;
-      border-top: 1px solid rgba(255,255,255,0.10);
-      z-index: 900;
-      box-shadow: 0 -6px 18px rgba(0,0,0,0.25);
-    }
-
-    .product-detail-scope .cta-btn {
-      background-color: var(--pd-accent);
-      color: #001a34;
-      border: none;
-      border-radius: 12px;
-      height: 48px;
-      width: 100%;
-      font-size: 16px;
-      font-weight: 800;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      transition: background 0.2s;
-    }
-    .product-detail-scope .cta-btn:active { background-color: var(--pd-hover); }
-    .product-detail-scope .cta-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-  }
-</style>
+{% include "catalog/partials/product_detail_scope_styles.html" %}
 <div class="product-detail-scope" x-data="{
   data: {},
   variants: [],
   productPrice: 0,
   selectedVariant: null,
+  cartQtyProduct: 0,
+  cartQtyByVariant: {},
+  mobileAddTransitioning: false,
+  mobileQtyRemoving: false,
+  mobileAddBusy: false,
+  mobileQtyBusy: false,
+  pendingMobileQty: null,
+  mobileDockOffsetPx: 74,
   selectedImageIndex: 0,
   touchStartX: 0,
   touchMoveX: 0,
-  init() {
-    try {
-      const el = document.getElementById('product-detail-data');
-      if (el) {
-        this.data = JSON.parse(el.textContent);
-        this.variants = this.data.variants || [];
-        this.productPrice = this.data.productPrice;
-        if (this.variants.length > 0) {
-          this.selectedVariant = this.variants[0];
-        }
-      }
-    } catch(e) { console.error('Error init product detail', e); }
+	  init() {
+	    try {
+	      const el = document.getElementById('product-detail-data');
+	      if (el) {
+	        this.data = JSON.parse(el.textContent);
+	        this.variants = this.data.variants || [];
+	        this.productPrice = this.data.productPrice;
+          this.cartQtyProduct = Number(this.data.cartQtyProduct || 0);
+          this.cartQtyByVariant = this.data.cartQtyByVariant || {};
+	        if (this.variants.length > 0) {
+	          this.selectedVariant = this.variants[0];
+	          window.dispatchEvent(new CustomEvent('pd-variant-change', { detail: { name: this.selectedVariant.name } }));
+	        }
+	      }
+	    } catch(e) { console.error('Error init product detail', e); }
+      this.$nextTick(() => {
+        this.syncMobileDockOffset();
+        window.addEventListener('resize', () => this.syncMobileDockOffset(), { passive: true });
+        window.addEventListener('orientationchange', () => this.syncMobileDockOffset());
+      });
+	  },
+  syncMobileDockOffset() {
+    const dock = document.querySelector('.mobile-dock');
+    const offset = dock ? Math.ceil(dock.getBoundingClientRect().height) : 74;
+    this.mobileDockOffsetPx = offset;
+    if (this.$root && this.$root.style) {
+      this.$root.style.setProperty('--pd-mobile-dock-offset', `${offset}px`);
+    }
   },
+	  setVariant(v) {
+	    this.selectedVariant = v;
+	    this.selectedImageIndex = 0;
+	    window.dispatchEvent(new CustomEvent('pd-variant-change', { detail: { name: v ? v.name : '' } }));
+	  },
   get displayImages() {
     let images = [];
     if (this.selectedVariant && this.selectedVariant.imageUrl) {
@@ -560,6 +203,86 @@
       return (this.data.stockByVariant && this.data.stockByVariant[this.selectedVariant.id]) || 0;
     }
     return this.data.stockTotalProduct;
+  },
+  get canSubmitMobileCart() {
+    return this.variants.length === 0 || !!this.selectedVariant;
+  },
+  get currentCartQty() {
+    if (this.selectedVariant) {
+      const key = String(this.selectedVariant.id);
+      return Number(this.cartQtyByVariant[key] || 0);
+    }
+    return Number(this.cartQtyProduct || 0);
+  },
+  setCurrentCartQty(qty) {
+    const nextQty = Math.max(0, Math.min(99, Number(qty) || 0));
+    if (this.selectedVariant) {
+      const key = String(this.selectedVariant.id);
+      this.cartQtyByVariant[key] = nextQty;
+    } else {
+      this.cartQtyProduct = nextQty;
+    }
+  },
+  handleMobileAddBeforeRequest() {
+    this.mobileAddBusy = true;
+  },
+  handleMobileAddAfterRequest(event) {
+    this.mobileAddBusy = false;
+    if (!event.detail || !event.detail.successful) return;
+    const prevQty = this.currentCartQty;
+    const nextQty = prevQty + 1;
+    if (prevQty === 0) {
+      this.setCurrentCartQty(nextQty);
+      this.mobileAddTransitioning = true;
+      window.setTimeout(() => {
+        this.mobileAddTransitioning = false;
+      }, 360);
+      return;
+    }
+    this.setCurrentCartQty(nextQty);
+  },
+  submitMobileQty(targetQty) {
+    if (!this.canSubmitMobileCart || this.mobileQtyBusy || this.mobileAddTransitioning || this.mobileQtyRemoving) return;
+    const safeQty = Math.max(0, Math.min(99, Number(targetQty) || 0));
+    this.pendingMobileQty = safeQty;
+    if (this.$refs.mobileQtyHidden) {
+      this.$refs.mobileQtyHidden.value = String(safeQty);
+    }
+    if (this.$refs.mobileQtyForm) {
+      this.$refs.mobileQtyForm.requestSubmit();
+    }
+  },
+  handleMobileQtyBeforeRequest() {
+    this.mobileQtyBusy = true;
+  },
+  handleMobileQtyAfterRequest(event) {
+    this.mobileQtyBusy = false;
+    if (event.detail && event.detail.successful && this.pendingMobileQty !== null) {
+      if (this.pendingMobileQty === 0 && this.currentCartQty > 0) {
+        this.mobileQtyRemoving = true;
+        window.setTimeout(() => {
+          this.setCurrentCartQty(0);
+          this.mobileQtyRemoving = false;
+        }, 220);
+      } else {
+        this.setCurrentCartQty(this.pendingMobileQty);
+      }
+    }
+    this.pendingMobileQty = null;
+  },
+  incrementMobileQty() {
+    this.submitMobileQty(this.currentCartQty + 1);
+  },
+  decrementMobileQty() {
+    this.submitMobileQty(Math.max(0, this.currentCartQty - 1));
+  },
+  applyMobileQtyInput(event) {
+    const value = Number(event.target.value);
+    if (!Number.isFinite(value)) {
+      event.target.value = String(this.currentCartQty);
+      return;
+    }
+    this.submitMobileQty(value);
   },
   handleSwipe() {
     if (this.touchMoveX === 0) return;
@@ -619,6 +342,7 @@
       <!-- Mobile: minimal info from DB -->
       <div class="mobile-card mobile-only">
         <div class="mobile-price" x-text="(selectedVariant ? selectedVariant.price : productPrice).toLocaleString('ru-RU') + ' ₽'"></div>
+        <h1 class="mobile-product-title">{{ product.name }}</h1>
       </div>
 
       {% if product.variants.all %}
@@ -626,7 +350,7 @@
         <div class="variants-title">{{ product.option_label|default:"Вариант" }}: <strong x-text="selectedVariant ? selectedVariant.name : ''"></strong></div>
         <div class="color-variants">
           <template x-for="v in variants" :key="v.id">
-            <div class="color-opt" :class="selectedVariant && selectedVariant.id === v.id ? 'selected' : ''" @click="selectedVariant = v; selectedImageIndex = 0">
+	            <div class="color-opt" :class="selectedVariant && selectedVariant.id === v.id ? 'selected' : ''" @click="setVariant(v)">
               <template x-if="v.imageUrl">
                 <img :src="v.imageUrl" alt="" loading="lazy" />
               </template>
@@ -639,8 +363,8 @@
       </div>
       {% endif %}
 
-      <div class="mobile-only" style="margin-top: 8px;">
-        <div class="delivery-section" style="margin: 0 16px; border-radius: 24px;">
+      <div class="mobile-delivery-wrap mobile-only">
+        <div class="delivery-section" style="border-radius: 24px;">
           <h3 class="delivery-section-title">Доставка</h3>
           <div class="delivery-row">
             <i data-lucide="map-pin" class="w-4 h-4 inline-block" style="vertical-align: middle;"></i>
@@ -667,7 +391,7 @@
           <div class="variants-title">{{ product.option_label|default:"Вариант" }}: <strong x-text="selectedVariant ? selectedVariant.name : ''"></strong></div>
           <div class="color-variants">
             <template x-for="v in variants" :key="v.id">
-              <div class="color-opt" :class="selectedVariant && selectedVariant.id === v.id ? 'selected' : ''" @click="selectedVariant = v; selectedImageIndex = 0">
+	              <div class="color-opt" :class="selectedVariant && selectedVariant.id === v.id ? 'selected' : ''" @click="setVariant(v)">
                 <template x-if="v.imageUrl">
                   <img :src="v.imageUrl" alt="" loading="lazy" />
                 </template>
@@ -754,27 +478,113 @@
     <!-- Floating Action Bar (Mobile Only) -->
     <div class="floating-action mobile-only">
         <form action="{% url 'catalog:add_to_cart' product.pk %}" method="post"
+              x-show="currentCartQty === 0 && !mobileQtyRemoving"
+              x-cloak
+              @htmx:before-request="handleMobileAddBeforeRequest()"
+              @htmx:after-request="handleMobileAddAfterRequest($event)"
               hx-post="{% url 'catalog:add_to_cart' product.pk %}"
               hx-target="#cart-modal-content"
               hx-swap="innerHTML"
+              hx-push-url="false"
               style="width: 100%;">
           {% csrf_token %}
           <input type="hidden" name="quantity" value="1" />
           {% if product.variants.all %}
           <input type="hidden" name="variant_id" :value="selectedVariant ? selectedVariant.id : ''" />
-          <button type="submit" class="cta-btn" :disabled="!selectedVariant">В корзину</button>
+          <button type="submit" class="cta-btn" :disabled="mobileAddBusy || !canSubmitMobileCart"><span class="cta-btn-text">В корзину</span></button>
           {% else %}
-          <button type="submit" class="cta-btn">В корзину</button>
+          <button type="submit" class="cta-btn" :disabled="mobileAddBusy"><span class="cta-btn-text">В корзину</span></button>
           {% endif %}
         </form>
+
+        <div class="cta-cart-row"
+             :class="{ 'is-entering': mobileAddTransitioning, 'is-leaving': mobileQtyRemoving }"
+             x-show="currentCartQty > 0 || mobileQtyRemoving"
+             x-cloak>
+          <div class="cta-cart-state">В корзине</div>
+          <form action="{% url 'catalog:cart_update' %}"
+                method="post"
+                x-ref="mobileQtyForm"
+                @htmx:before-request="handleMobileQtyBeforeRequest()"
+                @htmx:after-request="handleMobileQtyAfterRequest($event)"
+                hx-post="{% url 'catalog:cart_update' %}"
+                hx-target="#cart-modal-content"
+                hx-swap="innerHTML"
+                hx-push-url="false"
+                class="cta-qty-wrap">
+            {% csrf_token %}
+            <input type="hidden" name="product_id" value="{{ product.pk }}" />
+            <input type="hidden" name="quantity" x-ref="mobileQtyHidden" value="1" />
+            <input type="hidden" name="variant_id" :value="selectedVariant ? selectedVariant.id : ''" />
+            <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+            <button type="button" class="cta-qty-btn" @click="decrementMobileQty()" :disabled="mobileQtyBusy || mobileQtyRemoving || !canSubmitMobileCart">−</button>
+            <input type="number" min="0" max="99" class="cta-qty-input" :value="currentCartQty" @change="applyMobileQtyInput($event)" />
+            <button type="button" class="cta-qty-btn" @click="incrementMobileQty()" :disabled="mobileQtyBusy || mobileQtyRemoving || !canSubmitMobileCart">+</button>
+          </form>
+        </div>
     </div>
 
-    {% if recommended_products %}
-      <h2 class="section-title">Рекомендуем также</h2>
-      <div class="cards-grid">
-        {% for p in recommended_products %}
-          {% include "catalog/_product_card.html" with product=p show_favorite=True favorite_product_ids=favorite_product_ids %}
-        {% endfor %}
+    {% if bundles %}
+      <h2 class="section-title">В комплекте</h2>
+      {% for bundle in bundles %}
+        <div class="rec-panel mb-6">
+          <div class="rec-caption mb-3">
+            {% if bundle.name %}
+              <strong>{{ bundle.name }}</strong>
+              <span> — {{ bundle.total_price|floatformat:0 }} ₽</span>
+            {% else %}
+              <strong>Состав комплекта</strong>
+              <span> — {{ bundle.total_price|floatformat:0 }} ₽</span>
+            {% endif %}
+          </div>
+          <div class="rec-grid mb-4">
+            {% for item in bundle.items.all %}
+              {% if item.product_id != product.pk %}
+                {% include "catalog/_product_card.html" with product=item.product show_favorite=True favorite_product_ids=favorite_product_ids selected_city=selected_city product_stock_in_city=product_stock_in_city product_stock_total=product_stock_total show_add_button=True %}
+              {% endif %}
+            {% endfor %}
+          </div>
+          <form action="{% url 'catalog:add_bundle_to_cart' %}" method="post"
+                hx-post="{% url 'catalog:add_bundle_to_cart' %}"
+                hx-target="#cart-modal-content"
+                hx-swap="innerHTML">
+            {% csrf_token %}
+            <input type="hidden" name="bundle_id" value="{{ bundle.pk }}" />
+            <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+            <button type="submit" class="add-cart-btn" style="max-width: 320px;">Купить комплект — {{ bundle.total_price|floatformat:0 }} ₽</button>
+          </form>
+        </div>
+      {% endfor %}
+    {% endif %}
+
+    {% if recommendation_sections %}
+      <h2 class="section-title">Рекомендации</h2>
+      <div class="px-4 md:px-0 mb-10" x-data="{ recTab: '{{ recommendation_sections.0.key }}' }">
+        <div class="rec-panel">
+          <div class="rec-tabs">
+            {% for section in recommendation_sections %}
+              <button type="button"
+                      @click="recTab = '{{ section.key }}'"
+                      :class="recTab === '{{ section.key }}' ? 'rec-tab-btn is-active' : 'rec-tab-btn'"
+                      class="rec-tab-btn">
+                {{ section.title }}
+              </button>
+            {% endfor %}
+          </div>
+
+          {% for section in recommendation_sections %}
+            <div x-show="recTab === '{{ section.key }}'" x-cloak>
+              <div class="rec-caption">
+                Подборка: <strong>{{ section.title }}</strong>
+              </div>
+              <div class="rec-grid">
+                {% for p in section.products %}
+                  {% include "catalog/_product_card.html" with product=p show_favorite=True favorite_product_ids=favorite_product_ids selected_city=selected_city product_stock_in_city=product_stock_in_city product_stock_total=product_stock_total show_add_button=True recommendation_badge=section.badge recommended_variant_ids=recommended_variant_ids in_recommendations=True %}
+                {% endfor %}
+              </div>
+            </div>
+          {% endfor %}
+        </div>
       </div>
     {% endif %}
 
@@ -789,7 +599,16 @@
       </div>
 
       <h3 class="specs-title">Характеристики</h3>
-      <div class="specs-grid">
+      <div class="mobile-specs-list mobile-only">
+        <template x-for="(ch, idx) in displayCharacteristics" :key="ch[0] + ch[1] + '-m'">
+          <div class="mobile-specs-item">
+            <div class="mobile-specs-label" x-text="ch[0]"></div>
+            <div class="mobile-specs-value" x-text="ch[1]"></div>
+          </div>
+        </template>
+      </div>
+
+      <div class="specs-grid desktop-only">
         <div class="col">
           <template x-for="(ch, idx) in displayCharacteristics.filter((_, i) => i % 2 === 0)" :key="ch[0] + ch[1]">
             <div class="spec-item">

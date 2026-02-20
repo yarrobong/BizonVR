@@ -1,0 +1,52 @@
+{% load catalog_tags %}
+{# Переменные: bundle; request (для absolute_uri). #}
+<article id="bundle-{{ bundle.pk }}" class="group bg-dark-800/80 md:bg-dark-800/60 md:hover:bg-dark-800 border border-dark-700 rounded-xl transition-all duration-300 relative flex flex-col h-full overflow-hidden hover:-translate-y-0.5 hover:border-accent/60 shadow-[0_10px_28px_rgba(0,0,0,0.28)]">
+  <a href="{{ bundle.get_absolute_url }}" class="relative w-full aspect-square flex-shrink-0 overflow-hidden block">
+  <div class="absolute inset-0 flex items-center justify-center rounded-t-xl bg-dark-700 border-b border-dark-600">
+      {% for item in bundle.items.all %}
+        {% if forloop.first %}
+          {% if item.product.image %}
+            <img src="{{ item.product.image.url|absolute_uri:request }}" alt="{{ bundle.name|default:'Комплект' }}" class="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300" loading="lazy" />
+          {% else %}
+            <div class="w-full h-full flex items-center justify-center text-gray-500">
+              <i data-lucide="package" class="w-12 h-12 inline-block"></i>
+            </div>
+          {% endif %}
+        {% endif %}
+      {% empty %}
+        <div class="w-full h-full flex items-center justify-center text-gray-500">
+          <i data-lucide="package" class="w-12 h-12 inline-block"></i>
+        </div>
+      {% endfor %}
+  </div>
+  <div class="absolute top-2 left-2 z-10">
+    <span class="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-accent/15 text-accent border-accent/30">Комплект</span>
+  </div>
+  </a>
+  <div class="flex flex-col flex-grow min-h-0 p-3 bg-dark-700/90" style="padding: 0.75rem;">
+    <div class="mb-1" style="margin-bottom: 0.25rem;">
+      <span class="text-xl font-bold text-accent">{{ bundle.total_price|floatformat:0 }} ₽</span>
+      <span class="text-xs text-gray-400 ml-1">−5%</span>
+    </div>
+    <h3 class="text-white text-sm font-semibold leading-tight line-clamp-2" style="margin-bottom: 0.375rem;">
+      <a href="{{ bundle.get_absolute_url }}" class="hover:text-accent transition-colors">{% if bundle.name %}{{ bundle.name }}{% else %}Комплект из {{ bundle.items.count }} товаров{% endif %}</a>
+    </h3>
+    <p class="text-gray-400 text-xs line-clamp-2 mb-3">
+      {% for item in bundle.items.all %}{% if not forloop.first %}, {% endif %}{{ item.product.name }}{% endfor %}
+    </p>
+    <form action="{% url 'catalog:add_bundle_to_cart' %}" method="post"
+          hx-post="{% url 'catalog:add_bundle_to_cart' %}"
+          hx-target="#cart-modal-content"
+          hx-swap="innerHTML"
+          hx-push-url="false"
+          class="mt-auto">
+      {% csrf_token %}
+      <input type="hidden" name="bundle_id" value="{{ bundle.pk }}" />
+      <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+      <button type="submit"
+              class="w-full h-9 rounded-lg bg-accent hover:bg-accent-hover text-dark-900 text-xs font-bold uppercase tracking-wide transition-colors shadow-[0_8px_20px_rgba(0,212,255,0.24)]">
+        Купить комплект
+      </button>
+    </form>
+  </div>
+</article>

@@ -24,7 +24,7 @@
       <label for="id_phone" class="block text-sm text-gray-400 mb-1">Телефон</label>
       <div class="phone-input-wrapper flex items-center w-full bg-dark-700 rounded-lg overflow-hidden focus-within:ring-1 focus-within:ring-accent pl-5">
         <span class="phone-prefix text-white font-medium py-2.5 flex-shrink-0 select-none">+7</span>
-        <span class="phone-prefix-bracket text-white font-medium py-2.5 flex-shrink-0 select-none">&nbsp;(</span>
+        <span class="phone-prefix-bracket text-white font-medium py-2.5 flex-shrink-0 select-none" style="display: none;">&nbsp;(</span>
         <input type="tel" name="phone" id="id_phone" required
                value="{{ phone|default:'' }}"
                placeholder="999 123-45-67"
