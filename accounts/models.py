@@ -51,8 +51,17 @@ class CommercialProposalContact(models.Model):
         related_name='cp_contact',
         verbose_name='Пользователь',
     )
-    phone = models.CharField('Телефон для КП', max_length=40, blank=True)
-    email = models.EmailField('Email для КП', blank=True)
+    phone = models.CharField(
+        'Телефон для связи в КП',
+        max_length=40,
+        blank=True,
+        help_text='Номер, который будет указан в коммерческом предложении в блоке «Телефон для связи». Если не заполнен — подставляется телефон из профиля или общий номер сайта.',
+    )
+    email = models.EmailField(
+        'Email для КП',
+        blank=True,
+        help_text='Email менеджера в КП (если нужен).',
+    )
     updated_at = models.DateTimeField('Обновлено', auto_now=True)
 
     class Meta:

@@ -14,7 +14,7 @@ class CommercialProposalContactInline(admin.StackedInline):
     extra = 0
     max_num = 1
     can_delete = True
-    verbose_name_plural = 'Контакты для коммерческих предложений'
+    verbose_name_plural = 'Телефон и email для КП (отображаются в документе как «Телефон для связи»)'
     fields = ('phone', 'email', 'updated_at')
     readonly_fields = ('updated_at',)
 
