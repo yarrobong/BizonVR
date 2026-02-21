@@ -5,11 +5,16 @@ import zipfile
 from datetime import datetime
 
 from django.conf import settings
+import json
+
 from django.contrib import admin
 from django.contrib import messages
-from django.http import HttpResponse, HttpResponseRedirect
+from django.http import HttpResponse, HttpResponseForbidden, HttpResponseRedirect
+from django.template.response import TemplateResponse
 from django.urls import path
-from django.utils.html import format_html
+from django.utils.html import escape, format_html
+from django.utils import timezone
+from decimal import Decimal
 
 from .cache_utils import invalidate_catalog_cache
 from .models import (
@@ -356,6 +361,8 @@ class ProductAdmin(admin.ModelAdmin):
     def changelist_view(self, request, extra_context=None):
         extra_context = extra_context or {}
         extra_context['restore_backup_url'] = 'admin:catalog_product_restore_backup'
+        extra_context['commercial_proposal_url'] = 'admin:catalog_product_commercial_proposal'
+        extra_context['can_export_commercial_proposal'] = request.user.has_perm('catalog.view_product')
         return super().changelist_view(request, extra_context=extra_context)
 
     @admin.action(description='Скачать каталог с картинками (ZIP)')
@@ -518,8 +525,322 @@ class ProductAdmin(admin.ModelAdmin):
         urls = super().get_urls()
         custom_urls = [
             path('restore-backup/', self.admin_site.admin_view(self.restore_backup_view), name='catalog_product_restore_backup'),
+            path('commercial-proposal/', self.admin_site.admin_view(self.commercial_proposal_export_view), name='catalog_product_commercial_proposal'),
+            path('product-search/', self.admin_site.admin_view(self.product_search_api_view), name='catalog_product_product_search'),
         ]
         return custom_urls + urls
+
+    def product_search_api_view(self, request):
+        """JSON API для поиска товаров по названию (автодополнение). Доступ при catalog.view_product."""
+        if not request.user.has_perm('catalog.view_product'):
+            return HttpResponseForbidden('Недостаточно прав.')
+        q = (request.GET.get('q') or '').strip()
+        if len(q) < 2:
+            return HttpResponse(json.dumps([]), content_type='application/json')
+        products = (
+            Product.objects.filter(name__icontains=q)
+            .select_related('category')
+            .prefetch_related('variants', 'images')
+            .order_by('category__name', 'name')[:15]
+        )
+        result = []
+        for p in products:
+            img = p.get_display_image()
+            image_url = request.build_absolute_uri(img.url) if img else ''
+            result.append({
+                'id': p.pk,
+                'name': p.name,
+                'price': str(p.price),
+                'category': p.category.name,
+                'image_url': image_url,
+            })
+        return HttpResponse(json.dumps(result, ensure_ascii=False), content_type='application/json; charset=utf-8')
+
+    def commercial_proposal_export_view(self, request):
+        """Формирование коммерческого предложения из выбранных товаров. Доступно при праве catalog.view_product (в т.ч. менеджерам)."""
+        if not request.user.has_perm('catalog.view_product'):
+            return HttpResponseForbidden('Недостаточно прав для формирования коммерческого предложения.')
+        if request.method == 'POST':
+            product_ids = request.POST.getlist('products')
+            if not product_ids:
+                messages.warning(request, 'Выберите хотя бы один товар.')
+                return HttpResponseRedirect(request.path)
+            products = (
+                Product.objects.filter(pk__in=product_ids)
+                .select_related('category')
+                .prefetch_related('variants', 'images')
+                .order_by('category__name', 'name')
+            )
+            rows = []
+            total = Decimal('0')
+            for idx, product in enumerate(products, 1):
+                qty_str = request.POST.get(f'qty_{product.pk}', '1').strip() or '1'
+                try:
+                    qty = max(1, int(qty_str))
+                except ValueError:
+                    qty = 1
+                price_str = request.POST.get(f'price_{product.pk}', '').strip()
+                if price_str:
+                    try:
+                        price = Decimal(price_str.replace(',', '.'))
+                        if price < 0:
+                            price = product.price
+                    except Exception:
+                        price = product.price
+                else:
+                    price = product.price
+                row_total = price * qty
+                total += row_total
+                img = product.get_display_image()
+                image_url = request.build_absolute_uri(img.url) if img else ''
+                rows.append({
+                    'num': idx,
+                    'name': product.name,
+                    'category': product.category.name,
+                    'description': product.description or '',
+                    'image_url': image_url,
+                    'price': price,
+                    'qty': qty,
+                    'row_total': row_total,
+                })
+            timestamp = timezone.now().strftime('%Y%m%d_%H%M')
+            date_display = timezone.now().strftime('%d.%m.%Y')
+            valid_until = (timezone.now() + timezone.timedelta(days=30)).strftime('%d.%m.%Y')
+            manager_name = ''
+            manager_phone = ''
+            try:
+                profile = request.user.profile
+                manager_name = profile.contact_name or ''
+                manager_phone = profile.phone or ''
+            except Exception:
+                pass
+            if not manager_name:
+                manager_name = request.user.get_full_name() or request.user.get_username() or ''
+            if not manager_phone:
+                manager_phone = getattr(settings, 'SITE_CONTACT_PHONE', '')
+            site_url = getattr(settings, 'SITE_URL', '')
+            site_brand = getattr(settings, 'SITE_BRAND', 'BizonVR')
+            logo_path = getattr(settings, 'SITE_LOGO', '')
+            logo_url = request.build_absolute_uri(settings.STATIC_URL + logo_path) if logo_path else ''
+            site_phone = getattr(settings, 'SITE_CONTACT_PHONE', '')
+            site_email = getattr(settings, 'SITE_CONTACT_EMAIL', '')
+            site_address = getattr(settings, 'SITE_CONTACT_ADDRESS', '')
+            html_content = self._build_commercial_proposal_html(
+                rows=rows,
+                total=total,
+                date_display=date_display,
+                valid_until=valid_until,
+                manager_name=manager_name,
+                manager_phone=manager_phone,
+                site_url=site_url,
+                site_brand=site_brand,
+                logo_url=logo_url,
+                site_phone=site_phone,
+                site_email=site_email,
+                site_address=site_address,
+            )
+            response = HttpResponse(html_content, content_type='text/html; charset=utf-8')
+            response['Content-Disposition'] = f'attachment; filename="commercial_proposal_{timestamp}.html"'
+            return response
+        context = {
+            **self.admin_site.each_context(request),
+            'title': 'Коммерческое предложение',
+            'opts': self.model._meta,
+            'has_view_permission': True,
+        }
+        return TemplateResponse(request, 'admin/catalog/commercial_proposal_export.html', context)
+
+    def _build_commercial_proposal_html(
+        self,
+        rows,
+        total,
+        date_display,
+        valid_until,
+        manager_name,
+        manager_phone,
+        site_url,
+        site_brand,
+        logo_url,
+        site_phone,
+        site_email,
+        site_address,
+    ):
+        """Собирает HTML-документ коммерческого предложения в стиле kp.html (тёмная тема, неоновые акценты)."""
+        def _fmt(val):
+            """Форматирование денег: 260000 -> 260 000; 12500.5 -> 12 500,50."""
+            try:
+                d = Decimal(str(val))
+            except Exception:
+                d = Decimal('0')
+            d = d.quantize(Decimal('0.01'))
+            if d == d.to_integral():
+                return f'{int(d):,}'.replace(',', ' ')
+            # RU-формат: пробелы в тысячах + запятая в дробной части
+            return f'{d:,.2f}'.replace(',', ' ').replace('.', ',')
+
+        css = '''
+        @page { size: A4; margin: 0; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background-color: #0b0d14;
+            display: flex;
+            justify-content: center;
+            font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            color: #e5e7eb;
+            padding: 18px 0;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        .a4-page {
+            width: 210mm;
+            min-height: 297mm;
+            background: linear-gradient(180deg, #0b0d14 0%, #151923 100%);
+            padding: 14mm 14mm;
+            border-radius: 25px;
+            position: relative;
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.12);
+            box-shadow:
+              0 25px 50px -12px rgba(0,0,0,0.35),
+              0 0 0 1px rgba(255,255,255,0.06),
+              0 0 40px rgba(0,212,255,0.10);
+        }
+        .a4-page::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 3px;
+            background: linear-gradient(90deg, #00D4FF, rgba(188, 19, 254, 0.55), rgba(0,0,0,0));
+            box-shadow: 0 0 14px rgba(0, 212, 255, 0.55);
+        }
+        
+        .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 26px;
+            border-bottom: 1px solid rgba(255,255,255,0.10); padding-bottom: 18px; }
+        .brand-logo {
+            font-size: 34px;
+            font-weight: 900;
+            color: #ffffff;
+            letter-spacing: 1px;
+            font-family: "Orbitron", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+            text-shadow: 0 0 14px rgba(0, 212, 255, 0.35);
+            margin-bottom: 4px;
+        }
+        .brand-logo img { max-height: 52px; max-width: 220px; display: block;
+            filter: drop-shadow(0 0 10px rgba(0, 212, 255, 0.28)); }
+        .brand-subtitle { font-size: 12px; color: rgba(0, 212, 255, 0.92); text-transform: uppercase; letter-spacing: 3px; }
+        .contacts { text-align: right; font-size: 12px; line-height: 1.6; color: rgba(229,231,235,0.70); }
+        .contacts span { color: rgba(0, 212, 255, 0.95); font-weight: 700; }
+        .title-block { text-align: center; margin-bottom: 22px; }
+        .title-block h1 { font-size: 26px; text-transform: uppercase; color: #ffffff; margin-bottom: 10px;
+            letter-spacing: 2.5px; text-shadow: 0 0 14px rgba(0, 212, 255, 0.35); }
+        .title-block p { font-size: 13px; color: rgba(0, 212, 255, 0.85); }
+        .info-panel { display: flex; justify-content: space-between;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.10);
+            border-left: 3px solid rgba(0, 212, 255, 0.95);
+            padding: 14px 16px; margin-bottom: 22px; font-size: 13px;
+            border-radius: 25px; }
+        .info-panel strong { color: #fff; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 30px; table-layout: fixed; }
+        th { background: rgba(255,255,255,0.06); color: rgba(0, 212, 255, 0.95); text-transform: uppercase; font-size: 11px;
+            letter-spacing: 1px; padding: 10px 8px; text-align: left;
+            border-bottom: 2px solid rgba(0, 212, 255, 0.55); }
+        td { padding: 12px 8px; font-size: 13px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); vertical-align: middle; word-break: break-word; }
+        tr:hover td { background: rgba(0, 243, 255, 0.03); }
+        .item-photo { width: 60px; height: 60px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+        .item-photo img { width: 60px; height: 60px; object-fit: contain; }
+        .col-num { width: 5%; text-align: center; }
+        .col-photo { width: 10%; }
+        .col-name { width: 15%; font-weight: bold; color: #fff; }
+        .col-desc { width: 20%; color: #888; font-size: 10px; line-height: 1.35; }
+        .col-desc .desc-clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+        .col-qty { width: 10%; text-align: center; }
+        .col-price { width: 10%; white-space: nowrap; text-align: right; }
+        .col-sum { width: 10%; font-weight: bold; color: rgba(0, 212, 255, 0.95); white-space: nowrap; text-align: right; }
+        .footer-block { display: flex; justify-content: flex-end; align-items: center; margin-bottom: 40px; }
+        .total-box { background: rgba(0, 212, 255, 0.08); padding: 14px 22px; border-radius: 25px;
+            border: 1px solid rgba(0, 212, 255, 0.24); box-shadow: 0 0 20px rgba(0, 212, 255, 0.12); }
+        .total-box .total-label { font-size: 13px; color: rgba(229,231,235,0.72); margin-right: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .total-box .total-amount { font-size: 22px; font-weight: 900; color: #ffffff; text-shadow: 0 0 14px rgba(0, 212, 255, 0.28); }
+        .date-signature { display: flex; justify-content: space-between; font-size: 12px; color: #666;
+            border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px; }
+        @media print {
+            body { padding: 0; background-color: #0b0d14; }
+            .a4-page { box-shadow: none; margin: 0; border: none; border-radius: 0; }
+            tr:hover td { background: transparent; }
+        }
+        '''
+        lines = [
+            '<!DOCTYPE html>',
+            '<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">',
+            f'<title>Коммерческое предложение - {escape(site_brand)}</title>',
+            '<style>', css.strip(), '</style></head><body>',
+            '<div class="a4-page">',
+            '<div class="header">',
+            '<div>',
+        ]
+        if logo_url:
+            lines.append(f'<div class="brand-logo"><img src="{escape(logo_url)}" alt="" style="max-height: 48px;"></div>')
+        else:
+            lines.append(f'<div class="brand-logo">{escape(site_brand)}</div>')
+        lines.append('<div class="brand-subtitle">Виртуальная реальность</div>')
+        lines.append('</div>')
+        lines.append('<div class="contacts">')
+        if site_address:
+            lines.append(f'<p><span>Адрес:</span> {escape(site_address)}</p>')
+        if site_phone:
+            lines.append(f'<p><span>Тел:</span> {escape(site_phone)}</p>')
+        if site_email:
+            lines.append(f'<p><span>Email:</span> {escape(site_email)}</p>')
+        if site_url:
+            lines.append(f'<p><span>Сайт:</span> {escape(site_url)}</p>')
+        lines.append('</div></div>')
+        lines.append('<div class="title-block">')
+        lines.append('<h1>Коммерческое предложение</h1>')
+        lines.append(f'<p>Официальный документ. Действительно до {escape(valid_until)}</p>')
+        lines.append('</div>')
+        lines.append('<div class="info-panel">')
+        lines.append('<div>')
+        lines.append(f'Менеджер: <strong>{escape(manager_name)}</strong><br>')
+        lines.append(f'Телефон: <strong>{escape(manager_phone)}</strong>')
+        lines.append('</div></div>')
+        lines.append('<table>')
+        lines.append(
+            '<thead><tr><th class="col-num">№</th><th class="col-photo">Фото</th><th class="col-name">Название</th>'
+            '<th class="col-desc">Описание</th><th class="col-qty">Кол-во</th><th class="col-price">Цена (₽)</th>'
+            '<th class="col-sum">Итого (₽)</th></tr></thead><tbody>'
+        )
+        for r in rows:
+            if r.get('image_url'):
+                photo_cell = f'<div class="item-photo"><img src="{escape(r["image_url"])}" alt=""></div>'
+            else:
+                photo_cell = '<div class="item-photo">—</div>'
+            desc = escape((r.get('description') or '')[:500])
+            price_fmt = _fmt(r['price'])
+            sum_fmt = _fmt(r['row_total'])
+            lines.append(
+                f'<tr><td class="col-num" style="text-align: center;">{r["num"]}</td>'
+                f'<td class="col-photo">{photo_cell}</td>'
+                f'<td class="col-name">{escape(r["name"])}</td><td class="col-desc"><div class="desc-clamp">{desc}</div></td>'
+                f'<td class="col-qty">{r["qty"]}</td><td class="col-price">{price_fmt} ₽</td>'
+                f'<td class="col-sum">{sum_fmt} ₽</td></tr>'
+            )
+        lines.append('</tbody></table>')
+        total_fmt = _fmt(total)
+        lines.append(
+            '<div class="footer-block">'
+            '<div class="total-box">'
+            '<span class="total-label">Итого к оплате:</span>'
+            f'<span class="total-amount">{total_fmt} ₽</span>'
+            '</div></div>'
+        )
+        lines.append(
+            '<div class="date-signature">'
+            f'<div>Дата составления: <strong>{escape(date_display)}</strong></div>'
+            '<div>Документ сгенерирован автоматически</div>'
+            '</div>'
+        )
+        lines.append('</div></body></html>')
+        return '\n'.join(lines)
 
     def restore_backup_view(self, request):
         """Представление для восстановления каталога из бэкапа."""

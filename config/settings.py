@@ -170,6 +170,7 @@ SITE_URL = config('SITE_URL', default='http://localhost:8000').rstrip('/')
 
 # Публичные данные сайта (используются в футере и общих шаблонах)
 SITE_BRAND = config('SITE_BRAND', default='BizonVR')
+SITE_LOGO = config('SITE_LOGO', default='')  # путь относительно STATIC_URL, напр. images/logo.png
 SITE_DESCRIPTION = config('SITE_DESCRIPTION', default='Магазин VR оборудования и аттракционов')
 SITE_CONTACT_PHONE = config('SITE_CONTACT_PHONE', default='+7 (932) 491-04-82')
 SITE_CONTACT_PHONE_HREF = config('SITE_CONTACT_PHONE_HREF', default='+79324910482')

@@ -1,0 +1,412 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls static %}
+
+{% block title %}Коммерческое предложение | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+<a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+&rsaquo; <a href="{% url 'admin:catalog_product_changelist' %}">Товары</a>
+&rsaquo; Коммерческое предложение
+</div>
+{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<style>
+:root {
+  --cp-bg: #ffffff;
+  --cp-surface: #f7f9fb;
+  --cp-border: rgba(0,0,0,0.10);
+  --cp-text: #1f2937;
+  --cp-muted: #6b7280;
+  --cp-brand: #417690;
+  --cp-brand-2: #2d5a73;
+  --cp-danger: #dc3545;
+  --cp-shadow: 0 10px 30px rgba(16, 24, 40, 0.08);
+  --cp-shadow-sm: 0 2px 10px rgba(16, 24, 40, 0.06);
+}
+
+.cp-form-wrapper { max-width: 860px; margin: 24px 0; }
+.cp-panel {
+  background: linear-gradient(180deg, #fbfdff 0%, #f6f9fc 100%);
+  border: 1px solid var(--cp-border);
+  border-radius: 12px;
+  padding: 18px 18px;
+  box-shadow: var(--cp-shadow-sm);
+}
+
+.cp-search-block { margin-bottom: 16px; }
+.cp-search-block h3 { margin: 0 0 8px 0; font-size: 15px; color: var(--cp-text); }
+.cp-search-hint { margin: 0 0 14px 0; color: var(--cp-muted); font-size: 12px; line-height: 1.35; }
+.cp-search-row { position: relative; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+
+.cp-search-input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid rgba(0,0,0,0.18);
+  border-radius: 10px;
+  font-size: 14px;
+  color: var(--cp-text);
+  background: #fff;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+.cp-search-input::placeholder { color: #9aa3af; }
+.cp-search-input:focus {
+  outline: none;
+  border-color: rgba(65,118,144,0.6);
+  box-shadow: 0 0 0 4px rgba(65, 118, 144, 0.16);
+}
+
+.cp-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 8px;
+  background: #fff;
+  border: 1px solid rgba(0,0,0,0.12);
+  border-radius: 12px;
+  box-shadow: var(--cp-shadow);
+  max-height: 360px;
+  overflow-y: auto;
+  z-index: 100;
+  display: none;
+}
+.cp-dropdown.show { display: block; }
+.cp-dropdown-item {
+  display: grid;
+  grid-template-columns: 48px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+  transition: background 0.12s ease;
+}
+.cp-dropdown-item:last-child { border-bottom: none; }
+.cp-dropdown-item:hover { background: rgba(65,118,144,0.08); }
+.cp-dropdown-item img { width: 48px; height: 48px; object-fit: cover; border-radius: 10px; border: 1px solid rgba(0,0,0,0.08); }
+.cp-thumb-placeholder-sm {
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(0,0,0,0.04), rgba(0,0,0,0.02));
+  border: 1px solid rgba(0,0,0,0.08);
+}
+.cp-dropdown-item .cp-item-name { font-weight: 600; color: var(--cp-text); }
+.cp-dropdown-item .cp-item-meta { font-size: 12px; color: var(--cp-muted); margin-top: 2px; }
+.cp-dropdown-item .cp-item-price { font-weight: 700; color: var(--cp-brand); white-space: nowrap; }
+
+.cp-actions-row { display: flex; gap: 10px; align-items: center; margin-top: 12px; }
+.cp-add-more-btn {
+  padding: 10px 14px;
+  background: var(--cp-brand);
+  color: #fff;
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: transform 0.12s ease, background 0.12s ease;
+}
+.cp-add-more-btn:hover { background: var(--cp-brand-2); transform: translateY(-1px); }
+.cp-add-more-btn:active { transform: translateY(0px); }
+
+.cp-selected-list { margin: 16px 0; }
+.cp-selected-list h3 { margin: 0 0 12px 0; font-size: 15px; color: var(--cp-text); }
+
+.cp-card {
+  display: grid;
+  grid-template-columns: 64px 1fr 90px 132px 120px 92px;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 14px;
+  background: #fff;
+  border: 1px solid rgba(0,0,0,0.10);
+  border-radius: 14px;
+  margin-bottom: 10px;
+  box-shadow: var(--cp-shadow-sm);
+}
+.cp-card img { width: 64px; height: 64px; object-fit: cover; border-radius: 12px; border: 1px solid rgba(0,0,0,0.08); }
+.cp-thumb-placeholder {
+  width: 64px;
+  height: 64px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(0,0,0,0.04), rgba(0,0,0,0.02));
+  border: 1px solid rgba(0,0,0,0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9aa3af;
+  font-size: 11px;
+  font-weight: 700;
+}
+.cp-card .cp-card-info { min-width: 0; }
+.cp-card .cp-card-name { font-weight: 700; color: var(--cp-text); line-height: 1.25; }
+.cp-card .cp-card-meta { font-size: 12px; color: var(--cp-muted); margin-top: 3px; }
+.cp-field { display: flex; flex-direction: column; gap: 4px; }
+.cp-field label { font-size: 11px; color: var(--cp-muted); }
+.cp-field input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid rgba(0,0,0,0.18);
+  border-radius: 10px;
+  font-size: 14px;
+  text-align: center;
+  background: #fff;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.cp-field input:focus { outline: none; border-color: rgba(65,118,144,0.6); box-shadow: 0 0 0 4px rgba(65,118,144,0.12); }
+
+.cp-card .cp-card-sum {
+  justify-self: end;
+  font-weight: 800;
+  color: var(--cp-brand);
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(65,118,144,0.10);
+  border: 1px solid rgba(65,118,144,0.18);
+  white-space: nowrap;
+}
+
+.cp-card .cp-card-remove {
+  justify-self: end;
+  padding: 10px 12px;
+  background: rgba(220,53,69,0.10);
+  color: var(--cp-danger);
+  border: 1px solid rgba(220,53,69,0.22);
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  transition: background 0.12s ease, transform 0.12s ease;
+}
+.cp-card .cp-card-remove:hover { background: rgba(220,53,69,0.16); transform: translateY(-1px); }
+.cp-card .cp-card-remove:active { transform: translateY(0px); }
+
+.cp-empty-msg { color: var(--cp-muted); font-style: italic; padding: 22px; text-align: center; background: rgba(0,0,0,0.03); border-radius: 14px; border: 1px dashed rgba(0,0,0,0.12); }
+
+.cp-submit-row { margin-top: 18px; display: flex; gap: 12px; align-items: center; }
+.cp-submit-btn {
+  padding: 12px 18px;
+  background: var(--cp-brand);
+  color: #fff;
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 800;
+  transition: transform 0.12s ease, background 0.12s ease, opacity 0.12s ease;
+}
+.cp-submit-btn:hover { background: var(--cp-brand-2); transform: translateY(-1px); }
+.cp-submit-btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
+.cp-cancel-btn {
+  padding: 12px 18px;
+  background: rgba(0,0,0,0.06);
+  color: var(--cp-text);
+  text-decoration: none;
+  border: 1px solid rgba(0,0,0,0.10);
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  display: inline-block;
+}
+.cp-cancel-btn:hover { background: rgba(0,0,0,0.08); }
+
+@media (max-width: 900px) {
+  .cp-card { grid-template-columns: 64px 1fr 90px 132px 1fr 92px; }
+}
+@media (max-width: 740px) {
+  .cp-card { grid-template-columns: 64px 1fr; grid-auto-rows: auto; }
+  .cp-card .cp-card-sum, .cp-card .cp-card-remove { justify-self: start; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>Коммерческое предложение</h1>
+
+<div class="cp-form-wrapper">
+  <div class="cp-panel cp-search-block">
+    <h3>Добавить товар</h3>
+    <p class="cp-search-hint">Начните вводить название (минимум 2 символа). Выберите товар из списка — он появится ниже, где можно указать количество и цену именно для этого КП.</p>
+    <div class="cp-search-row">
+      <div style="flex: 1; min-width: 200px; position: relative;">
+        <input type="text" id="product-search" class="cp-search-input" placeholder="Введите название товара..."
+               autocomplete="off">
+        <div id="search-dropdown" class="cp-dropdown"></div>
+      </div>
+    </div>
+    <div class="cp-actions-row">
+      <button type="button" id="add-more-btn" class="cp-add-more-btn">Добавить ещё</button>
+    </div>
+  </div>
+
+  <form method="post" id="commercial-proposal-form">
+    {% csrf_token %}
+    <div id="hidden-inputs"></div>
+    <div class="cp-selected-list">
+      <h3>Выбранные товары</h3>
+      <div id="selected-products">
+        <div id="empty-msg" class="cp-empty-msg">Выберите товары через поиск выше</div>
+      </div>
+    </div>
+    <div class="cp-submit-row">
+      <button type="submit" id="submit-btn" class="cp-submit-btn" disabled>Скачать коммерческое предложение (HTML)</button>
+      <a href="{% url 'admin:catalog_product_changelist' %}" class="cp-cancel-btn">Отмена</a>
+    </div>
+  </form>
+</div>
+
+<script>
+(function() {
+  const searchUrl = "{% url 'admin:catalog_product_product_search' %}";
+  const container = document.getElementById('selected-products');
+  const emptyMsg = document.getElementById('empty-msg');
+  const dropdown = document.getElementById('search-dropdown');
+  const searchInput = document.getElementById('product-search');
+  const addMoreBtn = document.getElementById('add-more-btn');
+  const submitBtn = document.getElementById('submit-btn');
+  const hiddenInputs = document.getElementById('hidden-inputs');
+  const selected = new Map();
+
+  function debounce(fn, ms) {
+    let t;
+    return function(...args) {
+      clearTimeout(t);
+      t = setTimeout(() => fn.apply(this, args), ms);
+    };
+  }
+
+  function addProduct(product) {
+    if (selected.has(product.id)) {
+      const card = document.querySelector('[data-product-id="' + product.id + '"]');
+      if (card) {
+        const qtyInput = card.querySelector('.cp-card-qty input');
+        qtyInput.value = parseInt(qtyInput.value || 1) + 1;
+      }
+      return;
+    }
+    selected.set(product.id, { product: product, qty: 1 });
+    emptyMsg.style.display = 'none';
+    const card = document.createElement('div');
+    card.className = 'cp-card';
+    card.dataset.productId = product.id;
+    const imgHtml = product.image_url
+      ? '<img src="' + product.image_url.replace(/"/g, '&quot;') + '" alt="">'
+      : '<div class="cp-thumb-placeholder">Нет фото</div>';
+    card.innerHTML =
+      imgHtml +
+      '<div class="cp-card-info"><div class="cp-card-name">' + escapeHtml(product.name) + '</div>' +
+      '<div class="cp-card-meta">' + escapeHtml(product.category) + ' · базовая: ' + formatMoney(product.price) + ' ₽</div></div>' +
+      '<div class="cp-field cp-card-qty"><label>Кол-во</label><input type="number" name="qty_' + product.id + '" value="1" min="1" data-product-id="' + product.id + '"></div>' +
+      '<div class="cp-field cp-card-price"><label>Цена за шт. (₽)</label><input type="number" name="price_' + product.id + '" value="' + product.price + '" min="0" step="0.01" data-product-id="' + product.id + '" data-base-price="' + product.price + '"></div>' +
+      '<div class="cp-card-sum" data-product-id="' + product.id + '">' + formatMoney(product.price) + ' ₽</div>' +
+      '<button type="button" class="cp-card-remove">Удалить</button>';
+    card.querySelector('.cp-card-remove').onclick = function() {
+      card.remove();
+      selected.delete(product.id);
+      if (selected.size === 0) emptyMsg.style.display = 'block';
+      submitBtn.disabled = selected.size === 0;
+    };
+    function updateSum() {
+      const qty = parseInt(card.querySelector('.cp-card-qty input').value) || 1;
+      const price = parseFloat(card.querySelector('.cp-card-price input').value) || 0;
+      const sum = qty * price;
+      card.querySelector('.cp-card-sum').textContent = formatMoney(sum) + ' ₽';
+    }
+    card.querySelector('.cp-card-qty input').addEventListener('input', updateSum);
+    card.querySelector('.cp-card-price input').addEventListener('input', updateSum);
+    container.appendChild(card);
+    submitBtn.disabled = false;
+  }
+
+  function escapeHtml(s) {
+    const div = document.createElement('div');
+    div.textContent = s;
+    return div.innerHTML;
+  }
+
+  function formatMoney(value) {
+    const n = Number(value) || 0;
+    const rounded = Math.round(n);
+    return rounded.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  }
+
+  function doSearch() {
+    const q = searchInput.value.trim();
+    if (q.length < 2) {
+      dropdown.classList.remove('show');
+      dropdown.innerHTML = '';
+      return;
+    }
+    fetch(searchUrl + '?q=' + encodeURIComponent(q))
+      .then(r => r.json())
+      .then(data => {
+        dropdown.innerHTML = '';
+        if (data.length === 0) {
+          dropdown.innerHTML = '<div class="cp-dropdown-item" style="cursor:default;color:#666;">Ничего не найдено</div>';
+        } else {
+          data.forEach(p => {
+            const item = document.createElement('div');
+            item.className = 'cp-dropdown-item';
+            const imgHtml = p.image_url
+              ? '<img src="' + p.image_url.replace(/"/g, '&quot;') + '" alt="">'
+              : '<div class="cp-thumb-placeholder-sm"></div>';
+            item.innerHTML = imgHtml +
+              '<div class="cp-item-info"><div class="cp-item-name">' + escapeHtml(p.name) + '</div>' +
+              '<div class="cp-item-meta">' + escapeHtml(p.category) + '</div></div>' +
+              '<div class="cp-item-price">' + p.price + ' ₽</div>';
+            item.onclick = function() {
+              addProduct(p);
+              searchInput.value = '';
+              dropdown.classList.remove('show');
+              searchInput.focus();
+            };
+            dropdown.appendChild(item);
+          });
+        }
+        dropdown.classList.add('show');
+      })
+      .catch(() => {
+        dropdown.innerHTML = '<div class="cp-dropdown-item" style="cursor:default;color:#c00;">Ошибка загрузки</div>';
+        dropdown.classList.add('show');
+      });
+  }
+
+  searchInput.addEventListener('input', debounce(doSearch, 300));
+  searchInput.addEventListener('focus', function() {
+    if (searchInput.value.trim().length >= 2) doSearch();
+  });
+  document.addEventListener('click', function(e) {
+    if (!searchInput.contains(e.target) && !dropdown.contains(e.target)) {
+      dropdown.classList.remove('show');
+    }
+  });
+
+  addMoreBtn.onclick = function() {
+    searchInput.focus();
+  };
+
+  document.getElementById('commercial-proposal-form').onsubmit = function() {
+    hiddenInputs.innerHTML = '';
+    container.querySelectorAll('.cp-card').forEach(card => {
+      const id = card.dataset.productId;
+      const qtyInput = card.querySelector('.cp-card-qty input');
+      const qty = parseInt(qtyInput.value) || 1;
+      const inp = document.createElement('input');
+      inp.type = 'hidden';
+      inp.name = 'products';
+      inp.value = id;
+      hiddenInputs.appendChild(inp);
+      const qtyInp = document.createElement('input');
+      qtyInp.type = 'hidden';
+      qtyInp.name = 'qty_' + id;
+      qtyInp.value = qty;
+      hiddenInputs.appendChild(qtyInp);
+    });
+    return true;
+  };
+})();
+</script>
+{% endblock %}
