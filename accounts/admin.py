@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.contrib import messages
 
 from .models import CommercialProposalContact, Profile, PhoneVerificationCode
-from .admin_roles import MANAGER_GROUP_NAME, user_has_manager_role, set_user_manager_role
+from .admin_roles import MANAGER_GROUP_NAME, user_has_manager_role, set_user_manager_role, ensure_manager_group
 
 User = get_user_model()
 
@@ -24,6 +24,13 @@ class CustomUserAdmin(BaseUserAdmin):
     list_display = BaseUserAdmin.list_display + ('is_manager_display',)
     list_filter = BaseUserAdmin.list_filter + ('groups',)
     inlines = (CommercialProposalContactInline,)
+
+    def changelist_view(self, request, extra_context=None):
+        try:
+            ensure_manager_group()
+        except Exception:
+            pass
+        return super().changelist_view(request, extra_context)
 
     @admin.display(boolean=True, description='Менеджер')
     def is_manager_display(self, obj):

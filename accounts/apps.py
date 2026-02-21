@@ -7,11 +7,4 @@ class AccountsConfig(AppConfig):
     verbose_name = 'Аккаунты'
 
     def ready(self):
-        import sys
-        if 'migrate' in sys.argv or 'makemigrations' in sys.argv:
-            return
-        try:
-            from .admin_roles import ensure_manager_group
-            ensure_manager_group()
-        except Exception:
-            pass  # БД может быть ещё не готова при первом запуске
+        pass  # Группа менеджеров создаётся при первом открытии админки пользователей (CustomUserAdmin.changelist_view)
