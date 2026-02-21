@@ -8,6 +8,9 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev gcc curl \
+    libcairo2 libpango-1.0-0 libpangoft2-1.0-0 libgdk-pixbuf-2.0-0 \
+    libffi-dev libjpeg62-turbo libopenjp2-7 libharfbuzz0b libfribidi0 \
+    fonts-dejavu \
     && rm -rf /var/lib/apt/lists/*
 
 # Node для сборки Tailwind CSS на этапе сборки образа

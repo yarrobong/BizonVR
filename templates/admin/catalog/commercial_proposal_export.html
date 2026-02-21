@@ -252,7 +252,8 @@
       </div>
     </div>
     <div class="cp-submit-row">
-      <button type="submit" id="submit-btn" class="cp-submit-btn" disabled>Скачать коммерческое предложение (HTML)</button>
+      <button type="submit" id="submit-pdf-btn" class="cp-submit-btn" name="export_format" value="pdf" disabled>Скачать PDF</button>
+      <button type="submit" id="submit-html-btn" class="cp-submit-btn" name="export_format" value="html" disabled style="background: rgba(0,0,0,0.06); color: var(--cp-text);">Скачать HTML</button>
       <a href="{% url 'admin:catalog_product_changelist' %}" class="cp-cancel-btn">Отмена</a>
     </div>
   </form>
@@ -266,7 +267,8 @@
   const dropdown = document.getElementById('search-dropdown');
   const searchInput = document.getElementById('product-search');
   const addMoreBtn = document.getElementById('add-more-btn');
-  const submitBtn = document.getElementById('submit-btn');
+  const submitPdfBtn = document.getElementById('submit-pdf-btn');
+  const submitHtmlBtn = document.getElementById('submit-html-btn');
   const hiddenInputs = document.getElementById('hidden-inputs');
   const selected = new Map();
 
@@ -307,7 +309,8 @@
       card.remove();
       selected.delete(product.id);
       if (selected.size === 0) emptyMsg.style.display = 'block';
-      submitBtn.disabled = selected.size === 0;
+      submitPdfBtn.disabled = selected.size === 0;
+      submitHtmlBtn.disabled = selected.size === 0;
     };
     function updateSum() {
       const qty = parseInt(card.querySelector('.cp-card-qty input').value) || 1;
@@ -318,7 +321,8 @@
     card.querySelector('.cp-card-qty input').addEventListener('input', updateSum);
     card.querySelector('.cp-card-price input').addEventListener('input', updateSum);
     container.appendChild(card);
-    submitBtn.disabled = false;
+    submitPdfBtn.disabled = false;
+    submitHtmlBtn.disabled = false;
   }
 
   function escapeHtml(s) {

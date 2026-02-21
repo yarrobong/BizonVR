@@ -43,6 +43,26 @@ class Profile(models.Model):
         return self.phone
 
 
+class CommercialProposalContact(models.Model):
+    """Контакты для коммерческих предложений (не зависят от логина по телефону)."""
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='cp_contact',
+        verbose_name='Пользователь',
+    )
+    phone = models.CharField('Телефон для КП', max_length=40, blank=True)
+    email = models.EmailField('Email для КП', blank=True)
+    updated_at = models.DateTimeField('Обновлено', auto_now=True)
+
+    class Meta:
+        verbose_name = 'Контакты для КП'
+        verbose_name_plural = 'Контакты для КП'
+
+    def __str__(self):
+        return f'КП-контакты: {self.user}'
+
+
 class BalanceTransaction(models.Model):
     """Операция по балансу: пополнение, списание за заказ, бонус по промокоду."""
     TYPE_TOPUP = 'topup'

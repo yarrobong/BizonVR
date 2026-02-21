@@ -605,17 +605,30 @@ class ProductAdmin(admin.ModelAdmin):
                 })
             timestamp = timezone.now().strftime('%Y%m%d_%H%M')
             date_display = timezone.now().strftime('%d.%m.%Y')
-            valid_until = (timezone.now() + timezone.timedelta(days=30)).strftime('%d.%m.%Y')
-            manager_name = ''
+            valid_until = (timezone.now() + timezone.timedelta(days=7)).strftime('%d.%m.%Y')
+            manager_first_name = (request.user.first_name or '').strip()
+            manager_last_name = (request.user.last_name or '').strip()
+            manager_email = (getattr(request.user, 'email', '') or '').strip()
             manager_phone = ''
+            # Приоритет: отдельные контакты для КП (не зависят от логина/профиля)
             try:
-                profile = request.user.profile
-                manager_name = profile.contact_name or ''
-                manager_phone = profile.phone or ''
+                cp_contact = request.user.cp_contact
+                if getattr(cp_contact, 'email', ''):
+                    manager_email = (cp_contact.email or '').strip()
+                if getattr(cp_contact, 'phone', ''):
+                    manager_phone = (cp_contact.phone or '').strip()
             except Exception:
                 pass
-            if not manager_name:
-                manager_name = request.user.get_full_name() or request.user.get_username() or ''
+            try:
+                profile = request.user.profile
+                if not manager_phone:
+                    manager_phone = profile.phone or ''
+            except Exception:
+                pass
+            if not manager_first_name and not manager_last_name:
+                # fallback: хотя бы что-то показать
+                fallback_name = request.user.get_full_name() or request.user.get_username() or ''
+                manager_first_name = fallback_name
             if not manager_phone:
                 manager_phone = getattr(settings, 'SITE_CONTACT_PHONE', '')
             site_url = getattr(settings, 'SITE_URL', '')
@@ -630,7 +643,9 @@ class ProductAdmin(admin.ModelAdmin):
                 total=total,
                 date_display=date_display,
                 valid_until=valid_until,
-                manager_name=manager_name,
+                manager_first_name=manager_first_name,
+                manager_last_name=manager_last_name,
+                manager_email=manager_email,
                 manager_phone=manager_phone,
                 site_url=site_url,
                 site_brand=site_brand,
@@ -639,6 +654,21 @@ class ProductAdmin(admin.ModelAdmin):
                 site_email=site_email,
                 site_address=site_address,
             )
+            export_format = (request.POST.get('export_format') or 'pdf').lower()
+            if export_format == 'pdf':
+                try:
+                    from weasyprint import HTML
+                    pdf_bytes = HTML(
+                        string=html_content,
+                        base_url=request.build_absolute_uri('/'),
+                    ).write_pdf()
+                except Exception as e:
+                    messages.error(request, f'Не удалось сформировать PDF: {e}. Скачайте HTML и сохраните в PDF через печать.')
+                    export_format = 'html'
+                else:
+                    response = HttpResponse(pdf_bytes, content_type='application/pdf')
+                    response['Content-Disposition'] = f'attachment; filename="commercial_proposal_{timestamp}.pdf"'
+                    return response
             response = HttpResponse(html_content, content_type='text/html; charset=utf-8')
             response['Content-Disposition'] = f'attachment; filename="commercial_proposal_{timestamp}.html"'
             return response
@@ -656,7 +686,9 @@ class ProductAdmin(admin.ModelAdmin):
         total,
         date_display,
         valid_until,
-        manager_name,
+        manager_first_name,
+        manager_last_name,
+        manager_email,
         manager_phone,
         site_url,
         site_brand,
@@ -677,6 +709,17 @@ class ProductAdmin(admin.ModelAdmin):
                 return f'{int(d):,}'.replace(',', ' ')
             # RU-формат: пробелы в тысячах + запятая в дробной части
             return f'{d:,.2f}'.replace(',', ' ').replace('.', ',')
+
+        def _truncate_for_desc(text: str, max_chars: int = 160) -> str:
+            """Обрезка описания с добавлением троеточия (для HTML/PDF)."""
+            t = (text or '').replace('\n', ' ').replace('\r', ' ').strip()
+            t = ' '.join(t.split())
+            if len(t) <= max_chars:
+                return t
+            cut = t[:max_chars].rstrip()
+            if cut.endswith(('…', '.', ',', ';', ':')):
+                cut = cut.rstrip('. ,;:')
+            return cut + '…'
 
         css = '''
         @page { size: A4; margin: 0; }
@@ -741,7 +784,7 @@ class ProductAdmin(admin.ModelAdmin):
             border-radius: 25px; }
         .info-panel strong { color: #fff; }
         table { width: 100%; border-collapse: collapse; margin-bottom: 30px; table-layout: fixed; }
-        th { background: rgba(255,255,255,0.06); color: rgba(0, 212, 255, 0.95); text-transform: uppercase; font-size: 11px;
+        th { background: rgba(255,255,255,0.06); color: #ffffff; text-transform: uppercase; font-size: 11px;
             letter-spacing: 1px; padding: 10px 8px; text-align: left;
             border-bottom: 2px solid rgba(0, 212, 255, 0.55); }
         td { padding: 12px 8px; font-size: 13px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); vertical-align: middle; word-break: break-word; }
@@ -752,7 +795,13 @@ class ProductAdmin(admin.ModelAdmin):
         .col-photo { width: 10%; }
         .col-name { width: 15%; font-weight: bold; color: #fff; }
         .col-desc { width: 20%; color: #888; font-size: 10px; line-height: 1.35; }
-        .col-desc .desc-clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+        .col-desc .desc-clamp {
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            max-height: calc(1.35em * 3);
+        }
         .col-qty { width: 10%; text-align: center; }
         .col-price { width: 10%; white-space: nowrap; text-align: right; }
         .col-sum { width: 10%; font-weight: bold; color: rgba(0, 212, 255, 0.95); white-space: nowrap; text-align: right; }
@@ -763,6 +812,7 @@ class ProductAdmin(admin.ModelAdmin):
         .total-box .total-amount { font-size: 22px; font-weight: 900; color: #ffffff; text-shadow: 0 0 14px rgba(0, 212, 255, 0.28); }
         .date-signature { display: flex; justify-content: space-between; font-size: 12px; color: #666;
             border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px; }
+        .legal-note { margin-top: 14px; font-size: 11px; line-height: 1.45; color: rgba(229,231,235,0.65); }
         @media print {
             body { padding: 0; background-color: #0b0d14; }
             .a4-page { box-shadow: none; margin: 0; border: none; border-radius: 0; }
@@ -785,8 +835,6 @@ class ProductAdmin(admin.ModelAdmin):
         lines.append('<div class="brand-subtitle">Виртуальная реальность</div>')
         lines.append('</div>')
         lines.append('<div class="contacts">')
-        if site_address:
-            lines.append(f'<p><span>Адрес:</span> {escape(site_address)}</p>')
         if site_phone:
             lines.append(f'<p><span>Тел:</span> {escape(site_phone)}</p>')
         if site_email:
@@ -796,12 +844,13 @@ class ProductAdmin(admin.ModelAdmin):
         lines.append('</div></div>')
         lines.append('<div class="title-block">')
         lines.append('<h1>Коммерческое предложение</h1>')
-        lines.append(f'<p>Официальный документ. Действительно до {escape(valid_until)}</p>')
+        # Строку про «Официальный документ / Действительно до ...» убрали — срок указан внизу (7 дней).
         lines.append('</div>')
         lines.append('<div class="info-panel">')
         lines.append('<div>')
-        lines.append(f'Менеджер: <strong>{escape(manager_name)}</strong><br>')
-        lines.append(f'Телефон: <strong>{escape(manager_phone)}</strong>')
+        manager_full_name = f'{(manager_last_name or "").strip()} {(manager_first_name or "").strip()}'.strip() or '—'
+        lines.append(f'Менеджер: <strong>{escape(manager_full_name)}</strong><br>')
+        lines.append(f'Телефон для связи: <strong>{escape(manager_phone) or "—"}</strong>')
         lines.append('</div></div>')
         lines.append('<table>')
         lines.append(
@@ -814,7 +863,7 @@ class ProductAdmin(admin.ModelAdmin):
                 photo_cell = f'<div class="item-photo"><img src="{escape(r["image_url"])}" alt=""></div>'
             else:
                 photo_cell = '<div class="item-photo">—</div>'
-            desc = escape((r.get('description') or '')[:500])
+            desc = escape(_truncate_for_desc(r.get('description') or '', max_chars=160))
             price_fmt = _fmt(r['price'])
             sum_fmt = _fmt(r['row_total'])
             lines.append(
@@ -836,7 +885,12 @@ class ProductAdmin(admin.ModelAdmin):
         lines.append(
             '<div class="date-signature">'
             f'<div>Дата составления: <strong>{escape(date_display)}</strong></div>'
-            '<div>Документ сгенерирован автоматически</div>'
+            '</div>'
+        )
+        lines.append(
+            '<div class="legal-note">'
+            'Данное коммерческое предложение является официальным и действует в течение 7 дней с даты составления.<br>'
+            'Цена не включает в себя доставку. Доставка оплачивается покупателем при получении.'
             '</div>'
         )
         lines.append('</div></body></html>')

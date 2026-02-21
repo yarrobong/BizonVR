@@ -3,16 +3,27 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth import get_user_model
 from django.contrib import messages
 
-from .models import Profile, PhoneVerificationCode
+from .models import CommercialProposalContact, Profile, PhoneVerificationCode
 from .admin_roles import MANAGER_GROUP_NAME, user_has_manager_role, set_user_manager_role
 
 User = get_user_model()
+
+
+class CommercialProposalContactInline(admin.StackedInline):
+    model = CommercialProposalContact
+    extra = 0
+    max_num = 1
+    can_delete = True
+    verbose_name_plural = 'Контакты для коммерческих предложений'
+    fields = ('phone', 'email', 'updated_at')
+    readonly_fields = ('updated_at',)
 
 
 # Переопределяем админку пользователей: показываем роль менеджера и даём действия.
 class CustomUserAdmin(BaseUserAdmin):
     list_display = BaseUserAdmin.list_display + ('is_manager_display',)
     list_filter = BaseUserAdmin.list_filter + ('groups',)
+    inlines = (CommercialProposalContactInline,)
 
     @admin.display(boolean=True, description='Менеджер')
     def is_manager_display(self, obj):
