@@ -23,7 +23,7 @@ python manage.py migrate --noinput
 # Сборка Tailwind только если нет файла (dev с volume; в prod уже собран в образе)
 if [ ! -f /app/static/css/tailwind.css ]; then
   echo "[entrypoint] Building Tailwind CSS (first run)..."
-  (cd /app && npm install 2>/dev/null && npm run build:css 2>/dev/null) || true
+  (cd /app && npm ci --no-audit --no-fund && npm run build:css)
 fi
 echo "[entrypoint] Collecting static files..."
 python manage.py collectstatic --noinput

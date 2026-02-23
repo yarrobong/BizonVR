@@ -159,7 +159,8 @@ LOGIN_URL = '/accounts/login/'
 LOGIN_REDIRECT_URL = '/accounts/profile/'
 
 # Тестовый режим: после оформления заказ сразу «Оплачен», оплата не требуется.
-TEST_ORDER_NO_PAYMENT = config('TEST_ORDER_NO_PAYMENT', default='1', cast=bool)
+# В продакшене безопаснее держать выключенным по умолчанию.
+TEST_ORDER_NO_PAYMENT = config('TEST_ORDER_NO_PAYMENT', default='0', cast=bool)
 
 # NowPayments (Фаза 5). Без ключа создание платежа не выполняется.
 NOWPAYMENTS_API_KEY = config('NOWPAYMENTS_API_KEY', default='')
@@ -179,12 +180,26 @@ SITE_CONTACT_ADDRESS = config('SITE_CONTACT_ADDRESS', default='Москва, у�
 SITE_CONTACT_TELEGRAM = config('SITE_CONTACT_TELEGRAM', default='https://t.me/bizon_order_manager')
 SITE_CONTACT_TELEGRAM_HANDLE = config('SITE_CONTACT_TELEGRAM_HANDLE', default='@bizon_order_manager')
 SITE_WORK_HOURS = config('SITE_WORK_HOURS', default='Пн-Пт: 10:00-19:00')
+SITE_BLOG_URL = config('SITE_BLOG_URL', default='').strip()
+SITE_CLUBS_URL = config('SITE_CLUBS_URL', default='').strip()
+SITE_INSTRUCTIONS_URL = config('SITE_INSTRUCTIONS_URL', default='').strip()
+SITE_YOUTUBE_URL = config('SITE_YOUTUBE_URL', default='').strip()
 
 # Кэш для django-ratelimit (ограничение частоты запросов). В продакшене лучше Redis.
 CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
     }
+}
+
+# WhiteNoise: сжатая статика + manifest-хеши для кэширования в продакшене.
+STORAGES = {
+    'default': {
+        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+    },
+    'staticfiles': {
+        'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+    },
 }
 
 # Безопасность для продакшена (HTTPS, HSTS, cookies).
@@ -201,6 +216,7 @@ if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
     SESSION_COOKIE_SECURE = _use_https
     CSRF_COOKIE_SECURE = _use_https
+    SECURE_REFERRER_POLICY = 'same-origin'
     SECURE_HSTS_SECONDS = 31536000 if _use_https else 0
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True

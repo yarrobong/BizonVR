@@ -25,8 +25,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 RUN chmod +x /app/entrypoint.sh
 
-# Сборка Tailwind CSS в образе (node_modules не копируются — ставим здесь)
-RUN npm install --omit=dev 2>/dev/null && npm run build:css 2>/dev/null || true
+# Сборка Tailwind CSS в образе должна падать при ошибке, иначе легко уехать в прод без CSS.
+RUN npm ci --no-audit --no-fund && npm run build:css
 
 # Директории для статики и медиа (заполняются в entrypoint при старте)
 RUN mkdir -p /app/staticfiles /app/media

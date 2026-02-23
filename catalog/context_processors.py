@@ -93,6 +93,10 @@ def catalog_menu(request):
     result['site_contact_telegram'] = getattr(settings, 'SITE_CONTACT_TELEGRAM', '')
     result['site_contact_telegram_handle'] = getattr(settings, 'SITE_CONTACT_TELEGRAM_HANDLE', '')
     result['site_work_hours'] = getattr(settings, 'SITE_WORK_HOURS', '')
+    result['site_blog_url'] = getattr(settings, 'SITE_BLOG_URL', '')
+    result['site_clubs_url'] = getattr(settings, 'SITE_CLUBS_URL', '')
+    result['site_instructions_url'] = getattr(settings, 'SITE_INSTRUCTIONS_URL', '')
+    result['site_youtube_url'] = getattr(settings, 'SITE_YOUTUBE_URL', '')
     result['current_year'] = date.today().year
     
     return result

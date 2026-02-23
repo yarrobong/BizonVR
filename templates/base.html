@@ -19,11 +19,11 @@
   <link rel="stylesheet" href="{% static 'css/tailwind.css' %}">
   
   <!-- HTMX & Alpine.js -->
-  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+  <script defer src="https://unpkg.com/htmx.org@1.9.10"></script>
   <script defer src="https://unpkg.com/alpinejs@3.13.3/dist/cdn.min.js"></script>
   
   <!-- Lucide Icons -->
-  <script src="https://unpkg.com/lucide@latest"></script>
+  <script defer src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
 
   <style>
     /* Скрыть полосу прокрутки на всём сайте (скролл остаётся) */
@@ -1728,10 +1728,16 @@
           </style>
           <div class="flex items-center gap-6 md:gap-8 flex-shrink-0">
             <ul class="header-nav flex items-center gap-6 md:gap-8">
-              <li><a href="#" class="hover:text-accent transition-colors py-2 block">Блог</a></li>
-              <li><a href="#" class="hover:text-accent transition-colors py-2 block">Клубы</a></li>
+              {% if site_blog_url %}
+              <li><a href="{{ site_blog_url }}" class="hover:text-accent transition-colors py-2 block" {% if '://' in site_blog_url %}target="_blank" rel="noopener noreferrer"{% endif %}>Блог</a></li>
+              {% endif %}
+              {% if site_clubs_url %}
+              <li><a href="{{ site_clubs_url }}" class="hover:text-accent transition-colors py-2 block" {% if '://' in site_clubs_url %}target="_blank" rel="noopener noreferrer"{% endif %}>Клубы</a></li>
+              {% endif %}
               <li><a href="{% url 'arenda' %}" class="hover:text-accent transition-colors py-2 block">Аренда</a></li>
-              <li><a href="#" class="hover:text-accent transition-colors py-2 block">Инструкции</a></li>
+              {% if site_instructions_url %}
+              <li><a href="{{ site_instructions_url }}" class="hover:text-accent transition-colors py-2 block" {% if '://' in site_instructions_url %}target="_blank" rel="noopener noreferrer"{% endif %}>Инструкции</a></li>
+              {% endif %}
               <li><a href="{% url 'uslugi' %}" class="hover:text-accent transition-colors py-2 block">Услуги</a></li>
               <li><a href="{% url 'contacts' %}" class="hover:text-accent transition-colors py-2 block">Контакты</a></li>
             </ul>
