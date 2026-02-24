@@ -30,6 +30,12 @@ class PurchaseRequestForm(forms.Form):
             'placeholder': '@username или ссылка t.me/username',
         }),
     )
+    agree_personal_data = forms.BooleanField(
+        label='Согласие на обработку персональных данных',
+        required=True,
+        error_messages={'required': 'Необходимо согласие на обработку персональных данных.'},
+        widget=forms.CheckboxInput(),
+    )
 
     def clean_phone(self):
         value = (self.cleaned_data.get('phone') or '').strip()
@@ -126,6 +132,18 @@ class CheckoutForm(forms.Form):
         widget=forms.Select(attrs={
             'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
         }),
+    )
+    agree_personal_data = forms.BooleanField(
+        label='Согласие на обработку персональных данных',
+        required=True,
+        error_messages={'required': 'Необходимо согласие на обработку персональных данных.'},
+        widget=forms.CheckboxInput(),
+    )
+    agree_offer = forms.BooleanField(
+        label='Принятие условий оферты',
+        required=True,
+        error_messages={'required': 'Необходимо принять условия оферты.'},
+        widget=forms.CheckboxInput(),
     )
 
     def __init__(self, *args, selected_city=None, **kwargs):

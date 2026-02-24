@@ -27,6 +27,10 @@ class PurchaseRequest(models.Model):
     total = models.DecimalField('Сумма', max_digits=12, decimal_places=2, default=Decimal('0'))
     status = models.CharField('Статус', max_length=20, choices=STATUS_CHOICES, default=STATUS_NEW, db_index=True)
     comment = models.TextField('Комментарий (админ)', blank=True)
+    legal_accepted_at = models.DateTimeField('Согласие с юр. документами', null=True, blank=True)
+    legal_docs_version = models.CharField('Версия юр. документов', max_length=32, blank=True)
+    legal_acceptance_ip = models.GenericIPAddressField('IP при согласии', null=True, blank=True)
+    legal_acceptance_user_agent = models.CharField('User-Agent при согласии', max_length=512, blank=True)
     created_at = models.DateTimeField('Создана', auto_now_add=True, db_index=True)
 
     class Meta:

@@ -613,6 +613,10 @@ class ContactRequest(models.Model):
     email = models.EmailField('Email')
     phone = models.CharField('Телефон', max_length=20, blank=True)
     message = models.TextField('Сообщение')
+    legal_accepted_at = models.DateTimeField('Согласие с юр. документами', null=True, blank=True)
+    legal_docs_version = models.CharField('Версия юр. документов', max_length=32, blank=True)
+    legal_acceptance_ip = models.GenericIPAddressField('IP при согласии', null=True, blank=True)
+    legal_acceptance_user_agent = models.CharField('User-Agent при согласии', max_length=512, blank=True)
     created_at = models.DateTimeField('Создано', auto_now_add=True)
 
     class Meta:
@@ -629,6 +633,10 @@ class CallbackRequest(models.Model):
     name = models.CharField('Имя', max_length=150, blank=True)
     phone = models.CharField('Телефон', max_length=20)
     source = models.CharField('Источник', max_length=50, default='arenda', blank=True)
+    legal_accepted_at = models.DateTimeField('Согласие с юр. документами', null=True, blank=True)
+    legal_docs_version = models.CharField('Версия юр. документов', max_length=32, blank=True)
+    legal_acceptance_ip = models.GenericIPAddressField('IP при согласии', null=True, blank=True)
+    legal_acceptance_user_agent = models.CharField('User-Agent при согласии', max_length=512, blank=True)
     created_at = models.DateTimeField('Создано', auto_now_add=True)
 
     class Meta:

@@ -32,7 +32,10 @@
       <input type="checkbox" name="agree_privacy" id="id_agree_privacy" required
              class="mt-1 w-4 h-4 rounded border-gray-600 bg-dark-700 text-accent focus:ring-accent focus:ring-offset-0">
       <label for="id_agree_privacy" class="text-sm text-gray-400">
-        Настоящим подтверждаю, что я ознакомлен и согласен с условиями <a href="{% url 'oferta' %}" target="_blank" rel="noopener noreferrer" class="text-accent hover:text-accent-hover underline">политики конфиденциальности</a>
+        Настоящим подтверждаю, что я ознакомлен(а) и согласен(на) с
+        <a href="{% url 'privacy' %}" target="_blank" rel="noopener noreferrer" class="text-accent hover:text-accent-hover underline">политикой конфиденциальности</a>,
+        <a href="{% url 'pd_consent' %}" target="_blank" rel="noopener noreferrer" class="text-accent hover:text-accent-hover underline">согласием на обработку ПД</a>
+        и <a href="{% url 'user_agreement' %}" target="_blank" rel="noopener noreferrer" class="text-accent hover:text-accent-hover underline">пользовательским соглашением</a>.
       </label>
     </div>
     {% if form.agree_privacy.errors %}

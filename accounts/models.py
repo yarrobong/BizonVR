@@ -28,6 +28,7 @@ class Profile(models.Model):
     phone = models.CharField('Телефон', max_length=20, unique=True, db_index=True)
     contact_name = models.CharField('Контактное лицо (ФИО)', max_length=255, blank=True)
     privacy_agreed_at = models.DateTimeField('Согласие на обработку ПД', null=True, blank=True)
+    privacy_policy_version = models.CharField('Версия политики ПД', max_length=32, blank=True)
     balance = models.DecimalField(
         'Баланс',
         max_digits=12,

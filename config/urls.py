@@ -17,32 +17,53 @@ Including another URLconf
 from django.conf import settings
 from decouple import config
 from django.contrib import admin
+from django.contrib.sitemaps.views import sitemap
 from django.urls import path, include, re_path
 
 from config.views import (
     arenda_view,
     contacts_view,
+    cookies_policy_view,
     debug_cities_view,
     favicon_view,
     home_view,
+    oferta_view,
+    pd_consent_view,
     privacy_view,
+    robots_txt_view,
+    sales_terms_view,
+    service_request_terms_view,
     serve_media,
+    user_agreement_view,
     uslugi_view,
 )
+from config.sitemaps import BundleSitemap, ProductSitemap, StaticViewSitemap
 
 urlpatterns = [
     path('favicon.ico', favicon_view),
+    path('robots.txt', robots_txt_view),
     path('admin/', admin.site.urls),
     path('arenda/', arenda_view, name='arenda'),
     path('uslugi/', uslugi_view, name='uslugi'),
     path('contacts/', contacts_view, name='contacts'),
     path('privacy/', privacy_view, name='privacy'),
-    path('page/oferta/', privacy_view, name='oferta'),
+    path('page/oferta/', oferta_view, name='oferta'),
+    path('page/user-agreement/', user_agreement_view, name='user_agreement'),
+    path('page/pd-consent/', pd_consent_view, name='pd_consent'),
+    path('page/cookies/', cookies_policy_view, name='cookies_policy'),
+    path('page/sales-terms/', sales_terms_view, name='sales_terms'),
+    path('page/service-request-terms/', service_request_terms_view, name='service_request_terms'),
     path('accounts/', include('accounts.urls')),
     path('orders/', include('orders.urls')),
     path('payments/', include('payments.urls')),
     path('catalog/', include('catalog.urls')),
     path('', home_view, name='home'),
+    path(
+        'sitemap.xml',
+        sitemap,
+        {'sitemaps': {'static': StaticViewSitemap, 'products': ProductSitemap, 'bundles': BundleSitemap}},
+        name='django_sitemap',
+    ),
 ]
 if settings.DEBUG:
     urlpatterns.append(path('debug-cities/', debug_cities_view, name='debug_cities'))

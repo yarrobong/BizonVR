@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django.contrib.sitemaps',
     'catalog',
     'accounts',
     'orders',
@@ -176,7 +177,7 @@ SITE_DESCRIPTION = config('SITE_DESCRIPTION', default='Магазин VR обо�
 SITE_CONTACT_PHONE = config('SITE_CONTACT_PHONE', default='+7 (932) 491-04-82')
 SITE_CONTACT_PHONE_HREF = config('SITE_CONTACT_PHONE_HREF', default='+79324910482')
 SITE_CONTACT_EMAIL = config('SITE_CONTACT_EMAIL', default='info@bizon-business.ru')
-SITE_CONTACT_ADDRESS = config('SITE_CONTACT_ADDRESS', default='Москва, ул. Академика Королева, 13с1')
+SITE_CONTACT_ADDRESS = config('SITE_CONTACT_ADDRESS', default='')
 SITE_CONTACT_TELEGRAM = config('SITE_CONTACT_TELEGRAM', default='https://t.me/bizon_order_manager')
 SITE_CONTACT_TELEGRAM_HANDLE = config('SITE_CONTACT_TELEGRAM_HANDLE', default='@bizon_order_manager')
 SITE_WORK_HOURS = config('SITE_WORK_HOURS', default='Пн-Пт: 10:00-19:00')
@@ -184,6 +185,7 @@ SITE_BLOG_URL = config('SITE_BLOG_URL', default='').strip()
 SITE_CLUBS_URL = config('SITE_CLUBS_URL', default='').strip()
 SITE_INSTRUCTIONS_URL = config('SITE_INSTRUCTIONS_URL', default='').strip()
 SITE_YOUTUBE_URL = config('SITE_YOUTUBE_URL', default='').strip()
+SITE_TIKTOK_URL = config('SITE_TIKTOK_URL', default='').strip()
 
 # Кэш для django-ratelimit (ограничение частоты запросов). В продакшене лучше Redis.
 CACHES = {

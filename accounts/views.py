@@ -15,6 +15,7 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from django.utils import timezone
 
 from .forms import CodeVerifyForm, CompleteRegistrationForm, PhoneRequestForm
+from config.legal_consent import get_legal_bundle_version
 from .services import create_and_send_code, verify_code_and_login
 
 
@@ -141,6 +142,7 @@ def complete_registration_view(request):
         if form.is_valid():
             profile.contact_name = form.cleaned_data['contact_name'].strip()
             profile.privacy_agreed_at = timezone.now()
+            profile.privacy_policy_version = get_legal_bundle_version()
             profile.save()
             return redirect(_safe_redirect_url(next_url, 'home'))
     else:
@@ -193,5 +195,4 @@ def balance_history_view(request):
         'user': request.user,
         'transactions': transactions,
     })
-
 

@@ -88,8 +88,22 @@
     transition: color 0.3s;
   }
 
+  .custom-field-group label.checkbox-consent-label {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    margin-bottom: 0;
+    color: #d1d5db;
+    line-height: 1.35;
+  }
+
+  .custom-field-group label.checkbox-consent-label input[type="checkbox"] {
+    margin-top: 0.2rem;
+    flex-shrink: 0;
+  }
+
   /* Стилизация Django inputs */
-  .custom-field-group input, 
+  .custom-field-group input:not([type="checkbox"]), 
   .custom-field-group textarea,
   .custom-field-group select {
     width: 100%;
@@ -104,7 +118,7 @@
   }
 
   /* Эффект фокуса */
-  .custom-field-group input:focus, 
+  .custom-field-group input:not([type="checkbox"]):focus, 
   .custom-field-group textarea:focus {
     border-color: var(--primary);
     background-color: rgba(0, 0, 0, 0.4);
@@ -230,8 +244,20 @@
         {% csrf_token %}
         {% for field in form %}
         <div class="custom-field-group">
+          {% if field.field.widget.input_type == 'checkbox' %}
+          <label for="{{ field.id_for_label }}" class="checkbox-consent-label">
+            {{ field }}
+            <span>
+              Даю согласие на обработку персональных данных и подтверждаю ознакомление с
+              <a href="{% url 'privacy' %}" target="_blank" rel="noopener noreferrer" class="text-amber-400 hover:text-amber-300 underline">политикой конфиденциальности</a>,
+              <a href="{% url 'pd_consent' %}" target="_blank" rel="noopener noreferrer" class="text-amber-400 hover:text-amber-300 underline">согласием на обработку ПД</a>
+              и <a href="{% url 'service_request_terms' %}" target="_blank" rel="noopener noreferrer" class="text-amber-400 hover:text-amber-300 underline">условиями обработки заявок</a>.
+            </span>
+          </label>
+          {% else %}
           <label for="{{ field.id_for_label }}">{{ field.label }}</label>
           {{ field }}
+          {% endif %}
           
           {% if field.errors %}
           <div class="text-red-500 text-xs mt-2 flex items-center animate-pulse">
@@ -253,12 +279,6 @@
         <h2 class="section-title mb-8">Контакты</h2>
         <div class="space-y-6">
             
-          <div class="contact-item">
-            <div class="contact-label">Адрес</div>
-            <p class="contact-value">Москва, ул. Академика Королева, 13с1</p>
-            <p class="contact-sub">Метро ВДНХ (10 мин)</p>
-          </div>
-
           <div class="contact-item">
              <div class="contact-label">Режим работы</div>
              <p class="contact-value">Пн-Пт: с 10:00 до 19:00</p>

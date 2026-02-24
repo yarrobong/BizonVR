@@ -66,6 +66,20 @@
             {{ form.telegram }}
             {% if form.telegram.errors %}<p class="text-red-400 text-xs mt-1">{{ form.telegram.errors.0 }}</p>{% endif %}
           </div>
+          <div class="rounded-lg border border-dark-600 bg-dark-900/60 p-4">
+            <label for="id_agree_personal_data" class="flex items-start gap-3 text-sm text-gray-300">
+              <input type="checkbox" name="agree_personal_data" id="id_agree_personal_data" required
+                     {% if form.agree_personal_data.value %}checked{% endif %}
+                     class="mt-1 w-4 h-4 rounded border-gray-600 bg-dark-700 text-accent focus:ring-accent focus:ring-offset-0">
+              <span>
+                Даю согласие на обработку персональных данных и обработку заявки на покупку. Подтверждаю ознакомление с
+                <a href="{% url 'privacy' %}" target="_blank" rel="noopener noreferrer" class="text-accent hover:text-accent-hover underline">политикой конфиденциальности</a>,
+                <a href="{% url 'pd_consent' %}" target="_blank" rel="noopener noreferrer" class="text-accent hover:text-accent-hover underline">согласием на обработку ПД</a>
+                и <a href="{% url 'service_request_terms' %}" target="_blank" rel="noopener noreferrer" class="text-accent hover:text-accent-hover underline">условиями обработки заявок</a>.
+              </span>
+            </label>
+            {% if form.agree_personal_data.errors %}<p class="text-red-400 text-xs mt-2">{{ form.agree_personal_data.errors.0 }}</p>{% endif %}
+          </div>
           <button type="submit" class="w-full bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-6 rounded-full text-sm uppercase tracking-wide transition-colors">
             Отправить заявку
           </button>
@@ -135,6 +149,30 @@
           <div>
             <label for="id_comment" class="block text-sm font-medium text-gray-300 mb-1">{{ form.comment.label }}</label>
             {{ form.comment }}
+          </div>
+          <div class="space-y-3 rounded-lg border border-dark-600 bg-dark-900/60 p-4">
+            <label for="id_agree_personal_data_checkout" class="flex items-start gap-3 text-sm text-gray-300">
+              <input type="checkbox" name="agree_personal_data" id="id_agree_personal_data_checkout" required
+                     {% if form.agree_personal_data.value %}checked{% endif %}
+                     class="mt-1 w-4 h-4 rounded border-gray-600 bg-dark-700 text-accent focus:ring-accent focus:ring-offset-0">
+              <span>
+                Даю согласие на обработку персональных данных и подтверждаю ознакомление с
+                <a href="{% url 'privacy' %}" target="_blank" rel="noopener noreferrer" class="text-accent hover:text-accent-hover underline">политикой конфиденциальности</a>
+                и <a href="{% url 'pd_consent' %}" target="_blank" rel="noopener noreferrer" class="text-accent hover:text-accent-hover underline">согласием на обработку ПД</a>.
+              </span>
+            </label>
+            {% if form.agree_personal_data.errors %}<p class="text-red-400 text-xs">{{ form.agree_personal_data.errors.0 }}</p>{% endif %}
+
+            <label for="id_agree_offer" class="flex items-start gap-3 text-sm text-gray-300">
+              <input type="checkbox" name="agree_offer" id="id_agree_offer" required
+                     {% if form.agree_offer.value %}checked{% endif %}
+                     class="mt-1 w-4 h-4 rounded border-gray-600 bg-dark-700 text-accent focus:ring-accent focus:ring-offset-0">
+              <span>
+                Принимаю условия <a href="{% url 'oferta' %}" target="_blank" rel="noopener noreferrer" class="text-accent hover:text-accent-hover underline">публичной оферты</a>
+                и документа <a href="{% url 'sales_terms' %}" target="_blank" rel="noopener noreferrer" class="text-accent hover:text-accent-hover underline">оплата / доставка / возврат / гарантия</a>.
+              </span>
+            </label>
+            {% if form.agree_offer.errors %}<p class="text-red-400 text-xs">{{ form.agree_offer.errors.0 }}</p>{% endif %}
           </div>
           <button type="submit" class="w-full bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-6 rounded-full text-sm uppercase tracking-wide transition-colors">
             Оформить заказ

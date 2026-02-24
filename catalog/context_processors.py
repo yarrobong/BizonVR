@@ -97,6 +97,7 @@ def catalog_menu(request):
     result['site_clubs_url'] = getattr(settings, 'SITE_CLUBS_URL', '')
     result['site_instructions_url'] = getattr(settings, 'SITE_INSTRUCTIONS_URL', '')
     result['site_youtube_url'] = getattr(settings, 'SITE_YOUTUBE_URL', '')
+    result['site_tiktok_url'] = getattr(settings, 'SITE_TIKTOK_URL', '')
     result['current_year'] = date.today().year
     
     return result

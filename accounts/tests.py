@@ -1,6 +1,13 @@
 """Базовые тесты входа по телефону (Фаза 6)."""
+from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from django.urls import reverse
+
+from config.legal_docs import LEGAL_BUNDLE_VERSION
+
+from .models import Profile
+
+User = get_user_model()
 
 
 class LoginViewsTest(TestCase):
@@ -23,3 +30,23 @@ class LoginViewsTest(TestCase):
         data = resp.json()
         self.assertFalse(data.get('ok'))
         self.assertIn('error', data)
+
+
+class CompleteRegistrationLegalVersionTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(username='79991234567', password='testpass')
+
+    def test_complete_registration_saves_privacy_policy_version(self):
+        self.client.force_login(self.user)
+        resp = self.client.post(
+            reverse('accounts:complete_registration'),
+            {
+                'contact_name': 'Иванов Иван Иванович',
+                'agree_privacy': 'on',
+            },
+        )
+        self.assertEqual(resp.status_code, 302)
+        profile = Profile.objects.get(user=self.user)
+        self.assertIsNotNone(profile.privacy_agreed_at)
+        self.assertEqual(profile.privacy_policy_version, LEGAL_BUNDLE_VERSION)

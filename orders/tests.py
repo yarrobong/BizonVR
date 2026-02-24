@@ -6,7 +6,9 @@ from django.test import Client, TestCase
 from django.urls import reverse
 
 from catalog.models import Category, Product
+from config.legal_docs import LEGAL_BUNDLE_VERSION
 
+from .forms import CheckoutForm, PurchaseRequestForm
 from .models import Order, OrderItem, PurchaseRequest
 
 User = get_user_model()
@@ -52,6 +54,7 @@ class CheckoutTest(TestCase):
         resp = self.client.post(url, {
             'phone': '+7 999 123 45 67',
             'telegram': '@testuser',
+            'agree_personal_data': 'on',
         })
         self.assertEqual(resp.status_code, 302, msg=f'Got {resp.status_code}. URL: {getattr(resp, "url", "")}. Content: {resp.content.decode()[:300] if resp.content else ""}')
         self.assertIn('request-created', resp.url, msg=f'Expected redirect to request_created, got {resp.url}')
@@ -60,9 +63,36 @@ class CheckoutTest(TestCase):
         self.assertEqual(req.total, Decimal('200.00'))
         self.assertEqual(req.phone, '+7 999 123 45 67')
         self.assertEqual(len(req.items), 1)
+        self.assertIsNotNone(req.legal_accepted_at)
+        self.assertEqual(req.legal_docs_version, LEGAL_BUNDLE_VERSION)
+        self.assertTrue(req.legal_acceptance_user_agent == '' or isinstance(req.legal_acceptance_user_agent, str))
         # После оформления корзина пуста (сессия для анонима)
-        self.client.get(resp.url)
         self.assertEqual(self.client.session.get('cart_items', []), [])
+
+
+class CheckoutFormsLegalValidationTest(TestCase):
+    def test_purchase_request_form_requires_personal_data_consent(self):
+        form = PurchaseRequestForm(data={
+            'phone': '+7 999 111 22 33',
+            'telegram': '@test',
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn('agree_personal_data', form.errors)
+
+    def test_checkout_form_requires_offer_and_personal_data_consents(self):
+        form = CheckoutForm(data={
+            'phone': '+7 999 111 22 33',
+            'first_name': 'Иван',
+            'last_name': 'Иванов',
+            'email': 'test@example.com',
+            'address': 'Москва, ул. Тестовая, д. 1',
+            'delivery_type': 'courier',
+            'comment': '',
+            'promo_code': '',
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn('agree_personal_data', form.errors)
+        self.assertIn('agree_offer', form.errors)
 
 
 class GuestOrderTest(TestCase):

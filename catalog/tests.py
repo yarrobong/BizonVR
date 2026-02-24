@@ -4,10 +4,12 @@ import re
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
+from config.forms import CallbackForm, ContactForm
+from config.legal_docs import LEGAL_BUNDLE_VERSION
 from orders.models import Order, OrderItem
 
 from .models import (
@@ -15,6 +17,7 @@ from .models import (
     CallbackRequest,
     CatalogSection,
     Category,
+    ContactRequest,
     Favorite,
     Product,
     ProductBundle,
@@ -149,6 +152,82 @@ class HomeFeaturedProductsTest(TestCase):
         self.assertNotIn(self.regular_product.slug, shown_slugs)
 
 
+@override_settings(
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    }
+)
+class LegalPagesAndLinksTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+
+    def test_legal_pages_return_200_and_oferta_is_not_privacy(self):
+        urls = [
+            ('privacy', 'Политика конфиденциальности'),
+            ('oferta', 'Публичная оферта'),
+            ('user_agreement', 'Пользовательское соглашение'),
+            ('pd_consent', 'Согласие на обработку персональных данных'),
+            ('cookies_policy', 'Политика использования файлов cookies'),
+            ('sales_terms', 'Условия оплаты, доставки, возврата и гарантии'),
+            ('service_request_terms', 'Условия обработки заявок'),
+        ]
+        for name, marker in urls:
+            resp = self.client.get(reverse(name))
+            self.assertEqual(resp.status_code, 200, msg=name)
+            self.assertContains(resp, marker)
+        oferta_resp = self.client.get(reverse('oferta'))
+        self.assertNotContains(oferta_resp, 'Настоящая политика конфиденциальности определяет')
+
+    def test_home_footer_and_cookie_banner_have_legal_links(self):
+        resp = self.client.get(reverse('home'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, reverse('privacy'))
+        self.assertContains(resp, reverse('cookies_policy'))
+        self.assertContains(resp, reverse('oferta'))
+
+
+class LegalConsentFormsAndViewsTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+
+    def test_contact_form_requires_personal_data_consent(self):
+        form = ContactForm(data={
+            'name': 'Иван',
+            'email': 'ivan@example.com',
+            'phone': '+7 999 111 22 33',
+            'message': 'Тест',
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn('agree_personal_data', form.errors)
+
+    def test_callback_form_requires_personal_data_consent(self):
+        form = CallbackForm(data={
+            'name': 'Иван',
+            'phone': '+7 999 111 22 33',
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn('agree_personal_data', form.errors)
+
+    def test_contacts_view_saves_legal_acceptance(self):
+        resp = self.client.post(
+            reverse('contacts'),
+            {
+                'name': 'Иван',
+                'email': 'ivan@example.com',
+                'phone': '+7 (999) 111-22-33',
+                'message': 'Нужна консультация',
+                'agree_personal_data': 'on',
+            },
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp['Location'], reverse('contacts'))
+        req = ContactRequest.objects.first()
+        self.assertIsNotNone(req)
+        self.assertIsNotNone(req.legal_accepted_at)
+        self.assertEqual(req.legal_docs_version, LEGAL_BUNDLE_VERSION)
+
+
 class ServicesPageTest(TestCase):
     """Страница услуг: вывод из БД и обработка callback-формы."""
 
@@ -186,6 +265,7 @@ class ServicesPageTest(TestCase):
                 'form_type': 'callback',
                 'name': 'Иван',
                 'phone': '+7 (999) 111-22-33',
+                'agree_personal_data': 'on',
             },
         )
         self.assertEqual(resp.status_code, 302)
@@ -194,6 +274,8 @@ class ServicesPageTest(TestCase):
         self.assertIsNotNone(callback)
         self.assertEqual(callback.source, 'uslugi')
         self.assertEqual(callback.name, 'Иван')
+        self.assertIsNotNone(callback.legal_accepted_at)
+        self.assertEqual(callback.legal_docs_version, LEGAL_BUNDLE_VERSION)
 
 
 class FavoriteTest(TestCase):
@@ -615,3 +697,34 @@ class FooterProductsFeedTest(TestCase):
         html = resp.content.decode()
         self.assertIn('Показать все товары', html)
         self.assertNotIn('page=9', html)
+
+
+class SeoFilesTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+
+    def test_robots_txt_exists_and_links_sitemap(self):
+        resp = self.client.get('/robots.txt')
+        self.assertEqual(resp.status_code, 200)
+        body = resp.content.decode('utf-8')
+        self.assertIn('User-agent:', body)
+        self.assertIn('Sitemap: http://testserver/sitemap.xml', body)
+
+    def test_sitemap_xml_exists_and_contains_urls(self):
+        cat = Category.objects.create(name='Тест', slug='seo-test')
+        product = Product.objects.create(
+            category=cat,
+            name='SEO Product',
+            slug='seo-product',
+            price=100,
+            is_active=True,
+        )
+        bundle = ProductBundle.objects.create(name='SEO Bundle')
+
+        resp = self.client.get('/sitemap.xml')
+        self.assertEqual(resp.status_code, 200)
+        body = resp.content.decode('utf-8')
+        self.assertIn('<urlset', body)
+        self.assertIn('<loc>http://testserver/</loc>', body)
+        self.assertIn(f'<loc>http://testserver{product.get_absolute_url()}</loc>', body)
+        self.assertIn(f'<loc>http://testserver{bundle.get_absolute_url()}</loc>', body)

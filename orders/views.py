@@ -21,6 +21,7 @@ from django.db.models import Sum
 
 from catalog.cart_services import clear_cart, get_cart_items
 from catalog.models import City, PickupPoint, Product, ProductStock
+from config.legal_consent import build_legal_acceptance_payload
 
 from .forms import CheckoutForm, PurchaseRequestForm
 from .models import Order, OrderItem, PromoCode, PurchaseRequest
@@ -143,6 +144,7 @@ def checkout_view(request):
         telegram=form.cleaned_data['telegram'].strip(),
         items=items_data,
         total=cart_total,
+        **build_legal_acceptance_payload(request),
     )
 
     clear_cart(request)

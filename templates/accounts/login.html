@@ -44,7 +44,10 @@
       <input type="checkbox" name="agree_privacy" id="id_agree_privacy" required
              class="mt-1 w-4 h-4 rounded border-gray-600 bg-dark-700 text-accent focus:ring-accent focus:ring-offset-0">
       <label for="id_agree_privacy" class="text-sm text-gray-400">
-        Я согласен с <a href="{% url 'privacy' %}" target="_blank" rel="noopener noreferrer" class="text-accent hover:text-accent-hover underline">политикой конфиденциальности</a>
+        Я даю согласие на обработку персональных данных для авторизации по SMS и подтверждаю, что ознакомлен с
+        <a href="{% url 'privacy' %}" target="_blank" rel="noopener noreferrer" class="text-accent hover:text-accent-hover underline">политикой конфиденциальности</a>
+        и
+        <a href="{% url 'pd_consent' %}" target="_blank" rel="noopener noreferrer" class="text-accent hover:text-accent-hover underline">согласием на обработку ПД</a>.
       </label>
     </div>
     <button type="submit" :disabled="loading"

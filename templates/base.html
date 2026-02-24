@@ -1342,7 +1342,7 @@
   <div id="catalog-overlay"
        x-show="catalogOverlayOpen"
        x-cloak
-       @mouseleave="catalogHoverSection = null; if (catalogHoverTimeout) { clearTimeout(catalogHoverTimeout); catalogHoverTimeout = null; }"
+       @mouseleave="if (catalogHoverTimeout) { clearTimeout(catalogHoverTimeout); catalogHoverTimeout = null; }"
        @click.outside="
          if (catalogOpenedAt && (Date.now() - catalogOpenedAt) < 400) return;
          if ($event.target.closest('[data-catalog-toggle]')) return;
@@ -1580,10 +1580,7 @@
         <div class="flex items-center space-x-2">
           <i data-lucide="phone" class="w-3.5 h-3.5 text-accent inline-block"></i>
           <a href="tel:+79324910482" class="font-bold text-white hover:text-accent">+7 (932) 491-04-82</a>
-          <span class="text-gray-500 cursor-pointer hover:text-accent">ЗАКАЗАТЬ ЗВОНОК</span>
-        </div>
-        <div class="flex items-center space-x-2">
-          <span>129515, г. Москва, улица Академика Королева, 13с1</span>
+          <a href="{% url 'uslugi' %}#contacts" class="text-gray-500 hover:text-accent">ЗАКАЗАТЬ ЗВОНОК</a>
         </div>
         {% if user.is_authenticated %}
           <a href="{% url 'accounts:profile' %}" class="flex items-center space-x-2 hover:text-accent">
@@ -1823,6 +1820,12 @@
             <li><a href="{% url 'home' %}">Главная</a></li>
             <li><a href="{% url 'catalog:product_list' %}">Каталог</a></li>
             <li><a href="{% url 'privacy' %}">Политика конфиденциальности</a></li>
+            <li><a href="{% url 'oferta' %}">Публичная оферта</a></li>
+            <li><a href="{% url 'sales_terms' %}">Оплата / доставка / возврат</a></li>
+            <li><a href="{% url 'user_agreement' %}">Пользовательское соглашение</a></li>
+            <li><a href="{% url 'pd_consent' %}">Согласие на обработку ПД</a></li>
+            <li><a href="{% url 'cookies_policy' %}">Политика cookies</a></li>
+            <li><a href="{% url 'service_request_terms' %}">Условия обработки заявок</a></li>
             <li><a href="{% url 'contacts' %}">Контакты</a></li>
           </ul>
         </div>
@@ -1839,9 +1842,6 @@
             {% if site_contact_telegram %}
               <li><a href="{{ site_contact_telegram }}" target="_blank" rel="noopener noreferrer">{{ site_contact_telegram_handle|default:site_contact_telegram }}</a></li>
             {% endif %}
-            {% if site_contact_address %}
-              <li>{{ site_contact_address }}</li>
-            {% endif %}
           </ul>
         </div>
       </div>
@@ -1854,7 +1854,9 @@
 
   <div id="cookie-consent-banner" class="cookie-consent-banner" role="region" aria-label="Согласие с cookies" aria-live="polite" aria-hidden="true">
     <p class="cookie-consent-text">
-      Продолжая пользоваться сайтом, вы даете согласие на использование cookies и обработку персональных данных в соответствии с
+      Продолжая пользоваться сайтом, вы подтверждаете согласие на использование cookies в соответствии с
+      <a href="{% url 'cookies_policy' %}" class="cookie-consent-link">Политикой cookies</a>
+      и обработку персональных данных в соответствии с
       <a href="{% url 'privacy' %}" class="cookie-consent-link">Политикой конфиденциальности</a>.
     </p>
     <button id="cookie-consent-accept" type="button" class="cookie-consent-btn">Ок</button>

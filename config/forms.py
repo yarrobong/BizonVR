@@ -42,6 +42,14 @@ class ContactForm(forms.Form):
             'rows': 4,
         }),
     )
+    agree_personal_data = forms.BooleanField(
+        label='Согласие на обработку персональных данных',
+        required=True,
+        error_messages={'required': 'Необходимо согласие на обработку персональных данных.'},
+        widget=forms.CheckboxInput(attrs={
+            'class': 'h-4 w-4 rounded border-white/20 bg-transparent text-accent focus:ring-accent',
+        }),
+    )
 
     def clean_phone(self):
         value = (self.cleaned_data.get('phone') or '').strip()
@@ -72,6 +80,12 @@ class CallbackForm(forms.Form):
             'inputmode': 'tel',
             'class': 'arenda-callback-input',
         }),
+    )
+    agree_personal_data = forms.BooleanField(
+        label='Согласие на обработку персональных данных',
+        required=True,
+        error_messages={'required': 'Необходимо согласие на обработку персональных данных.'},
+        widget=forms.CheckboxInput(),
     )
 
     def clean_phone(self):

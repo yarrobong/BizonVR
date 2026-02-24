@@ -1315,13 +1315,13 @@
 
     <div class="arenda-callback-form">
       <p class="hint">Или оставьте заявку — перезвоним в течение часа</p>
-      {% if messages %}
-      {% for message in messages %}
-      <div class="arenda-callback-success">{{ message }}</div>
-      {% endfor %}
-      {% else %}
       <form method="post" action="{% url 'arenda' %}#contacts">
         {% csrf_token %}
+        {% if messages %}
+        {% for message in messages %}
+        <div class="arenda-callback-success">{{ message }}</div>
+        {% endfor %}
+        {% endif %}
         <input type="hidden" name="form_type" value="callback">
         <div class="arenda-callback-row">
           <input type="text" name="name" value="{{ callback_form.name.value|default:'' }}" class="arenda-callback-input" placeholder="Ваше имя" maxlength="150">
@@ -1330,9 +1330,20 @@
         {% if callback_form.phone.errors %}
         <ul class="errorlist"><li>{{ callback_form.phone.errors.0 }}</li></ul>
         {% endif %}
+        <label style="display:flex; gap:10px; align-items:flex-start; text-align:left; margin:12px 0 8px; color:#d1d5db; font-size:0.85rem; line-height:1.35;">
+          <input type="checkbox" name="agree_personal_data" required {% if callback_form.agree_personal_data.value %}checked{% endif %} style="margin-top:3px;">
+          <span>
+            Даю согласие на обработку персональных данных и подтверждаю ознакомление с
+            <a href="{% url 'privacy' %}" target="_blank" rel="noopener noreferrer" style="color:#f59e0b; text-decoration:underline;">политикой конфиденциальности</a>,
+            <a href="{% url 'pd_consent' %}" target="_blank" rel="noopener noreferrer" style="color:#f59e0b; text-decoration:underline;">согласием на обработку ПД</a>
+            и <a href="{% url 'service_request_terms' %}" target="_blank" rel="noopener noreferrer" style="color:#f59e0b; text-decoration:underline;">условиями обработки заявок</a>.
+          </span>
+        </label>
+        {% if callback_form.agree_personal_data.errors %}
+        <ul class="errorlist"><li>{{ callback_form.agree_personal_data.errors.0 }}</li></ul>
+        {% endif %}
         <button type="submit" class="arenda-callback-submit">Перезвоните мне</button>
       </form>
-      {% endif %}
     </div>
 
     <p class="copy" style="margin-top:4rem; opacity:0.5;">© {% now "Y" %} BizonVR. Powered by Meta Quest.</p>

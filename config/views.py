@@ -1,5 +1,6 @@
 import mimetypes
 import os
+from dataclasses import dataclass
 
 from django.conf import settings
 from django.contrib import messages
@@ -13,6 +14,8 @@ from catalog.models import CallbackRequest, City, ContactRequest, Product, Produ
 
 from .forms import CallbackForm, ContactForm
 from catalog.cache_utils import CACHE_KEY_PRODUCT_TAGS
+from .legal_consent import build_legal_acceptance_payload
+from .legal_docs import get_legal_doc
 
 _CACHE_TTL = 300  # 5 минут
 _HOME_FEATURED_PROMO_TAG_KEYWORDS = (
@@ -41,6 +44,20 @@ def favicon_view(request):
     return HttpResponseRedirect(settings.STATIC_URL + 'images/favicon.svg')
 
 
+def robots_txt_view(request):
+    lines = [
+        'User-agent: *',
+        'Disallow: /admin/',
+        'Disallow: /accounts/',
+        '',
+        'Allow: /',
+        '',
+        f'Sitemap: {request.build_absolute_uri("/sitemap.xml")}',
+        '',
+    ]
+    return HttpResponse('\n'.join(lines), content_type='text/plain; charset=utf-8')
+
+
 def serve_media(request, path):
     """Раздача медиа при DEBUG или SERVE_MEDIA=1."""
     path = os.path.normpath(path).lstrip('/').lstrip('\\')
@@ -62,9 +79,75 @@ def serve_media(request, path):
     )
 
 
+@dataclass(frozen=True)
+class _LegalOperatorContacts:
+    full_name: str
+    short_name: str
+    legal_form: str
+    inn: str
+    ogrn: str
+    legal_address: str
+    postal_address: str
+    email: str
+    pd_email: str
+    phone: str
+    authority_basis: str
+
+
+def _get_legal_operator_contacts():
+    return _LegalOperatorContacts(
+        full_name=getattr(settings, 'LEGAL_OPERATOR_FULL_NAME', '[УКАЖИТЕ ПОЛНОЕ НАИМЕНОВАНИЕ ОПЕРАТОРА ПД]'),
+        short_name=getattr(settings, 'LEGAL_OPERATOR_SHORT_NAME', getattr(settings, 'SITE_BRAND', 'BizonVR')),
+        legal_form=getattr(settings, 'LEGAL_OPERATOR_FORM', '[ООО/ИП]'),
+        inn=getattr(settings, 'LEGAL_OPERATOR_INN', '[ИНН]'),
+        ogrn=getattr(settings, 'LEGAL_OPERATOR_OGRN', '[ОГРН / ОГРНИП]'),
+        legal_address=getattr(settings, 'LEGAL_OPERATOR_LEGAL_ADDRESS', '[ЮРИДИЧЕСКИЙ АДРЕС]'),
+        postal_address=getattr(settings, 'LEGAL_OPERATOR_POSTAL_ADDRESS', '[ПОЧТОВЫЙ АДРЕС]'),
+        email=getattr(settings, 'SITE_CONTACT_EMAIL', 'info@example.com'),
+        pd_email=getattr(settings, 'LEGAL_OPERATOR_PD_EMAIL', getattr(settings, 'SITE_CONTACT_EMAIL', 'info@example.com')),
+        phone=getattr(settings, 'SITE_CONTACT_PHONE', ''),
+        authority_basis=getattr(settings, 'LEGAL_SIGNATORY_BASIS', '[УСТАВ / ДОВЕРЕННОСТЬ №___ ОТ ___]'),
+    )
+
+
+def _render_legal_page(request, slug):
+    legal_doc = get_legal_doc(slug)
+    if not legal_doc:
+        raise Http404()
+    return render(request, legal_doc['template_name'], {
+        'legal_doc': legal_doc,
+        'operator_contacts': _get_legal_operator_contacts(),
+    })
+
+
 def privacy_view(request):
     """Страница политики конфиденциальности."""
-    return render(request, 'privacy.html')
+    return _render_legal_page(request, 'privacy')
+
+
+def oferta_view(request):
+    """Страница публичной оферты."""
+    return _render_legal_page(request, 'oferta')
+
+
+def user_agreement_view(request):
+    return _render_legal_page(request, 'user_agreement')
+
+
+def pd_consent_view(request):
+    return _render_legal_page(request, 'pd_consent')
+
+
+def cookies_policy_view(request):
+    return _render_legal_page(request, 'cookies_policy')
+
+
+def sales_terms_view(request):
+    return _render_legal_page(request, 'sales_terms')
+
+
+def service_request_terms_view(request):
+    return _render_legal_page(request, 'service_request_terms')
 
 
 def arenda_view(request):
@@ -87,6 +170,7 @@ def arenda_view(request):
                 name=callback_form.cleaned_data.get('name', '').strip(),
                 phone=callback_form.cleaned_data['phone'],
                 source='arenda',
+                **build_legal_acceptance_payload(request),
             )
             messages.success(request, 'Заявка отправлена! Мы перезвоним в ближайшее время.')
             return redirect(reverse('arenda') + '#contacts')
@@ -110,6 +194,7 @@ def uslugi_view(request):
                 name=callback_form.cleaned_data.get('name', '').strip(),
                 phone=callback_form.cleaned_data['phone'],
                 source='uslugi',
+                **build_legal_acceptance_payload(request),
             )
             messages.success(request, 'Заявка отправлена! Мы перезвоним в ближайшее время.')
             return redirect(reverse('uslugi') + '#contacts')
@@ -152,6 +237,7 @@ def contacts_view(request):
                 email=form.cleaned_data['email'],
                 phone=form.cleaned_data.get('phone', ''),
                 message=form.cleaned_data['message'],
+                **build_legal_acceptance_payload(request),
             )
             messages.success(request, 'Спасибо! Ваше сообщение отправлено. Мы свяжемся с вами в ближайшее время.')
             return redirect('contacts')
