@@ -129,7 +129,12 @@
   mobileDockOffsetPx: 74,
   selectedImageIndex: 0,
   touchStartX: 0,
-  touchMoveX: 0,
+  touchStartY: 0,
+  lastMoveX: 0,
+  lastMoveTime: 0,
+  velocityX: 0,
+  isTouching: false,
+  lockAxis: null, // null | 'x' | 'y'
 	  init() {
 	    try {
 	      const el = document.getElementById('product-detail-data');
@@ -284,18 +289,86 @@
     }
     this.submitMobileQty(value);
   },
-  handleSwipe() {
-    if (this.touchMoveX === 0) return;
-    const diff = this.touchStartX - this.touchMoveX;
-    if (Math.abs(diff) > 50) {
-      if (diff > 0) {
-        if (this.selectedImageIndex < this.displayImages.length - 1) this.selectedImageIndex++;
-      } else {
-        if (this.selectedImageIndex > 0) this.selectedImageIndex--;
-      }
+  handleGalleryTouchStart(e) {
+    const t = e.changedTouches && e.changedTouches[0];
+    if (!t) return;
+    this.isTouching = true;
+    this.lockAxis = null;
+    this.touchStartX = t.clientX;
+    this.touchStartY = t.clientY;
+    const now = performance.now();
+    this.lastMoveX = this.touchStartX;
+    this.lastMoveTime = now;
+    this.velocityX = 0;
+  },
+  handleGalleryTouchMove(e) {
+    if (!this.isTouching) return;
+    const t = e.touches && e.touches[0];
+    if (!t) return;
+    const dx = t.clientX - this.touchStartX;
+    const dy = t.clientY - this.touchStartY;
+
+    if (!this.lockAxis) {
+      const ax = Math.abs(dx);
+      const ay = Math.abs(dy);
+      if (ax > 8 && ax > ay + 4) this.lockAxis = 'x';
+      else if (ay > 8 && ay > ax + 4) this.lockAxis = 'y';
     }
-    this.touchStartX = 0;
-    this.touchMoveX = 0;
+    if (this.lockAxis !== 'x') return;
+
+    const now = performance.now();
+    const dt = now - (this.lastMoveTime || now);
+    if (dt > 0) {
+      const instVx = (t.clientX - (this.lastMoveX || t.clientX)) / dt;
+      this.velocityX = this.velocityX * 0.8 + instVx * 0.2;
+    }
+    this.lastMoveX = t.clientX;
+    this.lastMoveTime = now;
+
+    // Горизонтальная галерея — не даём странице скроллиться, когда свайпим по фото
+    e.preventDefault();
+  },
+  handleGalleryTouchEnd(e) {
+    const t = e.changedTouches && e.changedTouches[0];
+    if (!t) {
+      this.isTouching = false;
+      this.lockAxis = null;
+      return;
+    }
+
+    const endX = t.clientX;
+    const endY = t.clientY;
+    const deltaX = endX - this.touchStartX;
+    const deltaY = endY - this.touchStartY;
+    const wasHorizontal = this.lockAxis === 'x';
+
+    this.isTouching = false;
+    this.lockAxis = null;
+
+    if (!wasHorizontal) return;
+
+    const imagesLen = this.displayImages.length;
+    if (imagesLen <= 1) return;
+
+    const wrapperW = this.$refs.mainImageWrapper?.getBoundingClientRect?.().width || window.innerWidth || 360;
+    const distanceThreshold = Math.max(40, wrapperW * 0.18);
+    const velocityThreshold = 0.65; // px/ms (~650px/s)
+    const minFlickDistance = 10;
+
+    const absDx = Math.abs(deltaX);
+    const absDy = Math.abs(deltaY);
+    const absVx = Math.abs(this.velocityX);
+    const isFlick = absVx > velocityThreshold && absDx > minFlickDistance;
+    const shouldAdvance = (absDx > distanceThreshold) || isFlick;
+    const dir = (deltaX !== 0) ? deltaX : this.velocityX;
+
+    if (!shouldAdvance || absDx <= absDy) return;
+
+    if (dir < 0) {
+      if (this.selectedImageIndex < imagesLen - 1) this.selectedImageIndex++;
+    } else if (dir > 0) {
+      if (this.selectedImageIndex > 0) this.selectedImageIndex--;
+    }
   },
   shareProduct() {
     if (navigator.share) {
@@ -321,9 +394,11 @@
           </template>
         </div>
         <div class="main-image-wrapper"
-             @touchstart="touchStartX = $event.changedTouches[0].screenX"
-             @touchmove="touchMoveX = $event.changedTouches[0].screenX"
-             @touchend="handleSwipe()">
+             x-ref="mainImageWrapper"
+             @touchstart="handleGalleryTouchStart($event)"
+             @touchmove="handleGalleryTouchMove($event)"
+             @touchend="handleGalleryTouchEnd($event)"
+             @touchcancel="handleGalleryTouchEnd($event)">
           <template x-if="effectiveImage">
             <img :src="effectiveImage" class="main-image" alt="{{ product.name|escapejs }}" loading="eager" />
           </template>

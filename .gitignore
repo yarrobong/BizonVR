@@ -1,6 +1,9 @@
 # Media uploads (product images, etc.)
 media/products/
 
+# macOS
+.DS_Store
+
 # Environment
 .env
 
@@ -12,6 +15,7 @@ __pycache__/
 venv/
 *.egg-info/
 .eggs/
+db.sqlite3
 
 # Node
 node_modules/
