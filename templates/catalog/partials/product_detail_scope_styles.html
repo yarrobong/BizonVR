@@ -501,6 +501,30 @@
       border-radius: 0;
       border: none;
       background: transparent;
+      /* iOS Safari: aspect-ratio can be unreliable inside flex.
+         Use an explicit square via ::before to prevent collapsing. */
+      display: block;
+      aspect-ratio: auto;
+    }
+
+    .product-detail-scope .main-image-wrapper::before {
+      content: "";
+      display: block;
+      padding-top: 100%;
+    }
+
+    .product-detail-scope .main-image-wrapper > img,
+    .product-detail-scope .main-image-wrapper > div {
+      position: absolute;
+      inset: 0;
+    }
+
+    .product-detail-scope .main-image-wrapper > div {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 16px;
     }
 
     .product-detail-scope .dots {
