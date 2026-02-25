@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from django.conf import settings
 from django.contrib import messages
+from django.contrib.staticfiles import finders
 from django.db import connection
 from django.db.models import Q
 from django.core.cache import cache
@@ -40,8 +41,27 @@ _HERO_DEFAULT_BG = [
 
 
 def favicon_view(request):
-    """Редирект /favicon.ico на SVG-иконку."""
-    return HttpResponseRedirect(settings.STATIC_URL + 'images/favicon.svg')
+    """
+    Отдаём favicon по «ожидаемому» пути /favicon.ico.
+
+    В проде static обычно раздаётся веб-сервером/WhiteNoise; но часть роботов/сервисов
+    обращается именно к /favicon.ico. Чтобы всегда получать 200, отдаём файл напрямую
+    из staticfiles (после collectstatic).
+    """
+    candidates = [
+        ('favicon.ico', 'image/x-icon'),
+        ('images/favicon.ico', 'image/x-icon'),
+        ('images/favicon-32x32.png', 'image/png'),
+        ('images/favicon.svg', 'image/svg+xml'),
+    ]
+    for rel_path, content_type in candidates:
+        full_path = finders.find(rel_path)
+        if full_path:
+            resp = FileResponse(open(full_path, 'rb'), content_type=content_type)
+            # Фавиконы кэшируются «агрессивно»; оставляем длительный кэш.
+            resp['Cache-Control'] = 'public, max-age=31536000, immutable'
+            return resp
+    raise Http404()
 
 
 def robots_txt_view(request):
