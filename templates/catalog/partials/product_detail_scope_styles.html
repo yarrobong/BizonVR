@@ -131,9 +131,36 @@
   }
 
   .product-detail-scope .main-image {
+    display: block;
+    width: 100%;
+    height: 100%;
     max-width: 100%;
     max-height: 100%;
     object-fit: contain;
+  }
+
+  /* Fallback for browsers without aspect-ratio support (e.g. older iOS Safari) */
+  @supports not (aspect-ratio: 1 / 1) {
+    .product-detail-scope .main-image-wrapper {
+      height: 0;
+      padding-top: 100%;
+    }
+    .product-detail-scope .main-image-wrapper > img,
+    .product-detail-scope .main-image-wrapper > div {
+      position: absolute;
+      inset: 0;
+    }
+    .product-detail-scope .main-image {
+      width: 100%;
+      height: 100%;
+    }
+    .product-detail-scope .main-image-wrapper > div {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 16px;
+    }
   }
 
   @media (min-width: 1025px) {
