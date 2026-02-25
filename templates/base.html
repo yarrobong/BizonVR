@@ -42,6 +42,7 @@
     }
     html {
       overflow-anchor: none; /* Не дёргать скролл при подгрузке «Еще товары» */
+      overflow-x: hidden; /* Запрет горизонтального скролла на мобильной */
     }
     html::-webkit-scrollbar,
     body::-webkit-scrollbar {
@@ -315,12 +316,15 @@
       flex-direction: column;
       min-height: 100vh;
       overflow-x: hidden;
+      max-width: 100%;
       position: relative;
       isolation: isolate;
     }
 
     #main-content {
       flex: 1 0 auto;
+      max-width: 100%;
+      overflow-x: hidden;
     }
 
     .ambient-lights {
@@ -1359,7 +1363,7 @@
        "
        @click="if ($event.target.closest('a[href]')) catalogOverlayOpen = false"
        class="fixed flex flex-col bg-dark-800 border-t border-white/10 backdrop-blur-md shadow-2xl left-0 right-0 w-full"
-       :style="{ width: '100vw', zIndex: 99999, top: showStickyHeader ? '5rem' : catalogTopPx, height: showStickyHeader ? 'calc(100vh - 5rem)' : ('calc(100vh - ' + catalogTopPx + ')') }">
+       :style="{ width: '100%', maxWidth: '100vw', zIndex: 99999, top: showStickyHeader ? '5rem' : catalogTopPx, height: showStickyHeader ? 'calc(100vh - 5rem)' : ('calc(100vh - ' + catalogTopPx + ')') }">
     <div class="flex-1 min-h-0 overflow-auto flex flex-col">
       <div class="container mx-auto px-6 py-4 flex w-full gap-10 flex-1 min-h-0">
         <div class="w-56 flex-shrink-0 border-r border-dark-600 pr-8 pl-2">
