@@ -17,12 +17,15 @@ from .models import (
     CallbackRequest,
     CatalogSection,
     Category,
+    City,
     ContactRequest,
     Favorite,
+    PickupPoint,
     Product,
     ProductBundle,
     ProductBundleItem,
     ProductCharacteristic,
+    ProductStock,
     ProductTag,
     ProductVariant,
     Service,
@@ -73,6 +76,121 @@ class CatalogSearchTest(TestCase):
         self.assertEqual(len(resp.context['products']), 2)
 
 
+@override_settings(
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    }
+)
+class VariantGalleryAndCatalogCardsTest(TestCase):
+    """Варианты: предвыбор на PDP и отдельные карточки в каталоге."""
+
+    def setUp(self):
+        self.client = Client()
+        self.category = Category.objects.create(name='Варианты', slug='variants')
+        self.product = Product.objects.create(
+            category=self.category,
+            name='Quest 3',
+            slug='quest-3-variants',
+            price=1000,
+            is_active=True,
+        )
+        self.variant_one = ProductVariant.objects.create(
+            product=self.product,
+            name='Белый',
+            price_override=1200,
+            order=0,
+        )
+        self.variant_two = ProductVariant.objects.create(
+            product=self.product,
+            name='Черный',
+            price_override=1300,
+            order=1,
+        )
+        self.foreign_product = Product.objects.create(
+            category=self.category,
+            name='Pico 4',
+            slug='pico-4-variants',
+            price=900,
+            is_active=True,
+        )
+        self.foreign_variant = ProductVariant.objects.create(
+            product=self.foreign_product,
+            name='Синий',
+            price_override=950,
+        )
+        self.city = City.objects.create(name='Екатеринбург', slug='ekb')
+        self.pickup_point = PickupPoint.objects.create(city=self.city, name='Точка 1')
+
+    def _extract_product_detail_data(self, response):
+        html = response.content.decode()
+        match = re.search(
+            r'<script id="product-detail-data" type="application/json">(.*?)</script>',
+            html,
+            re.S,
+        )
+        self.assertIsNotNone(match)
+        return json.loads(match.group(1))
+
+    def test_product_detail_accepts_variant_query_and_sets_initial_variant_id(self):
+        resp = self.client.get(
+            reverse('catalog:product_detail', kwargs={'slug': self.product.slug}),
+            {'variant': self.variant_two.pk},
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = self._extract_product_detail_data(resp)
+        self.assertEqual(data.get('initialVariantId'), self.variant_two.pk)
+
+    def test_product_detail_ignores_foreign_or_invalid_variant_query(self):
+        detail_url = reverse('catalog:product_detail', kwargs={'slug': self.product.slug})
+
+        foreign_resp = self.client.get(detail_url, {'variant': self.foreign_variant.pk})
+        self.assertEqual(foreign_resp.status_code, 200)
+        foreign_data = self._extract_product_detail_data(foreign_resp)
+        self.assertIsNone(foreign_data.get('initialVariantId'))
+
+        invalid_resp = self.client.get(detail_url, {'variant': 'abc'})
+        self.assertEqual(invalid_resp.status_code, 200)
+        invalid_data = self._extract_product_detail_data(invalid_resp)
+        self.assertIsNone(invalid_data.get('initialVariantId'))
+
+    def test_catalog_renders_all_variants_as_cards_without_base_product_card(self):
+        resp = self.client.get(reverse('catalog:product_list'), {'category': self.category.slug})
+        self.assertEqual(resp.status_code, 200)
+        html = resp.content.decode()
+        detail_url = reverse('catalog:product_detail', kwargs={'slug': self.product.slug})
+
+        self.assertIn(f'href="{detail_url}?variant={self.variant_one.pk}"', html)
+        self.assertIn(f'href="{detail_url}?variant={self.variant_two.pk}"', html)
+        self.assertNotIn(f'href="{detail_url}"', html)
+
+    def test_variant_card_links_include_variant_query(self):
+        resp = self.client.get(reverse('catalog:product_list'), {'category': self.category.slug})
+        self.assertEqual(resp.status_code, 200)
+        html = resp.content.decode()
+        detail_url = reverse('catalog:product_detail', kwargs={'slug': self.product.slug})
+        links = re.findall(rf'href="{re.escape(detail_url)}\?variant=\d+"', html)
+        self.assertGreaterEqual(len(links), 2)
+
+    def test_variant_card_uses_variant_price_and_variant_stock_context(self):
+        ProductStock.objects.create(
+            product=self.product,
+            variant=self.variant_one,
+            pickup_point=self.pickup_point,
+            quantity=3,
+        )
+        session = self.client.session
+        session['selected_city_id'] = self.city.pk
+        session.save()
+
+        resp = self.client.get(reverse('catalog:product_list'), {'category': self.category.slug})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.context['variant_stock_total'].get(self.variant_one.pk), 3)
+        self.assertEqual(resp.context['variant_stock_in_city'].get(self.variant_one.pk), 3)
+        self.assertContains(resp, '1 200 ₽')
+        self.assertContains(resp, 'В наличии: 3 шт.')
+
+
 class CatalogSectionFilterTest(TestCase):
     """Фильтры каталога должны быть ограничены выбранным разделом."""
 
@@ -104,6 +222,15 @@ class CatalogSectionFilterTest(TestCase):
 
     def test_tags_in_filters_are_limited_by_selected_section(self):
         resp = self.client.get(reverse('catalog:product_list'), {'section': self.section_vr.slug})
+        self.assertEqual(resp.status_code, 200)
+        tag_slugs = {tag.slug for tag in resp.context['product_tags']}
+        self.assertIn(self.tag_vr.slug, tag_slugs)
+        self.assertNotIn(self.tag_pc.slug, tag_slugs)
+
+    def test_tags_in_filters_are_limited_by_selected_category(self):
+        """При выбранной категории показываются только теги, у которых есть товары в этой категории (чтобы не вести в пустой каталог)."""
+        # Только в VR-категории есть товар с tag_vr; в PC-категории — с tag_pc
+        resp = self.client.get(reverse('catalog:product_list'), {'category': self.cat_vr.slug})
         self.assertEqual(resp.status_code, 200)
         tag_slugs = {tag.slug for tag in resp.context['product_tags']}
         self.assertIn(self.tag_vr.slug, tag_slugs)

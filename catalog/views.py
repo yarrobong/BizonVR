@@ -1002,6 +1002,21 @@ class ProductListView(ListView):
         if context['current_section']:
             context['categories'] = [c for c in context['categories'] if c.section and c.section.slug == context['current_section']]
         context['catalog_sections'] = list(CatalogSection.objects.prefetch_related('categories').order_by('order', 'name'))
+        # Категории/секции для фильтра: только те, где есть хотя бы один товар или это категория наборов (чтобы не вести в пустой каталог)
+        category_ids_with_products = set(
+            Product.objects.filter(is_active=True).values_list('category_id', flat=True).distinct()
+        )
+        bundle_category_ids = set(
+            Category.objects.filter(is_bundles_category=True).values_list('pk', flat=True)
+        )
+        context['category_ids_to_show'] = list(category_ids_with_products | bundle_category_ids)
+        section_slugs_to_show = set()
+        for section in context['catalog_sections']:
+            for cat in section.categories.all():
+                if cat.pk in category_ids_with_products or cat.pk in bundle_category_ids:
+                    section_slugs_to_show.add(section.slug)
+                    break
+        context['section_slugs_to_show'] = list(section_slugs_to_show)
         context['current_tag'] = (self.request.GET.get('tag') or '').strip()
         sort = self.request.GET.get('sort', 'newest')
         search_query = (self.request.GET.get('q') or '').strip()
@@ -1056,12 +1071,18 @@ class ProductListView(ListView):
         context['filter_price_min'] = int(price_agg['min_p']) if price_agg['min_p'] is not None else 0
         context['filter_price_max'] = int(price_agg['max_p']) if price_agg['max_p'] is not None else 0
 
-        tags_qs = ProductTag.objects.order_by('order', 'name')
-        if effective_section_slug:
-            tags_qs = tags_qs.filter(products__category__section__slug=effective_section_slug)
-        context['product_tags'] = list(tags_qs.distinct())
+        # Теги: только те, у которых есть хотя бы один товар в текущей выборке (чтобы не показывать теги → пустой каталог)
+        tags_qs = ProductTag.objects.filter(products__in=base_qs).order_by('order', 'name').distinct()
+        context['product_tags'] = list(tags_qs)
 
-        char_qs = ProductCharacteristic.objects.filter(product__in=base_qs).values('name', 'value').distinct().order_by('name', 'value')
+        # Характеристики: опции строим из товаров с учётом уже выбранных char-фильтров,
+        # чтобы не показывать значения, которые в комбинации с другими дадут пустой каталог
+        base_qs_with_char = base_qs
+        for ch_name, ch_value in context['char_filters'].items():
+            base_qs_with_char = base_qs_with_char.filter(
+                characteristics__name=ch_name, characteristics__value=ch_value
+            ).distinct()
+        char_qs = ProductCharacteristic.objects.filter(product__in=base_qs_with_char).values('name', 'value').distinct().order_by('name', 'value')
         from collections import OrderedDict
         char_options = OrderedDict()
         for row in char_qs:
@@ -1108,6 +1129,13 @@ class ProductListView(ListView):
             .annotate(total=Sum('quantity'))
         )
         context['product_stock_total'] = {row['product_id']: row['total'] for row in stock_total_qs}
+        variant_stock_total_qs = (
+            ProductStock.objects
+            .filter(variant_id__isnull=False)
+            .values('variant_id')
+            .annotate(total=Sum('quantity'))
+        )
+        context['variant_stock_total'] = {row['variant_id']: row['total'] for row in variant_stock_total_qs}
         if selected_city_id:
             stock_qs = (
                 ProductStock.objects
@@ -1116,8 +1144,16 @@ class ProductListView(ListView):
                 .annotate(total=Sum('quantity'))
             )
             context['product_stock_in_city'] = {row['product_id']: row['total'] for row in stock_qs}
+            variant_stock_qs = (
+                ProductStock.objects
+                .filter(pickup_point__city_id=selected_city_id, variant_id__isnull=False)
+                .values('variant_id')
+                .annotate(total=Sum('quantity'))
+            )
+            context['variant_stock_in_city'] = {row['variant_id']: row['total'] for row in variant_stock_qs}
         else:
             context['product_stock_in_city'] = {}
+            context['variant_stock_in_city'] = {}
         return context
 
 
@@ -1254,6 +1290,15 @@ class ProductDetailView(DetailView):
             }
             for v in self.object.variants.all()
         ]
+        initial_variant_id = None
+        raw_variant_id = (self.request.GET.get('variant') or '').strip()
+        if raw_variant_id:
+            try:
+                requested_variant_id = int(raw_variant_id)
+            except (TypeError, ValueError):
+                requested_variant_id = None
+            if requested_variant_id and self.object.variants.filter(pk=requested_variant_id).exists():
+                initial_variant_id = requested_variant_id
         context['product_detail_data'] = {
             'variants': variants_data,
             'productImage': _safe_image_url(self.object.image),
@@ -1266,6 +1311,7 @@ class ProductDetailView(DetailView):
             'stockTotalProduct': context['stock_total'] if context['stock_total'] is not None else 0,
             'stockInCityProduct': context['stock_in_city'],
             'selectedCityName': context['selected_city'].name if context['selected_city'] else '',
+            'initialVariantId': initial_variant_id,
         }
 
         # Текущие количества товара в корзине: отдельно по товару и по вариантам.

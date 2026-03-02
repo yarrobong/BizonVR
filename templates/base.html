@@ -57,6 +57,12 @@
     }
 
     /* Максимальная ширина сайта на больших экранах */
+    /* 768–1280: контейнер на всю ширину, без фиксированных полей по бокам */
+    @media (min-width: 768px) and (max-width: 1279.98px) {
+      .container {
+        max-width: 100% !important;
+      }
+    }
     @media (min-width: 1280px) {
       .container {
         max-width: 1440px !important;
@@ -456,22 +462,20 @@
       box-sizing: border-box;
     }
     /* Чтобы hero не был шире шапки: синхроним max-width с Tailwind `.container` на каждом брейкпоинте */
-    @media (min-width: 768px) {
+    /* 768–1280: на всю ширину, без полей */
+    @media (min-width: 768px) and (max-width: 1279.98px) {
       .hero-carousel {
-        max-width: 768px;
-        margin-left: auto;
-        margin-right: auto;
-      }
-    }
-    @media (min-width: 1024px) {
-      .hero-carousel {
-        max-width: 1024px;
+        max-width: 100%;
+        margin-left: 0;
+        margin-right: 0;
       }
     }
     @media (min-width: 1280px) {
       .hero-carousel {
-        /* у нас `.container` на xl+ принудительно 1440px */
         max-width: 1440px;
+        margin-left: auto;
+        margin-right: auto;
+        /* у нас `.container` на xl+ принудительно 1440px */
       }
     }
     .hero-carousel-inner {

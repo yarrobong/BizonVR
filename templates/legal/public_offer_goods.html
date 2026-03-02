@@ -67,6 +67,12 @@
     <li>Почтовый адрес: {{ operator_contacts.postal_address }}</li>
     <li>Email: {{ operator_contacts.email }}</li>
     <li>Телефон: {{ operator_contacts.phone|default:'[ТЕЛЕФОН]' }}</li>
+    {% if operator_contacts.bank_account %}<li>Расчетный счет: {{ operator_contacts.bank_account }}</li>{% endif %}
+    {% if operator_contacts.bank_name %}<li>Банк: {{ operator_contacts.bank_name }}</li>{% endif %}
+    {% if operator_contacts.bank_bik %}<li>БИК: {{ operator_contacts.bank_bik }}</li>{% endif %}
+    {% if operator_contacts.bank_inn %}<li>ИНН банка: {{ operator_contacts.bank_inn }}</li>{% endif %}
+    {% if operator_contacts.bank_corr_account %}<li>Корреспондентский счет: {{ operator_contacts.bank_corr_account }}</li>{% endif %}
+    {% if operator_contacts.bank_legal_address %}<li>Юридический адрес банка: {{ operator_contacts.bank_legal_address }}</li>{% endif %}
     <li>Основание полномочий подписанта: {{ operator_contacts.authority_basis }}</li>
   </ul>
 </section>

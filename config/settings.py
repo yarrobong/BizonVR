@@ -176,7 +176,7 @@ SITE_LOGO = config('SITE_LOGO', default='')  # путь относительно
 SITE_DESCRIPTION = config('SITE_DESCRIPTION', default='Магазин VR оборудования и аттракционов')
 SITE_CONTACT_PHONE = config('SITE_CONTACT_PHONE', default='+7 (932) 491-04-82')
 SITE_CONTACT_PHONE_HREF = config('SITE_CONTACT_PHONE_HREF', default='+79324910482')
-SITE_CONTACT_EMAIL = config('SITE_CONTACT_EMAIL', default='info@bizon-business.ru')
+SITE_CONTACT_EMAIL = config('SITE_CONTACT_EMAIL', default='korrypc@gmail.com')
 SITE_CONTACT_ADDRESS = config('SITE_CONTACT_ADDRESS', default='')
 SITE_CONTACT_TELEGRAM = config('SITE_CONTACT_TELEGRAM', default='https://t.me/bizon_order_manager')
 SITE_CONTACT_TELEGRAM_HANDLE = config('SITE_CONTACT_TELEGRAM_HANDLE', default='@bizon_order_manager')
@@ -184,8 +184,37 @@ SITE_WORK_HOURS = config('SITE_WORK_HOURS', default='Пн-Пт: 10:00-19:00')
 SITE_BLOG_URL = config('SITE_BLOG_URL', default='').strip()
 SITE_CLUBS_URL = config('SITE_CLUBS_URL', default='').strip()
 SITE_INSTRUCTIONS_URL = config('SITE_INSTRUCTIONS_URL', default='').strip()
-SITE_YOUTUBE_URL = config('SITE_YOUTUBE_URL', default='').strip()
-SITE_TIKTOK_URL = config('SITE_TIKTOK_URL', default='').strip()
+SITE_YOUTUBE_URL = config('SITE_YOUTUBE_URL', default='https://www.youtube.com/@BIZON-ZON-ZON').strip()
+SITE_TIKTOK_URL = config('SITE_TIKTOK_URL', default='https://www.tiktok.com/@bizonvr?_r=1&_t=ZS-94DbHz6YXH3').strip()
+
+# Юридические реквизиты (используются на страницах legal/*)
+LEGAL_OPERATOR_FULL_NAME = config(
+    'LEGAL_OPERATOR_FULL_NAME',
+    default='Индивидуальный предприниматель Едигарьев Ярослав Алексеевич',
+)
+LEGAL_OPERATOR_SHORT_NAME = config('LEGAL_OPERATOR_SHORT_NAME', default='ИП Едигарьев Я.А.')
+LEGAL_OPERATOR_FORM = config('LEGAL_OPERATOR_FORM', default='ИП')
+LEGAL_OPERATOR_INN = config('LEGAL_OPERATOR_INN', default='667907832209')
+LEGAL_OPERATOR_OGRN = config('LEGAL_OPERATOR_OGRN', default='325665800130159')
+LEGAL_OPERATOR_LEGAL_ADDRESS = config('LEGAL_OPERATOR_LEGAL_ADDRESS', default='[ЮРИДИЧЕСКИЙ АДРЕС ИП]')
+LEGAL_OPERATOR_POSTAL_ADDRESS = config('LEGAL_OPERATOR_POSTAL_ADDRESS', default='[ПОЧТОВЫЙ АДРЕС ИП]')
+LEGAL_OPERATOR_PD_EMAIL = config('LEGAL_OPERATOR_PD_EMAIL', default='korrypc@gmail.com')
+LEGAL_SIGNATORY_BASIS = config(
+    'LEGAL_SIGNATORY_BASIS',
+    default='действует на основании государственной регистрации в качестве индивидуального предпринимателя',
+)
+LEGAL_BANK_ACCOUNT = config('LEGAL_BANK_ACCOUNT', default='40802810520000666577')
+LEGAL_BANK_NAME = config('LEGAL_BANK_NAME', default='ООО "Банк Точка"')
+LEGAL_BANK_BIK = config('LEGAL_BANK_BIK', default='044525104')
+LEGAL_BANK_INN = config('LEGAL_BANK_INN', default='9721194461')
+LEGAL_BANK_CORR_ACCOUNT = config('LEGAL_BANK_CORR_ACCOUNT', default='30101810745374525104')
+LEGAL_BANK_LEGAL_ADDRESS = config(
+    'LEGAL_BANK_LEGAL_ADDRESS',
+    default=(
+        '109044, Российская Федерация, г. Москва, вн.тер.г. муниципальный округ '
+        'Южнопортовый, пер. 3-й Крутицкий, д. 11, помещ. 7Н'
+    ),
+)
 
 # Кэш для django-ratelimit (ограничение частоты запросов). В продакшене лучше Redis.
 CACHES = {

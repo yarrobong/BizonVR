@@ -9,8 +9,17 @@
 <style>
   .catalog-layout { display: flex; flex-direction: column; gap: 2rem; }
   @media (min-width: 1024px) {
-    .catalog-layout { flex-direction: row; }
+    .catalog-layout { flex-direction: row; align-items: flex-start; }
     .catalog-filters { width: 244px; flex-shrink: 0; }
+    .catalog-filters .filters-panel-scroll {
+      max-height: calc(100vh - 7rem);
+      overflow-y: auto;
+      overflow-x: hidden;
+      overscroll-behavior: contain;
+    }
+    .catalog-filters .filters-panel-scroll::-webkit-scrollbar { width: 6px; }
+    .catalog-filters .filters-panel-scroll::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); border-radius: 3px; }
+    .catalog-filters .filters-panel-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
   }
   .mobile-filters-modal .mobile-filters-content > div {
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
@@ -22,9 +31,62 @@
     margin-bottom: 0;
     padding-bottom: 0;
   }
+  /* Подсветка выбранных фильтров (не зависит от Tailwind opacity) */
+  .catalog-filters .filter-selected,
+  .mobile-filters-modal .filter-selected,
+  .filter-selected {
+    background-color: rgba(0, 212, 255, 0.2) !important;
+    border-color: #00D4FF !important;
+    color: #00D4FF !important;
+    box-shadow: 0 0 0 2px rgba(0, 212, 255, 0.4);
+  }
+  .catalog-filters .filter-selected .filter-selected-dot,
+  .mobile-filters-modal .filter-selected .filter-selected-dot,
+  .filter-selected .filter-selected-dot {
+    border-color: #00D4FF !important;
+    background-color: #00D4FF;
+  }
 </style>
 <div class="container mx-auto px-0 md:px-4 pt-0 pb-8 md:py-8"
-     x-data="{ filtersModalOpen: false, sortDropdownOpen: false, mobileFiltersDirty: false, pendingFiltersUrl: '' }"
+     x-data="{
+       filtersModalOpen: false,
+       sortDropdownOpen: false,
+       mobileFiltersDirty: false,
+       pendingFiltersUrl: '',
+       applyFilters(formId, scopeEl) {
+         const form = document.getElementById(formId);
+         if (!form) return;
+
+         const base = this.pendingFiltersUrl || window.location.href;
+         const url = new URL(base, window.location.origin);
+
+         // Never keep pagination when filters change
+         url.searchParams.delete('page');
+
+         // Category/section come from the hidden form (pending values in defer-mode)
+         const sectionVal = form.querySelector('input[name=section]')?.value ?? '';
+         const categoryVal = form.querySelector('input[name=category]')?.value ?? '';
+
+         if (sectionVal) url.searchParams.set('section', sectionVal);
+         else url.searchParams.delete('section');
+
+         if (categoryVal) url.searchParams.set('category', categoryVal);
+         else url.searchParams.delete('category');
+
+         // Price comes from visible inputs (if present in current filter UI)
+         const scope = scopeEl || document;
+         const minVal = scope.querySelector('input[type=number][name=price_min]')?.value ?? '';
+         const maxVal = scope.querySelector('input[type=number][name=price_max]')?.value ?? '';
+
+         if (minVal) url.searchParams.set('price_min', minVal);
+         else url.searchParams.delete('price_min');
+
+         if (maxVal) url.searchParams.set('price_max', maxVal);
+         else url.searchParams.delete('price_max');
+
+         window.location.href = url.toString();
+       }
+     }"
      x-effect="document.documentElement.classList.toggle('overflow-hidden', filtersModalOpen && window.innerWidth < 1024); document.body.classList.toggle('overflow-hidden', filtersModalOpen && window.innerWidth < 1024); if (!filtersModalOpen) mobileFiltersDirty = false"
      @keydown.escape.window="filtersModalOpen = false; sortDropdownOpen = false">
   {% if is_catalog_root %}
@@ -69,26 +131,28 @@
   </div>
   {% endif %}
   <div class="catalog-layout">
-    <!-- Левая панель фильтров: только на десктопе -->
+    <!-- Левая панель фильтров: только на десктопе, сразу применяются по клику -->
     <aside class="catalog-filters w-full hidden lg:block">
-      <div class="bg-dark-800 rounded-xl p-4 space-y-6 sticky top-24"
-           @click.capture="const link = $event.target.closest('a[href]'); if (link) { $event.preventDefault(); pendingFiltersUrl = link.getAttribute('href'); mobileFiltersDirty = true; }">
-        <h3 class="text-sm font-bold text-white uppercase tracking-wider">Фильтры</h3>
+      <div class="bg-dark-800 rounded-xl sticky top-24 flex flex-col">
+        <h3 class="text-xs font-bold text-white uppercase tracking-wider px-4 pt-4 pb-2 flex-shrink-0">Фильтры</h3>
+        <div class="filters-panel-scroll flex-1 min-h-0 px-4 pb-4 space-y-6">
+          {% include "catalog/_filters_main.html" with defer_category_apply=False %}
 
-        {% include "catalog/_filters_main.html" with defer_category_apply=True category_form_id="desktop-sidebar-category-filter-form" %}
+          {% if not is_catalog_root %}
+          <a href="{% url 'catalog:product_list' %}"
+             class="flex w-full items-center justify-center gap-2 py-2.5 rounded-lg border border-dark-600 text-gray-400 hover:text-white hover:bg-dark-700 hover:border-dark-500 text-sm font-medium transition-colors">
+            <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+            Сбросить фильтры
+          </a>
+          {% endif %}
 
-        <button type="button"
-                class="w-full py-2.5 rounded-lg bg-accent hover:bg-accent-hover text-dark-900 text-sm font-semibold transition-colors"
-                @click="if (pendingFiltersUrl) { location.href = pendingFiltersUrl; } else { document.getElementById('desktop-sidebar-category-filter-form')?.requestSubmit(); }">
-          Применить
-        </button>
-
-        <button type="button"
-                class="flex w-full items-center justify-center gap-2 py-2.5 rounded-lg bg-dark-700 hover:bg-dark-600 text-gray-300 hover:text-white text-sm font-medium transition-colors"
-                @click="filtersModalOpen = true">
-          <i data-lucide="sliders-horizontal" class="w-4 h-4"></i>
-          Все фильтры
-        </button>
+          <button type="button"
+                  class="flex w-full items-center justify-center gap-2 py-2.5 rounded-lg bg-dark-700 hover:bg-dark-600 text-gray-300 hover:text-white text-sm font-medium transition-colors"
+                  @click="filtersModalOpen = true">
+            <i data-lucide="sliders-horizontal" class="w-4 h-4"></i>
+            Все фильтры
+          </button>
+        </div>
       </div>
     </aside>
 
@@ -121,7 +185,7 @@
           Цена
         </button>
         {% endif %}
-        {% if product_tags %}
+        {% if product_tags and product_tags|length > 1 %}
         <button type="button" @click="filtersModalOpen = true"
                 class="flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors {% if current_tag %}bg-accent text-dark-900{% else %}bg-dark-800 text-gray-300 hover:bg-dark-700 hover:text-white{% endif %}">
           Акция
@@ -159,6 +223,7 @@
       <div class="grid" style="grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem;">
         {% for section in catalog_sections %}
           {% for category in section.categories.all %}
+            {% if category.id in category_ids_to_show %}
             {% with preview_url=catalog_category_previews|get_dict_item:category.id %}
             <a href="{% url 'catalog:product_list' %}?category={{ category.slug }}"
                class="relative overflow-hidden group cursor-pointer transition-all duration-300 hover:scale-[1.02]"
@@ -180,6 +245,7 @@
               </div>
             </a>
             {% endwith %}
+            {% endif %}
           {% endfor %}
         {% endfor %}
       </div>
@@ -187,11 +253,7 @@
   {% endif %}
 
   <div class="{% if is_catalog_root %}hidden md:flex{% else %}flex{% endif %} flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 lg:mb-8">
-    <h2 class="text-2xl md:text-3xl font-light text-white">
-      {% if search_query %}Результаты поиска по запросу «{{ search_query }}»{% else %}Каталог{% endif %}
-    </h2>
-    <div class="hidden lg:flex flex-wrap gap-2 text-xs md:text-sm font-medium items-center">
-      <span class="text-gray-400 mr-2">Сортировка:</span>
+    <div class="flex flex-wrap gap-2 text-xs md:text-sm font-medium items-center order-2 md:order-1">
       <select onchange="var u=new URL(location.href); u.searchParams.set('sort', this.value); u.searchParams.delete('page'); location.href=u.toString();"
               class="bg-dark-700 text-white rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-accent">
         <option value="relevance" {% if current_sort == 'relevance' %}selected{% endif %}>По релевантности</option>
@@ -202,6 +264,11 @@
         <option value="name" {% if current_sort == 'name' %}selected{% endif %}>По названию</option>
       </select>
     </div>
+    {% if search_query %}
+    <h2 class="text-2xl md:text-3xl font-light text-white order-1 md:order-2 md:text-right">
+      Результаты поиска по запросу «{{ search_query }}»
+    </h2>
+    {% endif %}
   </div>
 
   <div class="{% if is_catalog_root %}hidden md:block{% else %}block{% endif %}">
@@ -234,7 +301,13 @@
   {% elif products %}
     <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 md:gap-3">
       {% for product in products %}
-        {% include "catalog/_product_card.html" with show_favorite=True favorite_product_ids=favorite_product_ids %}
+        {% if product.variants.all %}
+          {% for card_variant in product.variants.all %}
+            {% include "catalog/_product_card.html" with product=product card_variant=card_variant show_favorite=True favorite_product_ids=favorite_product_ids variant_stock_in_city=variant_stock_in_city variant_stock_total=variant_stock_total %}
+          {% endfor %}
+        {% else %}
+          {% include "catalog/_product_card.html" with product=product show_favorite=True favorite_product_ids=favorite_product_ids variant_stock_in_city=variant_stock_in_city variant_stock_total=variant_stock_total %}
+        {% endif %}
       {% endfor %}
     </div>
 
@@ -295,12 +368,19 @@
           {% include "catalog/_filters_main.html" with defer_category_apply=True category_form_id="desktop-modal-category-filter-form" %}
           {% include "catalog/_filters_characteristics.html" with defer_category_apply=True %}
         </div>
-        <div class="p-4 border-t border-dark-600 flex-shrink-0">
+        <div class="p-4 border-t border-dark-600 flex-shrink-0 space-y-2">
           <button type="button"
                   class="w-full rounded-xl bg-accent hover:bg-accent-hover text-dark-900 text-sm font-semibold py-2.5 transition-colors"
-                  @click="if (pendingFiltersUrl) { location.href = pendingFiltersUrl; } else { document.getElementById('desktop-modal-category-filter-form')?.requestSubmit(); }">
+                  @click="applyFilters('desktop-modal-category-filter-form', $el.closest('.bg-dark-800'))">
             Применить
           </button>
+          {% if not is_catalog_root %}
+          <a href="{% url 'catalog:product_list' %}"
+             class="flex w-full items-center justify-center gap-2 py-2.5 rounded-xl border border-dark-600 text-gray-400 hover:text-white hover:bg-dark-700 text-sm font-medium transition-colors">
+            <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+            Сбросить фильтры
+          </a>
+          {% endif %}
         </div>
       </div>
     </div>
@@ -321,12 +401,19 @@
           {% include "catalog/_filters_characteristics.html" with defer_category_apply=True %}
         </div>
       </div>
-      <div class="px-4 pt-2">
+      <div class="px-4 pt-2 space-y-2">
         <button type="button"
                 class="w-full rounded-2xl bg-accent text-dark-900 text-lg font-semibold py-3.5"
-                @click="if (pendingFiltersUrl) { location.href = pendingFiltersUrl; return; } if (mobileFiltersDirty) { const modal = $el.closest('.mobile-filters-modal'); const categoryForm = document.getElementById('mobile-category-filter-form'); if (categoryForm) { const minInput = modal.querySelector('input[name=price_min][type=number]'); const maxInput = modal.querySelector('input[name=price_max][type=number]'); if (minInput) { let hiddenMin = categoryForm.querySelector('input[name=price_min]'); if (!hiddenMin) { hiddenMin = document.createElement('input'); hiddenMin.type = 'hidden'; hiddenMin.name = 'price_min'; categoryForm.appendChild(hiddenMin); } hiddenMin.value = minInput.value || ''; } if (maxInput) { let hiddenMax = categoryForm.querySelector('input[name=price_max]'); if (!hiddenMax) { hiddenMax = document.createElement('input'); hiddenMax.type = 'hidden'; hiddenMax.name = 'price_max'; categoryForm.appendChild(hiddenMax); } hiddenMax.value = maxInput.value || ''; } categoryForm.requestSubmit(); } else { const form = modal.querySelector('form'); if (form) { form.requestSubmit(); } else { filtersModalOpen = false; } } } else { filtersModalOpen = false; }"
+                @click="if (!mobileFiltersDirty) { filtersModalOpen = false; return; } applyFilters('mobile-category-filter-form', $el.closest('.mobile-filters-modal'))"
                 x-text="mobileFiltersDirty ? 'Применить' : 'Закрыть'">
         </button>
+        {% if not is_catalog_root %}
+        <a href="{% url 'catalog:product_list' %}"
+           class="flex w-full items-center justify-center gap-2 py-3 rounded-2xl border border-dark-600 text-gray-400 hover:text-white hover:bg-dark-700 text-base font-medium transition-colors">
+          <i data-lucide="rotate-ccw" class="w-5 h-5"></i>
+          Сбросить фильтры
+        </a>
+        {% endif %}
       </div>
     </div>
 

@@ -145,7 +145,11 @@
           this.cartQtyProduct = Number(this.data.cartQtyProduct || 0);
           this.cartQtyByVariant = this.data.cartQtyByVariant || {};
 	        if (this.variants.length > 0) {
-	          this.selectedVariant = this.variants[0];
+            const initialVariantId = Number(this.data.initialVariantId || 0);
+            const preselected = initialVariantId
+              ? this.variants.find(v => Number(v.id) === initialVariantId)
+              : null;
+	          this.selectedVariant = preselected || this.variants[0];
 	          window.dispatchEvent(new CustomEvent('pd-variant-change', { detail: { name: this.selectedVariant.name } }));
 	        }
 	      }
@@ -170,14 +174,26 @@
 	    window.dispatchEvent(new CustomEvent('pd-variant-change', { detail: { name: v ? v.name : '' } }));
 	  },
   get displayImages() {
-    let images = [];
-    if (this.selectedVariant && this.selectedVariant.imageUrl) {
-      images.push(this.selectedVariant.imageUrl);
+    const baseGallery = Array.isArray(this.data.productGallery) ? [...this.data.productGallery] : [];
+    const variantImage = this.selectedVariant && this.selectedVariant.imageUrl ? this.selectedVariant.imageUrl : '';
+    let images = baseGallery;
+
+    if (variantImage) {
+      if (this.data.productImage && baseGallery.length > 0) {
+        images = [variantImage].concat(baseGallery.slice(1));
+      } else {
+        images = [variantImage].concat(baseGallery);
+      }
     }
-    if (this.data.productGallery) {
-      images = images.concat(this.data.productGallery);
+
+    const uniqueImages = [];
+    const seen = new Set();
+    for (const img of images) {
+      if (!img || seen.has(img)) continue;
+      seen.add(img);
+      uniqueImages.push(img);
     }
-    return [...new Set(images)];
+    return uniqueImages;
   },
   get effectiveImage() {
     const images = this.displayImages;

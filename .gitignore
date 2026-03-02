@@ -13,6 +13,8 @@ __pycache__/
 *.pyo
 .venv/
 venv/
+.run/
+launchers/apps/
 *.egg-info/
 .eggs/
 db.sqlite3

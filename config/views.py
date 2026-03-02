@@ -112,6 +112,12 @@ class _LegalOperatorContacts:
     pd_email: str
     phone: str
     authority_basis: str
+    bank_account: str
+    bank_name: str
+    bank_bik: str
+    bank_inn: str
+    bank_corr_account: str
+    bank_legal_address: str
 
 
 def _get_legal_operator_contacts():
@@ -127,6 +133,12 @@ def _get_legal_operator_contacts():
         pd_email=getattr(settings, 'LEGAL_OPERATOR_PD_EMAIL', getattr(settings, 'SITE_CONTACT_EMAIL', 'info@example.com')),
         phone=getattr(settings, 'SITE_CONTACT_PHONE', ''),
         authority_basis=getattr(settings, 'LEGAL_SIGNATORY_BASIS', '[УСТАВ / ДОВЕРЕННОСТЬ №___ ОТ ___]'),
+        bank_account=getattr(settings, 'LEGAL_BANK_ACCOUNT', ''),
+        bank_name=getattr(settings, 'LEGAL_BANK_NAME', ''),
+        bank_bik=getattr(settings, 'LEGAL_BANK_BIK', ''),
+        bank_inn=getattr(settings, 'LEGAL_BANK_INN', ''),
+        bank_corr_account=getattr(settings, 'LEGAL_BANK_CORR_ACCOUNT', ''),
+        bank_legal_address=getattr(settings, 'LEGAL_BANK_LEGAL_ADDRESS', ''),
     )
 
 
