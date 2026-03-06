@@ -1,0 +1,98 @@
+  {% include "catalog/partials/footer_products_entry.html" %}
+
+  <footer class="vr-footer">
+    <div class="container mx-auto px-4">
+      <div class="footer-grid">
+        <div>
+          <h3>{{ site_brand }}</h3>
+          <p class="text-sm">{{ site_description }}</p>
+          {% if site_work_hours %}
+            <p class="text-sm mt-2">{{ site_work_hours }}</p>
+          {% endif %}
+        </div>
+        
+        <div>
+          <h4>Каталог</h4>
+          <ul>
+            {% for section in catalog_sections|slice:":3" %}
+              <li><a href="{% url 'catalog:product_list' %}?section={{ section.slug }}">{{ section.name }}</a></li>
+            {% empty %}
+              <li><a href="{% url 'catalog:product_list' %}">Все товары</a></li>
+            {% endfor %}
+          </ul>
+        </div>
+  
+        <div>
+          <h4>Клиентам</h4>
+          <ul>
+            <li><a href="{% url 'home' %}">Главная</a></li>
+            <li><a href="{% url 'catalog:product_list' %}">Каталог</a></li>
+            <li><a href="{% url 'privacy' %}">Политика конфиденциальности</a></li>
+            <li><a href="{% url 'oferta' %}">Публичная оферта</a></li>
+            <li><a href="{% url 'sales_terms' %}">Оплата / доставка / возврат</a></li>
+            <li><a href="{% url 'user_agreement' %}">Пользовательское соглашение</a></li>
+            <li><a href="{% url 'pd_consent' %}">Согласие на обработку ПД</a></li>
+            <li><a href="{% url 'cookies_policy' %}">Политика cookies</a></li>
+            <li><a href="{% url 'service_request_terms' %}">Условия обработки заявок</a></li>
+            <li><a href="{% url 'contacts' %}">Контакты</a></li>
+          </ul>
+        </div>
+  
+        <div>
+          <h4>Контакты</h4>
+          <ul>
+            {% if site_contact_phone %}
+              <li><a href="tel:{{ site_contact_phone_href|default:site_contact_phone }}">{{ site_contact_phone }}</a></li>
+            {% endif %}
+            {% if site_contact_email %}
+              <li><a href="mailto:{{ site_contact_email }}">{{ site_contact_email }}</a></li>
+            {% endif %}
+            {% if site_contact_telegram %}
+              <li><a href="{{ site_contact_telegram }}" target="_blank" rel="noopener noreferrer">{{ site_contact_telegram_handle|default:site_contact_telegram }}</a></li>
+            {% endif %}
+          </ul>
+        </div>
+      </div>
+  
+      <div class="vr-copyright">
+        &copy; {{ current_year }} {{ site_brand }}. Все права защищены.
+      </div>
+    </div>
+  </footer>
+
+  <div id="cookie-consent-banner" class="cookie-consent-banner" role="region" aria-label="Согласие с cookies" aria-live="polite" aria-hidden="true">
+    <p class="cookie-consent-text">
+      Продолжая пользоваться сайтом, вы подтверждаете согласие на использование cookies в соответствии с
+      <a href="{% url 'cookies_policy' %}" class="cookie-consent-link">Политикой cookies</a>
+      и обработку персональных данных в соответствии с
+      <a href="{% url 'privacy' %}" class="cookie-consent-link">Политикой конфиденциальности</a>.
+    </p>
+    <button id="cookie-consent-accept" type="button" class="cookie-consent-btn">Ок</button>
+  </div>
+  
+  <div class="mobile-dock" data-mobile-dock>
+    <a href="{% url 'home' %}" class="dock-item {% if active_section == 'home' %}active{% endif %}" title="Главная">
+      <i data-lucide="home" width="24" height="24"></i>
+    </a>
+    
+    <a href="{% url 'catalog:product_list' %}" class="dock-item {% if active_section == 'catalog' %}active{% endif %}" title="Каталог">
+      <i data-lucide="search" width="24" height="24"></i>
+    </a>
+    
+    <a href="{% url 'catalog:favorites' %}" class="dock-item {% if active_section == 'favorites' %}active{% endif %}" title="Избранное">
+      <i data-lucide="heart" width="24" height="24"></i>
+      <span class="badge badge-gray" x-text="favoritesCount" x-show="favoritesCount > 0">{{ favorites_count|default:0 }}</span>
+    </a>
+    
+    <a href="{% url 'catalog:cart' %}" class="dock-item {% if active_section == 'cart' %}active{% endif %}" title="Корзина">
+      <i data-lucide="shopping-cart" width="24" height="24"></i>
+      <span class="badge badge-accent" x-text="cartCount">{{ cart_count|default:0 }}</span>
+    </a>
+    
+    <a href="{% url 'accounts:profile' %}" class="dock-item {% if active_section == 'profile' %}active{% endif %}" title="Профиль">
+      <i data-lucide="user" width="24" height="24"></i>
+    </a>
+  </div>
+
+  <!-- Hidden container for HTMX cart responses -->
+  <div id="cart-modal-content" style="display: none;"></div>

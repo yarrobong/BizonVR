@@ -1,0 +1,24 @@
+<!-- Левая панель фильтров: только на десктопе, сразу применяются по клику -->
+<aside class="catalog-filters w-full hidden lg:block">
+  <div class="bg-dark-800 rounded-xl sticky top-24 flex flex-col">
+    <h3 class="text-xs font-bold text-white uppercase tracking-wider px-4 pt-4 pb-2 flex-shrink-0">Фильтры</h3>
+    <div class="filters-panel-scroll flex-1 min-h-0 px-4 pb-4 space-y-6">
+      {% include "catalog/_filters_main.html" with defer_category_apply=False %}
+
+      {% if not is_catalog_root %}
+      <a href="{% url 'catalog:product_list' %}"
+         class="flex w-full items-center justify-center gap-2 py-2.5 rounded-lg border border-dark-600 text-gray-400 hover:text-white hover:bg-dark-700 hover:border-dark-500 text-sm font-medium transition-colors">
+        <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+        Сбросить фильтры
+      </a>
+      {% endif %}
+
+      <button type="button"
+              class="flex w-full items-center justify-center gap-2 py-2.5 rounded-lg bg-dark-700 hover:bg-dark-600 text-gray-300 hover:text-white text-sm font-medium transition-colors"
+              @click="filtersModalOpen = true">
+        <i data-lucide="sliders-horizontal" class="w-4 h-4"></i>
+        Все фильтры
+      </button>
+    </div>
+  </div>
+</aside>

@@ -1,0 +1,83 @@
+<!-- Модалка «Все фильтры» -->
+<div x-show="filtersModalOpen"
+     x-cloak
+     x-effect="filtersModalOpen && typeof lucide !== 'undefined' && lucide.createIcons()"
+     x-transition:enter="transition ease-out duration-200"
+     x-transition:enter-start="opacity-0"
+     x-transition:enter-end="opacity-100"
+     x-transition:leave="transition ease-in duration-150"
+     x-transition:leave-start="opacity-100"
+     x-transition:leave-end="opacity-0"
+     @click="if (window.innerWidth < 1024 && $event.target === $el) filtersModalOpen = false"
+     class="fixed inset-0 z-[60000] bg-black/60 backdrop-blur-sm"
+     style="display: none;">
+  <div class="hidden lg:flex items-start justify-center p-4 pt-20 w-full h-full">
+    <div @click.stop
+         @click.outside="filtersModalOpen = false"
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0 scale-95"
+         x-transition:enter-end="opacity-100 scale-100"
+         class="bg-dark-800 rounded-xl shadow-2xl border border-dark-600 w-full max-w-md max-h-[calc(100vh-6rem)] flex flex-col">
+      <div class="flex items-center justify-between p-4 border-b border-dark-600 flex-shrink-0">
+        <h3 class="text-lg font-bold text-white">Все фильтры</h3>
+        <button type="button"
+                class="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-dark-600 transition-colors"
+                @click="filtersModalOpen = false"
+                aria-label="Закрыть">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <div class="p-4 space-y-6 overflow-y-auto flex-1 min-h-0"
+           @click.capture="const link = $event.target.closest('a[href]'); if (link) { $event.preventDefault(); pendingFiltersUrl = link.getAttribute('href'); mobileFiltersDirty = true; }">
+        {% include "catalog/_filters_main.html" with defer_category_apply=True category_form_id="desktop-modal-category-filter-form" %}
+        {% include "catalog/_filters_characteristics.html" with defer_category_apply=True %}
+      </div>
+      <div class="p-4 border-t border-dark-600 flex-shrink-0 space-y-2">
+        <button type="button"
+                class="w-full rounded-xl bg-accent hover:bg-accent-hover text-dark-900 text-sm font-semibold py-2.5 transition-colors"
+                @click="applyFilters('desktop-modal-category-filter-form', $el.closest('.bg-dark-800'))">
+          Применить
+        </button>
+        {% if not is_catalog_root %}
+        <a href="{% url 'catalog:product_list' %}"
+           class="flex w-full items-center justify-center gap-2 py-2.5 rounded-xl border border-dark-600 text-gray-400 hover:text-white hover:bg-dark-700 text-sm font-medium transition-colors">
+          <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+          Сбросить фильтры
+        </a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="lg:hidden fixed inset-0 mobile-filters-modal bg-dark-900 flex flex-col"
+       @input.capture="if ($event.target.matches('input,select,textarea')) mobileFiltersDirty = true"
+       @change.capture="if ($event.target.matches('input,select,textarea')) mobileFiltersDirty = true"
+       style="padding-top: max(0.5rem, env(safe-area-inset-top)); padding-bottom: max(0.5rem, env(safe-area-inset-bottom));">
+    <div class="flex items-center justify-between px-4 py-3">
+      <div class="w-16"></div>
+      <h3 class="text-[34px] leading-none font-semibold text-center text-white">Фильтры</h3>
+      <button type="button" class="text-[17px] text-blue-600 font-medium" @click="filtersModalOpen = false">Отмена</button>
+    </div>
+    <div class="flex-1 min-h-0 overflow-y-auto px-3 pb-3">
+      <div class="p-4 mobile-filters-content space-y-4 bg-dark-800 rounded-2xl"
+           @click.capture="const link = $event.target.closest('a[href]'); if (link) { $event.preventDefault(); pendingFiltersUrl = link.getAttribute('href'); mobileFiltersDirty = true; }">
+        {% include "catalog/_filters_main.html" with defer_category_apply=True category_form_id="mobile-category-filter-form" %}
+        {% include "catalog/_filters_characteristics.html" with defer_category_apply=True %}
+      </div>
+    </div>
+    <div class="px-4 pt-2 space-y-2">
+      <button type="button"
+              class="w-full rounded-2xl bg-accent text-dark-900 text-lg font-semibold py-3.5"
+              @click="if (!mobileFiltersDirty) { filtersModalOpen = false; return; } applyFilters('mobile-category-filter-form', $el.closest('.mobile-filters-modal'))"
+              x-text="mobileFiltersDirty ? 'Применить' : 'Закрыть'">
+      </button>
+      {% if not is_catalog_root %}
+      <a href="{% url 'catalog:product_list' %}"
+         class="flex w-full items-center justify-center gap-2 py-3 rounded-2xl border border-dark-600 text-gray-400 hover:text-white hover:bg-dark-700 text-base font-medium transition-colors">
+        <i data-lucide="rotate-ccw" class="w-5 h-5"></i>
+        Сбросить фильтры
+      </a>
+      {% endif %}
+    </div>
+  </div>
+</div>

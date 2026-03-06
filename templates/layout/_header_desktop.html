@@ -1,0 +1,295 @@
+  <!-- Sticky Header (Плавающий хедер): скрыт на мобильных -->
+  <div class="hidden md:block">
+  <div id="sticky-header"
+       class="fixed top-0 left-0 right-0 w-full bg-dark-900/95 backdrop-blur-md border-b border-white/10 shadow-xl transform transition-transform duration-300 ease-in-out"
+       style="z-index: 50001; display: none; border-radius: 0 0 24px 24px;"
+       x-show="showStickyHeader"
+       x-transition:enter="transition ease-out duration-300"
+       x-transition:enter-start="-translate-y-full"
+       x-transition:enter-end="translate-y-0"
+       x-transition:leave="transition ease-in duration-300"
+       x-transition:leave-start="translate-y-0"
+       x-transition:leave-end="-translate-y-full"
+       x-cloak>
+       
+    <div class="container mx-auto px-4 h-[80px] flex items-center justify-between">
+      <!-- Логотип -->
+      <a href="{% url 'home' %}" class="flex flex-col flex-shrink-0 cursor-pointer mr-6">
+        <h1 class="header-logo font-bold tracking-wider leading-none text-2xl text-white">BizonVR</h1>
+      </a>
+
+      <!-- Кнопка каталога (sticky): не реагируем на клик 300ms после смены шапки -->
+      <button type="button" data-catalog-toggle
+              @click.stop.prevent="
+                if (headerChangedAt && (Date.now() - headerChangedAt) < 300) return;
+                catalogOpenedAt = Date.now();
+                if (!showStickyHeader) { const el = document.getElementById('header-main-row'); if (el) catalogTopPx = el.getBoundingClientRect().bottom + 'px'; }
+                const nextCatalogState = !catalogOverlayOpen;
+                catalogOverlayOpen = nextCatalogState;
+                if (nextCatalogState && catalogDefaultSection !== null) { catalogHoverSection = catalogDefaultSection; }
+              "
+              class="flex items-center gap-2 px-4 py-2 rounded-xl bg-dark-700 hover:bg-accent text-white transition-colors cursor-pointer font-medium text-sm flex-shrink-0 mr-6"
+              :class="catalogOverlayOpen && 'bg-accent'">
+        <span class="inline-flex items-center justify-center w-4 h-4">
+          <i data-lucide="layout-grid" class="w-4 h-4 inline-block" x-show="!catalogOverlayOpen"></i>
+          <i data-lucide="x" class="w-4 h-4 inline-block" x-show="catalogOverlayOpen" x-cloak></i>
+        </span>
+        <span class="text-white">КАТАЛОГ</span>
+      </button>
+
+      <!-- Поиск -->
+      <form action="{% url 'catalog:product_list' %}" method="get" class="flex-1 relative min-w-0 mr-4 md:mr-6">
+        <input type="search" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Поиск по товарам" class="search-input-glass w-full text-white rounded-full px-5 pl-5 pr-12 focus:outline-none focus:ring-1 focus:ring-accent text-sm py-2" />
+        <button type="submit" class="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white w-[18px] h-[18px] inline-flex items-center justify-center focus:outline-none">
+          <i data-lucide="search" class="w-[18px] h-[18px] inline-block"></i>
+        </button>
+      </form>
+
+      <!-- Иконки -->
+      <div class="flex items-center gap-4 flex-shrink-0">
+        <a href="{% url 'catalog:favorites' %}" class="flex flex-col items-center group flex-shrink-0" title="Избранное">
+          <div class="relative">
+            <i data-lucide="heart" class="text-white group-hover:text-accent transition-colors w-6 h-6 inline-block"></i>
+            <span class="absolute -top-1 -right-1 w-4 h-4 bg-dark-700 rounded-full text-[10px] flex items-center justify-center border border-dark-800" x-text="favoritesCount" x-show="favoritesCount > 0">{{ favorites_count|default:0 }}</span>
+          </div>
+        </a>
+
+        <!-- Профиль -->
+        {% if user.is_authenticated %}
+          <a href="{% url 'accounts:profile' %}" class="flex items-center gap-1.5 text-gray-400 hover:text-accent transition-colors flex-shrink-0">
+            <i data-lucide="user" class="w-5 h-5 inline-block"></i>
+          </a>
+        {% else %}
+          <a href="{% url 'accounts:login' %}" class="flex items-center gap-1.5 text-gray-400 hover:text-accent transition-colors flex-shrink-0" hx-boost="false">
+            <i data-lucide="log-in" class="w-5 h-5 inline-block"></i>
+          </a>
+        {% endif %}
+
+        <!-- Корзина -->
+        <div class="relative">
+          <a href="{% url 'catalog:cart' %}" class="flex items-center group focus:outline-none">
+            <div class="relative">
+              <i data-lucide="shopping-cart" class="text-white group-hover:text-accent transition-colors w-6 h-6 inline-block"></i>
+              <span class="absolute -top-1 -right-1 w-4 h-4 bg-dark-700 rounded-full text-[10px] flex items-center justify-center border border-dark-800" x-text="cartCount">{{ cart_count|default:0 }}</span>
+            </div>
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+  </div>
+
+  <!-- Основной Header (обычный): скрыт на мобильных -->
+  <header class="hidden md:block w-full text-white bg-dark-800 border-b border-dark-600 relative" style="z-index: 50001;">
+    <div class="hidden md:block header-top-row bg-dark-800 border-b border-dark-600/50">
+      <div class="flex justify-between items-center container mx-auto px-4 py-1.5 text-xs text-gray-400">
+      <div class="flex items-center space-x-6">
+        <a href="https://www.avito.ru/user/bizonvr" target="_blank" rel="noopener noreferrer" class="flex items-center space-x-1 hover:text-white text-gray-400 transition-colors">
+          <i data-lucide="shopping-bag" class="w-3.5 h-3.5 text-accent inline-block"></i>
+          <span>Авито</span>
+        </a>
+        <a href="https://t.me/bizon_order_manager" target="_blank" rel="noopener noreferrer" class="flex items-center space-x-1 hover:text-white text-gray-400 transition-colors">
+          <i data-lucide="send" class="w-3.5 h-3.5 text-accent inline-block"></i>
+          <span>Telegram</span>
+        </a>
+      </div>
+      <div class="flex items-center space-x-6">
+        <div class="flex items-center space-x-2">
+          <i data-lucide="phone" class="w-3.5 h-3.5 text-accent inline-block"></i>
+          <a href="tel:+79324910482" class="font-bold text-white hover:text-accent">+7 (932) 491-04-82</a>
+          <a href="{% url 'uslugi' %}#contacts" class="text-gray-500 hover:text-accent">ЗАКАЗАТЬ ЗВОНОК</a>
+        </div>
+        {% if user.is_authenticated %}
+          <a href="{% url 'accounts:profile' %}" class="flex items-center space-x-2 hover:text-accent">
+            <div class="w-2 h-2 rounded-full bg-accent"></div>
+            <span>ЛИЧНЫЙ КАБИНЕТ</span>
+          </a>
+          <a href="{% url 'accounts:logout' %}" class="hover:text-accent" hx-boost="false">ВЫЙТИ</a>
+        {% else %}
+          <a href="{% url 'accounts:login' %}" class="flex items-center space-x-2 hover:text-accent" hx-boost="false">
+            <div class="w-2 h-2 rounded-full bg-gray-500"></div>
+            <span>ВОЙТИ</span>
+          </a>
+        {% endif %}
+      </div>
+    </div>
+    </div>
+
+    <div id="header-main-row" class="header-main-row container mx-auto px-4 py-3 bg-dark-800">
+      <div class="flex flex-wrap md:flex-nowrap items-center gap-3 md:gap-4">
+        <a href="{% url 'home' %}" class="flex flex-col flex-shrink-0 cursor-pointer">
+          <h1 class="header-logo font-bold tracking-wider leading-none text-2xl text-white">BizonVR</h1>
+          
+        </a>
+
+        <button type="button" data-catalog-toggle
+                @click.stop.prevent="
+                  if (headerChangedAt && (Date.now() - headerChangedAt) < 300) return;
+                  catalogOpenedAt = Date.now();
+                  if (!showStickyHeader) { const el = document.getElementById('header-main-row'); if (el) catalogTopPx = el.getBoundingClientRect().bottom + 'px'; }
+                  const nextCatalogState = !catalogOverlayOpen;
+                  catalogOverlayOpen = nextCatalogState;
+                  if (nextCatalogState && catalogDefaultSection !== null) { catalogHoverSection = catalogDefaultSection; }
+                "
+                class="flex items-center gap-2 px-4 py-2 rounded-xl bg-dark-700 hover:bg-accent text-white transition-colors cursor-pointer font-medium text-sm flex-shrink-0"
+                :class="catalogOverlayOpen && 'bg-accent'">
+          <span class="inline-flex items-center justify-center w-4 h-4">
+            <i data-lucide="layout-grid" class="w-4 h-4 inline-block" x-show="!catalogOverlayOpen"></i>
+            <i data-lucide="x" class="w-4 h-4 inline-block" x-show="catalogOverlayOpen" x-cloak></i>
+          </span>
+          <span class="text-white">КАТАЛОГ</span>
+        </button>
+
+        <form action="{% url 'catalog:product_list' %}" method="get" class="flex-1 relative hidden md:block min-w-0">
+          <input type="search" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Поиск по товарам" class="search-input-glass w-full text-white rounded-full px-5 pl-5 pr-12 focus:outline-none focus:ring-1 focus:ring-accent text-sm py-2" />
+          <button type="submit" class="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white w-[18px] h-[18px] inline-flex items-center justify-center focus:outline-none">
+            <i data-lucide="search" class="w-[18px] h-[18px] inline-block"></i>
+          </button>
+        </form>
+
+        <div class="flex items-center gap-4 flex-shrink-0">
+          <a href="{% url 'catalog:favorites' %}" class="flex flex-col items-center group flex-shrink-0" title="Избранное">
+            <div class="relative">
+              <i data-lucide="heart" class="text-white group-hover:text-accent transition-colors w-6 h-6 inline-block"></i>
+              <span id="favorites-count" class="absolute -top-1 -right-1 w-4 h-4 bg-dark-700 rounded-full text-[10px] flex items-center justify-center border border-dark-800" x-text="favoritesCount" x-show="favoritesCount > 0">{{ favorites_count|default:0 }}</span>
+            </div>
+          </a>
+          <!-- Профиль -->
+          {% if user.is_authenticated %}
+            <a href="{% url 'accounts:profile' %}" class="flex items-center gap-1.5 text-gray-400 hover:text-accent transition-colors flex-shrink-0">
+              <i data-lucide="user" class="w-5 h-5 inline-block"></i>
+            </a>
+          {% else %}
+            <a href="{% url 'accounts:login' %}" class="flex items-center gap-1.5 text-gray-400 hover:text-accent transition-colors flex-shrink-0" hx-boost="false">
+              <i data-lucide="log-in" class="w-5 h-5 inline-block"></i>
+            </a>
+          {% endif %}
+          <div class="relative">
+            <a href="{% url 'catalog:cart' %}"
+               class="flex items-center group focus:outline-none">
+              <div class="relative">
+                <i data-lucide="shopping-cart" class="text-white group-hover:text-accent transition-colors w-6 h-6 inline-block"></i>
+                <span id="cart-count" class="absolute -top-1 -right-1 w-4 h-4 bg-dark-700 rounded-full text-[10px] flex items-center justify-center border border-dark-800" x-text="cartCount">{{ cart_count|default:0 }}</span>
+              </div>
+            </a>
+            <!-- Мини-корзина: выезжает от иконки при добавлении товара -->
+            <div x-show="miniCartOpen"
+                 x-cloak
+                 @click.outside="miniCartOpen = false"
+                 x-transition:enter="transition ease-out duration-200"
+                 x-transition:enter-start="opacity-0 scale-95 -translate-y-2"
+                 x-transition:enter-end="opacity-100 scale-100 translate-y-0"
+                 x-transition:leave="transition ease-in duration-150"
+                 x-transition:leave-start="opacity-100 scale-100"
+                 x-transition:leave-end="opacity-0 scale-95 -translate-y-2"
+                 style="transform-origin: top right"
+                 class="absolute right-0 top-full mt-2 z-[60] w-80 max-w-[calc(100vw-2rem)] bg-dark-800 border border-dark-600 rounded-xl shadow-2xl overflow-hidden">
+              <div class="p-4">
+                <template x-if="miniCartData && miniCartData.items && miniCartData.items.length">
+                  <div class="mb-3">
+                    <p class="text-[10px] text-gray-500 uppercase tracking-wider mb-2">В корзине</p>
+                    <ul class="space-y-2 max-h-32 overflow-y-auto">
+                      <template x-for="(item, i) in miniCartData.items" :key="i">
+                        <li class="flex gap-2 text-sm">
+                          <div class="w-8 h-8 rounded bg-dark-700 flex-shrink-0 overflow-hidden flex items-center justify-center">
+                            <template x-if="item.image_url">
+                              <img :src="item.image_url" alt="" class="w-full h-full object-cover" />
+                            </template>
+                            <template x-if="!item.image_url">
+                              <i data-lucide="package" class="w-4 h-4 text-gray-500"></i>
+                            </template>
+                          </div>
+                          <span class="flex-1 min-w-0 text-gray-300 truncate" x-text="item.name"></span>
+                          <span class="text-gray-400" x-text="item.quantity + ' шт.'"></span>
+                          <span class="font-medium text-white" x-text="Math.round(item.subtotal).toLocaleString('ru-RU') + ' ₽'"></span>
+                        </li>
+                      </template>
+                    </ul>
+                  </div>
+                </template>
+                <div class="flex items-center justify-between pt-2 border-t border-dark-600">
+                  <span class="text-sm text-gray-400">Итого: <span class="font-bold text-white" x-text="miniCartData ? Math.round(miniCartData.total).toLocaleString('ru-RU') + ' ₽' : ''"></span></span>
+                  <div class="flex gap-2">
+                    <a href="{% url 'catalog:cart' %}" @click="miniCartOpen = false" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-dark-700 text-gray-300 hover:text-white transition-colors">В корзину</a>
+                    <a href="{% url 'orders:checkout' %}" @click="miniCartOpen = false" class="px-3 py-1.5 text-xs font-bold rounded-lg bg-accent text-dark-900 hover:bg-accent-hover transition-colors">Оформить</a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <form action="{% url 'catalog:product_list' %}" method="get" class="mt-3 md:hidden relative w-full">
+        <input type="search" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Поиск по товарам" class="search-input-glass w-full text-white rounded-lg py-2 px-4 pr-10 focus:outline-none focus:ring-1 focus:ring-accent text-sm" />
+        <button type="submit" class="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 inline-flex items-center justify-center focus:outline-none">
+          <i data-lucide="search" class="w-4 h-4 inline-block"></i>
+        </button>
+      </form>
+    </div>
+
+    <div class="header-nav relative transition-[padding] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] py-3 bg-dark-800 hidden md:block">
+      <div class="container mx-auto px-4">
+        <nav class="flex items-center justify-between text-xs font-bold uppercase tracking-wide transition-[padding] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] py-2 w-full">
+          <!-- Панель каталога: перекрывает навигацию, левая колонка — разделы, правая — категории -->
+          <div class="flex items-center gap-6 md:gap-8 flex-shrink-0">
+            <ul class="header-nav flex items-center gap-6 md:gap-8">
+              {% if site_blog_url %}
+              <li><a href="{{ site_blog_url }}" class="hover:text-accent transition-colors py-2 block" {% if '://' in site_blog_url %}target="_blank" rel="noopener noreferrer"{% endif %}>Блог</a></li>
+              {% endif %}
+              {% if site_clubs_url %}
+              <li><a href="{{ site_clubs_url }}" class="hover:text-accent transition-colors py-2 block" {% if '://' in site_clubs_url %}target="_blank" rel="noopener noreferrer"{% endif %}>Клубы</a></li>
+              {% endif %}
+              <li><a href="{% url 'arenda' %}" class="hover:text-accent transition-colors py-2 block">Аренда</a></li>
+              {% if site_instructions_url %}
+              <li><a href="{{ site_instructions_url }}" class="hover:text-accent transition-colors py-2 block" {% if '://' in site_instructions_url %}target="_blank" rel="noopener noreferrer"{% endif %}>Инструкции</a></li>
+              {% endif %}
+              <li><a href="{% url 'uslugi' %}" class="hover:text-accent transition-colors py-2 block">Услуги</a></li>
+              <li><a href="{% url 'contacts' %}" class="hover:text-accent transition-colors py-2 block">Контакты</a></li>
+            </ul>
+          </div>
+          <div class="relative flex-shrink-0 ml-auto" x-data="{ cityOpenNav: false }" @click.outside="cityOpenNav = false" data-cities-count="{{ cities|length }}">
+            <button type="button" @click="cityOpenNav = !cityOpenNav"
+                    class="city-select-glass flex items-center justify-between gap-2 text-white text-sm rounded-xl px-3 md:px-4 focus:outline-none focus:ring-1 focus:ring-accent hover:border-white/20 transition-all duration-300 min-w-[120px] md:min-w-[160px] h-9 md:h-10 bg-dark-700/80">
+              <div class="flex items-center gap-2 min-w-0">
+                <i data-lucide="map-pin" class="w-4 h-4 text-accent flex-shrink-0"></i>
+                <span class="truncate pt-0.5">{% if selected_city %}{{ selected_city.name }}{% else %}Город{% endif %}</span>
+              </div>
+              <i data-lucide="chevron-down" class="w-4 h-4 text-gray-400 flex-shrink-0 transition-transform" :class="cityOpenNav && 'rotate-180'"></i>
+            </button>
+            <div x-show="cityOpenNav" x-cloak
+                 x-transition:enter="transition ease-out duration-150"
+                 x-transition:enter-start="opacity-0 -translate-y-1"
+                 x-transition:enter-end="opacity-100 translate-y-0"
+                 x-transition:leave="transition ease-in duration-100"
+                 x-transition:leave-start="opacity-100 translate-y-0"
+                 x-transition:leave-end="opacity-0 -translate-y-1"
+                 class="absolute right-0 top-full mt-2 z-50 min-w-[220px] bg-dark-800 border border-dark-600 rounded-xl shadow-xl overflow-hidden py-2 text-left">
+              <form method="post" action="{% url 'catalog:set_city' %}" id="header-nav-city-form">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+                <div class="px-4 py-2 text-[10px] uppercase tracking-wider text-gray-500">
+                  <span>Город</span>
+                </div>
+                <button type="submit" name="city_id" value="" @click="cityOpenNav = false"
+                        class="w-full flex items-center gap-3 px-4 py-3 text-left text-sm text-gray-400 hover:bg-white/5 hover:text-white transition-colors {% if not selected_city %}bg-white/5 text-accent{% endif %}">
+                  <i data-lucide="map-pin" class="w-4 h-4 flex-shrink-0 opacity-60"></i>
+                  <span>Все города</span>
+                </button>
+                {% if cities %}
+                <div class="my-1 border-t border-white/10"></div>
+                {% for city in cities %}
+                <button type="submit" name="city_id" value="{{ city.pk }}" @click="cityOpenNav = false"
+                        class="w-full flex items-center gap-3 px-4 py-3 text-left text-sm transition-colors {% if selected_city and selected_city.pk == city.pk %}bg-white/10 text-accent{% else %}text-gray-300 hover:bg-white/5 hover:text-white{% endif %}">
+                  <i data-lucide="map-pin" class="w-4 h-4 flex-shrink-0 {% if selected_city and selected_city.pk == city.pk %}text-accent{% else %}opacity-60{% endif %}"></i>
+                  <span>{{ city.name }}</span>
+                </button>
+                {% endfor %}
+                {% endif %}
+              </form>
+            </div>
+          </div>
+        </nav>
+      </div>
+    </div>
+  </header>

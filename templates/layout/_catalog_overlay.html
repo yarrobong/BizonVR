@@ -1,0 +1,73 @@
+{% load catalog_tags %}
+  <!-- Глобальный полноэкранный оверлей каталога: телепорт в body, два варианта позиции без реактивного :style -->
+  <template x-teleport="body">
+  <div id="catalog-overlay"
+       x-show="catalogOverlayOpen"
+       x-cloak
+       @mouseleave="if (catalogHoverTimeout) { clearTimeout(catalogHoverTimeout); catalogHoverTimeout = null; }"
+       @click.outside="
+         if (catalogOpenedAt && (Date.now() - catalogOpenedAt) < 400) return;
+         if ($event.target.closest('[data-catalog-toggle]')) return;
+         catalogOverlayOpen = false;
+       "
+       @click="if ($event.target.closest('a[href]')) catalogOverlayOpen = false"
+       class="fixed flex flex-col bg-dark-800 border-t border-white/10 backdrop-blur-md shadow-2xl left-0 right-0 w-full"
+       :style="{ width: '100%', maxWidth: '100vw', zIndex: 99999, top: showStickyHeader ? '5rem' : catalogTopPx, height: showStickyHeader ? 'calc(100vh - 5rem)' : ('calc(100vh - ' + catalogTopPx + ')') }">
+    <div class="flex-1 min-h-0 overflow-auto flex flex-col">
+      <div class="container mx-auto px-6 py-4 flex w-full gap-10 flex-1 min-h-0">
+        <div class="w-56 flex-shrink-0 border-r border-dark-600 pr-8 pl-2">
+          <div class="text-[10px] text-gray-500 uppercase tracking-wider mb-3">Разделы</div>
+          <ul class="space-y-0.5">
+            {% for section in catalog_sections %}
+            <li>
+              <a href="{% url 'catalog:product_list' %}?section={{ section.slug }}"
+                 class="group flex items-center gap-2.5 py-2.5 px-3 rounded-lg transition-colors -mx-3"
+                 :class="catalogHoverSection === {{ section.pk }} ? 'bg-dark-600 text-accent' : 'text-white hover:bg-dark-600 hover:text-accent'"
+                 @mouseenter="
+                   if (catalogHoverTimeout) { clearTimeout(catalogHoverTimeout); }
+                   catalogHoverTimeout = setTimeout(() => { catalogHoverSection = {{ section.pk }}; catalogHoverTimeout = null; }, 300);
+                 "
+                 @mouseleave="
+                   if (catalogHoverTimeout) { clearTimeout(catalogHoverTimeout); catalogHoverTimeout = null; }
+                 ">
+                {% if section.icon %}
+                <span class="catalog-icon flex-shrink-0 w-5 h-5 text-gray-400 flex items-center justify-center group-hover:text-accent transition-colors">
+                  {{ section.icon|safe }}
+                </span>
+                {% endif %}
+                <span>{{ section.name }}</span>
+              </a>
+            </li>
+            {% endfor %}
+          </ul>
+          <div class="mt-4 pt-4 border-t border-dark-600">
+            <a href="{% url 'catalog:product_list' %}" class="text-accent hover:underline font-medium">Весь каталог</a>
+          </div>
+        </div>
+        <div class="flex-1 min-w-0">
+          {% for section in catalog_sections %}
+          <div x-show="catalogHoverSection === {{ section.pk }}"
+               x-cloak
+               class="catalog-tiles-grid">
+            {% for category in section.categories.all %}
+            {% with preview_url=catalog_category_previews|get_dict_item:category.id %}
+            <a href="{% url 'catalog:product_list' %}?category={{ category.slug }}"
+               class="catalog-tile catalog-tile-{{ category.tile_size|default:'small' }} bg-dark-700 group"
+               {% if preview_url %}style="background-image: url({{ preview_url }});"{% endif %}>
+              <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
+              <div class="absolute bottom-0 left-0 right-0 p-3 flex items-center gap-2">
+                {% if category.icon %}
+                <span class="catalog-icon w-6 h-6 text-accent/90 flex-shrink-0 group-hover:text-accent transition-colors">{{ category.icon|safe }}</span>
+                {% endif %}
+                <span class="font-bold text-white text-sm truncate group-hover:text-accent transition-colors">{{ category.name }}</span>
+              </div>
+            </a>
+            {% endwith %}
+            {% endfor %}
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+  </template>

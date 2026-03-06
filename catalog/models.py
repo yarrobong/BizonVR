@@ -233,7 +233,7 @@ class ProductImage(models.Model):
         verbose_name='Товар',
     )
     image = models.ImageField('Изображение', upload_to='products/')
-    order = models.PositiveIntegerField('Порядок', default=0)
+    order = models.PositiveIntegerField('Порядок', default=0, db_index=True)
 
     class Meta:
         verbose_name = 'Фото товара'

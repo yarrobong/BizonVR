@@ -1,0 +1,44 @@
+.catalog-layout { display: flex; flex-direction: column; gap: 2rem; }
+
+@media (min-width: 1024px) {
+  .catalog-layout { flex-direction: row; align-items: flex-start; }
+  .catalog-filters { width: 244px; flex-shrink: 0; }
+  .catalog-filters .filters-panel-scroll {
+    max-height: calc(100vh - 7rem);
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+  }
+  .catalog-filters .filters-panel-scroll::-webkit-scrollbar { width: 6px; }
+  .catalog-filters .filters-panel-scroll::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); border-radius: 3px; }
+  .catalog-filters .filters-panel-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
+}
+
+.mobile-filters-modal .mobile-filters-content > div {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 1rem;
+  margin-bottom: 1rem;
+}
+
+.mobile-filters-modal .mobile-filters-content > div:last-child {
+  border-bottom: 0;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+/* Подсветка выбранных фильтров (не зависит от Tailwind opacity) */
+.catalog-filters .filter-selected,
+.mobile-filters-modal .filter-selected,
+.filter-selected {
+  background-color: rgba(0, 212, 255, 0.2) !important;
+  border-color: #00D4FF !important;
+  color: #00D4FF !important;
+  box-shadow: 0 0 0 2px rgba(0, 212, 255, 0.4);
+}
+
+.catalog-filters .filter-selected .filter-selected-dot,
+.mobile-filters-modal .filter-selected .filter-selected-dot,
+.filter-selected .filter-selected-dot {
+  border-color: #00D4FF !important;
+  background-color: #00D4FF;
+}
