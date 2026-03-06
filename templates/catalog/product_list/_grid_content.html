@@ -66,10 +66,10 @@
     {% for product in products %}
       {% if product.variants.all %}
         {% for card_variant in product.variants.all %}
-          {% include "catalog/_product_card.html" with product=product card_variant=card_variant show_favorite=True favorite_product_ids=favorite_product_ids variant_stock_in_city=variant_stock_in_city variant_stock_total=variant_stock_total %}
+          {% include "catalog/_product_card.html" with product=product card_variant=card_variant show_favorite=True favorite_product_ids=favorite_product_ids product_stock_total=product_stock_total variant_stock_total=variant_stock_total %}
         {% endfor %}
       {% else %}
-        {% include "catalog/_product_card.html" with product=product show_favorite=True favorite_product_ids=favorite_product_ids variant_stock_in_city=variant_stock_in_city variant_stock_total=variant_stock_total %}
+        {% include "catalog/_product_card.html" with product=product show_favorite=True favorite_product_ids=favorite_product_ids product_stock_total=product_stock_total variant_stock_total=variant_stock_total %}
       {% endif %}
     {% endfor %}
   </div>

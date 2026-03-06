@@ -73,6 +73,58 @@ class CommercialProposalContact(models.Model):
         return f'КП-контакты: {self.user}'
 
 
+class SavedAddress(models.Model):
+    """Сохранённый адрес/сценарий доставки пользователя для повторных заказов."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='saved_addresses',
+        verbose_name='Пользователь',
+    )
+    label = models.CharField('Название адреса', max_length=120)
+    recipient_name = models.CharField('Получатель', max_length=255)
+    phone = models.CharField('Телефон', max_length=40)
+    email = models.EmailField('Email', blank=True)
+    delivery_type = models.CharField(
+        'Способ доставки',
+        max_length=20,
+        choices=[
+            ('courier', 'Курьером'),
+            ('pickup', 'Самовывоз'),
+            ('post', 'Почтой'),
+        ],
+    )
+    pickup_point = models.ForeignKey(
+        'catalog.PickupPoint',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='saved_addresses',
+        verbose_name='Точка выдачи',
+    )
+    address = models.TextField('Адрес', blank=True)
+    comment = models.TextField('Комментарий', blank=True)
+    is_default = models.BooleanField('Адрес по умолчанию', default=False)
+    created_at = models.DateTimeField('Создан', auto_now_add=True)
+    updated_at = models.DateTimeField('Обновлён', auto_now=True)
+
+    class Meta:
+        verbose_name = 'Сохранённый адрес'
+        verbose_name_plural = 'Сохранённые адреса'
+        ordering = ['-is_default', '-updated_at', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['user'],
+                condition=models.Q(is_default=True),
+                name='accounts_savedaddress_single_default_per_user',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.user} — {self.label}'
+
+
 class BalanceTransaction(models.Model):
     """Операция по балансу: пополнение, списание за заказ, бонус по промокоду."""
     TYPE_TOPUP = 'topup'
@@ -112,6 +164,7 @@ class PhoneVerificationCode(models.Model):
     phone = models.CharField(max_length=20, db_index=True)
     code = models.CharField(max_length=10)
     created_at = models.DateTimeField(auto_now_add=True)
+    used_at = models.DateTimeField(null=True, blank=True, db_index=True)
 
     class Meta:
         verbose_name = 'Код подтверждения'

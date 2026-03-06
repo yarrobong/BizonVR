@@ -6,7 +6,7 @@
     overflow: hidden;
     padding: 10px;
     font-size: 0.8125rem;
-    border-bottom: 1px solid var(--hairline-color);
+
 }
 
 .form-row img, .form-row input {
@@ -81,7 +81,6 @@ form ul.inline li {
 fieldset .fieldset-heading,
 fieldset .inline-heading,
 :not(.inline-related) .collapse summary {
-    border: 1px solid var(--header-bg);
     margin: 0;
     padding: 8px;
     font-weight: 400;

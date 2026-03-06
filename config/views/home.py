@@ -1,13 +1,12 @@
 from django.conf import settings
-from django.core.cache import cache
 from django.db.models import Q
 from django.shortcuts import render
 from django.urls import reverse
 
-from catalog.cache_utils import CACHE_KEY_PRODUCT_TAGS
-from catalog.models import Product, ProductTag
+from catalog.cache_utils import get_catalog_product_tags, get_home_category_backgrounds
+from catalog.models import Product
+from catalog.views.common import _product_stock_totals
 
-_CACHE_TTL = 300
 _HOME_FEATURED_PROMO_TAG_KEYWORDS = (
     'hit',
     'хит',
@@ -46,10 +45,7 @@ def _home_view_impl(request):
     if tag_slug:
         featured_qs = featured_qs.filter(tags__slug=tag_slug).distinct()
     featured = list(featured_qs[:8])
-    product_tags = cache.get(CACHE_KEY_PRODUCT_TAGS)
-    if product_tags is None:
-        product_tags = list(ProductTag.objects.order_by('order', 'name'))
-        cache.set(CACHE_KEY_PRODUCT_TAGS, product_tags, _CACHE_TTL)
+    product_tags = get_catalog_product_tags()
 
     hero_dir = settings.BASE_DIR / 'static' / 'images' / 'hero'
     if (hero_dir / 'hero_1.jpg').exists():
@@ -109,17 +105,10 @@ def _home_view_impl(request):
     ]
     marketing_tiles_map = {tile['key']: tile for tile in marketing_tiles}
 
-    category_bg_map = {}
-    latest_category_images = (
-        Product.objects.filter(is_active=True, image__isnull=False)
-        .order_by('category_id', '-updated_at')
-        .distinct('category_id')
-        .values('category__slug', 'image')
-    )
-    for entry in latest_category_images:
-        slug = entry['category__slug']
-        if slug:
-            category_bg_map[slug] = build_media_url(entry['image'])
+    category_bg_map = {
+        slug: request.build_absolute_uri(image_url)
+        for slug, image_url in get_home_category_backgrounds().items()
+    }
 
     hero_slides = [
         {
@@ -158,6 +147,7 @@ def _home_view_impl(request):
         'hero_slides': hero_slides,
         'hero_slide_width_pct': hero_slide_width_pct,
         'favorite_product_ids': favorite_product_ids,
+        'product_stock_total': _product_stock_totals([product.pk for product in featured]),
         'marketing_tiles': marketing_tiles,
         'marketing_tiles_map': marketing_tiles_map,
         'category_bg_map': category_bg_map,
@@ -165,5 +155,5 @@ def _home_view_impl(request):
 
 
 def home_view(request):
-    """Главная страница: hero, лучшие предложения, сетка категорий. Без полного кэша страницы, чтобы шапка (города из БД) всегда была актуальной."""
+    """Главная страница: hero, лучшие предложения, сетка категорий."""
     return _home_view_impl(request)

@@ -60,7 +60,8 @@
           <circle cx="18" cy="19" r="3" fill="none" stroke="currentColor" stroke-width="2"></circle>
           <path d="M8.6 10.8l6.8-3.6M8.6 13.2l6.8 3.6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
         </svg>
-      </button>
+              </button>
+      {% include "catalog/partials/compare_button_mobile.html" with product=product is_compared=is_compared %}
       <form action="{% url 'catalog:toggle_favorite' product.pk %}"
             method="post"
             hx-boost="false"
@@ -210,20 +211,25 @@
     }
     return this.data.productCharacteristics || [];
   },
-  get selectedCityName() {
-    return this.data.selectedCityName;
-  },
-  get stockInCity() {
-    if (this.selectedVariant) {
-      return (this.data.stockInCityByVariant && this.data.stockInCityByVariant[this.selectedVariant.id]) || 0;
-    }
-    return this.data.stockInCityProduct;
-  },
   get stockTotal() {
     if (this.selectedVariant) {
       return (this.data.stockByVariant && this.data.stockByVariant[this.selectedVariant.id]) || 0;
     }
     return this.data.stockTotalProduct;
+  },
+  get stockStatus() {
+    if (this.selectedVariant) {
+      return (this.data.stockStatusByVariant && this.data.stockStatusByVariant[this.selectedVariant.id]) || 'on_request';
+    }
+    return this.data.stockStatusProduct || 'on_request';
+  },
+  get stockStatusLabel() {
+    const labels = {
+      in_stock_high: 'Много',
+      in_stock_low: 'Мало',
+      on_request: 'Под заказ',
+    };
+    return labels[this.stockStatus] || 'Под заказ';
   },
   get canSubmitMobileCart() {
     return this.variants.length === 0 || !!this.selectedVariant;
@@ -456,19 +462,19 @@
 
       <div class="mobile-delivery-wrap mobile-only">
         <div class="delivery-section" style="border-radius: 24px;">
-          <h3 class="delivery-section-title">Доставка</h3>
-          <div class="delivery-row">
-            <i data-lucide="map-pin" class="w-4 h-4 inline-block" style="vertical-align: middle;"></i>
-            <div>
-              <strong>{% if selected_city %}{{ selected_city.name }}{% else %}Укажите город{% endif %}</strong><br>
-              <span style="color: var(--pd-muted); font-size: 12px;" x-text="selectedCityName ? ('В наличии в городе: ' + (stockInCity ?? 0) + ' шт.') : ('Доступно к отправке: ' + (stockTotal ?? 0) + ' шт.')"></span>
-            </div>
-          </div>
+          <h3 class="delivery-section-title">Наличие и доставка</h3>
           <div class="delivery-row">
             <i data-lucide="package" class="w-4 h-4 inline-block" style="vertical-align: middle;"></i>
             <div>
-              <strong>Пункты выдачи</strong><br>
-              <span style="font-weight: bold;">{% if selected_city %}{{ pickup_points_count }}{% else %}—{% endif %}</span>
+              <strong x-text="stockStatusLabel"></strong><br>
+              <span style="color: var(--pd-muted); font-size: 12px;">Статус по общему остатку на складе</span>
+            </div>
+          </div>
+          <div class="delivery-row">
+            <i data-lucide="truck" class="w-4 h-4 inline-block" style="vertical-align: middle;"></i>
+            <div>
+              <strong>Доставка</strong><br>
+              <span style="font-weight: bold;">По всей России</span>
             </div>
             <span style="margin-left: auto; font-size: 12px; font-weight: bold;">Без доплат</span>
           </div>
@@ -543,22 +549,25 @@
           <button type="submit" class="buy-now-btn">Купить сейчас</button>
           {% endif %}
         </form>
+        <div class="mt-3">
+          {% include "catalog/partials/compare_button.html" with product=product is_compared=is_compared %}
+        </div>
       </div>
 
       <div class="delivery-section">
-          <h3 class="delivery-section-title">Доставка</h3>
-          <div class="delivery-row">
-            <i data-lucide="map-pin" class="w-4 h-4 inline-block" style="vertical-align: middle;"></i>
-            <div>
-              <strong>{% if selected_city %}{{ selected_city.name }}{% else %}Укажите город{% endif %}</strong><br>
-              <span style="color: #9ca3af; font-size: 12px;" x-text="selectedCityName ? ('В наличии в городе: ' + (stockInCity ?? 0) + ' шт.') : ('Доступно к отправке: ' + (stockTotal ?? 0) + ' шт.')"></span>
-            </div>
-          </div>
+          <h3 class="delivery-section-title">Наличие и доставка</h3>
           <div class="delivery-row">
             <i data-lucide="package" class="w-4 h-4 inline-block" style="vertical-align: middle;"></i>
             <div>
-              <strong>Пункты выдачи</strong><br>
-              <span style="font-weight: bold;">{% if selected_city %}{{ pickup_points_count }}{% else %}—{% endif %}</span>
+              <strong x-text="stockStatusLabel"></strong><br>
+              <span style="color: #9ca3af; font-size: 12px;">Статус по общему остатку на складе</span>
+            </div>
+          </div>
+          <div class="delivery-row">
+            <i data-lucide="truck" class="w-4 h-4 inline-block" style="vertical-align: middle;"></i>
+            <div>
+              <strong>Доставка</strong><br>
+              <span style="font-weight: bold;">По всей России</span>
             </div>
             <span style="margin-left: auto; font-size: 12px; font-weight: bold;">Без доплат</span>
           </div>
@@ -631,7 +640,7 @@
           <div class="rec-grid mb-4">
             {% for item in bundle.items.all %}
               {% if item.product_id != product.pk %}
-                {% include "catalog/_product_card.html" with product=item.product show_favorite=True favorite_product_ids=favorite_product_ids selected_city=selected_city product_stock_in_city=product_stock_in_city product_stock_total=product_stock_total show_add_button=True %}
+                {% include "catalog/_product_card.html" with product=item.product show_favorite=True favorite_product_ids=favorite_product_ids product_stock_total=product_stock_total show_add_button=True %}
               {% endif %}
             {% endfor %}
           </div>
@@ -670,7 +679,9 @@
               </div>
               <div class="rec-grid">
                 {% for p in section.products %}
-                  {% include "catalog/_product_card.html" with product=p show_favorite=True favorite_product_ids=favorite_product_ids selected_city=selected_city product_stock_in_city=product_stock_in_city product_stock_total=product_stock_total show_add_button=True recommendation_badge=section.badge recommended_variant_ids=recommended_variant_ids in_recommendations=True %}
+                  {% with card_variant=recommended_variants|get_dict_item:p.id %}
+                    {% include "catalog/_product_card.html" with product=p card_variant=card_variant show_favorite=True favorite_product_ids=favorite_product_ids product_stock_total=product_stock_total variant_stock_total=variant_stock_total show_add_button=True recommendation_badge=section.badge recommended_variant_ids=recommended_variant_ids in_recommendations=True %}
+                  {% endwith %}
                 {% endfor %}
               </div>
             </div>

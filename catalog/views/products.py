@@ -7,12 +7,10 @@ from django.db.models import Case, Count, F, IntegerField, Q, Sum, Value, When
 from django.db.utils import ProgrammingError
 from django.views.generic import DetailView, ListView
 
+from ..cache_utils import get_active_category_ids, get_catalog_sections
 from ..cart_services import get_cart_items
 from ..models import (
-    CatalogSection,
     Category,
-    City,
-    PickupPoint,
     Product,
     ProductBundle,
     ProductCharacteristic,
@@ -20,7 +18,8 @@ from ..models import (
     ProductTag,
 )
 from ..recommendations import build_pdp_recommendations
-from .common import _get_stock_in_city, _get_stock_total
+from ..stock import public_stock_status
+from .common import _get_stock_total, _product_stock_totals, _variant_stock_totals
 
 
 class BundleDetailView(DetailView):
@@ -45,12 +44,6 @@ class BundleDetailView(DetailView):
         context['total_without_discount'] = float(bundle.total_price_without_discount)
         context['total_with_discount'] = float(bundle.total_price)
         context['discount_total'] = context['total_without_discount'] - context['total_with_discount']
-        selected_city_id = self.request.session.get('selected_city_id')
-        context['selected_city'] = City.objects.filter(pk=selected_city_id).first() if selected_city_id else None
-        if context['selected_city']:
-            context['pickup_points_count'] = PickupPoint.objects.filter(city=context['selected_city']).count()
-        else:
-            context['pickup_points_count'] = 0
         context['bundles_category'] = Category.objects.filter(is_bundles_category=True).first()
         return context
 
@@ -63,7 +56,13 @@ class ProductListView(ListView):
     template_name = 'catalog/product_list.html'
 
     def get_queryset(self):
-        qs = Product.objects.filter(is_active=True).select_related('category').prefetch_related('tags', 'characteristics', 'variants', 'images').order_by('-created_at')
+        qs = (
+            Product.objects
+            .filter(is_active=True)
+            .select_related('category')
+            .prefetch_related('tags', 'variants')
+            .order_by('-created_at')
+        )
         search_query = (self.request.GET.get('q') or '').strip()
         if search_query:
             qs = qs.filter(
@@ -132,7 +131,7 @@ class ProductListView(ListView):
 
     def _get_filter_base_queryset(self):
         """Базовый queryset для сбора опций фильтров (без пагинации, без char-фильтров)."""
-        qs = Product.objects.filter(is_active=True).select_related('category').prefetch_related('variants', 'images')
+        qs = Product.objects.filter(is_active=True)
         search_query = (self.request.GET.get('q') or '').strip()
         if search_query:
             qs = qs.filter(
@@ -169,10 +168,8 @@ class ProductListView(ListView):
         context['categories'] = list(Category.objects.select_related('section').order_by('name'))
         if context['current_section']:
             context['categories'] = [c for c in context['categories'] if c.section and c.section.slug == context['current_section']]
-        context['catalog_sections'] = list(CatalogSection.objects.prefetch_related('categories').order_by('order', 'name'))
-        category_ids_with_products = set(
-            Product.objects.filter(is_active=True).values_list('category_id', flat=True).distinct()
-        )
+        context['catalog_sections'] = get_catalog_sections()
+        category_ids_with_products = set(get_active_category_ids())
         bundle_category_ids = set(
             Category.objects.filter(is_bundles_category=True).values_list('pk', flat=True)
         )
@@ -281,41 +278,13 @@ class ProductListView(ListView):
             similar_categories = [cat for _, cat in scored[:3]]
         context['similar_categories'] = similar_categories
 
-        from ..cart_services import get_favorite_product_ids
+        from ..cart_services import get_compare_product_ids, get_favorite_product_ids
 
         context['favorite_product_ids'] = get_favorite_product_ids(self.request)
-        selected_city_id = self.request.session.get('selected_city_id')
-        stock_total_qs = (
-            ProductStock.objects
-            .values('product_id')
-            .annotate(total=Sum('quantity'))
-        )
-        context['product_stock_total'] = {row['product_id']: row['total'] for row in stock_total_qs}
-        variant_stock_total_qs = (
-            ProductStock.objects
-            .filter(variant_id__isnull=False)
-            .values('variant_id')
-            .annotate(total=Sum('quantity'))
-        )
-        context['variant_stock_total'] = {row['variant_id']: row['total'] for row in variant_stock_total_qs}
-        if selected_city_id:
-            stock_qs = (
-                ProductStock.objects
-                .filter(pickup_point__city_id=selected_city_id)
-                .values('product_id')
-                .annotate(total=Sum('quantity'))
-            )
-            context['product_stock_in_city'] = {row['product_id']: row['total'] for row in stock_qs}
-            variant_stock_qs = (
-                ProductStock.objects
-                .filter(pickup_point__city_id=selected_city_id, variant_id__isnull=False)
-                .values('variant_id')
-                .annotate(total=Sum('quantity'))
-            )
-            context['variant_stock_in_city'] = {row['variant_id']: row['total'] for row in variant_stock_qs}
-        else:
-            context['product_stock_in_city'] = {}
-            context['variant_stock_in_city'] = {}
+        context['compare_product_ids'] = set(get_compare_product_ids(self.request))
+        product_ids = [product.pk for product in context['products']]
+        context['product_stock_total'] = _product_stock_totals(product_ids)
+        context['variant_stock_total'] = _variant_stock_totals(product_ids)
         return context
 
 
@@ -343,47 +312,58 @@ class ProductDetailView(DetailView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        from ..cart_services import get_favorite_product_ids, is_favorite
+        from ..cart_services import (
+            get_compare_count,
+            get_compare_product_ids,
+            get_favorite_product_ids,
+            is_compared,
+            is_favorite,
+        )
 
         context['is_favorite'] = is_favorite(self.request, self.object.pk)
         context['favorite_product_ids'] = get_favorite_product_ids(self.request)
-        selected_city_id = self.request.session.get('selected_city_id')
+        context['is_compared'] = is_compared(self.request, self.object.pk)
+        context['compare_product_ids'] = set(get_compare_product_ids(self.request))
+        context['compare_count'] = get_compare_count(self.request)
 
         if self.object.variants.exists():
             context['stock_by_variant'] = {
                 v.pk: _get_stock_total(self.object.pk, v.pk)
                 for v in self.object.variants.all()
             }
-            context['stock_in_city_by_variant'] = {}
-            if selected_city_id:
-                context['stock_in_city_by_variant'] = {
-                    v.pk: _get_stock_in_city(selected_city_id, self.object.pk, v.pk)
-                    for v in self.object.variants.all()
-                }
             context['stock_total'] = None
-            context['stock_in_city'] = None
         else:
             context['stock_total'] = _get_stock_total(self.object.pk)
-            context['stock_in_city'] = _get_stock_in_city(selected_city_id, self.object.pk) if selected_city_id else None
             context['stock_by_variant'] = {}
-            context['stock_in_city_by_variant'] = {}
-
-        context['selected_city'] = City.objects.filter(pk=selected_city_id).first() if selected_city_id else None
-        selected_city = context['selected_city']
-
-        if selected_city:
-            pp_qs = PickupPoint.objects.filter(city=selected_city).order_by('order', 'name')
-            context['pickup_points_count'] = pp_qs.count()
-            context['pickup_points_preview'] = list(pp_qs[:3])
-        else:
-            context['pickup_points_count'] = 0
-            context['pickup_points_preview'] = []
+        context['stock_status_by_variant'] = {
+            variant_id: public_stock_status(quantity)['code']
+            for variant_id, quantity in context['stock_by_variant'].items()
+        }
+        context['stock_status'] = public_stock_status(context['stock_total'])['code']
 
         rec_data = build_pdp_recommendations(self.request, self.object)
         context['recommendation_sections'] = rec_data['sections']
         context['product_stock_total'] = rec_data['product_stock_total']
-        context['product_stock_in_city'] = rec_data['product_stock_in_city']
         context['recommended_variant_ids'] = rec_data['recommended_variant_ids']
+        recommended_product_ids = []
+        recommended_variants = {}
+
+        for section in context['recommendation_sections']:
+            for recommended_product in section['products']:
+                if recommended_product.pk not in recommended_product_ids:
+                    recommended_product_ids.append(recommended_product.pk)
+                variant_id = context['recommended_variant_ids'].get(recommended_product.pk)
+                if not variant_id:
+                    continue
+                recommended_variant = next(
+                    (variant for variant in recommended_product.variants.all() if variant.pk == variant_id),
+                    None,
+                )
+                if recommended_variant is not None:
+                    recommended_variants[recommended_product.pk] = recommended_variant
+
+        context['recommended_variants'] = recommended_variants
+        context['variant_stock_total'] = _variant_stock_totals(recommended_product_ids)
 
         context['variant_characteristics'] = {
             v.pk: [(c.name, c.value) for c in v.characteristics.all()]
@@ -405,11 +385,6 @@ class ProductDetailView(DetailView):
                         if pid not in context['product_stock_total']:
                             qs = ProductStock.objects.filter(product_id=pid).aggregate(s=Sum('quantity'))
                             context['product_stock_total'][pid] = int(qs['s'] or 0)
-                        if selected_city_id and pid not in context['product_stock_in_city']:
-                            qs = ProductStock.objects.filter(
-                                product_id=pid, pickup_point__city_id=selected_city_id
-                            ).aggregate(s=Sum('quantity'))
-                            context['product_stock_in_city'][pid] = int(qs['s'] or 0)
         except ProgrammingError:
             context['bundles'] = []
 
@@ -462,10 +437,9 @@ class ProductDetailView(DetailView):
             'productCharacteristics': [[c.name, c.value] for c in self.object.characteristics.all()],
             'variantCharacteristics': context['variant_characteristics'],
             'stockByVariant': context['stock_by_variant'],
-            'stockInCityByVariant': context['stock_in_city_by_variant'],
+            'stockStatusByVariant': context['stock_status_by_variant'],
             'stockTotalProduct': context['stock_total'] if context['stock_total'] is not None else 0,
-            'stockInCityProduct': context['stock_in_city'],
-            'selectedCityName': context['selected_city'].name if context['selected_city'] else '',
+            'stockStatusProduct': context['stock_status'],
             'initialVariantId': initial_variant_id,
         }
 

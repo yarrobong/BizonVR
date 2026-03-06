@@ -11,7 +11,7 @@ from django_ratelimit.decorators import ratelimit
 
 from ..cart_services import get_cart_count, get_cart_items, save_cart_to_db, save_cart_to_session
 from ..models import CartShare, Product, ProductVariant
-from .common import _get_stock_in_city, _get_stock_total
+from .common import _get_stock_total
 
 CART_SHARE_TTL_DAYS = 30
 
@@ -43,7 +43,7 @@ def _generate_cart_share_code():
     return get_random_string(7)
 
 
-def _resolve_cart_share_items(items_payload, selected_city_id=None):
+def _resolve_cart_share_items(items_payload):
     """
     Преобразовать payload шаринга в карточки с актуальными данными товара.
     Удалённые/неактивные товары и невалидные варианты пропускаются.
@@ -122,7 +122,6 @@ def _resolve_cart_share_items(items_payload, selected_city_id=None):
             'product_slug': product.slug,
             '_product_obj': product,
             '_variant_obj': variant,
-            'stock_in_city': _get_stock_in_city(selected_city_id, product_id, variant_id) if selected_city_id else None,
             'stock_total': _get_stock_total(product_id, variant_id),
         })
     return resolved
@@ -174,8 +173,7 @@ def cart_share_create_view(request):
                 'quantity': quantity,
             })
 
-    selected_city_id = request.session.get('selected_city_id')
-    resolved_items = _resolve_cart_share_items(selected_payload, selected_city_id)
+    resolved_items = _resolve_cart_share_items(selected_payload)
     if not resolved_items:
         return render(request, 'catalog/partials/cart_share_modal.html', {
             'modal_mode': 'source',
@@ -222,8 +220,7 @@ def cart_share_add_all_view(request):
     if not share:
         return HttpResponse('Ссылка недействительна или истекла.', status=400)
 
-    selected_city_id = request.session.get('selected_city_id')
-    resolved_items = _resolve_cart_share_items(share.items, selected_city_id)
+    resolved_items = _resolve_cart_share_items(share.items)
     if not resolved_items:
         return HttpResponse('В ссылке нет доступных товаров.', status=400)
 

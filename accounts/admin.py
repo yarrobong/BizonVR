@@ -83,5 +83,5 @@ class ProfileAdmin(admin.ModelAdmin):
 
 @admin.register(PhoneVerificationCode)
 class PhoneVerificationCodeAdmin(admin.ModelAdmin):
-    list_display = ('phone', 'code', 'created_at')
-    list_filter = ('created_at',)
+    list_display = ('phone', 'code', 'created_at', 'used_at')
+    list_filter = ('created_at', 'used_at')

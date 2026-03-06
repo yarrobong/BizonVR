@@ -15,11 +15,11 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.conf import settings
-from decouple import config
 from django.contrib import admin
 from django.contrib.sitemaps.views import sitemap
 from django.urls import path, include, re_path
 
+from config.env import config_bool
 from config.views import (
     arenda_view,
     contacts_view,
@@ -68,5 +68,5 @@ urlpatterns = [
 if settings.DEBUG:
     urlpatterns.append(path('debug-cities/', debug_cities_view, name='debug_cities'))
 # Медиа: в DEBUG или SERVE_MEDIA=1 — раздаём через serve_media
-if settings.DEBUG or config('SERVE_MEDIA', default=False, cast=bool):
+if settings.DEBUG or config_bool('SERVE_MEDIA', default=False):
     urlpatterns = [re_path(r'^media/(?P<path>.*)$', serve_media)] + urlpatterns

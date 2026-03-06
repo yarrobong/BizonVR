@@ -3,6 +3,8 @@ import json
 from django import template
 from django.utils.safestring import mark_safe
 
+from ..stock import public_stock_status
+
 register = template.Library()
 
 _TAG_STYLE_BY_KEYWORD = (
@@ -133,6 +135,12 @@ def get_dict_item(d, key):
 def to_json(value):
     """Сериализовать значение в JSON для использования в JavaScript."""
     return mark_safe(json.dumps(value, default=str))
+
+
+@register.filter
+def stock_status(quantity):
+    """Публичный статус наличия по количеству."""
+    return public_stock_status(quantity)
 
 
 @register.filter

@@ -55,7 +55,7 @@
     </div>
     {% endif %}
 
-    {% if order.status == 'new' %}
+    {% if order.status == 'new' and not is_guest_order %}
     <div class="pt-4 border-t border-dark-600">
       {% if test_order_no_payment %}
       <p class="text-gray-400 text-sm mb-2">Тестовый режим: оплата не требуется. Заказ считается оформленным.</p>

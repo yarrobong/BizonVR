@@ -6,12 +6,12 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from ..cart_services import clear_cart, get_cart_items
-from ..models import CartShare, City, Product
+from ..models import CartShare, Product
 from .cart_share import _resolve_cart_share_items
-from .common import _get_stock_in_city, _get_stock_total
+from .common import _get_stock_total
 
 
-def _enrich_cart_items_for_page(cart_items, selected_city_id):
+def _enrich_cart_items_for_page(cart_items):
     """Добавить в позиции корзины slug и наличие для рендера страницы корзины."""
     if not cart_items:
         return cart_items
@@ -22,7 +22,6 @@ def _enrich_cart_items_for_page(cart_items, selected_city_id):
         pid = item['product_id']
         vid = item.get('variant_id')
         item['product_slug'] = slugs.get(pid, '')
-        item['stock_in_city'] = _get_stock_in_city(selected_city_id, pid, vid) if selected_city_id else None
         item['stock_total'] = _get_stock_total(pid, vid)
         item['share_item_key'] = f"{pid}:{vid if vid is not None else 'none'}"
     return cart_items
@@ -32,8 +31,7 @@ def cart_page_view(request):
     """Отдельная страница корзины: список товаров, изменение количества, переход к оформлению."""
     cart_items = get_cart_items(request)
     total = sum(item.get('subtotal', 0) for item in cart_items)
-    selected_city_id = request.session.get('selected_city_id')
-    _enrich_cart_items_for_page(cart_items, selected_city_id)
+    _enrich_cart_items_for_page(cart_items)
 
     shared_cart_items = []
     shared_cart_code = ''
@@ -48,7 +46,7 @@ def cart_page_view(request):
         cart_share = CartShare.objects.filter(code=share_code, expires_at__gt=timezone.now()).first()
         if cart_share:
             shared_cart_code = cart_share.code
-            shared_cart_items = _resolve_cart_share_items(cart_share.items, selected_city_id)
+            shared_cart_items = _resolve_cart_share_items(cart_share.items)
             shared_total = sum(item.get('subtotal', 0) for item in shared_cart_items)
             shared_quantity = sum(item.get('quantity', 0) for item in shared_cart_items)
         else:
@@ -57,7 +55,6 @@ def cart_page_view(request):
     return render(request, 'catalog/cart.html', {
         'cart_items': cart_items,
         'total': total,
-        'selected_city': City.objects.filter(pk=selected_city_id).first() if selected_city_id else None,
         'shared_cart_items': shared_cart_items,
         'shared_cart_code': shared_cart_code,
         'shared_modal_open': shared_modal_open,
@@ -85,11 +82,9 @@ def cart_clear_view(request):
             (request.META.get('HTTP_REFERER') or '').rstrip('/').endswith('/catalog/cart')
         )
         if from_cart_page:
-            selected_city_id = request.session.get('selected_city_id')
             resp = render(request, 'catalog/partials/cart_page_wrapper.html', {
                 'cart_items': [],
                 'total': 0,
-                'selected_city': City.objects.filter(pk=selected_city_id).first() if selected_city_id else None,
             })
             resp['HX-Push-Url'] = reverse('catalog:cart')
         else:
@@ -102,4 +97,3 @@ def cart_clear_view(request):
 
     next_url = request.POST.get('next') or request.GET.get('next') or reverse('catalog:cart')
     return redirect(next_url)
-

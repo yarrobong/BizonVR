@@ -8,15 +8,14 @@
     <div class="w-16 h-16 rounded-full bg-accent/20 flex items-center justify-center mx-auto mb-6">
       <i data-lucide="check" class="w-8 h-8 text-accent inline-block"></i>
     </div>
-    <h1 class="text-2xl font-light text-white mb-2">Заказ оформлен</h1>
-    <p class="text-gray-400 mb-6">Номер заказа: <span class="text-white font-bold">#{{ order.pk }}</span></p>
+    <h1 class="text-2xl font-light text-white mb-2">Заказ принят</h1>
     <p class="text-gray-400 text-sm mb-8">
-      Мы свяжемся с вами по телефону {{ order.phone }} для уточнения деталей доставки.
+      Мы получили ваш заказ. Менеджер свяжется с вами после дополнительной проверки данных.
     </p>
     <p class="text-gray-500 text-sm mb-6">
-      Чтобы отслеживать статус заказа позже, перейдите в раздел
+      Для повторной проверки статуса заказа используйте раздел
       <a href="{% url 'orders:order_guest_lookup' %}" class="text-accent hover:text-accent-hover underline">«Проверить заказ»</a>
-      и введите номер заказа и телефон.
+      и подтвердите доступ по номеру заказа и телефону.
     </p>
     <a href="{% url 'catalog:product_list' %}" class="inline-flex items-center gap-2 bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-6 rounded-full text-sm uppercase tracking-wide transition-colors">
       Вернуться в каталог

@@ -5,11 +5,12 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
 from ..models import Favorite, Product
+from .common import _product_stock_totals
 
 
 def favorite_list_view(request):
     """Страница «Моё избранное»: список товаров, добавленных в избранное. Поддержка анонимов (сессия)."""
-    from ..cart_services import get_favorite_product_ids
+    from ..cart_services import get_compare_product_ids, get_favorite_product_ids
 
     favorite_ids = get_favorite_product_ids(request)
     if not favorite_ids:
@@ -20,15 +21,20 @@ def favorite_list_view(request):
             .select_related('category')
             .prefetch_related('tags', 'variants', 'images')
         )
+    product_stock_total = _product_stock_totals([product.pk for product in products])
     return render(request, 'catalog/favorite_list.html', {
         'products': products,
         'favorite_product_ids': set(p.pk for p in products),
+        'compare_product_ids': set(get_compare_product_ids(request)),
+        'product_stock_total': product_stock_total,
     })
 
 
 @require_POST
 def toggle_favorite_view(request, product_id):
     """Добавить или убрать товар из избранного. Анонимы — в сессию, при входе сольётся в профиль."""
+    from ..cart_services import get_favorite_product_ids, invalidate_favorites_request_cache, is_favorite
+
     product = get_object_or_404(Product, pk=product_id, is_active=True)
     if request.user.is_authenticated:
         fav, created = Favorite.objects.get_or_create(user=request.user, product=product)
@@ -42,10 +48,9 @@ def toggle_favorite_view(request, product_id):
             ids.add(product_id)
         request.session['favorite_product_ids'] = list(ids)
         request.session.modified = True
+    invalidate_favorites_request_cache(request)
 
     if request.headers.get('HX-Request') == 'true':
-        from ..cart_services import get_favorite_product_ids, is_favorite
-
         favorite_ids = get_favorite_product_ids(request)
         ctx = {'product': product, 'is_favorite': is_favorite(request, product.pk)}
         button_html = render(request, 'catalog/partials/favorite_button.html', ctx).content.decode()
@@ -59,6 +64,7 @@ def toggle_favorite_view(request, product_id):
             grid_html = render(request, 'catalog/partials/favorites_grid_oob.html', {
                 'products': products_list,
                 'favorite_product_ids': favorite_ids,
+                'product_stock_total': _product_stock_totals([product.pk for product in products_list]),
             }).content.decode()
             resp = HttpResponse(button_html + grid_html)
         resp['HX-Trigger'] = json.dumps({

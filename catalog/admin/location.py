@@ -9,6 +9,7 @@ class ProductStockInlineForProduct(admin.TabularInline):
     model = ProductStock
     fk_name = 'product'
     extra = 0
+    classes = ('collapse',)
     autocomplete_fields = ('pickup_point', 'variant')
     readonly_fields = ('stock_city',)
     fields = ('pickup_point', 'stock_city', 'variant', 'quantity')

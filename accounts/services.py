@@ -25,13 +25,18 @@ def normalize_phone(raw: str) -> str:
     return digits
 
 
+def is_sms_debug_mode() -> bool:
+    """True, если SMS не отправляется провайдером, а код выводится локально."""
+    return not bool(config('SMS_API_KEY', default='').strip())
+
+
 def send_sms(phone: str, code: str) -> bool:
     """
     Отправка SMS с кодом. В разработке без API-ключа — логируем код.
     С провайдером SMS.ru — реальная отправка (см. .env.example).
     """
     api_key = config('SMS_API_KEY', default='')
-    if not api_key:
+    if is_sms_debug_mode():
         msg = f'SMS (dev): код {code} для номера {phone}'
         logger.warning(msg)
         print(f'\n>>> {msg} <<<\n')  # всегда видно в консоли runserver/gunicorn
@@ -77,17 +82,47 @@ def create_and_send_code(phone: str) -> tuple[bool, str]:
     if len(phone) < 10:
         return False, 'Введите корректный номер телефона'
 
+    now = timezone.now()
     cooldown = getattr(settings, 'SMS_COOLDOWN_SECONDS', 60)
-    since = timezone.now() - timedelta(seconds=cooldown)
+    since = now - timedelta(seconds=cooldown)
 
-    if PhoneVerificationCode.objects.filter(phone=phone, created_at__gt=since).exists():
+    if PhoneVerificationCode.objects.filter(phone=phone, used_at__isnull=True, created_at__gt=since).exists():
         return False, f'Код уже отправлен. Повторите через {cooldown} сек.'
 
     code = generate_code()
+    if not send_sms(phone, code):
+        return False, 'Не удалось отправить SMS. Попробуйте позже.'
+
+    PhoneVerificationCode.objects.filter(phone=phone, used_at__isnull=True).update(used_at=now)
     PhoneVerificationCode.objects.create(phone=phone, code=code)
-    if send_sms(phone, code):
-        return True, ''
-    return False, 'Не удалось отправить SMS. Попробуйте позже.'
+    return True, ''
+
+
+def verify_sms_code(phone: str, code: str, *, consume: bool = False) -> tuple[bool, str]:
+    """
+    Проверить SMS-код для номера телефона без выполнения логина.
+    Возвращает (успех, сообщение об ошибке или пустая строка).
+    """
+    phone = normalize_phone(phone)
+    if len(phone) < 10:
+        return False, 'Введите корректный номер телефона'
+
+    ttl_minutes = getattr(settings, 'SMS_CODE_TTL_MINUTES', 10)
+    since = timezone.now() - timedelta(minutes=ttl_minutes)
+
+    latest_record = (
+        PhoneVerificationCode.objects
+        .filter(phone=phone, used_at__isnull=True, created_at__gt=since)
+        .order_by('-created_at')
+        .first()
+    )
+    if not latest_record or latest_record.code != code.strip():
+        return False, 'Неверный или устаревший код'
+
+    if consume:
+        latest_record.used_at = timezone.now()
+        latest_record.save(update_fields=['used_at'])
+    return True, ''
 
 
 def verify_code_and_login(phone: str, code: str, request) -> tuple[bool, str]:
@@ -98,20 +133,9 @@ def verify_code_and_login(phone: str, code: str, request) -> tuple[bool, str]:
     from django.contrib.auth import login
 
     phone = normalize_phone(phone)
-    if len(phone) < 10:
-        return False, 'Введите корректный номер телефона'
-
-    ttl_minutes = getattr(settings, 'SMS_CODE_TTL_MINUTES', 10)
-    since = timezone.now() - timedelta(minutes=ttl_minutes)
-
-    record = (
-        PhoneVerificationCode.objects
-        .filter(phone=phone, code=code.strip(), created_at__gt=since)
-        .order_by('-created_at')
-        .first()
-    )
-    if not record:
-        return False, 'Неверный или устаревший код'
+    ok, error = verify_sms_code(phone, code, consume=True)
+    if not ok:
+        return False, error
 
     user, created = User.objects.get_or_create(
         username=phone,
@@ -124,6 +148,4 @@ def verify_code_and_login(phone: str, code: str, request) -> tuple[bool, str]:
     Profile.objects.filter(user=user).update(phone=phone)
 
     login(request, user, backend='django.contrib.auth.backends.ModelBackend')
-    record.delete()
-    PhoneVerificationCode.objects.filter(phone=phone).delete()
     return True, ''

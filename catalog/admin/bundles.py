@@ -23,6 +23,7 @@ class ProductBundleItemInlineForProduct(admin.TabularInline):
     model = ProductBundleItem
     fk_name = 'product'
     extra = 1
+    classes = ('collapse',)
     autocomplete_fields = ('bundle',)
     fields = ('bundle', 'quantity', 'price_preview')
     readonly_fields = ('price_preview',)

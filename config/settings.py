@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 
 from decouple import Csv, config
+from config.env import config_bool
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -26,7 +27,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = config('SECRET_KEY', default='django-insecure-change-me')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = config('DEBUG', default=True, cast=bool)
+DEBUG = config_bool('DEBUG', default=True)
 
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=Csv())
 
@@ -156,13 +157,14 @@ MEDIA_ROOT = BASE_DIR / 'media'
 # Лимит отправки SMS: не чаще 1 раза в N секунд с одного номера/IP
 SMS_COOLDOWN_SECONDS = 60
 SMS_CODE_TTL_MINUTES = 10
+TRUSTED_PROXY_IPS = [x.strip() for x in config('TRUSTED_PROXY_IPS', default='').split(',') if x.strip()]
 
 LOGIN_URL = '/accounts/login/'
 LOGIN_REDIRECT_URL = '/accounts/profile/'
 
 # Тестовый режим: после оформления заказ сразу «Оплачен», оплата не требуется.
 # В продакшене безопаснее держать выключенным по умолчанию.
-TEST_ORDER_NO_PAYMENT = config('TEST_ORDER_NO_PAYMENT', default='0', cast=bool)
+TEST_ORDER_NO_PAYMENT = config_bool('TEST_ORDER_NO_PAYMENT', default=False)
 
 # NowPayments (Фаза 5). Без ключа создание платежа не выполняется.
 NOWPAYMENTS_API_KEY = config('NOWPAYMENTS_API_KEY', default='')
@@ -217,12 +219,22 @@ LEGAL_BANK_LEGAL_ADDRESS = config(
     ),
 )
 
-# Кэш для django-ratelimit (ограничение частоты запросов). В продакшене лучше Redis.
-CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+# Кэш для throttling и прочих краткоживущих данных.
+# В продакшене используйте общий backend, например Redis.
+_redis_cache_url = config('CACHE_REDIS_URL', default='').strip()
+if _redis_cache_url:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+            'LOCATION': _redis_cache_url,
+        }
     }
-}
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        }
+    }
 
 # WhiteNoise: сжатая статика + manifest-хеши для кэширования в продакшене.
 STORAGES = {
@@ -236,7 +248,7 @@ STORAGES = {
 
 # Безопасность для продакшена (HTTPS, HSTS, cookies).
 # USE_HTTPS=False — без редиректа (Docker, разработка). USE_HTTPS=True — за Nginx с SSL.
-_use_https = config('USE_HTTPS', default='0', cast=bool)
+_use_https = config_bool('USE_HTTPS', default=False)
 
 # Cross-Origin-Opener-Policy (COOP) - работает только для HTTPS или localhost
 # Для разработки на localhost это нормально, для продакшена нужен HTTPS

@@ -141,6 +141,9 @@ class Product(models.Model):
         verbose_name = 'Товар'
         verbose_name_plural = 'Товары'
         ordering = ('-created_at',)
+        permissions = (
+            ('can_restore_backup', 'Can restore catalog backup'),
+        )
 
     def __str__(self):
         return self.name
@@ -568,6 +571,35 @@ class Favorite(models.Model):
         verbose_name_plural = 'Избранное'
         constraints = [
             models.UniqueConstraint(fields=['user', 'product'], name='catalog_favorite_user_product_unique'),
+        ]
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.user} — {self.product.name}'
+
+
+class CompareItem(models.Model):
+    """Товар пользователя в списке сравнения."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='compare_items',
+        verbose_name='Пользователь',
+    )
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name='compared_by',
+        verbose_name='Товар',
+    )
+    created_at = models.DateTimeField('Добавлено', auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Сравнение'
+        verbose_name_plural = 'Сравнение'
+        constraints = [
+            models.UniqueConstraint(fields=['user', 'product'], name='catalog_compareitem_user_product_unique'),
         ]
         ordering = ['-created_at']
 

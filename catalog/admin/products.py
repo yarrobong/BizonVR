@@ -2,6 +2,7 @@ import csv
 import io
 import json
 import os
+import tempfile
 import zipfile
 from datetime import datetime
 from decimal import Decimal
@@ -9,6 +10,7 @@ from decimal import Decimal
 from adminsortable2.admin import SortableAdminBase, SortableInlineAdminMixin
 from django.conf import settings
 from django.contrib import admin, messages
+from django.core.exceptions import PermissionDenied
 from django.http import HttpResponse, HttpResponseForbidden, HttpResponseRedirect
 from django.template.response import TemplateResponse
 from django.urls import path
@@ -44,6 +46,8 @@ class ProductVariantInline(admin.TabularInline):
     fields = ('image_preview', 'name', 'image', 'price_override', 'order')
     readonly_fields = ('image_preview',)
     show_change_link = True
+    verbose_name = 'Вариант товара'
+    verbose_name_plural = 'Варианты товара (если вариантов нет, используется базовая цена товара)'
 
     def image_preview(self, obj):
         return _admin_image_preview(obj)
@@ -57,6 +61,8 @@ class ProductImageInline(SortableInlineAdminMixin, admin.TabularInline):
     sortable_field_name = 'order'
     fields = ('image_preview', 'image', 'order')
     readonly_fields = ('image_preview',)
+    verbose_name = 'Фото товара'
+    verbose_name_plural = 'Фото товара (первое — главное, порядок перетаскиванием, загрузка: Ctrl+V)'
 
     def image_preview(self, obj):
         return _admin_image_preview(obj)
@@ -97,19 +103,68 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
     list_filter = ('category', 'is_active', 'tags')
     search_fields = ('name', 'description')
     prepopulated_fields = {'slug': ('name',)}
-    inlines = (ProductVariantInline, ProductImageInline, ProductCharacteristicInline, ProductStockInlineForProduct, ProductBundleItemInlineForProduct)
+    inlines = (ProductImageInline, ProductVariantInline, ProductCharacteristicInline, ProductStockInlineForProduct, ProductBundleItemInlineForProduct)
     readonly_fields = ('created_at', 'updated_at')
     filter_horizontal = ('tags',)
     actions = ('export_catalog_with_images', 'backup_full_catalog',)
+    change_form_template = 'admin/catalog/product/change_form.html'
+    save_on_top = True
     fieldsets = (
-        (None, {
-            'fields': ('name', 'slug', 'category', 'price', 'description', 'is_active', 'allow_order_on_request', 'option_label', 'tags', 'created_at', 'updated_at'),
-            'description': 'Главное фото — первое в списке «Фото товара» ниже. Порядок можно менять перетаскиванием. Загрузка: выбор файла или Ctrl+V.',
+        ('База карточки', {
+            'fields': ('name', 'category', 'price', 'description', 'is_active', 'allow_order_on_request'),
+            'description': 'Минимум для публикации: название, категория, цена и описание.',
+            'classes': ('product-fieldset', 'product-fieldset--primary'),
+        }),
+        ('Публикация и структура', {
+            'fields': ('slug', 'option_label', 'tags'),
+            'description': 'Slug заполняется автоматически из названия. Подпись к вариантам и теги можно добавить позже.',
+            'classes': ('product-fieldset', 'product-fieldset--secondary'),
+        }),
+        ('Служебное', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('product-fieldset', 'product-fieldset--meta', 'collapse'),
         }),
     )
 
+    def get_fieldsets(self, request, obj=None):
+        if obj is None:
+            return (
+                ('База карточки', {
+                    'fields': ('name', 'category', 'price', 'description', 'is_active', 'allow_order_on_request'),
+                    'description': 'Сначала заполните название, категорию, цену и описание. Этого достаточно для первого сохранения.',
+                    'classes': ('product-fieldset', 'product-fieldset--primary'),
+                }),
+                ('Дополнительно', {
+                    'fields': ('slug', 'option_label', 'tags'),
+                    'description': 'Slug сформируется автоматически. Теги и подпись вариантов можно заполнить после первого сохранения.',
+                    'classes': ('product-fieldset', 'product-fieldset--secondary', 'collapse'),
+                }),
+            )
+        return super().get_fieldsets(request, obj)
+
+    def get_inline_instances(self, request, obj=None):
+        inline_instances = super().get_inline_instances(request, obj)
+        for inline in inline_instances:
+            if isinstance(inline, (ProductStockInlineForProduct, ProductBundleItemInlineForProduct)):
+                inline.classes = ('collapse',) if obj is None else ()
+        return inline_instances
+
+    def render_change_form(self, request, context, add=False, change=False, form_url='', obj=None):
+        context['is_add_product'] = add
+        context['product_admin_sections'] = (
+            {'label': 'База', 'target': 'field-name', 'available_on_add': True},
+            {'label': 'Фото', 'target': 'inline-images-group', 'available_on_add': True},
+            {'label': 'Варианты', 'target': 'inline-variants-group', 'available_on_add': False},
+            {'label': 'Характеристики', 'target': 'inline-characteristics-group', 'available_on_add': True},
+            {'label': 'Остатки', 'target': 'inline-stocks-group', 'available_on_add': False},
+            {'label': 'Комплекты', 'target': 'inline-bundle_items-group', 'available_on_add': False},
+        )
+        context['product_view_url'] = obj.get_absolute_url() if obj else ''
+        return super().render_change_form(request, context, add=add, change=change, form_url=form_url, obj=obj)
+
     class Media:
-        js = ('admin/js/product_image_paste.js',)
+        js = ('admin/js/product_image_paste.js', 'admin/js/product_admin.js')
+        css = {'all': ('admin/css/product_admin.css',)}
 
     def image_preview(self, obj):
         return _admin_image_preview(obj, width=80, height=80)
@@ -124,7 +179,11 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
         extra_context['restore_backup_url'] = 'admin:catalog_product_restore_backup'
         extra_context['commercial_proposal_url'] = 'admin:catalog_product_commercial_proposal'
         extra_context['can_export_commercial_proposal'] = request.user.has_perm('catalog.view_product')
+        extra_context['can_restore_backup'] = self.has_restore_backup_permission(request)
         return super().changelist_view(request, extra_context=extra_context)
+
+    def has_restore_backup_permission(self, request):
+        return request.user.has_perm('catalog.can_restore_backup')
 
     @admin.action(description='Скачать каталог с картинками (ZIP)')
     def export_catalog_with_images(self, request, queryset):
@@ -443,9 +502,9 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
 
     def restore_backup_view(self, request):
         """Представление для восстановления каталога из бэкапа."""
-        from django.contrib.admin.views.decorators import staff_member_required
-        from django.template.response import TemplateResponse
-        
+        if not self.has_restore_backup_permission(request):
+            raise PermissionDenied
+
         if request.method == 'POST':
             backup_file = request.FILES.get('backup_file')
             clear = request.POST.get('clear') == 'on'
@@ -460,37 +519,32 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
                 }
                 return TemplateResponse(request, 'admin/catalog/restore_backup.html', context)
             
-            # Сохраняем загруженный файл во временную директорию
-            import tempfile
             temp_dir = tempfile.mkdtemp()
-            temp_file_path = os.path.join(temp_dir, backup_file.name)
-            
+            temp_file_path = ''
+
             try:
-                with open(temp_file_path, 'wb') as f:
+                with tempfile.NamedTemporaryFile(dir=temp_dir, suffix='.zip', delete=False) as temp_file:
+                    temp_file_path = temp_file.name
                     for chunk in backup_file.chunks():
-                        f.write(chunk)
-                
+                        temp_file.write(chunk)
+
                 # Вызываем команду восстановления
                 from django.core.management import call_command
                 call_command('restore_catalog', temp_file_path, clear=clear)
-                
+
                 messages.success(request, 'Каталог успешно восстановлен из бэкапа!')
                 invalidate_catalog_cache()
-                
+
             except Exception as e:
-                import traceback
-                error_msg = str(e)
-                self.stdout.write(traceback.format_exc())
-                messages.error(request, f'Ошибка при восстановлении: {error_msg}')
+                messages.error(request, f'Ошибка при восстановлении: {e}')
             finally:
-                # Удаляем временный файл
-                if os.path.exists(temp_file_path):
+                if temp_file_path and os.path.exists(temp_file_path):
                     os.remove(temp_file_path)
                 if os.path.exists(temp_dir):
                     os.rmdir(temp_dir)
-            
+
             return HttpResponseRedirect('../../')
-        
+
         context = {
             **self.admin_site.each_context(request),
             'title': 'Восстановление каталога из бэкапа',

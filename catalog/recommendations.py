@@ -150,40 +150,28 @@ def _cart_product_ids(request) -> Set[int]:
     return {item.get('product_id') for item in get_cart_items(request) if item.get('product_id')}
 
 
-def _stock_maps(product_ids: Iterable[int], selected_city_id: int | None):
+def _stock_maps(product_ids: Iterable[int]):
     ids = list(product_ids)
     if not ids:
-        return {}, {}
+        return {}
     total_rows = (
         ProductStock.objects
         .filter(product_id__in=ids)
         .values('product_id')
         .annotate(total=Sum('quantity'))
     )
-    total_map = {row['product_id']: int(row['total'] or 0) for row in total_rows}
-    city_map = {}
-    if selected_city_id:
-        city_rows = (
-            ProductStock.objects
-            .filter(product_id__in=ids, pickup_point__city_id=selected_city_id)
-            .values('product_id')
-            .annotate(total=Sum('quantity'))
-        )
-        city_map = {row['product_id']: int(row['total'] or 0) for row in city_rows}
-    return total_map, city_map
+    return {row['product_id']: int(row['total'] or 0) for row in total_rows}
 
 
-def _is_in_stock(product_id: int, selected_city_id: int | None, city_map: dict, total_map: dict) -> bool:
-    if selected_city_id:
-        return city_map.get(product_id, 0) > 0 or total_map.get(product_id, 0) > 0
+def _is_in_stock(product_id: int, total_map: dict) -> bool:
     return total_map.get(product_id, 0) > 0
 
 
-def _rank_mvp(products: List[Product], selected_city_id: int | None, city_map: dict, total_map: dict) -> List[Product]:
+def _rank_mvp(products: List[Product], total_map: dict) -> List[Product]:
     return sorted(
         products,
         key=lambda p: (
-            0 if _is_in_stock(p.pk, selected_city_id, city_map, total_map) else 1,
+            0 if _is_in_stock(p.pk, total_map) else 1,
             -(p.views_count or 0),
             -float(p.price),
             p.pk,
@@ -240,7 +228,6 @@ def build_pdp_recommendations(request, product: Product) -> dict:
     cfg = load_rules_config()
     max_per_section = int(cfg.get('default_max_per_section', 6))
     alternatives_limit = int(cfg.get('alternatives_limit', 5))
-    selected_city_id = request.session.get('selected_city_id') if request else None
 
     current_type = _extract_product_type(product)
     current_devices = _extract_devices(product)
@@ -260,7 +247,6 @@ def build_pdp_recommendations(request, product: Product) -> dict:
         return {
             'sections': [],
             'product_stock_total': {},
-            'product_stock_in_city': {},
             'recommended_variant_ids': {},
         }
 
@@ -279,7 +265,7 @@ def build_pdp_recommendations(request, product: Product) -> dict:
         by_type[c_type].append(candidate)
 
     all_candidate_ids = [p.pk for p in compat_filtered]
-    total_map, city_map = _stock_maps(all_candidate_ids, selected_city_id)
+    total_map = _stock_maps(all_candidate_ids)
 
     sections = []
 
@@ -289,7 +275,7 @@ def build_pdp_recommendations(request, product: Product) -> dict:
         freq_sorted = sorted(
             freq_candidates,
             key=lambda p: (
-                0 if _is_in_stock(p.pk, selected_city_id, city_map, total_map) else 1,
+                0 if _is_in_stock(p.pk, total_map) else 1,
                 -co_purchase.get(p.pk, 0),
                 -(p.views_count or 0),
             ),
@@ -312,7 +298,7 @@ def build_pdp_recommendations(request, product: Product) -> dict:
         selected = []
         selected_ids = set()
         for target_type in target_types:
-            pool = _rank_mvp(by_type.get(target_type, []), selected_city_id, city_map, total_map)
+            pool = _rank_mvp(by_type.get(target_type, []), total_map)
             taken = 0
             for item in pool:
                 if item.pk in selected_ids:
@@ -326,7 +312,7 @@ def build_pdp_recommendations(request, product: Product) -> dict:
                 break
 
         if len(selected) < max_per_section:
-            fallback_pool = _rank_mvp(compat_filtered, selected_city_id, city_map, total_map)
+            fallback_pool = _rank_mvp(compat_filtered, total_map)
             for item in fallback_pool:
                 if item.pk in selected_ids:
                     continue
@@ -349,7 +335,7 @@ def build_pdp_recommendations(request, product: Product) -> dict:
             p for p in compat_filtered
             if (_extract_product_type(p) == current_type or p.category_id == product.category_id)
         ]
-        alt_sorted = _rank_mvp(alt_pool, selected_city_id, city_map, total_map)
+        alt_sorted = _rank_mvp(alt_pool, total_map)
         alt_products = alt_sorted[:alternatives_limit]
         if alt_products:
             sections.append({
@@ -368,12 +354,11 @@ def build_pdp_recommendations(request, product: Product) -> dict:
             if p.pk not in final_ids:
                 final_ids.append(p.pk)
 
-    final_total_map, final_city_map = _stock_maps(final_ids, selected_city_id)
+    final_total_map = _stock_maps(final_ids)
     variant_ids = _build_first_variant_map(final_ids)
 
     return {
         'sections': sections,
         'product_stock_total': final_total_map,
-        'product_stock_in_city': final_city_map,
         'recommended_variant_ids': variant_ids,
     }

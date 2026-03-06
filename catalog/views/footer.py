@@ -3,6 +3,7 @@ from django.shortcuts import render
 from django.views.decorators.http import require_GET
 
 from ..models import Product
+from .common import _product_stock_totals
 
 FOOTER_PRODUCTS_ROWS_PER_BATCH = 3
 FOOTER_PRODUCTS_COLS = 5
@@ -70,4 +71,5 @@ def footer_products_feed_view(request):
         'next_page': current_page + 1 if has_next else None,
         'footer_products_layout': footer_products_layout,
         'favorite_product_ids': get_favorite_product_ids(request),
+        'product_stock_total': _product_stock_totals([product.pk for product in products]),
     })

@@ -5,12 +5,17 @@
 """
 import json
 import os
+import shutil
+import tempfile
+import uuid
 import zipfile
 from decimal import Decimal
+from io import BytesIO
 
-from django.core.management.base import BaseCommand, CommandError
 from django.conf import settings
+from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+from PIL import Image, UnidentifiedImageError
 
 from catalog.models import (
     CatalogSection,
@@ -31,6 +36,15 @@ from catalog.models import (
 
 class Command(BaseCommand):
     help = 'Восстанавливает каталог из бэкапа (ZIP архив с JSON и изображениями).'
+    ALLOWED_IMAGE_EXTENSIONS = {
+        '.jpg': ('JPEG', '.jpg'),
+        '.jpeg': ('JPEG', '.jpg'),
+        '.png': ('PNG', '.png'),
+        '.webp': ('WEBP', '.webp'),
+    }
+    MAX_IMAGE_MEMBERS = 500
+    MAX_SINGLE_IMAGE_BYTES = 15 * 1024 * 1024
+    MAX_TOTAL_IMAGE_BYTES = 100 * 1024 * 1024
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -44,20 +58,78 @@ class Command(BaseCommand):
             help='Очистить существующие данные каталога перед восстановлением',
         )
 
+    def _normalize_image_bytes(self, file_data, source_name):
+        extension = os.path.splitext(source_name)[1].lower()
+        if extension not in self.ALLOWED_IMAGE_EXTENSIONS:
+            raise CommandError(
+                f'Недопустимый тип файла в архиве: {source_name}. '
+                'Разрешены только JPG, JPEG, PNG и WEBP.'
+            )
+        if len(file_data) > self.MAX_SINGLE_IMAGE_BYTES:
+            raise CommandError(f'Файл {source_name} превышает допустимый размер.')
+
+        target_format, safe_extension = self.ALLOWED_IMAGE_EXTENSIONS[extension]
+        try:
+            with Image.open(BytesIO(file_data)) as image:
+                image.load()
+                if target_format == 'JPEG':
+                    if image.mode not in ('RGB', 'L'):
+                        image = image.convert('RGB')
+                elif target_format == 'PNG':
+                    if image.mode not in ('RGB', 'RGBA', 'L', 'LA'):
+                        image = image.convert('RGBA')
+                elif target_format == 'WEBP':
+                    if image.mode not in ('RGB', 'RGBA'):
+                        image = image.convert('RGBA')
+
+                output = BytesIO()
+                save_kwargs = {'format': target_format}
+                if target_format == 'JPEG':
+                    save_kwargs.update({'quality': 90, 'optimize': True})
+                image.save(output, **save_kwargs)
+        except (UnidentifiedImageError, OSError, ValueError) as exc:
+            raise CommandError(f'Файл {source_name} не является корректным изображением.') from exc
+
+        return output.getvalue(), safe_extension
+
     def extract_images_from_zip(self, zip_file, temp_dir):
         """Извлекает изображения из ZIP архива во временную директорию."""
         images_map = {}  # {archive_path: local_path}
-        
-        for name in zip_file.namelist():
-            if name.startswith('images/'):
-                # Извлекаем файл
-                file_data = zip_file.read(name)
-                local_path = os.path.join(temp_dir, os.path.basename(name))
-                with open(local_path, 'wb') as f:
-                    f.write(file_data)
-                images_map[name] = local_path
-        
+        total_image_bytes = 0
+        image_members = 0
+
+        for member in zip_file.infolist():
+            if member.is_dir() or not member.filename.startswith('images/'):
+                continue
+
+            image_members += 1
+            if image_members > self.MAX_IMAGE_MEMBERS:
+                raise CommandError('Архив содержит слишком много файлов изображений.')
+
+            total_image_bytes += member.file_size
+            if total_image_bytes > self.MAX_TOTAL_IMAGE_BYTES:
+                raise CommandError('Архив изображений превышает допустимый суммарный размер.')
+
+            source_name = os.path.basename(member.filename)
+            if not source_name:
+                continue
+
+            file_data = zip_file.read(member.filename)
+            normalized_bytes, safe_extension = self._normalize_image_bytes(file_data, source_name)
+            local_path = os.path.join(temp_dir, f'{uuid.uuid4().hex}{safe_extension}')
+            with open(local_path, 'wb') as f:
+                f.write(normalized_bytes)
+            images_map[member.filename] = local_path
+
         return images_map
+
+    def _store_restored_image(self, local_image_path):
+        extension = os.path.splitext(local_image_path)[1].lower()
+        relative_path = os.path.join('products', f'{uuid.uuid4().hex}{extension}')
+        media_path = os.path.join(settings.MEDIA_ROOT, relative_path)
+        os.makedirs(os.path.dirname(media_path), exist_ok=True)
+        shutil.copy2(local_image_path, media_path)
+        return relative_path.replace(os.sep, '/')
 
     def handle(self, *args, **options):
         backup_file = options['backup_file']
@@ -100,7 +172,6 @@ class Command(BaseCommand):
                 self.stdout.write('  Данные очищены.')
             
             # Создаём временную директорию для изображений
-            import tempfile
             temp_dir = tempfile.mkdtemp()
             try:
                 images_map = self.extract_images_from_zip(zip_file, temp_dir)
@@ -178,11 +249,7 @@ class Command(BaseCommand):
                             image_archive_path = f"images/products/{item['slug']}_main{os.path.splitext(item['image'])[1]}"
                             if image_archive_path in images_map:
                                 local_image_path = images_map[image_archive_path]
-                                media_path = os.path.join(settings.MEDIA_ROOT, 'products', os.path.basename(item['image']))
-                                os.makedirs(os.path.dirname(media_path), exist_ok=True)
-                                import shutil
-                                shutil.copy2(local_image_path, media_path)
-                                product.image = f"products/{os.path.basename(item['image'])}"
+                                product.image = self._store_restored_image(local_image_path)
                                 product.save()
                         
                         # Восстанавливаем теги
@@ -211,11 +278,7 @@ class Command(BaseCommand):
                             variant_image_name = os.path.basename(item['image'])
                             for archive_path, local_path in images_map.items():
                                 if variant_image_name in archive_path and 'variants' in archive_path:
-                                    media_path = os.path.join(settings.MEDIA_ROOT, 'products', variant_image_name)
-                                    os.makedirs(os.path.dirname(media_path), exist_ok=True)
-                                    import shutil
-                                    shutil.copy2(local_path, media_path)
-                                    variant.image = f"products/{variant_image_name}"
+                                    variant.image = self._store_restored_image(local_path)
                                     variant.save()
                                     break
                         
@@ -251,13 +314,9 @@ class Command(BaseCommand):
                             image_name = os.path.basename(item['image'])
                             for archive_path, local_path in images_map.items():
                                 if image_name in archive_path and 'product_images' in archive_path:
-                                    media_path = os.path.join(settings.MEDIA_ROOT, 'products', image_name)
-                                    os.makedirs(os.path.dirname(media_path), exist_ok=True)
-                                    import shutil
-                                    shutil.copy2(local_path, media_path)
                                     ProductImage.objects.create(
                                         product=product,
-                                        image=f"products/{image_name}",
+                                        image=self._store_restored_image(local_path),
                                         order=item.get('order', 0),
                                     )
                                     break
@@ -329,7 +388,6 @@ class Command(BaseCommand):
                 
             finally:
                 # Удаляем временную директорию
-                import shutil
                 shutil.rmtree(temp_dir, ignore_errors=True)
         
         self.stdout.write(self.style.SUCCESS('\nВосстановление завершено успешно!'))

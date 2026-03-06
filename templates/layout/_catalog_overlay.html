@@ -30,11 +30,6 @@
                  @mouseleave="
                    if (catalogHoverTimeout) { clearTimeout(catalogHoverTimeout); catalogHoverTimeout = null; }
                  ">
-                {% if section.icon %}
-                <span class="catalog-icon flex-shrink-0 w-5 h-5 text-gray-400 flex items-center justify-center group-hover:text-accent transition-colors">
-                  {{ section.icon|safe }}
-                </span>
-                {% endif %}
                 <span>{{ section.name }}</span>
               </a>
             </li>
@@ -56,9 +51,6 @@
                {% if preview_url %}style="background-image: url({{ preview_url }});"{% endif %}>
               <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent"></div>
               <div class="absolute bottom-0 left-0 right-0 p-3 flex items-center gap-2">
-                {% if category.icon %}
-                <span class="catalog-icon w-6 h-6 text-accent/90 flex-shrink-0 group-hover:text-accent transition-colors">{{ category.icon|safe }}</span>
-                {% endif %}
                 <span class="font-bold text-white text-sm truncate group-hover:text-accent transition-colors">{{ category.name }}</span>
               </div>
             </a>

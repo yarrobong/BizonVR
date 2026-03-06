@@ -146,18 +146,16 @@ class CheckoutForm(forms.Form):
         widget=forms.CheckboxInput(),
     )
 
-    def __init__(self, *args, selected_city=None, **kwargs):
+    def __init__(self, *args, user=None, selected_city=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.selected_city = selected_city
-        if selected_city:
-            self.fields['pickup_point'].queryset = PickupPoint.objects.filter(city=selected_city).order_by('order', 'name')
+        self.fields['pickup_point'].queryset = PickupPoint.objects.order_by('city__order', 'order', 'name')
+        self.user = user
 
     def clean_pickup_point(self):
         delivery = self.cleaned_data.get('delivery_type')
         pickup_point = self.cleaned_data.get('pickup_point')
-        if delivery == 'pickup' and self.selected_city:
-            if PickupPoint.objects.filter(city=self.selected_city).exists() and not pickup_point:
-                raise forms.ValidationError('Выберите точку выдачи.')
+        if delivery == 'pickup' and not pickup_point:
+            raise forms.ValidationError('Выберите точку выдачи.')
         return pickup_point
 
     def clean_phone(self):
@@ -176,3 +174,17 @@ class CheckoutForm(forms.Form):
         if not promo:
             raise forms.ValidationError('Промокод не найден или недействителен.')
         return promo.code  # сохраняем нормализованный код
+
+    def clean_email(self):
+        return (self.cleaned_data.get('email') or '').strip()
+
+    def clean(self):
+        cleaned_data = super().clean()
+        delivery_type = cleaned_data.get('delivery_type')
+        address = (cleaned_data.get('address') or '').strip()
+
+        if delivery_type in {'courier', 'post'} and not address:
+            self.add_error('address', 'Укажите адрес доставки.')
+        if delivery_type == 'pickup':
+            cleaned_data['address'] = ''
+        return cleaned_data

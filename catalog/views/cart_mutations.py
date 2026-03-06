@@ -6,9 +6,9 @@ from django.views.decorators.http import require_POST
 from django_ratelimit.decorators import ratelimit
 
 from ..cart_services import get_cart_count, get_cart_items, save_cart_to_db, save_cart_to_session
-from ..models import City, Product, ProductBundle, ProductVariant
+from ..models import Product, ProductBundle, ProductVariant
 from .cart import cart_partial
-from .common import _get_stock_in_city, _get_stock_total
+from .common import _get_stock_total
 
 
 def _cart_item_matches(item, product_id, variant_id=None):
@@ -64,56 +64,35 @@ def add_to_cart_view(request, product_id):
         i.get('quantity', 0) for i in cart_items
         if _cart_item_matches(i, product_id, variant_id)
     )
-    selected_city_id = request.session.get('selected_city_id')
-    if selected_city_id:
-        stock = _get_stock_in_city(selected_city_id, product_id, variant_id)
-        available = max(0, stock - current_in_cart)
-        if stock > 0:
-            if quantity > available:
-                quantity = available
-            if quantity <= 0:
-                if request.headers.get('HX-Request'):
-                    total = sum(i.get('subtotal', 0) for i in cart_items)
-                    resp = render(request, 'catalog/partials/cart_content.html', {
-                        'cart_items': cart_items,
-                        'total': total,
-                        'cart_error': 'Недостаточно товара в выбранном городе.',
-                    })
-                    resp['HX-Trigger'] = json.dumps({'cart-updated': {'count': get_cart_count(request)}})
-                    return resp
-                next_url = request.POST.get('next') or request.GET.get('next') or product.get_absolute_url()
-                return redirect(next_url + '?cart_error=1')
-        else:
-            stock_total = _get_stock_total(product_id, variant_id)
-            if stock_total > 0:
-                available = max(0, stock_total - current_in_cart)
-                if quantity > available:
-                    quantity = available
-                if quantity <= 0:
-                    if request.headers.get('HX-Request'):
-                        total = sum(i.get('subtotal', 0) for i in cart_items)
-                        resp = render(request, 'catalog/partials/cart_content.html', {
-                            'cart_items': cart_items,
-                            'total': total,
-                            'cart_error': 'Недостаточно товара.',
-                        })
-                        resp['HX-Trigger'] = json.dumps({'cart-updated': {'count': get_cart_count(request)}})
-                        return resp
-                    next_url = request.POST.get('next') or request.GET.get('next') or product.get_absolute_url()
-                    return redirect(next_url + '?cart_error=1')
-            else:
-                if not getattr(product, 'allow_order_on_request', True):
-                    if request.headers.get('HX-Request'):
-                        total = sum(i.get('subtotal', 0) for i in cart_items)
-                        resp = render(request, 'catalog/partials/cart_content.html', {
-                            'cart_items': cart_items,
-                            'total': total,
-                            'cart_error': 'Товар недоступен для заказа.',
-                        })
-                        resp['HX-Trigger'] = json.dumps({'cart-updated': {'count': get_cart_count(request)}})
-                        return resp
-                    next_url = request.POST.get('next') or request.GET.get('next') or product.get_absolute_url()
-                    return redirect(next_url + '?cart_error=1')
+    stock_total = _get_stock_total(product_id, variant_id)
+    if stock_total > 0:
+        available = max(0, stock_total - current_in_cart)
+        if quantity > available:
+            quantity = available
+        if quantity <= 0:
+            if request.headers.get('HX-Request'):
+                total = sum(i.get('subtotal', 0) for i in cart_items)
+                resp = render(request, 'catalog/partials/cart_content.html', {
+                    'cart_items': cart_items,
+                    'total': total,
+                    'cart_error': 'Недостаточно товара.',
+                })
+                resp['HX-Trigger'] = json.dumps({'cart-updated': {'count': get_cart_count(request)}})
+                return resp
+            next_url = request.POST.get('next') or request.GET.get('next') or product.get_absolute_url()
+            return redirect(next_url + '?cart_error=1')
+    elif not getattr(product, 'allow_order_on_request', True):
+        if request.headers.get('HX-Request'):
+            total = sum(i.get('subtotal', 0) for i in cart_items)
+            resp = render(request, 'catalog/partials/cart_content.html', {
+                'cart_items': cart_items,
+                'total': total,
+                'cart_error': 'Товар недоступен для заказа.',
+            })
+            resp['HX-Trigger'] = json.dumps({'cart-updated': {'count': get_cart_count(request)}})
+            return resp
+        next_url = request.POST.get('next') or request.GET.get('next') or product.get_absolute_url()
+        return redirect(next_url + '?cart_error=1')
 
     if variant:
         display_name = f'{product.name} ({variant.name})'
@@ -214,15 +193,9 @@ def cart_update_view(request):
                 variant = ProductVariant.objects.filter(product_id=product_id, pk=variant_id).first()
                 if not variant:
                     variant_id = None
-            selected_city_id = request.session.get('selected_city_id')
-            if selected_city_id:
-                stock = _get_stock_in_city(selected_city_id, product_id, variant_id)
-                if stock > 0:
-                    quantity = min(quantity, stock)
-                else:
-                    stock_total = _get_stock_total(product_id, variant_id)
-                    if stock_total > 0:
-                        quantity = min(quantity, stock_total)
+            stock_total = _get_stock_total(product_id, variant_id)
+            if stock_total > 0:
+                quantity = min(quantity, stock_total)
             if variant:
                 display_name = f'{product.name} ({variant.name})'
                 price = float(variant.price)
@@ -258,7 +231,6 @@ def cart_update_view(request):
             (request.META.get('HTTP_REFERER') or '').rstrip('/').endswith('/catalog/cart')
         )
         if from_cart_page:
-            selected_city_id = request.session.get('selected_city_id')
             if cart_items:
                 slugs = dict(
                     Product.objects.filter(pk__in=[i['product_id'] for i in cart_items]).values_list('pk', 'slug')
@@ -267,12 +239,10 @@ def cart_update_view(request):
                     pid = item['product_id']
                     vid = item.get('variant_id')
                     item['product_slug'] = slugs.get(pid, '')
-                    item['stock_in_city'] = _get_stock_in_city(selected_city_id, pid, vid) if selected_city_id else None
                     item['stock_total'] = _get_stock_total(pid, vid)
             resp = render(request, 'catalog/partials/cart_page_wrapper.html', {
                 'cart_items': cart_items,
                 'total': total,
-                'selected_city': City.objects.filter(pk=selected_city_id).first() if selected_city_id else None,
             })
         else:
             resp = render(request, 'catalog/partials/cart_content.html', {

@@ -1,29 +1,29 @@
 {% extends "base.html" %}
 {% load catalog_tags %}
 
-{% block title %}{% if request_mode %}Заявка на покупку{% else %}Оформление заказа{% endif %} — BizonVR{% endblock %}
+{% block title %}Оформление заказа — BizonVR{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 py-8 max-w-4xl">
+<div class="container mx-auto px-4 py-8 max-w-5xl">
   <nav class="mb-6">
-    <a href="{% url 'catalog:product_list' %}" class="text-gray-400 hover:text-accent text-sm flex items-center gap-1">
+    <a href="{% url 'catalog:cart' %}" class="text-gray-400 hover:text-accent text-sm flex items-center gap-1">
       <i data-lucide="arrow-left" class="w-4 h-4 inline-block"></i>
-      В каталог
+      В корзину
     </a>
   </nav>
 
-  <h1 class="text-2xl font-light text-white mb-8">{% if request_mode %}Заявка на покупку{% else %}Оформление заказа{% endif %}</h1>
+  <h1 class="text-2xl font-light text-white mb-8">Оформление заказа</h1>
 
   {% if cart_empty %}
     <div class="bg-dark-800 border border-dark-600 rounded-xl p-8 text-center text-gray-400">
-      <p class="mb-4">Корзина пуста. Добавьте товары, чтобы оставить заявку.</p>
+      <p class="mb-4">Корзина пуста. Добавьте товары, чтобы перейти к оформлению заказа.</p>
       <a href="{% url 'catalog:product_list' %}" class="inline-flex items-center gap-2 bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-6 rounded-full text-sm uppercase tracking-wide transition-colors">
         Перейти в каталог
         <i data-lucide="arrow-right" class="w-4 h-4 inline-block"></i>
       </a>
     </div>
   {% else %}
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+    <div class="grid grid-cols-1 lg:grid-cols-[1.05fr_0.95fr] gap-8">
       <div class="space-y-6">
         <div class="bg-dark-800 border border-dark-600 rounded-xl p-6">
           <h2 class="text-lg font-medium text-white mb-4">Состав заказа</h2>
@@ -37,61 +37,68 @@
           </ul>
           <p class="mt-4 pt-4 border-t border-dark-600 text-white font-bold text-lg">Итого: {{ cart_total|price_format }} ₽</p>
         </div>
+
+        <div class="bg-dark-800 border border-dark-600 rounded-xl p-6">
+          <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 class="text-lg font-medium text-white">Сохранённые адреса</h2>
+              <p class="text-sm text-gray-400 mt-1">Выберите готовый адрес для предзаполнения формы или оформите заказ вручную.</p>
+            </div>
+            <a href="{% url 'accounts:profile' %}#delivery" class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition-colors hover:border-white/20 hover:bg-white/10">
+              Управлять адресами
+            </a>
+          </div>
+
+          {% if saved_addresses %}
+            <div class="mt-5 grid gap-3">
+              {% for saved_address in saved_addresses %}
+                <a href="{% url 'orders:checkout' %}?saved_address={{ saved_address.pk }}"
+                   class="rounded-2xl border p-4 transition-colors {% if selected_saved_address_id == saved_address.pk %}border-accent bg-accent/10{% else %}border-dark-600 bg-dark-700/40 hover:border-white/20{% endif %}">
+                  <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div class="min-w-0">
+                      <div class="flex flex-wrap items-center gap-2">
+                        <p class="text-base text-white">{{ saved_address.label }}</p>
+                        {% if saved_address.is_default %}
+                          <span class="rounded-full border border-accent/30 bg-accent/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-accent">По умолчанию</span>
+                        {% endif %}
+                      </div>
+                      <p class="mt-2 text-sm text-gray-300">{{ saved_address.recipient_name }}</p>
+                      <p class="mt-1 text-sm text-gray-400">{{ saved_address.phone }}{% if saved_address.email %} · {{ saved_address.email }}{% endif %}</p>
+                      <p class="mt-2 text-sm text-gray-400">
+                        {{ saved_address.get_delivery_type_display }}
+                        {% if saved_address.pickup_point %}
+                          · {{ saved_address.pickup_point.name }}
+                        {% endif %}
+                      </p>
+                      {% if saved_address.address %}
+                        <p class="mt-1 text-sm text-gray-300">{{ saved_address.address }}</p>
+                      {% endif %}
+                      {% if saved_address.comment %}
+                        <p class="mt-1 text-xs text-gray-500">{{ saved_address.comment }}</p>
+                      {% endif %}
+                    </div>
+                    {% if selected_saved_address_id == saved_address.pk %}
+                      <span class="rounded-full border border-accent/30 bg-accent/10 px-3 py-1 text-xs font-medium text-accent">Выбран</span>
+                    {% endif %}
+                  </div>
+                </a>
+              {% endfor %}
+            </div>
+            <a href="{% url 'orders:checkout' %}?saved_address=none" class="mt-4 inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition-colors hover:border-white/20 hover:bg-white/10">
+              Очистить выбор и заполнить вручную
+            </a>
+          {% else %}
+            <div class="mt-5 rounded-2xl border border-dashed border-dark-500 bg-dark-700/50 p-5 text-sm text-gray-400">
+              Сохранённых адресов пока нет. Их можно создать в <a href="{% url 'accounts:profile' %}#delivery" class="text-accent hover:underline">личном кабинете</a>.
+            </div>
+          {% endif %}
+        </div>
       </div>
 
       <div class="bg-dark-800 border border-dark-600 rounded-xl p-6">
-        {% if request_mode %}
-        <h2 class="text-lg font-medium text-white mb-2">Оставьте контакты</h2>
-        <p class="text-sm text-gray-400 mb-6">Мы свяжемся с вами по телефону или в Telegram для оформления заказа.</p>
-        <form method="post" action="{% url 'orders:checkout' %}" class="space-y-4">
-          {% csrf_token %}
-          {% if form.non_field_errors %}
-          <div class="text-red-400 text-sm">{{ form.non_field_errors }}</div>
-          {% endif %}
-          <div>
-            <label for="id_phone" class="block text-sm font-medium text-gray-300 mb-1">{{ form.phone.label }} *</label>
-            <div class="phone-input-wrapper flex items-center w-full bg-dark-700 rounded-lg overflow-hidden focus-within:ring-1 focus-within:ring-accent pl-5">
-              <span class="phone-prefix text-white font-medium py-2.5 flex-shrink-0 select-none">+7</span>
-              <span class="phone-prefix-bracket text-white font-medium py-2.5 flex-shrink-0 select-none" style="display: none;">&nbsp;(</span>
-              <input type="tel" name="phone" id="id_phone" required
-                     value="{{ form.phone.value|default:'' }}"
-                     placeholder="999 123-45-67"
-                     class="js-phone-mask flex-1 min-w-0 bg-transparent text-white py-2.5 pl-1 pr-4 focus:outline-none focus:ring-0 border-0"
-                     autocomplete="tel" inputmode="tel">
-            </div>
-            {% if form.phone.errors %}<p class="text-red-400 text-xs mt-1">{{ form.phone.errors.0 }}</p>{% endif %}
-          </div>
-          <div>
-            <label for="id_telegram" class="block text-sm font-medium text-gray-300 mb-1">{{ form.telegram.label }} *</label>
-            {{ form.telegram }}
-            {% if form.telegram.errors %}<p class="text-red-400 text-xs mt-1">{{ form.telegram.errors.0 }}</p>{% endif %}
-          </div>
-          <div class="rounded-lg border border-dark-600 bg-dark-900/60 p-4">
-            <label for="id_agree_personal_data" class="flex items-start gap-3 text-sm text-gray-300">
-              <input type="checkbox" name="agree_personal_data" id="id_agree_personal_data" required
-                     {% if form.agree_personal_data.value %}checked{% endif %}
-                     class="mt-1 w-4 h-4 rounded border-gray-600 bg-dark-700 text-accent focus:ring-accent focus:ring-offset-0">
-              <span>
-                Даю согласие на обработку персональных данных и обработку заявки на покупку. Подтверждаю ознакомление с
-                <a href="{% url 'privacy' %}" target="_blank" rel="noopener noreferrer" class="text-accent hover:text-accent-hover underline">политикой конфиденциальности</a>,
-                <a href="{% url 'pd_consent' %}" target="_blank" rel="noopener noreferrer" class="text-accent hover:text-accent-hover underline">согласием на обработку ПД</a>
-                и <a href="{% url 'service_request_terms' %}" target="_blank" rel="noopener noreferrer" class="text-accent hover:text-accent-hover underline">условиями обработки заявок</a>.
-              </span>
-            </label>
-            {% if form.agree_personal_data.errors %}<p class="text-red-400 text-xs mt-2">{{ form.agree_personal_data.errors.0 }}</p>{% endif %}
-          </div>
-          <button type="submit" class="w-full bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-6 rounded-full text-sm uppercase tracking-wide transition-colors">
-            Отправить заявку
-          </button>
-        </form>
-        {% else %}
         <h2 class="text-lg font-medium text-white mb-4">Контактные данные и доставка</h2>
-        {% if selected_city %}
-        <p class="text-sm text-gray-400 mb-4">Город: <span class="text-white font-medium">{{ selected_city.name }}</span> (можно изменить в шапке)</p>
-        {% else %}
-        <p class="text-sm text-gray-500 mb-4">Выберите город в шапке сайта для отображения наличия и точек выдачи.</p>
-        {% endif %}
-        <form method="post" action="{% url 'orders:checkout' %}" class="space-y-4">
+        <p class="text-sm text-gray-500 mb-4">Укажите контакты и способ получения заказа. Сохранённые адреса только помогают предзаполнить форму и не меняются автоматически.</p>
+        <form method="post" action="{{ request.get_full_path }}" class="space-y-4">
           {% csrf_token %}
           {% if form.non_field_errors %}
           <div class="text-red-400 text-sm">{{ form.non_field_errors }}</div>
@@ -123,6 +130,7 @@
             <div>
               <label for="id_last_name" class="block text-sm font-medium text-gray-300 mb-1">{{ form.last_name.label }}</label>
               {{ form.last_name }}
+              {% if form.last_name.errors %}<p class="text-red-400 text-xs mt-1">{{ form.last_name.errors.0 }}</p>{% endif %}
             </div>
           </div>
           <div>
@@ -142,7 +150,7 @@
           </div>
           {% endif %}
           <div>
-            <label for="id_address" class="block text-sm font-medium text-gray-300 mb-1">{{ form.address.label }} *</label>
+            <label for="id_address" class="block text-sm font-medium text-gray-300 mb-1">{{ form.address.label }}</label>
             {{ form.address }}
             {% if form.address.errors %}<p class="text-red-400 text-xs mt-1">{{ form.address.errors.0 }}</p>{% endif %}
           </div>
@@ -178,7 +186,6 @@
             Оформить заказ
           </button>
         </form>
-        {% endif %}
       </div>
     </div>
   {% endif %}

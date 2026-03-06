@@ -1,0 +1,168 @@
+{% extends "admin/change_form.html" %}
+{% load i18n admin_urls static %}
+
+{% block form_top %}
+{{ block.super }}
+<div class="product-admin-dashboard" data-product-admin-dashboard data-mode="{% if is_add_product %}add{% else %}change{% endif %}">
+    <section class="product-admin-panel product-admin-panel--guide">
+        <div class="product-admin-hero">
+            <div class="product-admin-hero__content">
+                <p class="product-admin-panel__eyebrow">
+                    {% if is_add_product %}Новый товар{% else %}Редактирование товара{% endif %}
+                </p>
+                <div class="product-admin-hero__header">
+                    <div>
+                        <h2 class="product-admin-panel__title">
+                            {% if is_add_product %}Сначала заполните базу карточки{% else %}Карточка товара и рабочие секции{% endif %}
+                        </h2>
+                        <p class="product-admin-panel__text">
+                            Первый экран сводится к четырём шагам: название, категория, цена и первое фото. Остальные блоки можно заполнить после сохранения.
+                        </p>
+                    </div>
+                    <div class="product-admin-hero__status">
+                        <span class="product-admin-hero__pill">{% if is_add_product %}Статус: черновик{% else %}Статус: редактирование{% endif %}</span>
+                        <span class="product-admin-hero__hint">Slug формируется автоматически из названия и остаётся доступным для ручной правки.</span>
+                    </div>
+                </div>
+                <div class="product-admin-stage-strip">
+                    <article class="product-admin-stage-card product-admin-stage-card--primary">
+                        <span class="product-admin-stage-card__index">1</span>
+                        <div>
+                            <h3>База</h3>
+                            <p>Название, категория, цена, описание и статус.</p>
+                        </div>
+                    </article>
+                    <article class="product-admin-stage-card">
+                        <span class="product-admin-stage-card__index">2</span>
+                        <div>
+                            <h3>Фото</h3>
+                            <p>Первое фото станет главным. Порядок можно менять, вставка работает через Ctrl+V.</p>
+                        </div>
+                    </article>
+                    <article class="product-admin-stage-card">
+                        <span class="product-admin-stage-card__index">3</span>
+                        <div>
+                            <h3>Структура и остатки</h3>
+                            <p>Варианты, характеристики, остатки и комплекты открываются по мере готовности карточки.</p>
+                        </div>
+                    </article>
+                </div>
+            </div>
+            <div class="product-admin-hero__actions">
+                {% if product_view_url %}
+                <a href="{{ product_view_url }}" class="button product-admin-actions__button" target="_blank" rel="noreferrer">
+                    Открыть на сайте
+                </a>
+                {% endif %}
+                <button type="button" class="button product-admin-actions__button" data-scroll-target="inline-images-group">
+                    Перейти к фото
+                </button>
+                <button type="button" class="button product-admin-actions__button" data-scroll-target="field-name">
+                    Вернуться к базе
+                </button>
+            </div>
+        </div>
+        <details class="product-admin-guide-details">
+            <summary>Подсказки по этапам</summary>
+            <div class="product-admin-guide-details__body">
+                <div class="product-admin-callout">
+                    До первого сохранения держите фокус на базе карточки и фото. Варианты, остатки и комплекты можно спокойно заполнить следом, когда появится сама запись товара.
+                </div>
+                <ul class="product-admin-bullets">
+                    <li>Обязательные поля для старта: название, категория, цена и хотя бы одно фото.</li>
+                    <li>Если вариантов нет, в каталоге используется базовая цена товара.</li>
+                    <li>Теги и slug не тормозят создание: они доступны как дополнительные настройки.</li>
+                </ul>
+            </div>
+        </details>
+    </section>
+
+    <aside class="product-admin-panel product-admin-panel--summary" data-product-admin-summary>
+        <div class="product-admin-summary__topline">
+            <span class="product-admin-summary__badge">{% if is_add_product %}Черновик{% else %}Карточка{% endif %}</span>
+            <span class="product-admin-summary__mode">{% if is_add_product %}Новый товар{% else %}Существующий товар{% endif %}</span>
+        </div>
+        <h2 class="product-admin-panel__title">Сводка карточки</h2>
+        <div class="product-admin-progress">
+            <div class="product-admin-progress__meta">
+                <span>Готовность первого этапа</span>
+                <strong data-summary-progress-label>0%</strong>
+            </div>
+            <div class="product-admin-progress__bar">
+                <span data-summary-progress-bar></span>
+            </div>
+            <p class="product-admin-progress__text" data-summary-progress-text>
+                Заполните обязательные поля, чтобы сохранить черновик и открыть остальные разделы.
+            </p>
+        </div>
+        <div class="product-admin-preview">
+            <div class="product-admin-preview__media">
+                <img src="" alt="" data-preview-image hidden>
+                <span data-preview-placeholder>Превью появится после добавления фото</span>
+            </div>
+            <div class="product-admin-preview__body">
+                <strong class="product-admin-preview__title" data-preview-name>Название не указано</strong>
+                <div class="product-admin-preview__meta">
+                    <span data-preview-category>Категория не выбрана</span>
+                    <span data-preview-price>Цена не указана</span>
+                </div>
+                <div class="product-admin-preview__stats">
+                    <span data-preview-photos>Фото: 0</span>
+                    <span data-preview-variants>Варианты: 0</span>
+                </div>
+            </div>
+        </div>
+        <div class="product-admin-checklist">
+            <div class="product-admin-checklist__title">Статусы заполнения</div>
+            <ul class="product-admin-checklist__list product-admin-checklist__list--status">
+                <li data-check-name>
+                    <span>Название</span>
+                    <strong>Не заполнено</strong>
+                </li>
+                <li data-check-category>
+                    <span>Категория</span>
+                    <strong>Не выбрана</strong>
+                </li>
+                <li data-check-price>
+                    <span>Цена</span>
+                    <strong>Не указана</strong>
+                </li>
+                <li data-check-photos>
+                    <span>Фото</span>
+                    <strong>Нет фото</strong>
+                </li>
+                <li data-check-variants>
+                    <span>Варианты</span>
+                    <strong>Базовая цена товара</strong>
+                </li>
+                <li data-check-stocks>
+                    <span>Остатки</span>
+                    <strong>Нет данных</strong>
+                </li>
+            </ul>
+        </div>
+    </aside>
+</div>
+
+<nav class="product-admin-anchor-nav" data-product-admin-anchor-nav>
+    {% for section in product_admin_sections %}
+    <button
+        type="button"
+        class="button product-admin-anchor-nav__button"
+        data-scroll-target="{{ section.target }}"
+        {% if is_add_product and not section.available_on_add %}data-locked-on-add="true" disabled{% endif %}
+    >
+        {{ section.label }}
+    </button>
+    {% endfor %}
+</nav>
+
+<section class="product-admin-panel product-admin-panel--alerts" data-product-admin-alerts hidden>
+    <h2 class="product-admin-panel__title">Проверьте перед сохранением</h2>
+    <ul class="product-admin-alerts__list" data-product-admin-alert-list></ul>
+</section>
+{% endblock %}
+
+{% block after_field_sets %}
+{{ block.super }}
+{% endblock %}

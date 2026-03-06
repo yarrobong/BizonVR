@@ -32,8 +32,10 @@
   <p class="text-gray-500 text-sm mt-6">
     <a href="{% url 'accounts:login' %}" class="text-accent hover:text-accent-hover">Указать другой номер</a>
   </p>
+  {% if sms_debug_mode %}
   <p class="text-gray-500 text-xs mt-4 p-3 bg-dark-800 rounded-lg">
     В режиме разработки SMS не отправляется — код выводится в <strong>терминале, где запущен сервер</strong> (runserver или gunicorn). Найдите строку вида «SMS (dev): код XXXXXX для номера …» и введите этот код выше.
   </p>
+  {% endif %}
 </div>
 {% endblock %}

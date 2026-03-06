@@ -4,25 +4,909 @@
 {% block title %}Личный кабинет — BizonVR{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 py-12 max-w-2xl">
-  <h1 class="text-2xl font-light text-white mb-6">Личный кабинет</h1>
-  <div class="bg-dark-800 border border-dark-600 rounded-xl p-6 space-y-6">
-    <p class="text-gray-400">Телефон: <span class="text-white font-medium">{% if profile %}{{ profile.phone }}{% else %}{{ user.username }}{% endif %}</span></p>
+<div class="relative overflow-hidden">
+  <div class="pointer-events-none absolute inset-x-0 top-0 h-[34rem] bg-[radial-gradient(circle_at_top_left,rgba(0,212,255,0.18),transparent_32%),radial-gradient(circle_at_top_right,rgba(245,158,11,0.12),transparent_28%),linear-gradient(180deg,rgba(11,13,20,0.2),rgba(11,13,20,0))]"></div>
 
-    <div>
-      <h2 class="text-lg font-medium text-white mb-2">Баланс</h2>
-      <p class="text-2xl font-light text-white mb-1">{% if profile %}{{ profile.balance|price_format }}{% else %}0{% endif %} ₽</p>
-      <a href="{% url 'accounts:balance_history' %}" class="text-accent hover:text-accent-hover text-sm">История операций</a>
+  <div class="container relative mx-auto max-w-7xl px-4 py-8 md:py-10">
+    {% if alerts %}
+      <div class="mb-6 space-y-2">
+        {% for alert in alerts %}
+          <div class="rounded-2xl border px-4 py-3 text-sm {% if alert.level == 'success' %}border-emerald-400/20 bg-emerald-500/10 text-emerald-200{% else %}border-red-300/30 bg-red-900/20 text-red-100{% endif %}">
+            {{ alert.text }}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <section id="overview" class="relative overflow-hidden rounded-[2rem] border border-white/10 bg-dark-800/90 shadow-[0_24px_80px_rgba(0,0,0,0.35)] backdrop-blur">
+      <div class="pointer-events-none absolute -left-24 top-0 h-56 w-56 rounded-full bg-accent/10 blur-3xl"></div>
+      <div class="pointer-events-none absolute -right-24 bottom-0 h-64 w-64 rounded-full bg-amber-400/10 blur-3xl"></div>
+      <div class="relative grid gap-8 px-6 py-7 md:px-8 md:py-8 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.9fr)]">
+        <div class="space-y-6">
+          <div class="flex flex-wrap items-center gap-3">
+            <span class="inline-flex items-center rounded-full border border-accent/20 bg-accent/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-accent" style="font-family:'Orbitron',sans-serif;">
+              Личный кабинет
+            </span>
+            <span class="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-gray-300">
+              {{ customer_segment }}
+            </span>
+            <span class="inline-flex items-center rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-200">
+              {{ account_status }}
+            </span>
+          </div>
+
+          <div class="max-w-4xl">
+            <h1 class="text-3xl font-semibold tracking-tight text-white md:text-5xl">
+              {{ profile.contact_name|default:"Личный кабинет клиента BizonVR" }}
+            </h1>
+            <p class="mt-4 max-w-3xl text-sm leading-7 text-gray-300 md:text-base">
+              {{ customer_segment_description }}
+              Здесь собраны текущие заказы, адреса, безопасность входа и быстрые действия, чтобы клиенту не приходилось искать нужный сценарий по длинной форме.
+            </p>
+          </div>
+
+          <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Активные заказы</p>
+              <p class="mt-3 text-3xl font-semibold text-white" style="font-family:'Orbitron',sans-serif;">{{ active_orders_count }}</p>
+              <p class="mt-2 text-sm text-gray-400">Новые, оплаченные и в пути.</p>
+            </div>
+            <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Всего заказов</p>
+              <p class="mt-3 text-3xl font-semibold text-white" style="font-family:'Orbitron',sans-serif;">{{ orders_total }}</p>
+              <p class="mt-2 text-sm text-gray-400">История покупок и повторных обращений.</p>
+            </div>
+            <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Сохранённые адреса</p>
+              <p class="mt-3 text-3xl font-semibold text-white" style="font-family:'Orbitron',sans-serif;">{{ saved_addresses_count }}</p>
+              <p class="mt-2 text-sm text-gray-400">Готовые сценарии доставки для checkout.</p>
+            </div>
+            <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Избранное</p>
+              <p class="mt-3 text-3xl font-semibold text-white" style="font-family:'Orbitron',sans-serif;">{{ favorites_count }}</p>
+              <p class="mt-2 text-sm text-gray-400">Сохранённые модели и shortlist.</p>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap gap-3">
+            <a href="{% url 'orders:order_list' %}" class="inline-flex items-center justify-center rounded-full bg-accent px-5 py-3 text-sm font-semibold text-dark-900 transition hover:bg-accent-hover">
+              Открыть заказы
+            </a>
+            <a href="#delivery" class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm font-medium text-white transition hover:border-white/20 hover:bg-white/10">
+              Настроить доставку
+            </a>
+            <a href="{% if recent_orders %}{% url 'orders:order_detail' recent_orders.0.instance.pk %}{% else %}{% url 'catalog:product_list' %}{% endif %}" class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm font-medium text-white transition hover:border-white/20 hover:bg-white/10">
+              {% if recent_orders %}Открыть последний заказ{% else %}Перейти в каталог{% endif %}
+            </a>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-4 text-sm text-gray-400">
+            <div class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2">
+              <i data-lucide="phone" class="h-4 w-4 text-accent"></i>
+              <span>{{ primary_contact_phone|default:"Телефон не указан" }}</span>
+            </div>
+            <div class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2">
+              <i data-lucide="mail" class="h-4 w-4 text-accent"></i>
+              <span class="max-w-[18rem] truncate">{{ primary_contact_email|default:"Email не указан" }}</span>
+            </div>
+            <div class="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2">
+              <i data-lucide="clock-3" class="h-4 w-4 text-accent"></i>
+              <span>{% if last_activity_at %}Активность {{ last_activity_at|date:"d.m.Y H:i" }}{% else %}Активность появится после действий в кабинете{% endif %}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="space-y-4">
+          <section class="rounded-[1.75rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.10),rgba(255,255,255,0.04))] p-5">
+            <div class="flex items-start justify-between gap-4">
+              <div>
+                <p class="text-[11px] uppercase tracking-[0.22em] text-gray-400">Готовность кабинета</p>
+                <h2 class="mt-2 text-2xl font-semibold text-white">{{ profile_completion.percent }}%</h2>
+              </div>
+              <div class="flex h-14 w-14 items-center justify-center rounded-full border border-accent/20 bg-accent/10 text-lg font-semibold text-accent" style="font-family:'Orbitron',sans-serif;">
+                {{ profile_completion.completed }}/{{ profile_completion.total }}
+              </div>
+            </div>
+            <div class="mt-4 h-2 rounded-full bg-white/10">
+              <div class="h-2 rounded-full bg-gradient-to-r from-accent to-cyan-300" style="width: {{ profile_completion.percent }}%;"></div>
+            </div>
+            <p class="mt-4 text-sm leading-6 text-gray-300">{{ profile_completion.summary }}</p>
+            <div class="mt-4 space-y-3">
+              {% for step in profile_completion.steps %}
+                <div class="flex items-start gap-3 rounded-2xl border border-white/10 bg-dark-900/40 px-4 py-3">
+                  <span class="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full {% if step.done %}bg-emerald-500/15 text-emerald-300{% else %}bg-white/10 text-gray-500{% endif %}">
+                    <i data-lucide="{% if step.done %}check{% else %}minus{% endif %}" class="h-4 w-4"></i>
+                  </span>
+                  <div>
+                    <p class="text-sm font-medium text-white">{{ step.label }}</p>
+                    <p class="mt-1 text-xs leading-5 text-gray-400">{{ step.hint }}</p>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          </section>
+
+          <section class="rounded-[1.75rem] border border-white/10 bg-dark-900/60 p-5">
+            <div class="flex items-center justify-between gap-4">
+              <div>
+                <p class="text-[11px] uppercase tracking-[0.22em] text-gray-400">Что сделать дальше</p>
+                <h2 class="mt-2 text-xl font-semibold text-white">Приоритетные действия</h2>
+              </div>
+              <i data-lucide="rocket" class="h-5 w-5 text-accent"></i>
+            </div>
+            <div class="mt-4 space-y-3">
+              {% for action in priority_actions %}
+                <a href="{{ action.href }}" class="group flex items-start gap-4 rounded-2xl border px-4 py-4 transition {% if action.variant == 'accent' %}border-accent/20 bg-accent/10 hover:border-accent/40 hover:bg-accent/15{% else %}border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/10{% endif %}">
+                  <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl {% if action.variant == 'accent' %}bg-dark-900/40 text-accent{% else %}bg-dark-800 text-white{% endif %}">
+                    <i data-lucide="{{ action.icon }}" class="h-5 w-5"></i>
+                  </span>
+                  <span class="min-w-0 flex-1">
+                    <span class="block text-sm font-semibold text-white">{{ action.title }}</span>
+                    <span class="mt-1 block text-sm leading-6 text-gray-400">{{ action.description }}</span>
+                  </span>
+                  <i data-lucide="arrow-up-right" class="mt-1 h-4 w-4 shrink-0 text-gray-500 transition group-hover:text-white"></i>
+                </a>
+              {% endfor %}
+            </div>
+          </section>
+        </div>
+      </div>
+    </section>
+
+    <div class="sticky top-16 z-20 mt-6 overflow-x-auto rounded-2xl border border-white/10 bg-dark-900/85 px-3 py-3 shadow-[0_10px_30px_rgba(0,0,0,0.28)] backdrop-blur">
+      <div class="flex min-w-max gap-2">
+        <a href="#profile" class="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:border-white/20 hover:bg-white/10">Профиль</a>
+        <a href="#orders" class="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:border-white/20 hover:bg-white/10">Заказы</a>
+        <a href="#favorites" class="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:border-white/20 hover:bg-white/10">Избранное</a>
+        <a href="#delivery" class="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:border-white/20 hover:bg-white/10">Доставка</a>
+        <a href="#security" class="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:border-white/20 hover:bg-white/10">Безопасность</a>
+        <a href="#requisites" class="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:border-white/20 hover:bg-white/10">B2B</a>
+        <a href="#support" class="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:border-white/20 hover:bg-white/10">Поддержка</a>
+      </div>
     </div>
 
-    <div>
-      <h2 class="text-lg font-medium text-white mb-2">Заказы</h2>
-      <a href="{% url 'orders:order_list' %}" class="text-accent hover:text-accent-hover text-sm">Мои заказы</a>
-    </div>
+    <div class="mt-6 grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
+      <aside class="space-y-4 xl:sticky xl:top-36 xl:self-start">
+        <section class="rounded-[1.75rem] border border-white/10 bg-dark-800/90 p-5">
+          <div class="flex items-start gap-4">
+            <div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-accent/25 to-white/10 text-xl font-semibold text-white" style="font-family:'Orbitron',sans-serif;">
+              {{ profile.contact_name|default:user.username|slice:":1"|upper }}
+            </div>
+            <div class="min-w-0">
+              <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Профиль</p>
+              <h2 class="mt-2 text-xl font-semibold text-white">{{ profile.contact_name|default:"Получатель не указан" }}</h2>
+              <p class="mt-1 text-sm text-gray-400">{{ phone_display }}</p>
+            </div>
+          </div>
+          <div class="mt-5 space-y-3 text-sm">
+            <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Основной контакт</p>
+              <p class="mt-2 text-white">{{ primary_contact_phone|default:"Не указан" }}</p>
+              <p class="mt-1 break-all text-gray-400">{{ primary_contact_email|default:"Email не указан" }}</p>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <a href="{% url 'catalog:favorites' %}" class="rounded-2xl border border-white/10 bg-white/5 p-4 transition hover:border-white/20 hover:bg-white/10">
+                <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Избранное</p>
+                <p class="mt-2 text-lg font-semibold text-white">{{ favorites_count }}</p>
+              </a>
+              <a href="{% url 'catalog:compare' %}" class="rounded-2xl border border-white/10 bg-white/5 p-4 transition hover:border-white/20 hover:bg-white/10">
+                <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Сравнение</p>
+                <p class="mt-2 text-lg font-semibold text-white">{{ compare_count }}</p>
+              </a>
+            </div>
+          </div>
+        </section>
 
-    <p>
-      <a href="{% url 'accounts:logout' %}" class="text-gray-400 hover:text-accent text-sm">Выйти</a>
-    </p>
+        <section class="rounded-[1.75rem] border border-white/10 bg-dark-800/90 p-5">
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Адрес по умолчанию</p>
+              <h2 class="mt-2 text-lg font-semibold text-white">{% if default_saved_address %}{{ default_saved_address.label }}{% else %}Пока не настроен{% endif %}</h2>
+            </div>
+            <i data-lucide="map-pin" class="h-5 w-5 text-accent"></i>
+          </div>
+          {% if default_saved_address %}
+            <p class="mt-4 text-sm leading-6 text-gray-300">{{ default_saved_address.recipient_name }}</p>
+            <p class="mt-1 text-sm text-gray-400">{{ default_saved_address.phone }}{% if default_saved_address.email %} · {{ default_saved_address.email }}{% endif %}</p>
+            <p class="mt-3 text-sm text-white">
+              {% if default_saved_address.pickup_point %}
+                {{ default_saved_address.pickup_point.name }}{% if default_saved_address.pickup_point.address %} · {{ default_saved_address.pickup_point.address }}{% endif %}
+              {% else %}
+                {{ default_saved_address.address }}
+              {% endif %}
+            </p>
+            <a href="#delivery" class="mt-5 inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:border-white/20 hover:bg-white/10">
+              Управлять адресами
+            </a>
+          {% else %}
+            <p class="mt-4 text-sm leading-6 text-gray-400">Добавьте хотя бы один адрес, чтобы ускорить оформление следующих заказов.</p>
+            <a href="#delivery" class="mt-5 inline-flex items-center justify-center rounded-full bg-accent px-4 py-2 text-sm font-semibold text-dark-900 transition hover:bg-accent-hover">
+              Добавить адрес
+            </a>
+          {% endif %}
+        </section>
+
+        <section class="rounded-[1.75rem] border border-white/10 bg-dark-800/90 p-5">
+          <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Быстрый доступ</p>
+          <div class="mt-4 space-y-2">
+            <a href="{% url 'orders:checkout' %}" class="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white transition hover:border-white/20 hover:bg-white/10">
+              <span>Перейти к checkout</span>
+              <i data-lucide="arrow-right" class="h-4 w-4 text-accent"></i>
+            </a>
+            <a href="{% url 'contacts' %}" class="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white transition hover:border-white/20 hover:bg-white/10">
+              <span>Связаться с менеджером</span>
+              <i data-lucide="message-circle" class="h-4 w-4 text-accent"></i>
+            </a>
+            <a href="{% url 'catalog:product_list' %}" class="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white transition hover:border-white/20 hover:bg-white/10">
+              <span>Вернуться в каталог</span>
+              <i data-lucide="compass" class="h-4 w-4 text-accent"></i>
+            </a>
+          </div>
+        </section>
+      </aside>
+
+      <div class="space-y-6">
+        <section id="profile" class="rounded-[1.75rem] border border-white/10 bg-dark-800/90 p-6 md:p-7">
+          <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div class="max-w-3xl">
+              <p class="text-[11px] uppercase tracking-[0.22em] text-accent">Профиль</p>
+              <h2 class="mt-2 text-2xl font-semibold text-white">Данные получателя и карточка клиента</h2>
+              <p class="mt-2 text-sm leading-6 text-gray-400">
+                Этот блок нужен для базовых данных, которые чаще всего используются в заказах и доставке. Он остаётся коротким и понятным, без лишних полей.
+              </p>
+            </div>
+            <a href="#security" class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition hover:border-white/20 hover:bg-white/10">
+              Безопасность входа
+            </a>
+          </div>
+
+          <div class="mt-6 grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(280px,0.9fr)]">
+            <section class="rounded-[1.5rem] border border-white/10 bg-dark-900/40 p-5">
+              <div class="mb-5 flex items-start justify-between gap-4">
+                <div>
+                  <h3 class="text-lg font-semibold text-white">Редактирование профиля</h3>
+                  <p class="mt-1 text-sm text-gray-400">Укажите имя получателя, которое будет использоваться в заказах и документах.</p>
+                </div>
+                <span class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-gray-300">1 поле</span>
+              </div>
+
+              <form method="post" class="space-y-4" hx-boost="false">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="save_profile">
+
+                {% if profile_form.non_field_errors %}
+                  <p class="text-sm text-red-400">{{ profile_form.non_field_errors.0 }}</p>
+                {% endif %}
+
+                <div>
+                  <label for="{{ profile_form.contact_name.id_for_label }}" class="block text-sm text-gray-300">{{ profile_form.contact_name.label }}</label>
+                  <p class="mt-1 text-xs text-gray-500">ФИО для отгрузки, подтверждения и коммуникации по заказу.</p>
+                  <div class="mt-2">{{ profile_form.contact_name }}</div>
+                  {% if profile_form.contact_name.errors %}
+                    <p class="mt-1 text-sm text-red-400">{{ profile_form.contact_name.errors.0 }}</p>
+                  {% endif %}
+                </div>
+
+                <div class="flex flex-wrap gap-3 pt-2">
+                  <button type="submit" class="inline-flex items-center justify-center rounded-full bg-accent px-5 py-3 text-sm font-semibold text-dark-900 transition hover:bg-accent-hover">
+                    Сохранить данные
+                  </button>
+                  <a href="{% url 'orders:checkout' %}" class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm text-white transition hover:border-white/20 hover:bg-white/10">
+                    Проверить в checkout
+                  </a>
+                </div>
+              </form>
+            </section>
+
+            <section class="rounded-[1.5rem] border border-white/10 bg-white/5 p-5">
+              <h3 class="text-lg font-semibold text-white">Карточка клиента</h3>
+              <div class="mt-5 space-y-3">
+                <div class="rounded-2xl border border-white/10 bg-dark-900/40 p-4">
+                  <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Имя получателя</p>
+                  <p class="mt-2 text-white">{{ profile.contact_name|default:"Не заполнено" }}</p>
+                </div>
+                <div class="rounded-2xl border border-white/10 bg-dark-900/40 p-4">
+                  <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Телефон входа</p>
+                  <p class="mt-2 text-white">{{ phone_display }}</p>
+                </div>
+                <div class="rounded-2xl border border-white/10 bg-dark-900/40 p-4">
+                  <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Основной контакт</p>
+                  <p class="mt-2 text-white">{{ primary_contact_phone|default:"Не заполнен" }}</p>
+                  <p class="mt-1 break-all text-gray-400">{{ primary_contact_email|default:"Email не заполнен" }}</p>
+                </div>
+                <div class="rounded-2xl border border-white/10 bg-dark-900/40 p-4">
+                  <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Последний вход</p>
+                  <p class="mt-2 text-white">{% if user.last_login %}{{ user.last_login|date:"d.m.Y H:i" }}{% else %}Нет данных{% endif %}</p>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section id="orders" class="rounded-[1.75rem] border border-white/10 bg-dark-800/90 p-6 md:p-7">
+          <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+            <div class="max-w-3xl">
+              <p class="text-[11px] uppercase tracking-[0.22em] text-accent">Заказы</p>
+              <h2 class="mt-2 text-2xl font-semibold text-white">Статусы и последние заказы</h2>
+              <p class="mt-2 text-sm leading-6 text-gray-400">
+                Карточки ниже ведут прямо в отфильтрованный список заказов, а блок "Последние заказы" помогает быстро продолжить текущий сценарий без лишних переходов.
+              </p>
+            </div>
+            <a href="{% url 'orders:order_list' %}" class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm text-white transition hover:border-white/20 hover:bg-white/10">
+              Смотреть все заказы
+            </a>
+          </div>
+
+          <div class="mt-6 grid gap-3 md:grid-cols-2 2xl:grid-cols-5">
+            {% for stat in order_stats %}
+              <a href="{{ stat.url }}" class="group rounded-[1.5rem] border border-white/10 bg-white/5 p-4 transition hover:border-white/20 hover:bg-white/10">
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">{{ stat.label }}</p>
+                    <p class="mt-3 text-3xl font-semibold text-white" style="font-family:'Orbitron',sans-serif;">{{ stat.count }}</p>
+                  </div>
+                  <span class="rounded-full border border-white/10 bg-dark-900/50 px-2 py-1 text-[11px] text-gray-300 transition group-hover:text-white">Открыть</span>
+                </div>
+                <p class="mt-3 text-sm leading-6 text-gray-400">{{ stat.description }}</p>
+              </a>
+            {% endfor %}
+          </div>
+
+          <section class="mt-6 rounded-[1.5rem] border border-white/10 bg-dark-900/40 p-5">
+            <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h3 class="text-xl font-semibold text-white">Последние заказы</h3>
+                <p class="mt-1 text-sm text-gray-400">Последние действия по заказам, доставке и сумме оплаты.</p>
+              </div>
+              <span class="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-gray-300">
+                Всего заказов: {{ orders_total }}
+              </span>
+            </div>
+
+            {% if recent_orders %}
+              <div class="mt-5 space-y-3">
+                {% for order in recent_orders %}
+                  <article class="rounded-[1.5rem] border border-white/10 bg-white/5 p-4">
+                    <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div class="min-w-0">
+                        <div class="flex flex-wrap items-center gap-2">
+                          <a href="{% url 'orders:order_detail' order.instance.pk %}" class="text-lg font-semibold text-white transition hover:text-accent">
+                            №{{ order.instance.pk }}
+                          </a>
+                          <span class="rounded-full border border-white/10 bg-dark-900/50 px-3 py-1 text-xs text-gray-300">{{ order.instance.get_status_display }}</span>
+                          <span class="text-sm text-gray-500">{{ order.instance.created_at|date:"d.m.Y H:i" }}</span>
+                        </div>
+                        <p class="mt-3 text-base text-white">{{ order.first_item_name }}</p>
+                        <p class="mt-1 text-sm text-gray-400">{{ order.items_caption }}</p>
+                        <div class="mt-4 grid gap-3 md:grid-cols-2">
+                          <div class="rounded-2xl border border-white/10 bg-dark-900/40 p-4">
+                            <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Сумма</p>
+                            <p class="mt-2 text-white">{{ order.instance.total_to_pay|price_format }} ₽</p>
+                          </div>
+                          <div class="rounded-2xl border border-white/10 bg-dark-900/40 p-4">
+                            <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Доставка</p>
+                            <p class="mt-2 text-white">{{ order.delivery_label }}</p>
+                          </div>
+                          <div class="rounded-2xl border border-white/10 bg-dark-900/40 p-4">
+                            <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Получатель</p>
+                            <p class="mt-2 text-white">{{ order.recipient_name|default:profile.contact_name|default:"Не указан" }}</p>
+                          </div>
+                          <div class="rounded-2xl border border-white/10 bg-dark-900/40 p-4">
+                            <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Адрес / пункт выдачи</p>
+                            <p class="mt-2 text-white">{{ order.destination|default:"Уточняется менеджером" }}</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="flex flex-wrap gap-3 lg:w-[13rem] lg:justify-end">
+                        <a href="{% url 'orders:order_detail' order.instance.pk %}" class="inline-flex items-center justify-center rounded-full bg-accent px-5 py-3 text-sm font-semibold text-dark-900 transition hover:bg-accent-hover">
+                          Подробнее
+                        </a>
+                        <a href="{% url 'orders:order_list' %}" class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm text-white transition hover:border-white/20 hover:bg-white/10">
+                          Все статусы
+                        </a>
+                      </div>
+                    </div>
+                  </article>
+                {% endfor %}
+              </div>
+            {% else %}
+              <div class="mt-5 rounded-[1.5rem] border border-dashed border-white/10 bg-white/5 px-6 py-10 text-center">
+                <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-dark-900/50">
+                  <i data-lucide="package-search" class="h-6 w-6 text-accent"></i>
+                </div>
+                <h3 class="mt-4 text-xl font-semibold text-white">Заказов пока нет</h3>
+                <p class="mx-auto mt-2 max-w-xl text-sm leading-6 text-gray-400">
+                  Когда появятся заказы, этот блок станет рабочим центром для быстрых переходов к деталям, оплате и доставке.
+                </p>
+                <div class="mt-6 flex flex-wrap justify-center gap-3">
+                  <a href="{% url 'catalog:product_list' %}" class="inline-flex items-center justify-center rounded-full bg-accent px-5 py-3 text-sm font-semibold text-dark-900 transition hover:bg-accent-hover">
+                    Перейти в каталог
+                  </a>
+                  <a href="{% url 'catalog:product_list' %}?sort=popularity" class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm text-white transition hover:border-white/20 hover:bg-white/10">
+                    Популярные товары
+                  </a>
+                </div>
+              </div>
+            {% endif %}
+          </section>
+        </section>
+
+        <section id="favorites" class="rounded-[1.75rem] border border-white/10 bg-dark-800/90 p-6 md:p-7">
+          <div class="max-w-3xl">
+            <p class="text-[11px] uppercase tracking-[0.22em] text-accent">Избранное</p>
+            <h2 class="mt-2 text-2xl font-semibold text-white">Shortlist клиента и сравнение моделей</h2>
+            <p class="mt-2 text-sm leading-6 text-gray-400">
+              Избранное удобно использовать как рабочий shortlist, а сравнение помогает принять решение по характеристикам перед покупкой.
+            </p>
+          </div>
+
+          <div class="mt-6 grid gap-4 xl:grid-cols-2">
+            <section class="rounded-[1.5rem] border border-white/10 bg-dark-900/40 p-5">
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <h3 class="text-lg font-semibold text-white">Моё избранное</h3>
+                  <p class="mt-1 text-sm text-gray-400">Сохранённые товары для быстрого возврата в каталог.</p>
+                </div>
+                <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-500/10 text-red-300">
+                  <i data-lucide="heart" class="h-5 w-5"></i>
+                </div>
+              </div>
+              <div class="mt-5 rounded-2xl border border-white/10 bg-white/5 p-4">
+                <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Товаров в избранном</p>
+                <p class="mt-3 text-3xl font-semibold text-white" style="font-family:'Orbitron',sans-serif;">{{ favorites_count }}</p>
+              </div>
+              <div class="mt-5 flex flex-wrap gap-3">
+                <a href="{% url 'catalog:favorites' %}" class="inline-flex items-center justify-center rounded-full bg-accent px-5 py-3 text-sm font-semibold text-dark-900 transition hover:bg-accent-hover">
+                  Открыть избранное
+                </a>
+                <a href="{% url 'catalog:product_list' %}" class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm text-white transition hover:border-white/20 hover:bg-white/10">
+                  Перейти в каталог
+                </a>
+              </div>
+            </section>
+
+            <section class="rounded-[1.5rem] border border-white/10 bg-dark-900/40 p-5">
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <h3 class="text-lg font-semibold text-white">Сравнение товаров</h3>
+                  <p class="mt-1 text-sm text-gray-400">Сопоставление характеристик без ручного переключения между карточками.</p>
+                </div>
+                <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent/10 text-accent">
+                  <i data-lucide="scale" class="h-5 w-5"></i>
+                </div>
+              </div>
+              <div class="mt-5 rounded-2xl border border-white/10 bg-white/5 p-4">
+                <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Товаров в сравнении</p>
+                <p class="mt-3 text-3xl font-semibold text-white" style="font-family:'Orbitron',sans-serif;">{{ compare_count }}</p>
+              </div>
+              {% if compare_products_preview %}
+                <div class="mt-5 space-y-3">
+                  {% for product in compare_products_preview %}
+                    <article class="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 p-3">
+                      <a href="{{ product.get_absolute_url }}" class="h-16 w-16 shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-dark-900/40">
+                        {% with image=product.get_display_image %}
+                          {% if image %}
+                            <img src="{{ image.url|absolute_uri:request }}" alt="{{ product.name }}" class="h-full w-full object-cover">
+                          {% else %}
+                            <span class="flex h-full w-full items-center justify-center text-gray-500">
+                              <i data-lucide="image-off" class="h-5 w-5"></i>
+                            </span>
+                          {% endif %}
+                        {% endwith %}
+                      </a>
+                      <div class="min-w-0 flex-1">
+                        <a href="{{ product.get_absolute_url }}" class="block truncate text-white transition hover:text-accent">{{ product.name }}</a>
+                        <p class="mt-1 text-sm text-gray-400">{{ product.price|price_format }} ₽</p>
+                      </div>
+                    </article>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <div class="mt-5 rounded-2xl border border-dashed border-white/10 bg-white/5 p-5">
+                  <p class="text-white">Список сравнения пока пуст.</p>
+                  <p class="mt-2 text-sm leading-6 text-gray-400">Добавьте товары из каталога, и здесь появится быстрый доступ к сравнению.</p>
+                </div>
+              {% endif %}
+              <div class="mt-5 flex flex-wrap gap-3">
+                <a href="{% url 'catalog:compare' %}" class="inline-flex items-center justify-center rounded-full bg-accent px-5 py-3 text-sm font-semibold text-dark-900 transition hover:bg-accent-hover">
+                  Открыть сравнение
+                </a>
+                <a href="{% url 'catalog:product_list' %}" class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm text-white transition hover:border-white/20 hover:bg-white/10">
+                  Добавить товары
+                </a>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section id="delivery" class="rounded-[1.75rem] border border-white/10 bg-dark-800/90 p-6 md:p-7">
+          <div class="max-w-3xl">
+            <p class="text-[11px] uppercase tracking-[0.22em] text-accent">Доставка</p>
+            <h2 class="mt-2 text-2xl font-semibold text-white">Адреса и готовые сценарии получения</h2>
+            <p class="mt-2 text-sm leading-6 text-gray-400">
+              Адресная книга собрана так, чтобы повторный заказ сводился к одному выбору. Сначала виден основной адрес, ниже можно редактировать и сохранять новые сценарии.
+            </p>
+          </div>
+
+          <div class="mt-6 grid gap-4 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+            <section class="rounded-[1.5rem] border border-white/10 bg-dark-900/40 p-5">
+              <div class="flex items-start justify-between gap-4">
+                <div>
+                  <h3 class="text-lg font-semibold text-white">Главный сценарий доставки</h3>
+                  <p class="mt-1 text-sm text-gray-400">То, что клиент, скорее всего, использует при следующем заказе.</p>
+                </div>
+                <span class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-gray-300">
+                  {% if default_saved_address %}Настроен{% else %}Пусто{% endif %}
+                </span>
+              </div>
+
+              {% if default_saved_address %}
+                <div class="mt-5 space-y-3">
+                  <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Получатель</p>
+                    <p class="mt-2 text-white">{{ default_saved_address.recipient_name }}</p>
+                    <p class="mt-1 text-gray-400">{{ default_saved_address.phone }}{% if default_saved_address.email %} · {{ default_saved_address.email }}{% endif %}</p>
+                  </div>
+                  <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Способ доставки</p>
+                    <p class="mt-2 text-white">{{ default_saved_address.get_delivery_type_display }}</p>
+                  </div>
+                  <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Точка получения</p>
+                    <p class="mt-2 text-white">
+                      {% if default_saved_address.pickup_point %}
+                        {{ default_saved_address.pickup_point.name }}{% if default_saved_address.pickup_point.address %} · {{ default_saved_address.pickup_point.address }}{% endif %}
+                      {% else %}
+                        {{ default_saved_address.address }}
+                      {% endif %}
+                    </p>
+                    {% if default_saved_address.comment %}
+                      <p class="mt-2 text-sm text-gray-400">{{ default_saved_address.comment }}</p>
+                    {% endif %}
+                  </div>
+                </div>
+              {% else %}
+                <div class="mt-5 rounded-[1.5rem] border border-dashed border-white/10 bg-white/5 p-5">
+                  <p class="text-white">Основной адрес ещё не задан.</p>
+                  <p class="mt-2 text-sm leading-6 text-gray-400">Добавьте первый адрес справа, и он сразу станет базовым для будущих заказов.</p>
+                </div>
+              {% endif %}
+            </section>
+
+            <section class="rounded-[1.5rem] border border-white/10 bg-dark-900/40 p-5">
+              <div class="flex items-start justify-between gap-4">
+                <div>
+                  <h3 class="text-lg font-semibold text-white">{% if editing_address %}Редактирование адреса{% else %}Новый адрес{% endif %}</h3>
+                  <p class="mt-1 text-sm text-gray-400">Сохраните адрес, тип доставки и комментарии, чтобы подставлять их в checkout одним кликом.</p>
+                </div>
+                {% if editing_address %}
+                  <a href="{% url 'accounts:profile' %}#delivery" class="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs text-white transition hover:border-white/20 hover:bg-white/10">
+                    Отменить
+                  </a>
+                {% endif %}
+              </div>
+
+              <form method="post" class="mt-5 space-y-4" hx-boost="false">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="save_address">
+                {% if editing_address %}<input type="hidden" name="address_id" value="{{ editing_address.pk }}">{% endif %}
+
+                {% if address_form.non_field_errors %}
+                  <p class="text-sm text-red-400">{{ address_form.non_field_errors.0 }}</p>
+                {% endif %}
+
+                <div class="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label for="{{ address_form.label.id_for_label }}" class="block text-sm text-gray-300">{{ address_form.label.label }}</label>
+                    <div class="mt-2">{{ address_form.label }}</div>
+                    {% if address_form.label.errors %}<p class="mt-1 text-sm text-red-400">{{ address_form.label.errors.0 }}</p>{% endif %}
+                  </div>
+                  <div>
+                    <label for="{{ address_form.recipient_name.id_for_label }}" class="block text-sm text-gray-300">{{ address_form.recipient_name.label }}</label>
+                    <div class="mt-2">{{ address_form.recipient_name }}</div>
+                    {% if address_form.recipient_name.errors %}<p class="mt-1 text-sm text-red-400">{{ address_form.recipient_name.errors.0 }}</p>{% endif %}
+                  </div>
+                </div>
+
+                <div class="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label for="{{ address_form.phone.id_for_label }}" class="block text-sm text-gray-300">{{ address_form.phone.label }}</label>
+                    <div class="mt-2">{{ address_form.phone }}</div>
+                    {% if address_form.phone.errors %}<p class="mt-1 text-sm text-red-400">{{ address_form.phone.errors.0 }}</p>{% endif %}
+                  </div>
+                  <div>
+                    <label for="{{ address_form.email.id_for_label }}" class="block text-sm text-gray-300">{{ address_form.email.label }}</label>
+                    <div class="mt-2">{{ address_form.email }}</div>
+                    {% if address_form.email.errors %}<p class="mt-1 text-sm text-red-400">{{ address_form.email.errors.0 }}</p>{% endif %}
+                  </div>
+                </div>
+
+                <div class="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label for="{{ address_form.delivery_type.id_for_label }}" class="block text-sm text-gray-300">{{ address_form.delivery_type.label }}</label>
+                    <div class="mt-2">{{ address_form.delivery_type }}</div>
+                  </div>
+                  <div>
+                    <label for="{{ address_form.pickup_point.id_for_label }}" class="block text-sm text-gray-300">{{ address_form.pickup_point.label }}</label>
+                    <div class="mt-2">{{ address_form.pickup_point }}</div>
+                    {% if address_form.pickup_point.errors %}<p class="mt-1 text-sm text-red-400">{{ address_form.pickup_point.errors.0 }}</p>{% endif %}
+                  </div>
+                </div>
+
+                <div>
+                  <label for="{{ address_form.address.id_for_label }}" class="block text-sm text-gray-300">{{ address_form.address.label }}</label>
+                  <div class="mt-2">{{ address_form.address }}</div>
+                  {% if address_form.address.errors %}<p class="mt-1 text-sm text-red-400">{{ address_form.address.errors.0 }}</p>{% endif %}
+                </div>
+                <div>
+                  <label for="{{ address_form.comment.id_for_label }}" class="block text-sm text-gray-300">{{ address_form.comment.label }}</label>
+                  <div class="mt-2">{{ address_form.comment }}</div>
+                </div>
+                <label for="{{ address_form.is_default.id_for_label }}" class="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-gray-300">
+                  {{ address_form.is_default }}
+                  <span>{{ address_form.is_default.label }}</span>
+                </label>
+                <div class="flex flex-wrap gap-3 pt-2">
+                  <button type="submit" class="inline-flex items-center justify-center rounded-full bg-accent px-5 py-3 text-sm font-semibold text-dark-900 transition hover:bg-accent-hover">
+                    {% if editing_address %}Сохранить изменения{% else %}Сохранить адрес{% endif %}
+                  </button>
+                  <a href="{% url 'orders:checkout' %}" class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm text-white transition hover:border-white/20 hover:bg-white/10">
+                    Перейти к checkout
+                  </a>
+                </div>
+              </form>
+            </section>
+          </div>
+
+          <section class="mt-6 rounded-[1.5rem] border border-white/10 bg-dark-900/40 p-5">
+            <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h3 class="text-lg font-semibold text-white">Сохранённые адреса</h3>
+                <p class="mt-1 text-sm text-gray-400">Выберите адрес по умолчанию, отредактируйте его или удалите ненужные записи.</p>
+              </div>
+              {% if default_saved_address %}
+                <span class="rounded-full border border-accent/20 bg-accent/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-accent">
+                  Основной: {{ default_saved_address.label }}
+                </span>
+              {% endif %}
+            </div>
+
+            {% if saved_addresses %}
+              <div class="mt-5 grid gap-4 xl:grid-cols-2">
+                {% for saved_address in saved_addresses %}
+                  <article class="rounded-[1.5rem] border border-white/10 bg-white/5 p-4">
+                    <div class="flex items-start justify-between gap-4">
+                      <div class="min-w-0">
+                        <div class="flex flex-wrap items-center gap-2">
+                          <p class="text-base font-semibold text-white">{{ saved_address.label }}</p>
+                          {% if saved_address.is_default %}
+                            <span class="rounded-full border border-accent/20 bg-accent/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-accent">По умолчанию</span>
+                          {% endif %}
+                        </div>
+                        <p class="mt-2 text-sm text-gray-300">{{ saved_address.recipient_name }}</p>
+                        <p class="mt-1 text-sm text-gray-400">{{ saved_address.phone }}{% if saved_address.email %} · {{ saved_address.email }}{% endif %}</p>
+                        <p class="mt-2 text-sm text-gray-300">{{ saved_address.get_delivery_type_display }}</p>
+                        {% if saved_address.pickup_point %}
+                          <p class="mt-1 text-sm text-white">{{ saved_address.pickup_point.name }}{% if saved_address.pickup_point.address %} · {{ saved_address.pickup_point.address }}{% endif %}</p>
+                        {% endif %}
+                        {% if saved_address.address %}
+                          <p class="mt-1 text-sm text-white">{{ saved_address.address }}</p>
+                        {% endif %}
+                        {% if saved_address.comment %}
+                          <p class="mt-2 text-xs leading-5 text-gray-500">{{ saved_address.comment }}</p>
+                        {% endif %}
+                      </div>
+                    </div>
+                    <div class="mt-4 flex flex-wrap gap-2">
+                      {% if not saved_address.is_default %}
+                        <form method="post" hx-boost="false">
+                          {% csrf_token %}
+                          <input type="hidden" name="action" value="set_default_address">
+                          <input type="hidden" name="address_id" value="{{ saved_address.pk }}">
+                          <button type="submit" class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs text-white transition hover:border-white/20 hover:bg-white/10">
+                            Сделать основным
+                          </button>
+                        </form>
+                      {% endif %}
+                      <a href="{% url 'accounts:profile' %}?edit_address={{ saved_address.pk }}#delivery" class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs text-white transition hover:border-white/20 hover:bg-white/10">
+                        Редактировать
+                      </a>
+                      <form method="post" hx-boost="false">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="delete_address">
+                        <input type="hidden" name="address_id" value="{{ saved_address.pk }}">
+                        <button type="submit" class="inline-flex items-center justify-center rounded-full border border-red-300/30 bg-red-900/20 px-4 py-2 text-xs text-red-100 transition hover:border-red-300/40 hover:bg-red-900/30">
+                          Удалить
+                        </button>
+                      </form>
+                    </div>
+                  </article>
+                {% endfor %}
+              </div>
+            {% else %}
+              <div class="mt-5 rounded-[1.5rem] border border-dashed border-white/10 bg-white/5 p-5 text-sm leading-6 text-gray-400">
+                Сохранённых адресов пока нет. Добавьте первый адрес в форму выше, чтобы использовать его в checkout без повторного ввода данных.
+              </div>
+            {% endif %}
+          </section>
+        </section>
+
+        <section id="security" class="rounded-[1.75rem] border border-white/10 bg-dark-800/90 p-6 md:p-7">
+          <div class="max-w-3xl">
+            <p class="text-[11px] uppercase tracking-[0.22em] text-accent">Безопасность</p>
+            <h2 class="mt-2 text-2xl font-semibold text-white">Вход, номер логина и подтверждение через SMS</h2>
+            <p class="mt-2 text-sm leading-6 text-gray-400">
+              Здесь собраны только реальные функции аккаунта: текущий номер входа, последний вход и смена логина по SMS-коду без лишних декоративных блоков.
+            </p>
+          </div>
+
+          <div class="mt-6 grid gap-4 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+            <section class="rounded-[1.5rem] border border-white/10 bg-dark-900/40 p-5">
+              <h3 class="text-lg font-semibold text-white">Состояние доступа</h3>
+              <div class="mt-5 space-y-3 text-sm">
+                <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Статус аккаунта</p>
+                  <p class="mt-2 text-white">{{ account_status }}</p>
+                </div>
+                <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Номер входа</p>
+                  <p class="mt-2 text-white">{{ phone_display }}</p>
+                </div>
+                <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Последний вход</p>
+                  <p class="mt-2 text-white">{% if user.last_login %}{{ user.last_login|date:"d.m.Y H:i" }}{% else %}Нет данных{% endif %}</p>
+                </div>
+              </div>
+            </section>
+
+            <section class="rounded-[1.5rem] border border-white/10 bg-dark-900/40 p-5">
+              <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <h3 class="text-lg font-semibold text-white">Смена номера входа</h3>
+                  <p class="mt-1 text-sm text-gray-400">Новый номер станет логином после подтверждения SMS-кода.</p>
+                </div>
+                <span class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-gray-300">SMS-подтверждение</span>
+              </div>
+
+              <form method="post" class="mt-5 space-y-3" hx-boost="false">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="send_phone_code">
+                <div>
+                  <label for="{{ phone_request_form.new_phone.id_for_label }}" class="block text-sm text-gray-300">{{ phone_request_form.new_phone.label }}</label>
+                  <p class="mt-1 text-xs text-gray-500">Введите номер, который хотите использовать для входа в кабинет.</p>
+                  <div class="mt-2">{{ phone_request_form.new_phone }}</div>
+                  {% if phone_request_form.new_phone.errors %}
+                    <p class="mt-1 text-sm text-red-400">{{ phone_request_form.new_phone.errors.0 }}</p>
+                  {% endif %}
+                </div>
+                <button type="submit" class="inline-flex items-center justify-center rounded-full bg-accent px-5 py-3 text-sm font-semibold text-dark-900 transition hover:bg-accent-hover">
+                  Отправить код
+                </button>
+              </form>
+
+              {% if pending_phone_change %}
+                <div class="mt-5 rounded-[1.5rem] border border-white/10 bg-white/5 p-5">
+                  <p class="text-sm text-gray-300">
+                    Код отправлен на номер:
+                    <span class="text-white">{{ pending_phone_change }}</span>
+                  </p>
+                  <form method="post" class="mt-4 space-y-3" hx-boost="false">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="confirm_phone_code">
+                    {% if phone_confirm_form.non_field_errors %}
+                      <p class="text-sm text-red-400">{{ phone_confirm_form.non_field_errors.0 }}</p>
+                    {% endif %}
+                    <div class="grid gap-4 md:grid-cols-2">
+                      <div>
+                        <label for="{{ phone_confirm_form.new_phone.id_for_label }}" class="block text-sm text-gray-300">{{ phone_confirm_form.new_phone.label }}</label>
+                        <div class="mt-2">{{ phone_confirm_form.new_phone }}</div>
+                        {% if phone_confirm_form.new_phone.errors %}
+                          <p class="mt-1 text-sm text-red-400">{{ phone_confirm_form.new_phone.errors.0 }}</p>
+                        {% endif %}
+                      </div>
+                      <div>
+                        <label for="{{ phone_confirm_form.code.id_for_label }}" class="block text-sm text-gray-300">{{ phone_confirm_form.code.label }}</label>
+                        <div class="mt-2">{{ phone_confirm_form.code }}</div>
+                        {% if phone_confirm_form.code.errors %}
+                          <p class="mt-1 text-sm text-red-400">{{ phone_confirm_form.code.errors.0 }}</p>
+                        {% endif %}
+                      </div>
+                    </div>
+                    <button type="submit" class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white px-5 py-3 text-sm font-semibold text-dark-900 transition hover:bg-gray-100">
+                      Подтвердить смену номера
+                    </button>
+                  </form>
+                </div>
+              {% endif %}
+            </section>
+          </div>
+        </section>
+
+        <section id="requisites" class="rounded-[1.75rem] border border-white/10 bg-dark-800/90 p-6 md:p-7">
+          <div class="max-w-3xl">
+            <p class="text-[11px] uppercase tracking-[0.22em] text-accent">B2B</p>
+            <h2 class="mt-2 text-2xl font-semibold text-white">Реквизиты и рабочий B2B-сценарий</h2>
+            <p class="mt-2 text-sm leading-6 text-gray-400">
+              Отдельной модели для реквизитов пока нет, поэтому блок честно показывает текущую готовность и помогает не прятать этот сценарий за пустой формой.
+            </p>
+          </div>
+
+          <div class="mt-6 grid gap-4 xl:grid-cols-2">
+            <section class="rounded-[1.5rem] border border-white/10 bg-dark-900/40 p-5">
+              <h3 class="text-lg font-semibold text-white">Что стоит добавить в будущем</h3>
+              <div class="mt-4 space-y-3">
+                <div class="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-gray-300">Наименование юрлица или ИП, ИНН и рабочий email для документов.</div>
+                <div class="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-gray-300">Шаблоны реквизитов для счёта, УПД, акта и ускоренного выставления документов.</div>
+                <div class="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-gray-300">Историю скачивания документов и статус запросов к менеджеру.</div>
+              </div>
+            </section>
+
+            <section class="rounded-[1.5rem] border border-white/10 bg-dark-900/40 p-5">
+              <h3 class="text-lg font-semibold text-white">Текущий рабочий контакт</h3>
+              <p class="mt-2 text-sm leading-6 text-gray-400">Пока отдельный B2B-профиль не реализован, менеджер использует контактные данные из кабинета.</p>
+              <div class="mt-5 space-y-3">
+                <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Телефон</p>
+                  <p class="mt-2 text-white">{{ primary_contact_phone|default:"Не заполнен" }}</p>
+                </div>
+                <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Email</p>
+                  <p class="mt-2 break-all text-white">{{ primary_contact_email|default:"Не заполнен" }}</p>
+                </div>
+              </div>
+              <a href="{% url 'contacts' %}" class="mt-5 inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm text-white transition hover:border-white/20 hover:bg-white/10">
+                Запросить помощь менеджера
+              </a>
+            </section>
+          </div>
+        </section>
+
+        <section id="support" class="rounded-[1.75rem] border border-white/10 bg-dark-800/90 p-6 md:p-7">
+          <div class="max-w-3xl">
+            <p class="text-[11px] uppercase tracking-[0.22em] text-accent">Поддержка</p>
+            <h2 class="mt-2 text-2xl font-semibold text-white">Документы, полезные ссылки и выход из аккаунта</h2>
+            <p class="mt-2 text-sm leading-6 text-gray-400">
+              Финальный блок собирает внешние сценарии: помощь менеджера, юридические документы, условия оплаты и быстрый выход из аккаунта.
+            </p>
+          </div>
+
+          <div class="mt-6 grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(280px,0.9fr)]">
+            <section class="rounded-[1.5rem] border border-white/10 bg-dark-900/40 p-5">
+              <h3 class="text-lg font-semibold text-white">Быстрые действия</h3>
+              <div class="mt-5 grid gap-3 md:grid-cols-2">
+                <a href="{% url 'contacts' %}" class="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white transition hover:border-white/20 hover:bg-white/10">Связаться с менеджером</a>
+                <a href="{% url 'sales_terms' %}" class="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white transition hover:border-white/20 hover:bg-white/10">Оплата и доставка</a>
+                <a href="{% url 'oferta' %}" class="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white transition hover:border-white/20 hover:bg-white/10">Публичная оферта</a>
+                <a href="{% url 'privacy' %}" class="rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white transition hover:border-white/20 hover:bg-white/10">Политика конфиденциальности</a>
+              </div>
+            </section>
+
+            <section class="rounded-[1.5rem] border border-white/10 bg-dark-900/40 p-5">
+              <h3 class="text-lg font-semibold text-white">Что ещё можно развивать</h3>
+              <div class="mt-5 rounded-[1.5rem] border border-dashed border-white/10 bg-white/5 p-5">
+                <div class="space-y-3 text-sm leading-6 text-gray-300">
+                  <p>Скачивание чеков, счетов и закрывающих документов для B2B-клиентов.</p>
+                  <p>Историю обращений в поддержку и гарантийных кейсов.</p>
+                  <p>Рекомендации по товарам в empty-state сценариях кабинета.</p>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <div class="mt-6 flex flex-wrap gap-3">
+            <form method="post" action="{% url 'accounts:logout' %}" hx-boost="false">
+              {% csrf_token %}
+              <button type="submit" class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm text-white transition hover:border-white/20 hover:bg-white/10">
+                Выйти из аккаунта
+              </button>
+            </form>
+            <a href="{% url 'catalog:product_list' %}" class="inline-flex items-center justify-center rounded-full bg-accent px-5 py-3 text-sm font-semibold text-dark-900 transition hover:bg-accent-hover">
+              Вернуться в каталог
+            </a>
+          </div>
+        </section>
+      </div>
+    </div>
   </div>
 </div>
 {% endblock %}

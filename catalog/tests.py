@@ -1,23 +1,40 @@
 """Базовые тесты каталога: поиск, избранное (Фаза 6)."""
 import json
+import os
 import re
+import tempfile
+import zipfile
 from datetime import timedelta
+from decimal import Decimal
+from io import BytesIO
 
+from django.contrib.auth.models import AnonymousUser
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Permission
+from django.core.cache import cache
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.test import Client, TestCase, override_settings
-from django.urls import reverse
+from django.test.client import RequestFactory
+from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 
+from accounts.models import PhoneVerificationCode, Profile
 from config.forms import CallbackForm, ContactForm
 from config.legal_docs import LEGAL_BUNDLE_VERSION
 from orders.models import Order, OrderItem
 
+from .cart_services import get_cart_count, get_cart_items, get_compare_product_ids, get_favorite_product_ids
+from .context_processors import catalog_menu
 from .models import (
+    CartItem,
     CartShare,
     CallbackRequest,
     CatalogSection,
     Category,
     City,
+    CompareItem,
     ContactRequest,
     Favorite,
     PickupPoint,
@@ -172,23 +189,83 @@ class VariantGalleryAndCatalogCardsTest(TestCase):
         links = re.findall(rf'href="{re.escape(detail_url)}\?variant=\d+"', html)
         self.assertGreaterEqual(len(links), 2)
 
-    def test_variant_card_uses_variant_price_and_variant_stock_context(self):
+    def test_variant_card_uses_variant_price_and_public_stock_label(self):
         ProductStock.objects.create(
             product=self.product,
             variant=self.variant_one,
             pickup_point=self.pickup_point,
             quantity=3,
         )
-        session = self.client.session
-        session['selected_city_id'] = self.city.pk
-        session.save()
 
         resp = self.client.get(reverse('catalog:product_list'), {'category': self.category.slug})
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.context['variant_stock_total'].get(self.variant_one.pk), 3)
-        self.assertEqual(resp.context['variant_stock_in_city'].get(self.variant_one.pk), 3)
+        self.assertNotIn('variant_stock_in_city', resp.context)
         self.assertContains(resp, '1 200 ₽')
-        self.assertContains(resp, 'В наличии: 3 шт.')
+        self.assertContains(resp, 'Мало')
+        self.assertNotContains(resp, 'В наличии:')
+        self.assertNotContains(resp, 'шт. осталось')
+
+    def test_variant_card_shows_high_stock_label(self):
+        ProductStock.objects.create(
+            product=self.product,
+            variant=self.variant_one,
+            pickup_point=self.pickup_point,
+            quantity=10,
+        )
+
+        resp = self.client.get(reverse('catalog:product_list'), {'category': self.category.slug})
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Много')
+
+    def test_variant_card_shows_on_request_without_stock(self):
+        resp = self.client.get(reverse('catalog:product_list'), {'category': self.category.slug})
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Под заказ')
+
+    def test_product_detail_data_uses_total_stock_only(self):
+        ProductStock.objects.create(
+            product=self.product,
+            variant=self.variant_one,
+            pickup_point=self.pickup_point,
+            quantity=11,
+        )
+
+        resp = self.client.get(
+            reverse('catalog:product_detail', kwargs={'slug': self.product.slug}),
+            {'variant': self.variant_one.pk},
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = self._extract_product_detail_data(resp)
+        self.assertIn('stockByVariant', data)
+        self.assertIn('stockStatusByVariant', data)
+        self.assertIn('stockStatusProduct', data)
+        self.assertNotIn('stockInCityByVariant', data)
+        self.assertNotIn('stockInCityProduct', data)
+        self.assertNotIn('selectedCityName', data)
+        self.assertNotContains(resp, 'Укажите город')
+
+
+class PublicLocationCleanupTest(TestCase):
+    def test_set_city_route_is_removed(self):
+        with self.assertRaises(NoReverseMatch):
+            reverse('catalog:set_city')
+
+    def test_public_pages_do_not_render_city_selector(self):
+        category = Category.objects.create(name='Тест', slug='cleanup-test')
+        Product.objects.create(
+            category=category,
+            name='Товар',
+            slug='cleanup-product',
+            price=100,
+            is_active=True,
+        )
+
+        for url in (reverse('home'), reverse('catalog:product_list')):
+            resp = self.client.get(url)
+            self.assertEqual(resp.status_code, 200)
+            self.assertNotContains(resp, '/catalog/set-city/')
+            self.assertNotContains(resp, 'Все регионы')
 
 
 class CatalogSectionFilterTest(TestCase):
@@ -244,7 +321,7 @@ class HomeFeaturedProductsTest(TestCase):
         self.client = Client()
         category = Category.objects.create(name='Тест', slug='test-home')
         self.hit_tag = ProductTag.objects.create(name='Хит', slug='hit', order=1)
-        self.sale_tag = ProductTag.objects.create(name='Распродажа', slug='sale', order=2)
+        self.sale_tag = ProductTag.objects.create(name='Распродажа', slug='sale-home', order=2)
 
         self.hit_product = Product.objects.create(
             category=category,
@@ -277,6 +354,85 @@ class HomeFeaturedProductsTest(TestCase):
         self.assertIn(self.hit_product.slug, shown_slugs)
         self.assertIn(self.sale_product.slug, shown_slugs)
         self.assertNotIn(self.regular_product.slug, shown_slugs)
+
+
+class CatalogMenuCacheTest(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.factory = RequestFactory()
+        self.section = CatalogSection.objects.create(name='VR', slug='vr')
+        self.category = Category.objects.create(name='Шлемы', slug='headsets', section=self.section)
+        Product.objects.create(
+            category=self.category,
+            name='Quest 3',
+            slug='quest-3-cache',
+            price=100,
+            is_active=True,
+            image='products/quest-3.webp',
+        )
+
+    def _build_request(self, path='/'):
+        request = self.factory.get(path)
+        request.user = AnonymousUser()
+        request.session = {}
+        return request
+
+    def test_catalog_menu_uses_cached_sections_and_previews(self):
+        catalog_menu(self._build_request())
+
+        with self.assertNumQueries(0):
+            context = catalog_menu(self._build_request('/catalog/'))
+
+        self.assertIn(self.section.slug, {section.slug for section in context['catalog_sections']})
+        self.assertEqual(
+            context['catalog_category_previews'][self.category.pk],
+            '/media/products/quest-3.webp',
+        )
+
+
+class RequestScopedCartServicesCacheTest(TestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.user = User.objects.create_user(username='+79990000000')
+        self.category = Category.objects.create(name='Тест', slug='request-cache')
+        self.product = Product.objects.create(
+            category=self.category,
+            name='Quest 3',
+            slug='quest-3-request-cache',
+            price=100,
+            is_active=True,
+        )
+        CartItem.objects.create(user=self.user, product=self.product, quantity=2)
+        Favorite.objects.create(user=self.user, product=self.product)
+        CompareItem.objects.create(user=self.user, product=self.product)
+
+    def _build_request(self):
+        request = self.factory.get('/catalog/')
+        request.user = self.user
+        request.session = {}
+        return request
+
+    def test_get_cart_items_and_count_query_db_once_per_request(self):
+        request = self._build_request()
+
+        with self.assertNumQueries(1):
+            self.assertEqual(len(get_cart_items(request)), 1)
+            self.assertEqual(get_cart_count(request), 2)
+            self.assertEqual(get_cart_count(request), 2)
+
+    def test_get_favorite_product_ids_query_db_once_per_request(self):
+        request = self._build_request()
+
+        with self.assertNumQueries(1):
+            self.assertEqual(get_favorite_product_ids(request), {self.product.pk})
+            self.assertEqual(get_favorite_product_ids(request), {self.product.pk})
+
+    def test_get_compare_product_ids_query_db_once_per_request(self):
+        request = self._build_request()
+
+        with self.assertNumQueries(1):
+            self.assertEqual(get_compare_product_ids(request), [self.product.pk])
+            self.assertEqual(get_compare_product_ids(request), [self.product.pk])
 
 
 @override_settings(
@@ -444,6 +600,8 @@ class CartTest(TestCase):
     def setUp(self):
         self.client = Client()
         cat = Category.objects.create(name='Тест', slug='test')
+        self.city = City.objects.create(name='Екатеринбург', slug='cart-ekb')
+        self.pickup_point = PickupPoint.objects.create(city=self.city, name='Склад')
         self.product = Product.objects.create(
             category=cat,
             name='Товар',
@@ -509,6 +667,43 @@ class CartTest(TestCase):
         resp = self.client.post(update_url, {'product_id': self.product.pk, 'quantity': 0})
         self.assertEqual(resp.status_code, 302)
         self.assertEqual(self.client.session.get('cart_items', []), [])
+
+    def test_cart_page_uses_total_stock_status_without_city(self):
+        ProductStock.objects.create(
+            product=self.product,
+            pickup_point=self.pickup_point,
+            quantity=8,
+        )
+        session = self.client.session
+        session['selected_city_id'] = self.city.pk
+        session.save()
+
+        add_url = reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk})
+        self.client.post(add_url, {})
+
+        resp = self.client.get(reverse('catalog:cart'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Мало')
+        self.assertNotContains(resp, 'В другом городе')
+
+    def test_cart_update_limits_quantity_by_total_stock(self):
+        ProductStock.objects.create(
+            product=self.product,
+            pickup_point=self.pickup_point,
+            quantity=2,
+        )
+        session = self.client.session
+        session['selected_city_id'] = self.city.pk
+        session.save()
+
+        add_url = reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk})
+        update_url = reverse('catalog:cart_update')
+        self.client.post(add_url, {})
+        self.client.post(update_url, {'product_id': self.product.pk, 'quantity': 5})
+
+        cart_items = self.client.session.get('cart_items', [])
+        self.assertEqual(len(cart_items), 1)
+        self.assertEqual(cart_items[0]['quantity'], 2)
 
     def test_cart_page_shows_last_added_first_and_keeps_order_after_update(self):
         add_url_first = reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk})
@@ -729,6 +924,12 @@ class ProductRecommendationsTest(TestCase):
         )
         ProductCharacteristic.objects.create(product=self.strap, name='Тип', value='Крепление')
         ProductCharacteristic.objects.create(product=self.strap, name='Совместимость', value='Quest 3')
+        self.strap_variant = ProductVariant.objects.create(
+            product=self.strap,
+            name='Elite',
+            price_override=7900,
+            order=0,
+        )
 
         self.battery = Product.objects.create(
             category=self.category,
@@ -795,6 +996,20 @@ class ProductRecommendationsTest(TestCase):
         self.assertNotIn(self.incompatible.pk, recommended_ids)  # несовместим
         self.assertNotIn(self.bundle_item.pk, recommended_ids)  # часть комплекта
 
+    def test_recommendation_cards_use_recommended_variant_for_link_and_price(self):
+        resp = self.client.get(reverse('catalog:product_detail', kwargs={'slug': self.current.slug}))
+        self.assertEqual(resp.status_code, 200)
+
+        self.assertEqual(
+            resp.context['recommended_variants'].get(self.strap.pk),
+            self.strap_variant,
+        )
+        self.assertContains(
+            resp,
+            f'href="{reverse("catalog:product_detail", kwargs={"slug": self.strap.slug})}?variant={self.strap_variant.pk}"',
+        )
+        self.assertContains(resp, '7 900 ₽')
+
 
 class FooterProductsFeedTest(TestCase):
     """Ленивая выдача карточек перед футером: порции и лимит."""
@@ -802,7 +1017,7 @@ class FooterProductsFeedTest(TestCase):
     def setUp(self):
         self.client = Client()
         self.category = Category.objects.create(name='Тест', slug='test')
-        for i in range(110):
+        for i in range(121):
             Product.objects.create(
                 category=self.category,
                 name=f'Товар {i}',
@@ -855,3 +1070,286 @@ class SeoFilesTest(TestCase):
         self.assertIn('<loc>http://testserver/</loc>', body)
         self.assertIn(f'<loc>http://testserver{product.get_absolute_url()}</loc>', body)
         self.assertIn(f'<loc>http://testserver{bundle.get_absolute_url()}</loc>', body)
+
+
+class CompareFeatureTest(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.client = Client()
+        self.user = User.objects.create_user(username='9991234567', password='testpass')
+        Profile.objects.create(
+            user=self.user,
+            phone='9991234567',
+            contact_name='Иван Иванов',
+            privacy_agreed_at=timezone.now(),
+        )
+        self.category = Category.objects.create(name='Сравнение', slug='compare-test')
+        self.products = [
+            Product.objects.create(
+                category=self.category,
+                name=f'Товар {index}',
+                slug=f'compare-product-{index}',
+                price=Decimal('1000.00') + index,
+                is_active=True,
+            )
+            for index in range(1, 6)
+        ]
+        ProductCharacteristic.objects.create(
+            product=self.products[0],
+            name='Разрешение',
+            value='4K',
+        )
+        ProductCharacteristic.objects.create(
+            product=self.products[1],
+            name='Разрешение',
+            value='2K',
+        )
+        ProductCharacteristic.objects.create(
+            product=self.products[1],
+            name='Вес',
+            value='600 г',
+        )
+
+    def test_toggle_compare_for_anonymous_user_uses_session(self):
+        resp = self.client.post(reverse('catalog:toggle_compare', kwargs={'product_id': self.products[0].pk}))
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(self.client.session.get('compare_product_ids'), [self.products[0].pk])
+
+        resp = self.client.post(reverse('catalog:toggle_compare', kwargs={'product_id': self.products[0].pk}))
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(self.client.session.get('compare_product_ids'), [])
+
+    def test_toggle_compare_for_authenticated_user_uses_database(self):
+        self.client.force_login(self.user)
+        resp = self.client.post(reverse('catalog:toggle_compare', kwargs={'product_id': self.products[0].pk}))
+        self.assertEqual(resp.status_code, 302)
+        self.assertTrue(
+            CompareItem.objects.filter(user=self.user, product=self.products[0]).exists()
+        )
+
+    def test_toggle_compare_htmx_returns_updated_counter_trigger(self):
+        resp = self.client.post(
+            reverse('catalog:toggle_compare', kwargs={'product_id': self.products[0].pk}),
+            HTTP_HX_REQUEST='true',
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('compare-updated', resp.headers.get('HX-Trigger', ''))
+        self.assertContains(resp, 'В сравнении')
+
+    def test_compare_limit_is_four_items(self):
+        for product in self.products[:4]:
+            self.client.post(reverse('catalog:toggle_compare', kwargs={'product_id': product.pk}))
+
+        resp = self.client.post(reverse('catalog:toggle_compare', kwargs={'product_id': self.products[4].pk}))
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(self.client.session.get('compare_product_ids'), [p.pk for p in self.products[:4]])
+        self.assertNotIn(self.products[4].pk, self.client.session.get('compare_product_ids'))
+
+    def test_compare_page_shows_empty_state(self):
+        resp = self.client.get(reverse('catalog:compare'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Пока нечего сравнивать')
+
+    def test_compare_page_shows_single_item_message(self):
+        session = self.client.session
+        session['compare_product_ids'] = [self.products[0].pk]
+        session.save()
+
+        resp = self.client.get(reverse('catalog:compare'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Добавьте ещё хотя бы 1 товар')
+
+    def test_compare_page_renders_table_and_characteristics(self):
+        session = self.client.session
+        session['compare_product_ids'] = [self.products[0].pk, self.products[1].pk]
+        session.save()
+
+        resp = self.client.get(reverse('catalog:compare'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Сравнение товаров')
+        self.assertContains(resp, 'Разрешение')
+        self.assertContains(resp, '4K')
+        self.assertContains(resp, '2K')
+        self.assertContains(resp, 'Вес')
+        self.assertContains(resp, '600 г')
+        self.assertContains(resp, 'Открыть товар')
+
+    def test_compare_items_merge_on_login(self):
+        session = self.client.session
+        session['compare_product_ids'] = [self.products[0].pk, self.products[1].pk]
+        session.save()
+        PhoneVerificationCode.objects.create(phone=self.user.username, code='123456')
+
+        resp = self.client.post(reverse('accounts:verify_code'), {
+            'phone': self.user.username,
+            'code': '123456',
+        })
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(
+            list(
+                CompareItem.objects.filter(user=self.user)
+                .order_by('created_at', 'id')
+                .values_list('product_id', flat=True)
+            ),
+            [self.products[0].pk, self.products[1].pk],
+        )
+        self.assertNotIn('compare_product_ids', self.client.session)
+
+    def test_profile_preview_shows_compare_products(self):
+        CompareItem.objects.create(user=self.user, product=self.products[0])
+        CompareItem.objects.create(user=self.user, product=self.products[1])
+        self.client.force_login(self.user)
+
+        resp = self.client.get(reverse('accounts:profile'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Товаров в сравнении')
+        self.assertContains(resp, self.products[0].name)
+        self.assertContains(resp, self.products[1].name)
+
+    def test_catalog_page_contains_compare_badge_binding(self):
+        resp = self.client.get(reverse('catalog:product_list'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'x-text="compareCount"', html=False)
+        self.assertContains(resp, reverse('catalog:compare'))
+
+    def test_compare_button_is_hidden_on_catalog_cards_but_shown_on_product_page(self):
+        catalog_resp = self.client.get(reverse('catalog:product_list'))
+        self.assertEqual(catalog_resp.status_code, 200)
+        self.assertNotContains(catalog_resp, reverse('catalog:toggle_compare', kwargs={'product_id': self.products[0].pk}))
+
+        detail_resp = self.client.get(reverse('catalog:product_detail', kwargs={'slug': self.products[0].slug}))
+        self.assertEqual(detail_resp.status_code, 200)
+        self.assertContains(detail_resp, reverse('catalog:toggle_compare', kwargs={'product_id': self.products[0].pk}))
+
+
+class AdminRestoreSecurityTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.staff_user = User.objects.create_user(
+            username='manager',
+            password='testpass',
+            is_staff=True,
+        )
+        self.restore_permission = Permission.objects.get(codename='can_restore_backup')
+        self.view_permission = Permission.objects.get(codename='view_product')
+
+    def _login_staff(self, *, with_restore_permission=False, with_view_permission=False):
+        if with_restore_permission:
+            self.staff_user.user_permissions.add(self.restore_permission)
+        if with_view_permission:
+            self.staff_user.user_permissions.add(self.view_permission)
+        self.client.force_login(self.staff_user)
+
+    def _build_restore_zip(self, *, image_filename=None, image_bytes=None):
+        backup_data = {
+            'version': '1.0',
+            'models': {
+                'catalog_sections': [],
+                'categories': [
+                    {'id': 1, 'name': 'Тест', 'slug': 'restore-test', 'section_id': None},
+                ],
+                'product_tags': [],
+                'products': [
+                    {
+                        'id': 1,
+                        'name': 'Тестовый товар',
+                        'slug': 'restore-product',
+                        'description': '',
+                        'price': '10.00',
+                        'image': image_filename,
+                        'is_active': True,
+                        'allow_order_on_request': True,
+                        'option_label': '',
+                        'category_id': 1,
+                        'tag_ids': [],
+                    },
+                ],
+                'product_variants': [],
+                'product_characteristics': [],
+                'product_variant_characteristics': [],
+                'product_images': [],
+                'product_bundles': [],
+                'product_bundle_items': [],
+                'cities': [],
+                'pickup_points': [],
+                'product_stocks': [],
+            },
+        }
+        zip_buffer = BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr('backup.json', json.dumps(backup_data))
+            if image_filename and image_bytes is not None:
+                archive.writestr('images/products/restore-product_main' + image_filename[image_filename.rfind('.'):], image_bytes)
+        return zip_buffer.getvalue()
+
+    def _png_bytes(self):
+        return (
+            b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01'
+            b'\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDAT\x08\xd7c\xf8\xff\xff?'
+            b'\x00\x05\xfe\x02\xfeA\xd9\x89\xc9\x00\x00\x00\x00IEND\xaeB`\x82'
+        )
+
+    def test_restore_endpoint_requires_custom_permission(self):
+        self._login_staff()
+        response = self.client.get(reverse('admin:catalog_product_restore_backup'))
+        self.assertEqual(response.status_code, 403)
+
+    def test_restore_button_hidden_without_custom_permission(self):
+        self._login_staff(with_view_permission=True)
+        response = self.client.get(reverse('admin:catalog_product_changelist'))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, reverse('admin:catalog_product_restore_backup'))
+
+    def test_restore_button_visible_with_custom_permission(self):
+        self._login_staff(with_restore_permission=True, with_view_permission=True)
+        response = self.client.get(reverse('admin:catalog_product_changelist'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, reverse('admin:catalog_product_restore_backup'))
+
+    def test_restore_rejects_html_file(self):
+        with tempfile.TemporaryDirectory() as media_root:
+            with override_settings(MEDIA_ROOT=media_root):
+                with self.assertRaisesMessage(CommandError, 'Недопустимый тип файла'):
+                    call_command(
+                        'restore_catalog',
+                        self._write_temp_backup(
+                            image_filename='products/payload.html',
+                            image_bytes=b'<html>bad</html>',
+                        ),
+                    )
+
+    def test_restore_rejects_svg_file(self):
+        with tempfile.TemporaryDirectory() as media_root:
+            with override_settings(MEDIA_ROOT=media_root):
+                with self.assertRaisesMessage(CommandError, 'Недопустимый тип файла'):
+                    call_command(
+                        'restore_catalog',
+                        self._write_temp_backup(
+                            image_filename='products/payload.svg',
+                            image_bytes=b'<svg></svg>',
+                        ),
+                    )
+
+    def test_restore_generates_new_server_side_filename(self):
+        with tempfile.TemporaryDirectory() as media_root:
+            with override_settings(MEDIA_ROOT=media_root):
+                call_command(
+                    'restore_catalog',
+                    self._write_temp_backup(
+                        image_filename='products/original-name.png',
+                        image_bytes=self._png_bytes(),
+                    ),
+                )
+
+                product = Product.objects.get(slug='restore-product')
+                self.assertTrue(product.image.name.startswith('products/'))
+                self.assertNotEqual(product.image.name, 'products/original-name.png')
+                self.assertTrue(os.path.exists(os.path.join(media_root, product.image.name)))
+
+    def _write_temp_backup(self, *, image_filename, image_bytes):
+        temp_file = tempfile.NamedTemporaryFile(suffix='.zip', delete=False)
+        temp_file.write(self._build_restore_zip(image_filename=image_filename, image_bytes=image_bytes))
+        temp_file.flush()
+        temp_file.close()
+        self.addCleanup(lambda: os.path.exists(temp_file.name) and os.remove(temp_file.name))
+        return temp_file.name

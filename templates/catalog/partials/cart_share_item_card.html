@@ -23,9 +23,7 @@
       {% endif %}
       <p class="csm-item-qty">{{ item.quantity }} ед</p>
 
-      {% if item.stock_in_city is not None and item.stock_in_city > 0 and item.stock_in_city < 5 %}
-        <p class="csm-item-stock-note">Количество ограничено</p>
-      {% elif item.stock_total > 0 and item.stock_total < 5 %}
+      {% if item.stock_total > 0 and item.stock_total < 10 %}
         <p class="csm-item-stock-note">Количество ограничено</p>
       {% endif %}
 
@@ -55,7 +53,7 @@
     </div>
 
     <div class="csm-price-col">
-      {% if item.stock_in_city is not None and item.stock_in_city > 0 and item.stock_in_city < 5 or item.stock_total > 0 and item.stock_total < 5 %}
+      {% if item.stock_total > 0 and item.stock_total < 10 %}
         <p class="csm-item-price csm-item-price-low">{{ item.subtotal|price_format }} ₽</p>
       {% else %}
         <p class="csm-item-price csm-item-price-ok">{{ item.subtotal|price_format }} ₽</p>

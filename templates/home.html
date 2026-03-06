@@ -5,7 +5,7 @@
 
 {% block mobile_header %}
 <!-- Мобильная шапка: только на мобильных; на десктопе скрыта -->
-<div class="mobile-header md:hidden" x-data="{ cityOpen: false, showFixedSearch: false }" @click.outside="cityOpen = false"
+<div class="mobile-header md:hidden" x-data="{ showFixedSearch: false }"
      x-init="
        const check = () => { showFixedSearch = window.scrollY > 100 };
        let raf = null;
@@ -14,42 +14,7 @@
        check();
        return () => window.removeEventListener('scroll', throttled);
      ">
-  <!-- Полоса города + поиск: при скролле город уезжает, поиск остаётся -->
   <div class="mobile-header-wrapper">
-    <div class="mobile-header-city-strip">
-      {% if cities %}
-      <div class="mobile-header-city-trigger-wrap">
-        <button type="button" @click="cityOpen = !cityOpen" class="mobile-header-city-btn" :class="{ 'open': cityOpen }" :aria-expanded="cityOpen" aria-haspopup="listbox">
-          <span class="mobile-header-city-text">Город: {% if selected_city %}{{ selected_city.name }}{% else %}Все регионы{% endif %}</span>
-          <i data-lucide="chevron-down" class="chevron"></i>
-        </button>
-        <div x-show="cityOpen" x-cloak class="mobile-header-city-dropdown"
-             x-transition:enter="transition ease-out duration-150"
-             x-transition:enter-start="opacity-0 -translate-y-1"
-             x-transition:enter-end="opacity-100 translate-y-0"
-             x-transition:leave="transition ease-in duration-100"
-             x-transition:leave-start="opacity-100 translate-y-0"
-             x-transition:leave-end="opacity-0 -translate-y-1">
-          <form method="post" action="{% url 'catalog:set_city' %}">
-            {% csrf_token %}
-            <input type="hidden" name="next" value="{{ request.get_full_path }}" />
-            <button type="submit" name="city_id" value="" @click="cityOpen = false" class="{% if not selected_city %}bg-white/10 text-accent{% endif %}">
-              <i data-lucide="map-pin" class="w-4 h-4 opacity-60 flex-shrink-0"></i>
-              <span>Все регионы</span>
-            </button>
-            {% for city in cities %}
-            <button type="submit" name="city_id" value="{{ city.pk }}" @click="cityOpen = false" class="{% if selected_city and selected_city.pk == city.pk %}bg-white/10 text-accent{% endif %}">
-              <i data-lucide="map-pin" class="w-4 h-4 opacity-60 flex-shrink-0"></i>
-              <span>{{ city.name }}</span>
-            </button>
-            {% endfor %}
-          </form>
-        </div>
-      </div>
-      {% else %}
-      <span class="text-gray-500 text-sm">Город: —</span>
-      {% endif %}
-    </div>
     <form action="{% url 'catalog:product_list' %}" method="get" class="mobile-header-search-form">
       <button type="submit" class="mobile-header-search-btn" aria-label="Поиск">
         <i data-lucide="search"></i>
@@ -467,14 +432,6 @@
               <!-- Контент -->
               <div class="absolute inset-0 p-4 md:p-6 flex flex-col justify-end z-20">
                 <!-- Иконка категории -->
-                {% if category.icon %}
-                <div class="mb-2 md:mb-3 opacity-60 group-hover:opacity-100 transition-opacity">
-                  <div class="w-8 h-8 md:w-10 md:h-10 text-accent/80 group-hover:text-accent transition-colors">
-                    {{ category.icon|safe }}
-                  </div>
-                </div>
-                {% endif %}
-                
                 <!-- Название раздела -->
                 <div class="text-[9px] md:text-[10px] uppercase text-gray-400 mb-1 tracking-wider font-medium">
                   {{ section.name }}

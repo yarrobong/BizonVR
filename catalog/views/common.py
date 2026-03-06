@@ -31,6 +31,34 @@ def _get_stock_total(product_id, variant_id=None):
     return (total['s'] or 0)
 
 
+def _product_stock_totals(product_ids):
+    """Суммарные остатки по товарам."""
+    ids = [pid for pid in product_ids if pid]
+    if not ids:
+        return {}
+    rows = (
+        ProductStock.objects
+        .filter(product_id__in=ids)
+        .values('product_id')
+        .annotate(total=Sum('quantity'))
+    )
+    return {row['product_id']: int(row['total'] or 0) for row in rows}
+
+
+def _variant_stock_totals(product_ids):
+    """Суммарные остатки по вариантам товаров."""
+    ids = [pid for pid in product_ids if pid]
+    if not ids:
+        return {}
+    rows = (
+        ProductStock.objects
+        .filter(product_id__in=ids, variant_id__isnull=False)
+        .values('variant_id')
+        .annotate(total=Sum('quantity'))
+    )
+    return {row['variant_id']: int(row['total'] or 0) for row in rows}
+
+
 def _safe_redirect_target(url, request):
     """Проверка, что URL безопасен для редиректа (внутренний или относительный путь)."""
     if not url:

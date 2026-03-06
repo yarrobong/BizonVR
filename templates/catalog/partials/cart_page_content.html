@@ -899,28 +899,18 @@
                   {% endif %}
 
                   <div class="cart-tags">
-                    {% if selected_city and item.stock_in_city is not None %}
-                      {% if item.stock_in_city > 4 %}
-                        <span class="cart-tag cart-tag-ok">В наличии</span>
-                      {% elif item.stock_in_city > 0 %}
-                        <span class="cart-tag cart-tag-low">Заканчивается</span>
-                      {% elif item.stock_total > 0 %}
-                        <span class="cart-tag cart-tag-low">В другом городе</span>
-                      {% else %}
-                        <span class="cart-tag cart-tag-order">Под заказ</span>
-                      {% endif %}
-                    {% elif item.stock_total > 4 %}
-                      <span class="cart-tag cart-tag-ok">В наличии</span>
-                    {% elif item.stock_total > 0 %}
-                      <span class="cart-tag cart-tag-low">Заканчивается</span>
+                    {% with status=item.stock_total|stock_status %}
+                    {% if status.code == 'in_stock_high' %}
+                      <span class="cart-tag cart-tag-ok">{{ status.label }}</span>
+                    {% elif status.code == 'in_stock_low' %}
+                      <span class="cart-tag cart-tag-low">{{ status.label }}</span>
                     {% else %}
                       <span class="cart-tag cart-tag-order">Под заказ</span>
                     {% endif %}
+                    {% endwith %}
                   </div>
 
-                  {% if selected_city and item.stock_in_city is not None and item.stock_in_city > 0 and item.stock_in_city < 5 %}
-                    <div class="cart-stock-note">Количество ограничено</div>
-                  {% elif item.stock_total > 0 and item.stock_total < 5 %}
+                  {% if item.stock_total > 0 and item.stock_total < 10 %}
                     <div class="cart-stock-note">Количество ограничено</div>
                   {% endif %}
                 </div>
