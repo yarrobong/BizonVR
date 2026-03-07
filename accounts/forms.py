@@ -60,7 +60,7 @@ class CodeVerifyForm(forms.Form):
 
 
 class CompleteRegistrationForm(forms.Form):
-    """Форма завершения регистрации: ФИО и согласие на обработку ПД."""
+    """Форма завершения регистрации: ФИО, email и согласие на обработку ПД."""
     contact_name = forms.CharField(
         label='Контактное лицо (ФИО)',
         max_length=255,
@@ -70,11 +70,35 @@ class CompleteRegistrationForm(forms.Form):
             'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
         }),
     )
+    email = forms.EmailField(
+        label='Email',
+        required=False,
+        widget=forms.EmailInput(attrs={
+            'placeholder': 'email@example.com',
+            'autocomplete': 'email',
+            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
+        }),
+    )
     agree_privacy = forms.BooleanField(
         label='',
         required=True,
         error_messages={'required': 'Необходимо согласие на обработку персональных данных.'},
     )
+
+    def __init__(self, *args, current_user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.current_user = current_user
+
+    def clean_email(self):
+        email = normalize_email(self.cleaned_data.get('email', ''))
+        if not email:
+            return ''
+        queryset = User.objects.filter(email__iexact=email)
+        if self.current_user is not None:
+            queryset = queryset.exclude(pk=self.current_user.pk)
+        if queryset.exists():
+            raise forms.ValidationError('Этот email уже используется другим аккаунтом.')
+        return email
 
 
 class ProfileUpdateForm(forms.Form):

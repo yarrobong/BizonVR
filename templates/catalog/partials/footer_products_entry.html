@@ -1,4 +1,4 @@
-<section class="container mx-auto px-4 mt-12 mb-8">
+<section class="container mx-auto px-2 md:px-4 mt-12 mb-8">
   <style>
     .footer-products-grid {
       display: grid;
@@ -117,7 +117,7 @@
     data-layout="{% if request.resolver_match and request.resolver_match.url_name == 'home' %}home{% else %}catalog{% endif %}"
     class="relative"
   >
-    <div class="footer-products-skeleton" id="footer-products-skeleton" aria-hidden="true">
+    <div class="footer-products-skeleton mobile-card-grid" id="footer-products-skeleton" aria-hidden="true">
       {% for i in "123456789012345" %}
       <div class="footer-products-skeleton-card">
         <div class="skeleton-image"></div>

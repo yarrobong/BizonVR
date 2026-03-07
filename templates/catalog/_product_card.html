@@ -4,7 +4,7 @@
   {# Фото вплотную к верхнему и боковым краям, обводка rgb(31 37 50) #}
   <div class="relative w-full aspect-square flex-shrink-0 overflow-hidden">
     {% if product.tags.all %}
-    <div class="absolute z-20 flex flex-col items-start gap-1 max-w-[70%]" style="top: 0.5rem; left: 0.5rem; right: auto !important;">
+    <div class="absolute z-20 flex flex-col items-start max-w-[70%] {% if in_recommendations %}gap-1.5{% else %}gap-1{% endif %}" style="top: {% if in_recommendations %}0.75rem{% else %}0.5rem{% endif %}; left: {% if in_recommendations %}0.75rem{% else %}0.5rem{% endif %}; right: auto !important;">
       {% for tag in product.tags.all %}
       <span class="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide backdrop-blur-sm" style="{{ tag|tag_badge_style }}">
         {{ tag.name }}
@@ -23,12 +23,12 @@
     {% endif %}
   <a href="{% url 'catalog:product_detail' product.slug %}{% if card_variant %}?variant={{ card_variant.id }}{% endif %}" class="absolute inset-0 flex items-center justify-center rounded-t-xl bg-dark-700 border-b border-dark-600">
     {% if card_variant and card_variant.image %}
-    <img src="{{ card_variant.image.url|absolute_uri:request }}" alt="{{ product.name }}{% if card_variant %} — {{ card_variant.name }}{% endif %}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 product-card-img" loading="lazy" onerror="this.classList.add('!hidden'); this.nextElementSibling.classList.remove('hidden'); this.nextElementSibling.classList.add('flex'); if (typeof lucide !== 'undefined') lucide.createIcons();" />
+    <img src="{{ card_variant.image.url|absolute_uri:request }}" alt="{{ product.name }}{% if card_variant %} — {{ card_variant.name }}{% endif %}" class="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300 product-card-img" loading="lazy" onerror="this.classList.add('!hidden'); this.nextElementSibling.classList.remove('hidden'); this.nextElementSibling.classList.add('flex'); if (typeof lucide !== 'undefined') lucide.createIcons();" />
     <div class="hidden absolute inset-0 w-full h-full items-center justify-center text-gray-500 product-card-placeholder bg-dark-700">
       <i data-lucide="image-off" class="w-12 h-12 inline-block"></i>
     </div>
     {% elif product.image %}
-    <img src="{{ product.image.url|absolute_uri:request }}" alt="{{ product.name }}{% if card_variant %} — {{ card_variant.name }}{% endif %}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 product-card-img" loading="lazy" onerror="this.classList.add('!hidden'); this.nextElementSibling.classList.remove('hidden'); this.nextElementSibling.classList.add('flex'); if (typeof lucide !== 'undefined') lucide.createIcons();" />
+    <img src="{{ product.image.url|absolute_uri:request }}" alt="{{ product.name }}{% if card_variant %} — {{ card_variant.name }}{% endif %}" class="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300 product-card-img" loading="lazy" onerror="this.classList.add('!hidden'); this.nextElementSibling.classList.remove('hidden'); this.nextElementSibling.classList.add('flex'); if (typeof lucide !== 'undefined') lucide.createIcons();" />
     <div class="hidden absolute inset-0 w-full h-full items-center justify-center text-gray-500 product-card-placeholder bg-dark-700">
       <i data-lucide="image-off" class="w-12 h-12 inline-block"></i>
     </div>

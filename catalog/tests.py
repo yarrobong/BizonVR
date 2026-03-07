@@ -1006,7 +1006,11 @@ class ProductRecommendationsTest(TestCase):
 
         sections = resp.context['recommendation_sections']
         self.assertTrue(sections)
-        self.assertIn('frequently_bought', [s['key'] for s in sections])
+        section_keys = [s['key'] for s in sections]
+        self.assertIn('frequently_bought', section_keys)
+        self.assertIn('similar_products', section_keys)
+        self.assertNotIn('compatible_accessories', section_keys)
+        self.assertNotIn('alternatives', section_keys)
 
         recommended_ids = {p.pk for s in sections for p in s['products']}
         self.assertIn(self.strap.pk, recommended_ids)
@@ -1014,6 +1018,12 @@ class ProductRecommendationsTest(TestCase):
         self.assertNotIn(self.battery.pk, recommended_ids)  # в корзине
         self.assertNotIn(self.incompatible.pk, recommended_ids)  # несовместим
         self.assertNotIn(self.bundle_item.pk, recommended_ids)  # часть комплекта
+        self.assertContains(resp, 'Похожие')
+        self.assertNotContains(resp, 'Рекомендации')
+        self.assertNotContains(resp, 'Подборка:')
+        self.assertNotContains(resp, 'tracking-wider bg-accent/15 text-accent border border-accent/30">Похожие</span>')
+        self.assertNotContains(resp, 'Аксессуары, которые подходят')
+        self.assertNotContains(resp, 'Альтернативы')
 
     def test_recommendation_cards_use_recommended_variant_for_link_and_price(self):
         resp = self.client.get(reverse('catalog:product_detail', kwargs={'slug': self.current.slug}))

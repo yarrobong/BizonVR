@@ -51,7 +51,8 @@ class LoginViewsTest(TestCase):
     def test_login_page_returns_200(self):
         resp = self.client.get(reverse('accounts:login'))
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, 'Вход только по коду из SMS')
+        self.assertContains(resp, 'Вход по SMS-коду')
+        self.assertNotContains(resp, 'Вход только по коду из SMS')
         self.assertNotContains(resp, 'Вход по паролю')
 
     @override_settings(TURNSTILE_SITE_KEY='site-key', TURNSTILE_SECRET_KEY='secret-key')
@@ -580,6 +581,43 @@ class CompleteRegistrationLegalVersionTest(TestCase):
         self.assertIsNotNone(profile.privacy_agreed_at)
         self.assertEqual(profile.privacy_policy_version, LEGAL_BUNDLE_VERSION)
 
+    @override_settings(
+        EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
+        SITE_URL='https://bizonvr.ru',
+        DEFAULT_FROM_EMAIL='BizonVR <no-reply@bizonvr.ru>',
+    )
+    @patch('accounts.services.generate_code', return_value='551122')
+    def test_complete_registration_with_email_sends_verification_and_redirects_to_profile(
+        self,
+        mocked_generate_code,
+    ):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('accounts:complete_registration'),
+            {
+                'contact_name': 'Иванов Иван Иванович',
+                'email': 'client@example.com',
+                'agree_privacy': 'on',
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, f"{reverse('accounts:profile')}#security")
+        profile = Profile.objects.get(user=self.user)
+        self.assertEqual(profile.contact_name, 'Иванов Иван Иванович')
+        self.assertIsNotNone(profile.privacy_agreed_at)
+        self.assertTrue(
+            EmailVerificationCode.objects.filter(
+                user=self.user,
+                email='client@example.com',
+                used_at__isnull=True,
+            ).exists()
+        )
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn('551122', mail.outbox[0].body)
+        self.assertEqual(mail.outbox[0].to, ['client@example.com'])
+
 
 class ProfileDashboardTest(TestCase):
     PHONE_CHANGE_SESSION_KEY = 'accounts:profile:phone_change_pending'
@@ -950,7 +988,7 @@ class VerifyCodeTemplateTest(TestCase):
         self.assertNotContains(resp, 'терминале, где запущен сервер')
         mocked_debug.assert_called()
 
-    def test_verify_code_page_shows_resend_controls_when_session_pending(self):
+    def test_verify_code_page_hides_login_info_block_when_session_pending(self):
         session = self.client.session
         session[self.LOGIN_PENDING_PHONE_SESSION_KEY] = self.user.username
         session[self.LOGIN_PENDING_SENT_AT_SESSION_KEY] = int(timezone.now().timestamp())
@@ -958,5 +996,16 @@ class VerifyCodeTemplateTest(TestCase):
 
         resp = self.client.get(reverse('accounts:verify_code'))
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, 'Отправить код повторно')
-        self.assertContains(resp, 'Повторная отправка будет доступна через')
+        self.assertContains(resp, 'Подтвердить вход')
+        self.assertContains(resp, 'Изменить номер')
+        self.assertNotContains(resp, '6 цифр')
+
+    def test_verify_code_page_shows_change_number_link_with_next(self):
+        resp = self.client.get(reverse('accounts:verify_code'), {
+            'phone': self.user.username,
+            'next': '/orders/checkout/',
+        })
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Код отправлен на')
+        self.assertContains(resp, f'href="{reverse("accounts:login")}?next=/orders/checkout/"')
+        self.assertNotContains(resp, '6 цифр')

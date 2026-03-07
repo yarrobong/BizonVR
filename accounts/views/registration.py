@@ -1,4 +1,5 @@
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_http_methods
@@ -6,7 +7,10 @@ from django.views.decorators.http import require_http_methods
 from config.legal_consent import get_legal_bundle_version
 
 from ..forms import CompleteRegistrationForm
+from ..services import create_and_send_email_code
 from .auth import _safe_redirect_url
+
+PROFILE_PENDING_ALERTS_SESSION_KEY = 'accounts:profile:pending_alerts'
 
 
 @require_http_methods(['GET', 'POST'])
@@ -25,15 +29,32 @@ def complete_registration_view(request):
         return redirect(_safe_redirect_url(next_path, 'home'))
     next_url = request.GET.get('next', '') or request.POST.get('next', '')
     if request.method == 'POST':
-        form = CompleteRegistrationForm(request.POST)
+        form = CompleteRegistrationForm(request.POST, current_user=request.user)
         if form.is_valid():
             profile.contact_name = form.cleaned_data['contact_name'].strip()
             profile.privacy_agreed_at = timezone.now()
             profile.privacy_policy_version = get_legal_bundle_version()
             profile.save()
-            return redirect(_safe_redirect_url(next_url, 'home'))
+            email = form.cleaned_data.get('email', '')
+            if email and not profile.email_verified_at:
+                ok, error = create_and_send_email_code(request.user, email)
+                if ok:
+                    pending_alerts = list(request.session.get(PROFILE_PENDING_ALERTS_SESSION_KEY, []))
+                    pending_alerts.append({
+                        'level': 'success',
+                        'text': f'Письмо с кодом подтверждения отправлено на {email}.',
+                    })
+                    request.session[PROFILE_PENDING_ALERTS_SESSION_KEY] = pending_alerts
+                    request.session.modified = True
+                    return redirect(f"{reverse('accounts:profile')}#security")
+                form.add_error('email', error)
+            else:
+                return redirect(_safe_redirect_url(next_url, 'home'))
     else:
-        form = CompleteRegistrationForm(initial={'contact_name': profile.contact_name or ''})
+        form = CompleteRegistrationForm(initial={
+            'contact_name': profile.contact_name or '',
+            'email': request.user.email or '',
+        }, current_user=request.user)
     digits = profile.phone
     if len(digits) == 10 and digits.isdigit():
         phone_display = f'+7 ({digits[:3]}) {digits[3:6]}-{digits[6:8]}-{digits[8:10]}'

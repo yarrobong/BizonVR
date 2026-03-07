@@ -385,10 +385,10 @@
 </section>
 
 <!-- Товары каталога -->
-<div class="container mx-auto pt-0 pb-8 md:py-8 px-4 md:px-4">
+<div class="container mx-auto pt-0 pb-8 md:py-8 px-2 md:px-4">
   {% if featured_products %}
   <div class="max-w-[1140px] mx-auto">
-    <div class="home-featured-products-grid">
+    <div class="home-featured-products-grid mobile-card-grid">
       {% for product in featured_products %}
         <div class="home-featured-item">
           {% include "catalog/_product_card.html" with show_favorite=True favorite_product_ids=favorite_product_ids %}

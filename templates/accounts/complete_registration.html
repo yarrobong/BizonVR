@@ -5,7 +5,7 @@
 {% block content %}
 <div class="container mx-auto px-4 py-12 max-w-md">
   <h1 class="text-2xl font-light text-white mb-2">Завершите регистрацию</h1>
-  <p class="text-gray-400 text-sm mb-6">Укажите контактные данные для оформления заказов.</p>
+  <p class="text-gray-400 text-sm mb-6">Укажите контактные данные для оформления заказов. Если добавите email сейчас, сразу отправим письмо с кодом подтверждения.</p>
 
   <form method="post" action="{% url 'accounts:complete_registration' %}" class="space-y-4">
     {% csrf_token %}
@@ -28,8 +28,17 @@
       </div>
       <p class="text-gray-500 text-xs mt-1">Номер подтверждён, изменить нельзя</p>
     </div>
+    <div>
+      <label for="{{ form.email.id_for_label }}" class="block text-sm text-gray-400 mb-1">{{ form.email.label }}</label>
+      {{ form.email }}
+      <p class="text-gray-500 text-xs mt-1">Поле необязательное: подтверждённый email пригодится для уведомлений и восстановления доступа.</p>
+      {% if form.email.errors %}
+        <p class="text-red-400 text-sm mt-1">{{ form.email.errors.0 }}</p>
+      {% endif %}
+    </div>
     <div class="flex items-start gap-3">
       <input type="checkbox" name="agree_privacy" id="id_agree_privacy" required
+             {% if form.agree_privacy.value %}checked{% endif %}
              class="mt-1 w-4 h-4 rounded border-gray-600 bg-dark-700 text-accent focus:ring-accent focus:ring-offset-0">
       <label for="id_agree_privacy" class="text-sm text-gray-400">
         Настоящим подтверждаю, что я ознакомлен(а) и согласен(на) с

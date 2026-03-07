@@ -56,8 +56,18 @@ def load_rules_config() -> dict:
         return {
             'default_max_per_section': 6,
             'alternatives_limit': 5,
-            'sections': {},
-            'type_rules': {'default': {'target_types': ['accessory'], 'per_type_limit': 2}},
+            'sections': {
+                'frequently_bought': {
+                    'title': 'С этим часто покупают',
+                    'badge': 'Часто берут вместе',
+                    'enabled': True,
+                },
+                'similar_products': {
+                    'title': 'Похожие',
+                    'badge': 'Похожие',
+                    'enabled': True,
+                },
+            },
         }
     with cfg_path.open('r', encoding='utf-8') as fh:
         return json.load(fh)
@@ -250,19 +260,14 @@ def build_pdp_recommendations(request, product: Product) -> dict:
             'recommended_variant_ids': {},
         }
 
-    by_type: Dict[str, List[Product]] = defaultdict(list)
     compat_filtered: List[Product] = []
-    candidate_devices_map: Dict[int, Set[str]] = {}
     co_purchase = _co_purchase_scores(product)
 
     for candidate in candidates:
         c_devices = _extract_devices(candidate)
-        candidate_devices_map[candidate.pk] = c_devices
         if not _compatible(current_devices, c_devices):
             continue
         compat_filtered.append(candidate)
-        c_type = _extract_product_type(candidate)
-        by_type[c_type].append(candidate)
 
     all_candidate_ids = [p.pk for p in compat_filtered]
     total_map = _stock_maps(all_candidate_ids)
@@ -289,60 +294,20 @@ def build_pdp_recommendations(request, product: Product) -> dict:
                 'products': freq_products,
             })
 
-    # 2) Совместимые аксессуары по rules-map
-    if cfg.get('sections', {}).get('compatible_accessories', {}).get('enabled', True):
-        type_cfg = cfg.get('type_rules', {}).get(current_type) or cfg.get('type_rules', {}).get('default', {})
-        target_types = type_cfg.get('target_types', [])
-        per_type_limit = int(type_cfg.get('per_type_limit', 2))
-
-        selected = []
-        selected_ids = set()
-        for target_type in target_types:
-            pool = _rank_mvp(by_type.get(target_type, []), total_map)
-            taken = 0
-            for item in pool:
-                if item.pk in selected_ids:
-                    continue
-                selected.append(item)
-                selected_ids.add(item.pk)
-                taken += 1
-                if taken >= per_type_limit:
-                    break
-            if len(selected) >= max_per_section:
-                break
-
-        if len(selected) < max_per_section:
-            fallback_pool = _rank_mvp(compat_filtered, total_map)
-            for item in fallback_pool:
-                if item.pk in selected_ids:
-                    continue
-                selected.append(item)
-                selected_ids.add(item.pk)
-                if len(selected) >= max_per_section:
-                    break
-
-        if selected:
-            sections.append({
-                'key': 'compatible_accessories',
-                'title': cfg['sections'].get('compatible_accessories', {}).get('title', 'Аксессуары, которые подходят'),
-                'badge': cfg['sections'].get('compatible_accessories', {}).get('badge', 'Совместимо'),
-                'products': selected,
-            })
-
-    # 3) Альтернативы
-    if cfg.get('sections', {}).get('alternatives', {}).get('enabled', True):
-        alt_pool = [
+    # 2) Похожие товары
+    if cfg.get('sections', {}).get('similar_products', {}).get('enabled', True):
+        similar_pool = [
             p for p in compat_filtered
             if (_extract_product_type(p) == current_type or p.category_id == product.category_id)
         ]
-        alt_sorted = _rank_mvp(alt_pool, total_map)
-        alt_products = alt_sorted[:alternatives_limit]
-        if alt_products:
+        similar_sorted = _rank_mvp(similar_pool, total_map)
+        similar_products = similar_sorted[:alternatives_limit]
+        if similar_products:
             sections.append({
-                'key': 'alternatives',
-                'title': cfg['sections'].get('alternatives', {}).get('title', 'Альтернативы'),
-                'badge': cfg['sections'].get('alternatives', {}).get('badge', 'Альтернатива'),
-                'products': alt_products,
+                'key': 'similar_products',
+                'title': cfg['sections'].get('similar_products', {}).get('title', 'Похожие'),
+                'badge': cfg['sections'].get('similar_products', {}).get('badge', 'Похожие'),
+                'products': similar_products,
             })
 
     # Пустые секции не рендерим

@@ -210,10 +210,11 @@ class CheckoutFormsLegalValidationTest(TestCase):
 
 
 class GuestOrderTest(TestCase):
-    """Гостевой заказ: доступ по номеру заказа + телефон (Фаза 6)."""
+    """Legacy guest URLs больше не открывают заказ без авторизации."""
 
     def setUp(self):
         self.client = Client()
+        self.user = User.objects.create_user(username='79991234567', password='testpass')
         cat = Category.objects.create(name='Тест', slug='test')
         self.product = Product.objects.create(
             category=cat,
@@ -234,30 +235,33 @@ class GuestOrderTest(TestCase):
         )
         OrderItem.objects.create(order=self.order, product=self.product, quantity=1, price=Decimal('100.00'))
 
-    def test_guest_lookup_requires_phone_match(self):
+    def test_guest_lookup_requires_login(self):
         url = reverse('orders:order_guest_lookup')
         resp = self.client.get(url)
-        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.status_code, 302)
+        self.assertTrue(resp.url.startswith(reverse('accounts:login')))
         resp = self.client.post(url, {'order_id': self.order.pk, 'phone': '+7 999 000 00 00'})
-        self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, 'Телефон не совпадает')
+        self.assertEqual(resp.status_code, 302)
+        self.assertTrue(resp.url.startswith(reverse('accounts:login')))
+        self.assertNotIn('guest_order_ids', self.client.session)
 
-    def test_guest_lookup_success_redirects_to_order(self):
+    def test_guest_lookup_authenticated_redirects_to_order_list(self):
+        self.client.force_login(self.user)
         url = reverse('orders:order_guest_lookup')
         resp = self.client.post(url, {'order_id': self.order.pk, 'phone': '+7 999 111 22 33'})
         self.assertEqual(resp.status_code, 302)
-        self.assertEqual(resp.url, reverse('orders:order_guest', kwargs={'order_id': self.order.pk}))
-        resp = self.client.get(resp.url)
-        self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, f'Заказ #{self.order.pk}')
+        self.assertEqual(resp.url, reverse('orders:order_list'))
 
-    def test_guest_order_detail_does_not_show_payment_button(self):
-        session = self.client.session
-        session['guest_order_ids'] = [self.order.pk]
-        session.save()
+    def test_guest_order_detail_requires_login(self):
         resp = self.client.get(reverse('orders:order_guest', kwargs={'order_id': self.order.pk}))
-        self.assertEqual(resp.status_code, 200)
-        self.assertNotContains(resp, 'Оплатить криптой')
+        self.assertEqual(resp.status_code, 302)
+        self.assertTrue(resp.url.startswith(reverse('accounts:login')))
+
+    def test_guest_order_detail_authenticated_redirects_to_order_list_for_guest_order(self):
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse('orders:order_guest', kwargs={'order_id': self.order.pk}))
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.url, reverse('orders:order_list'))
 
 
 class OrderSecurityRegressionTest(TestCase):
@@ -311,22 +315,27 @@ class OrderSecurityRegressionTest(TestCase):
         self.assertNotContains(response, self.request_obj.phone)
         self.assertNotContains(response, self.request_obj.telegram)
 
-    def test_guest_order_detail_requires_verified_session(self):
+    def test_guest_order_detail_requires_login(self):
         response = self.client.get(reverse('orders:order_guest', kwargs={'order_id': self.guest_order.pk}))
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Телефон')
-        self.assertNotContains(response, self.guest_order.address)
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.url.startswith(reverse('accounts:login')))
 
-    def test_wrong_guest_phone_does_not_mutate_session(self):
+    def test_guest_order_post_without_login_does_not_mutate_session(self):
         response = self.client.post(
             reverse('orders:order_guest', kwargs={'order_id': self.guest_order.pk}),
             {'phone': '+7 999 000 00 00'},
         )
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Телефон не совпадает')
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response.url.startswith(reverse('accounts:login')))
         self.assertNotIn('guest_order_ids', self.client.session)
 
     def test_authenticated_user_cannot_open_foreign_order_detail(self):
         self.client.force_login(self.other_user)
         response = self.client.get(reverse('orders:order_detail', kwargs={'pk': self.user_order.pk}))
         self.assertEqual(response.status_code, 404)
+
+    def test_authenticated_user_guest_route_redirects_to_own_order_detail(self):
+        self.client.force_login(self.user)
+        response = self.client.get(reverse('orders:order_guest', kwargs={'order_id': self.user_order.pk}))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse('orders:order_detail', kwargs={'pk': self.user_order.pk}))

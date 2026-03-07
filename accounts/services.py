@@ -129,18 +129,35 @@ def build_email_verification_subject() -> str:
 
 def build_email_verification_plain_message(code: str) -> str:
     ttl_minutes = getattr(settings, 'EMAIL_CODE_TTL_MINUTES', 15)
-    return (
-        'Подтверждение email для BizonVR\n\n'
-        f'Ваш код: {code}\n'
-        f'Код действует {ttl_minutes} минут.\n'
-        'Если вы не запрашивали подтверждение, просто проигнорируйте это письмо.'
-    )
+    site_url = getattr(settings, 'SITE_URL', '').rstrip('/')
+    profile_url = f'{site_url}/accounts/profile/' if site_url else ''
+    support_email = getattr(settings, 'SITE_CONTACT_EMAIL', '').strip()
+    support_phone = getattr(settings, 'SITE_CONTACT_PHONE', '').strip()
+    lines = [
+        'Подтверждение email для BizonVR',
+        '',
+        f'Ваш код: {code}',
+        f'Код действует {ttl_minutes} минут.',
+    ]
+    if profile_url:
+        lines.append(f'Личный кабинет: {profile_url}')
+    if support_email:
+        lines.append(f'Поддержка: {support_email}')
+    if support_phone:
+        lines.append(f'Телефон: {support_phone}')
+    lines.extend([
+        '',
+        'Если вы не запрашивали подтверждение, просто проигнорируйте это письмо.',
+    ])
+    return '\n'.join(lines)
 
 
 def send_email_verification(email: str, code: str) -> bool:
+    site_url = getattr(settings, 'SITE_URL', '').rstrip('/')
     context = {
         'brand': getattr(settings, 'SITE_BRAND', 'BizonVR'),
-        'site_url': getattr(settings, 'SITE_URL', '').rstrip('/'),
+        'site_url': site_url,
+        'profile_url': f'{site_url}/accounts/profile/' if site_url else '',
         'code': code,
         'ttl_minutes': getattr(settings, 'EMAIL_CODE_TTL_MINUTES', 15),
         'support_email': getattr(settings, 'SITE_CONTACT_EMAIL', '').strip(),

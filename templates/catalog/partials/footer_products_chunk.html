@@ -1,5 +1,5 @@
 {% if products %}
-  <div class="footer-products-grid">
+  <div class="footer-products-grid mobile-card-grid">
     {% for product in products %}
       {% include "catalog/_product_card.html" with product=product show_favorite=True favorite_product_ids=favorite_product_ids show_add_button=False %}
     {% endfor %}

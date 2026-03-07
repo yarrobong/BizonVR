@@ -658,7 +658,7 @@
           <div class="rec-grid mb-4">
             {% for item in bundle.items.all %}
               {% if item.product_id != product.pk %}
-                {% include "catalog/_product_card.html" with product=item.product show_favorite=True favorite_product_ids=favorite_product_ids product_stock_total=product_stock_total show_add_button=True %}
+                {% include "catalog/_product_card.html" with product=item.product show_favorite=True favorite_product_ids=favorite_product_ids product_stock_total=product_stock_total show_add_button=False %}
               {% endif %}
             {% endfor %}
           </div>
@@ -676,29 +676,28 @@
     {% endif %}
 
     {% if recommendation_sections %}
-      <h2 class="section-title">Рекомендации</h2>
+      <h2 class="section-title">Похожие</h2>
       <div class="px-4 md:px-0 mb-10" x-data="{ recTab: '{{ recommendation_sections.0.key }}' }">
         <div class="rec-panel">
-          <div class="rec-tabs">
-            {% for section in recommendation_sections %}
-              <button type="button"
-                      @click="recTab = '{{ section.key }}'"
-                      :class="recTab === '{{ section.key }}' ? 'rec-tab-btn is-active' : 'rec-tab-btn'"
-                      class="rec-tab-btn">
-                {{ section.title }}
-              </button>
-            {% endfor %}
-          </div>
+          {% if recommendation_sections|length > 1 %}
+            <div class="rec-tabs">
+              {% for section in recommendation_sections %}
+                <button type="button"
+                        @click="recTab = '{{ section.key }}'"
+                        :class="recTab === '{{ section.key }}' ? 'rec-tab-btn is-active' : 'rec-tab-btn'"
+                        class="rec-tab-btn">
+                  {{ section.title }}
+                </button>
+              {% endfor %}
+            </div>
+          {% endif %}
 
           {% for section in recommendation_sections %}
             <div x-show="recTab === '{{ section.key }}'" x-cloak>
-              <div class="rec-caption">
-                Подборка: <strong>{{ section.title }}</strong>
-              </div>
               <div class="rec-grid">
                 {% for p in section.products %}
                   {% with card_variant=recommended_variants|get_dict_item:p.id %}
-                    {% include "catalog/_product_card.html" with product=p card_variant=card_variant show_favorite=True favorite_product_ids=favorite_product_ids product_stock_total=product_stock_total variant_stock_total=variant_stock_total show_add_button=True recommendation_badge=section.badge recommended_variant_ids=recommended_variant_ids in_recommendations=True %}
+                    {% include "catalog/_product_card.html" with product=p card_variant=card_variant show_favorite=True favorite_product_ids=favorite_product_ids product_stock_total=product_stock_total variant_stock_total=variant_stock_total show_add_button=False recommended_variant_ids=recommended_variant_ids in_recommendations=True %}
                   {% endwith %}
                 {% endfor %}
               </div>

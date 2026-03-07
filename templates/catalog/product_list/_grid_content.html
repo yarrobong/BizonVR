@@ -37,7 +37,7 @@
 <div class="{% if is_catalog_root %}hidden md:block{% else %}block{% endif %}">
 {% if is_bundles_category %}
   {% if bundles %}
-    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 md:gap-3">
+    <div class="mobile-card-grid grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 md:gap-3">
       {% for bundle in bundles %}
         {% include "catalog/_bundle_card.html" %}
       {% endfor %}
@@ -62,7 +62,7 @@
     </div>
   {% endif %}
 {% elif products %}
-  <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 md:gap-3">
+  <div class="mobile-card-grid grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 md:gap-3">
     {% for product in products %}
       {% if product.variants.all %}
         {% for card_variant in product.variants.all %}

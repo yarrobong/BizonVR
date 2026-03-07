@@ -35,6 +35,7 @@
     :root {
   /* Цветовая палитра BizonVR */
   --bg-dark: #0f1115;       /* Глубокий темный фон */
+  --bg-page: #11161d;       /* Ровный фон сайта без декоративного паттерна */
   --bg-panel: #181b21;      /* Фон элементов */
   --text-main: #ffffff;
   --text-muted: #9ca3af;
@@ -275,9 +276,7 @@
       -webkit-text-size-adjust: 100%;
     }
     body {
-      background: #0d0f17;
-      background-image: radial-gradient(circle at 15px 15px, rgba(0, 212, 255, 0.10) 2px, transparent 1.5px);
-      background-size: 60px 60px;
+      background: var(--bg-page);
       color: #ffffff;
       padding-top: 0;
       padding-bottom: 0;
@@ -296,44 +295,6 @@
       overflow-x: hidden;
     }
 
-    .ambient-lights {
-      position: absolute;
-      inset: 0;
-      pointer-events: none;
-      min-height: 100%;
-      z-index: -1;
-    }
-
-    .ambient-light {
-      content: "";
-      position: absolute;
-      top: -50%;
-      right: -20%;
-      width: 680px;
-      height: 680px;
-      background: radial-gradient(circle, rgba(0, 4, 172, 0.7) 0%, transparent 56%);
-      border-radius: 50%;
-      filter: blur(42px);
-      z-index: 0;
-    }
-
-    .ambient-light:nth-child(1) { top: -50%; right: -20%; }
-    .ambient-light:nth-child(2) { top: 58%; right: 64%; width: 620px; height: 620px; }
-    .ambient-light:nth-child(3) { top: 26%; right: 8%; width: 560px; height: 560px; }
-    .ambient-light:nth-child(4) { top: -28%; right: 52%; width: 740px; height: 740px; }
-    .ambient-light:nth-child(5) { top: 82%; right: -12%; width: 640px; height: 640px; }
-    .ambient-light:nth-child(6) { top: 8%; right: 78%; width: 600px; height: 600px; }
-    .ambient-light:nth-child(7) { top: 72%; right: 32%; width: 500px; height: 500px; }
-    .ambient-light:nth-child(8) { top: 42%; right: -30%; width: 700px; height: 700px; }
-
-    @media (max-width: 768px) {
-      .ambient-light {
-        width: 440px;
-        height: 440px;
-        filter: blur(34px);
-      }
-    }
-    
     /* Preload: отключаем анимации до стабилизации страницы */
     body.preload * {
       transition: none !important;
@@ -384,6 +345,15 @@
     .catalog-tile-medium { grid-column: span 2; grid-row: span 1; }
     .catalog-tile-large { grid-column: span 2; grid-row: span 2; }
     .catalog-tile-tall { grid-column: span 1; grid-row: span 2; }
+
+    /* Мобильные двухколоночные сетки карточек: почти во всю ширину,
+       но с небольшим безопасным отступом от краёв экрана. */
+    @media (max-width: 767.98px) {
+      .mobile-card-grid {
+        padding-left: 0.25rem;
+        padding-right: 0.25rem;
+      }
+    }
 
     /* Логотип в шапке */
     .header-logo {

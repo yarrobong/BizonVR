@@ -30,6 +30,7 @@ from ..services import (
 
 User = get_user_model()
 PHONE_CHANGE_SESSION_KEY = 'accounts:profile:phone_change_pending'
+PROFILE_PENDING_ALERTS_SESSION_KEY = 'accounts:profile:pending_alerts'
 
 
 def _format_phone(phone: str) -> str:
@@ -37,6 +38,16 @@ def _format_phone(phone: str) -> str:
     if len(digits) == 10:
         return f'+7 ({digits[:3]}) {digits[3:6]}-{digits[6:8]}-{digits[8:10]}'
     return phone or ''
+
+
+def _consume_pending_alerts(request):
+    pending_alerts = request.session.pop(PROFILE_PENDING_ALERTS_SESSION_KEY, [])
+    if pending_alerts:
+        request.session.modified = True
+    return [
+        alert for alert in pending_alerts
+        if isinstance(alert, dict) and alert.get('level') and alert.get('text')
+    ]
 
 
 def _status_description(status, count):
@@ -462,7 +473,7 @@ def profile_view(request):
 
     Profile.objects.get_or_create(user=request.user, defaults={'phone': request.user.username})
     profile = request.user.profile
-    alerts = []
+    alerts = _consume_pending_alerts(request)
 
     profile_form = None
     email_request_form = None
