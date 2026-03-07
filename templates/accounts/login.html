@@ -3,67 +3,56 @@
 {% block title %}Вход — BizonVR{% endblock %}
 
 {% block content %}
-<div class="container mx-auto max-w-3xl px-4 py-12">
-  <h1 class="text-2xl font-light text-white mb-2">Вход в аккаунт</h1>
-  <p class="text-sm text-gray-400 mb-8">Можно войти по паролю через телефон или email, либо получить одноразовый код по SMS.</p>
-
+<div class="mx-auto max-w-5xl px-4 py-10 lg:py-14">
   {% if turnstile_enabled %}
   <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
   {% endif %}
 
-  <div class="grid gap-6 lg:grid-cols-2">
-    <section class="rounded-[1.75rem] border border-white/10 bg-dark-800/90 p-6">
-      <div class="flex items-center justify-between gap-3">
-        <div>
-          <h2 class="text-xl font-semibold text-white">Вход по паролю</h2>
-          <p class="mt-1 text-sm text-gray-400">Используйте подтверждённый телефон или email и свой пароль.</p>
+  <div class="grid items-start gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(22rem,26rem)]">
+    <section class="overflow-hidden rounded-[2rem] border border-white/10 bg-gradient-to-br from-accent/15 via-dark-800/95 to-dark-900/95 p-7 shadow-[0_30px_80px_rgba(0,0,0,0.35)] lg:p-8">
+      <span class="inline-flex rounded-full border border-accent/30 bg-accent/10 px-3 py-1 text-xs font-medium uppercase tracking-[0.24em] text-accent">
+        Личный кабинет
+      </span>
+      <h1 class="mt-5 max-w-xl text-3xl font-semibold leading-tight text-white sm:text-4xl">
+        Вход только по коду из SMS — быстро, без пароля и лишних шагов
+      </h1>
+      <p class="mt-4 max-w-2xl text-sm leading-6 text-gray-300 sm:text-base">
+        Введите номер телефона, получите одноразовый код и продолжайте оформление заказа, работу с избранным и личным кабинетом.
+      </p>
+
+      <div class="mt-6 grid gap-3 sm:grid-cols-2">
+        <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+          <p class="text-sm font-medium text-white">Безопасный вход</p>
+          <p class="mt-1 text-sm text-gray-400">Каждый код одноразовый и действует ограниченное время.</p>
         </div>
-        <span class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-gray-300">Телефон / Email</span>
+        <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+          <p class="text-sm font-medium text-white">Новый аккаунт создаётся автоматически</p>
+          <p class="mt-1 text-sm text-gray-400">Если вы входите впервые, профиль появится после подтверждения номера.</p>
+        </div>
       </div>
 
-      <form method="post" action="{% url 'accounts:login' %}" class="mt-5 space-y-4" hx-boost="false">
-        {% csrf_token %}
-        {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}
-        {% if password_form.non_field_errors %}
-          <p class="rounded-2xl border border-red-300/20 bg-red-900/20 px-4 py-3 text-sm text-red-200">{{ password_form.non_field_errors.0 }}</p>
-        {% endif %}
+      <div class="mt-6 flex flex-wrap items-center gap-3 text-sm text-gray-300">
+        <span class="rounded-full border border-white/10 bg-white/5 px-3 py-1">Код приходит за пару секунд</span>
+        <span class="rounded-full border border-white/10 bg-white/5 px-3 py-1">Подходит для новых и действующих клиентов</span>
+      </div>
 
-        <div>
-          <label for="{{ password_form.login.id_for_label }}" class="block text-sm text-gray-300">{{ password_form.login.label }}</label>
-          <div class="mt-2">{{ password_form.login }}</div>
-          {% if password_form.login.errors %}
-            <p class="mt-1 text-sm text-red-400">{{ password_form.login.errors.0 }}</p>
-          {% endif %}
-        </div>
-        <div>
-          <label for="{{ password_form.password.id_for_label }}" class="block text-sm text-gray-300">{{ password_form.password.label }}</label>
-          <div class="mt-2">{{ password_form.password }}</div>
-          {% if password_form.password.errors %}
-            <p class="mt-1 text-sm text-red-400">{{ password_form.password.errors.0 }}</p>
-          {% endif %}
-        </div>
-
-        <button type="submit" class="w-full rounded-full bg-accent px-4 py-3 font-bold text-dark-900 transition-colors hover:bg-accent-hover">
-          Войти по паролю
-        </button>
-      </form>
-
-      <div class="mt-5 flex flex-wrap gap-3 text-sm">
-        <a href="{% url 'accounts:password_reset_request' %}" class="text-accent hover:text-accent-hover">Забыли пароль?</a>
-        <span class="text-gray-500">Если пароль ещё не задан, установите его через восстановление доступа.</span>
+      <div class="mt-8 flex flex-wrap items-center gap-4 text-sm">
+        <a href="{% url 'orders:order_guest_lookup' %}" class="text-accent transition hover:text-accent-hover">Проверить заказ без входа</a>
+        <span class="text-gray-500">Если SMS не пришло, можно запросить код повторно на следующем шаге.</span>
       </div>
     </section>
 
-    <section class="rounded-[1.75rem] border border-white/10 bg-dark-800/90 p-6">
-      <div class="flex items-center justify-between gap-3">
+    <section class="rounded-[2rem] border border-white/10 bg-dark-800/95 p-6 shadow-[0_24px_70px_rgba(0,0,0,0.35)] sm:p-7 lg:sticky lg:top-28">
+      <div class="flex items-start justify-between gap-3">
         <div>
-          <h2 class="text-xl font-semibold text-white">Вход по SMS</h2>
-          <p class="mt-1 text-sm text-gray-400">Введите номер телефона, и мы отправим код подтверждения.</p>
+          <p class="text-xs font-medium uppercase tracking-[0.24em] text-accent/80">SMS авторизация</p>
+          <h2 class="mt-2 text-2xl font-semibold text-white">Получить код</h2>
+          <p class="mt-2 text-sm leading-6 text-gray-400">Укажите номер телефона, на который отправить одноразовый код подтверждения.</p>
         </div>
-        <span class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-gray-300">Одноразовый код</span>
+        <span class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-gray-300">+7</span>
       </div>
 
-      <form id="phone-form" method="post" action="{% url 'accounts:send_code' %}" class="mt-5 space-y-4"
+      <form id="phone-form" method="post" action="{% url 'accounts:send_code' %}" class="mt-6 space-y-4"
           x-data="{ loading: false, error: '', turnstileEnabled: {{ turnstile_enabled|yesno:'true,false' }} }"
           @submit.prevent="
             loading = true; error = '';
@@ -90,54 +79,60 @@
             });
           ">
         {% csrf_token %}
+        {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}
+
         <div>
-          <label for="id_phone" class="block text-sm text-gray-300 mb-1">Телефон</label>
-          <div class="phone-input-wrapper flex items-center w-full bg-dark-700 rounded-lg overflow-hidden focus-within:ring-1 focus-within:ring-accent pl-5">
-            <span class="phone-prefix text-white font-medium py-2.5 flex-shrink-0 select-none">+7</span>
-            <span class="phone-prefix-bracket text-white font-medium py-2.5 flex-shrink-0 select-none" style="display: none;">&nbsp;(</span>
+          <label for="id_phone" class="mb-1.5 block text-sm font-medium text-gray-200">Телефон</label>
+          <div class="phone-input-wrapper flex items-center rounded-2xl border border-white/10 bg-dark-700/80 pl-5 transition focus-within:border-accent/60 focus-within:ring-2 focus-within:ring-accent/20">
+            <span class="phone-prefix py-3 text-base font-medium text-white">+7</span>
+            <span class="phone-prefix-bracket py-3 text-base font-medium text-white" style="display: none;">&nbsp;(</span>
             <input type="tel" name="phone" id="id_phone" required
-                   placeholder="999 123-45-67"
-                   class="js-phone-mask flex-1 min-w-0 bg-transparent text-white py-2.5 pl-1 pr-4 focus:outline-none focus:ring-0 border-0"
+                   value="{{ form.phone.value|default:'' }}"
+                   placeholder="999) 123-45-67"
+                   class="js-phone-mask min-w-0 flex-1 bg-transparent py-3 pl-1 pr-4 text-white placeholder:text-gray-500 focus:outline-none focus:ring-0"
                    autocomplete="tel" inputmode="tel">
           </div>
-          <p x-show="error" x-text="error" class="text-red-400 text-sm mt-1"></p>
+          <p class="mt-2 text-xs text-gray-500">Используем российский формат номера. Код придёт в SMS на этот телефон.</p>
+          <p x-show="error" x-text="error" class="mt-2 text-sm text-red-400"></p>
         </div>
-        <div class="flex items-start gap-3">
+
+        <label for="id_agree_privacy" class="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
           <input type="checkbox" name="agree_privacy" id="id_agree_privacy" required
-                 class="mt-1 h-4 w-4 rounded border-gray-600 bg-dark-700 text-accent focus:ring-accent focus:ring-offset-0">
-          <label for="id_agree_privacy" class="text-sm text-gray-400">
-            Я даю согласие на обработку персональных данных для авторизации по SMS и подтверждаю, что ознакомлен с
-            <a href="{% url 'privacy' %}" target="_blank" rel="noopener noreferrer" class="text-accent hover:text-accent-hover underline">политикой конфиденциальности</a>
+                 class="mt-0.5 h-4 w-4 rounded border-gray-600 bg-dark-700 text-accent focus:ring-accent focus:ring-offset-0">
+          <span class="text-sm leading-6 text-gray-400">
+            Даю согласие на обработку персональных данных для входа по SMS и подтверждаю, что ознакомлен с
+            <a href="{% url 'privacy' %}" target="_blank" rel="noopener noreferrer" class="text-accent underline transition hover:text-accent-hover">политикой конфиденциальности</a>
             и
-            <a href="{% url 'pd_consent' %}" target="_blank" rel="noopener noreferrer" class="text-accent hover:text-accent-hover underline">согласием на обработку ПД</a>.
-          </label>
-        </div>
+            <a href="{% url 'pd_consent' %}" target="_blank" rel="noopener noreferrer" class="text-accent underline transition hover:text-accent-hover">согласием на обработку ПД</a>.
+          </span>
+        </label>
+
         {% if turnstile_enabled %}
-        <div class="rounded-2xl border border-white/10 bg-dark-800/80 p-4">
+        <div class="rounded-2xl border border-white/10 bg-dark-900/60 p-4">
           <div class="cf-turnstile"
                data-sitekey="{{ turnstile_site_key }}"
                data-theme="dark"
                data-size="flexible"></div>
         </div>
         {% endif %}
+
         <button type="submit" :disabled="loading"
-                class="w-full rounded-full bg-white px-4 py-3 font-bold text-dark-900 transition-colors hover:bg-gray-100 disabled:opacity-50">
+                class="w-full rounded-full bg-accent px-4 py-3 font-bold text-dark-900 transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60">
           <span x-show="!loading">Получить код</span>
-          <span x-show="loading" x-cloak>Отправка…</span>
+          <span x-show="loading" x-cloak>Отправляем…</span>
         </button>
       </form>
 
       {% if turnstile_disabled_locally %}
-      <p class="mt-4 rounded-lg border border-amber-400/20 bg-amber-500/10 p-3 text-xs text-amber-300">
-        Капча отключена локально: для разработки не заданы `TURNSTILE_SITE_KEY` и `TURNSTILE_SECRET_KEY`.
+      <p class="mt-4 rounded-2xl border border-amber-400/20 bg-amber-500/10 p-3 text-xs leading-5 text-amber-300">
+        Капча отключена локально: для разработки не заданы TURNSTILE_SITE_KEY и TURNSTILE_SECRET_KEY.
       </p>
       {% endif %}
-      <p class="mt-4 text-xs text-gray-500">В dev-режиме без SMS-провайдера код выводится в консоль сервера.</p>
+
+      <p class="mt-4 text-xs leading-5 text-gray-500">
+        В dev-режиме без SMS-провайдера код выводится в консоль сервера.
+      </p>
     </section>
   </div>
-
-  <p class="mt-6 text-xs text-gray-500">
-    Оформили заказ без входа? <a href="{% url 'orders:order_guest_lookup' %}" class="text-accent hover:text-accent-hover">Проверить статус заказа</a>
-  </p>
 </div>
 {% endblock %}

@@ -51,6 +51,8 @@ class LoginViewsTest(TestCase):
     def test_login_page_returns_200(self):
         resp = self.client.get(reverse('accounts:login'))
         self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Вход только по коду из SMS')
+        self.assertNotContains(resp, 'Вход по паролю')
 
     @override_settings(TURNSTILE_SITE_KEY='site-key', TURNSTILE_SECRET_KEY='secret-key')
     def test_login_page_renders_turnstile_when_configured(self):
@@ -270,25 +272,14 @@ class PasswordAccessRecoveryTest(TestCase):
         )
         cache.clear()
 
-    def test_password_login_accepts_phone(self):
+    def test_login_endpoint_does_not_accept_password_post(self):
         response = self.client.post(reverse('accounts:login'), {
             'login': '+7 (999) 123-45-67',
             'password': 'OldPassword123!',
         })
 
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(response.url, reverse('home'))
-        self.assertEqual(self.client.session.get('_auth_user_id'), str(self.user.pk))
-
-    def test_password_login_accepts_verified_email(self):
-        response = self.client.post(reverse('accounts:login'), {
-            'login': 'verified@example.com',
-            'password': 'OldPassword123!',
-        })
-
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(response.url, reverse('home'))
-        self.assertEqual(self.client.session.get('_auth_user_id'), str(self.user.pk))
+        self.assertEqual(response.status_code, 405)
+        self.assertIsNone(self.client.session.get('_auth_user_id'))
 
     @patch('accounts.services.generate_code', return_value='112233')
     def test_phone_password_reset_sets_new_password_and_logs_user_in(self, mocked_generate_code):

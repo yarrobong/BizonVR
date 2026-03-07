@@ -98,32 +98,100 @@
       });
     }
 
-    function initPhonePrefixBrackets(root) {
+    function normalizePhoneDigits(value) {
+      let digits = (value || '').replace(/\D/g, '');
+      if (digits.length === 11 && (digits[0] === '7' || digits[0] === '8')) {
+        digits = digits.slice(1);
+      }
+      return digits.slice(0, 10);
+    }
+
+    function formatPhoneDigits(digits, hasExternalPrefix) {
+      const areaCode = digits.slice(0, 3);
+      const prefix = digits.slice(3, 6);
+      const linePart1 = digits.slice(6, 8);
+      const linePart2 = digits.slice(8, 10);
+
+      if (hasExternalPrefix) {
+        let formatted = areaCode;
+        if (digits.length > 3) formatted += `) ${prefix}`;
+        if (digits.length > 6) formatted += `-${linePart1}`;
+        if (digits.length > 8) formatted += `-${linePart2}`;
+        return formatted;
+      }
+
+      if (!digits) return '';
+
+      let formatted = '+7';
+      if (areaCode) formatted += ` (${areaCode}`;
+      if (digits.length > 3) formatted += `) ${prefix}`;
+      if (digits.length > 6) formatted += `-${linePart1}`;
+      if (digits.length > 8) formatted += `-${linePart2}`;
+      return formatted;
+    }
+
+    function getCaretPositionByDigits(formattedValue, digitsBeforeCaret) {
+      if (digitsBeforeCaret <= 0) return 0;
+
+      let seenDigits = 0;
+      for (let index = 0; index < formattedValue.length; index += 1) {
+        if (/\d/.test(formattedValue[index])) {
+          seenDigits += 1;
+          if (seenDigits >= digitsBeforeCaret) {
+            return index + 1;
+          }
+        }
+      }
+
+      return formattedValue.length;
+    }
+
+    function initPhoneMasks(root) {
       const scope = root || document;
-      const wrappers = scope.querySelectorAll('.phone-input-wrapper');
+      const inputs = scope.querySelectorAll('.js-phone-mask');
 
-      wrappers.forEach(wrapper => {
-        const input = wrapper.querySelector('.js-phone-mask');
-        const bracket = wrapper.querySelector('.phone-prefix-bracket');
-        if (!input || !bracket) return;
+      inputs.forEach(input => {
+        const wrapper = input.closest('.phone-input-wrapper');
+        const bracket = wrapper ? wrapper.querySelector('.phone-prefix-bracket') : null;
+        const syncValue = preserveCaret => {
+          const currentValue = input.value || '';
+          const selectionStart = typeof input.selectionStart === 'number' ? input.selectionStart : currentValue.length;
+          const digitsBeforeCaret = normalizePhoneDigits(currentValue.slice(0, selectionStart)).length;
+          const digits = normalizePhoneDigits(currentValue);
+          const formattedValue = formatPhoneDigits(digits, Boolean(wrapper));
 
-        const updateBracketVisibility = () => {
-          const hasDigits = (input.value || '').replace(/\D/g, '').length > 0;
-          bracket.style.display = hasDigits ? '' : 'none';
+          if (currentValue !== formattedValue) {
+            input.value = formattedValue;
+          }
+
+          if (bracket) {
+            bracket.style.display = digits ? '' : 'none';
+          }
+
+          if (
+            preserveCaret
+            && document.activeElement === input
+            && typeof input.setSelectionRange === 'function'
+          ) {
+            const caretPosition = getCaretPositionByDigits(formattedValue, digitsBeforeCaret);
+            requestAnimationFrame(() => input.setSelectionRange(caretPosition, caretPosition));
+          }
         };
 
-        if (!input.dataset.phoneBracketBound) {
-          input.addEventListener('input', updateBracketVisibility);
-          input.dataset.phoneBracketBound = '1';
+        if (!input.dataset.phoneMaskBound) {
+          input.addEventListener('input', () => syncValue(true));
+          input.addEventListener('focus', () => syncValue(true));
+          input.addEventListener('blur', () => syncValue(false));
+          input.dataset.phoneMaskBound = '1';
         }
 
-        updateBracketVisibility();
+        syncValue(false);
       });
     }
     
     function initHtmxHandlers() {
       initLucide(); // иконки в шапке (каталог и др.) сразу при загрузке
-      initPhonePrefixBrackets(document);
+      initPhoneMasks(document);
       initCookieConsentBanner();
       // Проверяем, что body уже существует
       if (!document.body) {
@@ -144,7 +212,7 @@
       });
       document.body.addEventListener('htmx:afterSettle', function(ev) {
         initLucide();
-        initPhonePrefixBrackets(document);
+        initPhoneMasks(document);
         // После полного обновления DOM
         if (ev.detail.target.id === 'main-content') {
           window.dispatchEvent(new CustomEvent('header-expand'));
@@ -162,7 +230,7 @@
           // Alpine.js автоматически обнаружит новые элементы с x-data через MutationObserver
           // Поэтому initTree вызывать не обязательно и это может вызвать ошибки
           initLucide();
-          initPhonePrefixBrackets(document);
+          initPhoneMasks(document);
         }
       });
       

@@ -1,16 +1,15 @@
 from django.conf import settings
-from django.contrib.auth import login, logout
+from django.contrib.auth import logout
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_http_methods, require_POST
 
-from ..forms import CodeVerifyForm, PasswordLoginForm, PhoneRequestForm
+from ..forms import CodeVerifyForm, PhoneRequestForm
 from ..models import Profile
 from ..security import check_send_code_rate_limits, check_verify_code_rate_limits, get_client_ip, mark_send_code_success
 from ..services import (
-    authenticate_by_login_identifier,
     create_and_send_code,
     is_sms_debug_mode,
     is_turnstile_debug_bypass,
@@ -65,6 +64,13 @@ def _get_login_resend_available_in(request):
     return max(0, cooldown - elapsed)
 
 
+def _format_phone_display(phone):
+    digits = normalize_phone(phone)
+    if len(digits) == 10:
+        return f'+7 ({digits[:3]}) {digits[3:6]}-{digits[6:8]}-{digits[8:10]}'
+    return phone
+
+
 def _redirect_after_successful_auth(request):
     Profile.objects.get_or_create(user=request.user, defaults={'phone': request.user.username})
     profile = request.user.profile
@@ -82,29 +88,14 @@ def _redirect_after_successful_auth(request):
     return redirect(_safe_redirect_url(next_path, 'home'))
 
 
-@require_http_methods(['GET', 'POST'])
+@require_http_methods(['GET'])
 def login_view(request):
-    """Страница входа: пароль по телефону/email или вход по SMS."""
+    """Страница входа: авторизация только по SMS-коду."""
     if request.user.is_authenticated:
         return redirect(_safe_redirect_url(request.GET.get('next'), 'accounts:profile'))
-    password_form = PasswordLoginForm()
-    if request.method == 'POST':
-        password_form = PasswordLoginForm(request.POST)
-        if password_form.is_valid():
-            user, error = authenticate_by_login_identifier(
-                password_form.cleaned_data['login'],
-                password_form.cleaned_data['password'],
-                request=request,
-            )
-            if user is not None:
-                login(request, user, backend='django.contrib.auth.backends.ModelBackend')
-                return _redirect_after_successful_auth(request)
-            password_form.add_error(None, error)
-
     return render(request, 'accounts/login.html', {
         'form': PhoneRequestForm(),
-        'password_form': password_form,
-        'next_url': request.GET.get('next', '') or request.POST.get('next', ''),
+        'next_url': request.GET.get('next', ''),
         'turnstile_enabled': is_turnstile_enabled(),
         'turnstile_site_key': settings.TURNSTILE_SITE_KEY,
         'turnstile_disabled_locally': is_turnstile_debug_bypass(),
@@ -179,6 +170,7 @@ def verify_code_view(request):
     return render(request, 'accounts/verify_code.html', {
         'form': form,
         'phone': phone,
+        'phone_display': _format_phone_display(phone),
         'next_url': next_url,
         'sms_debug_mode': is_sms_debug_mode(),
         'can_resend_code': bool(pending_phone),
