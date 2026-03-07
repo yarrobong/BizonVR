@@ -157,7 +157,19 @@ MEDIA_ROOT = BASE_DIR / 'media'
 # Лимит отправки SMS: не чаще 1 раза в N секунд с одного номера/IP
 SMS_COOLDOWN_SECONDS = 60
 SMS_CODE_TTL_MINUTES = 10
+EMAIL_CODE_COOLDOWN_SECONDS = config('EMAIL_CODE_COOLDOWN_SECONDS', default=60, cast=int)
+EMAIL_CODE_TTL_MINUTES = config('EMAIL_CODE_TTL_MINUTES', default=15, cast=int)
 TRUSTED_PROXY_IPS = [x.strip() for x in config('TRUSTED_PROXY_IPS', default='').split(',') if x.strip()]
+SMS_PROVIDER = config('SMS_PROVIDER', default='exolve').strip().lower()
+EXOLVE_API_KEY = config('EXOLVE_API_KEY', default='').strip()
+EXOLVE_SENDER = config('EXOLVE_SENDER', default='').strip()
+EXOLVE_API_BASE = config('EXOLVE_API_BASE', default='https://api.exolve.ru/messaging/v1').rstrip('/')
+TURNSTILE_SITE_KEY = config('TURNSTILE_SITE_KEY', default='').strip()
+TURNSTILE_SECRET_KEY = config('TURNSTILE_SECRET_KEY', default='').strip()
+TURNSTILE_VERIFY_URL = config(
+    'TURNSTILE_VERIFY_URL',
+    default='https://challenges.cloudflare.com/turnstile/v0/siteverify',
+).strip()
 
 LOGIN_URL = '/accounts/login/'
 LOGIN_REDIRECT_URL = '/accounts/profile/'
@@ -189,6 +201,31 @@ SITE_CLUBS_URL = config('SITE_CLUBS_URL', default='').strip()
 SITE_INSTRUCTIONS_URL = config('SITE_INSTRUCTIONS_URL', default='').strip()
 SITE_YOUTUBE_URL = config('SITE_YOUTUBE_URL', default='https://www.youtube.com/@BIZON-ZON-ZON').strip()
 SITE_TIKTOK_URL = config('SITE_TIKTOK_URL', default='https://www.tiktok.com/@bizonvr?_r=1&_t=ZS-94DbHz6YXH3').strip()
+
+EMAIL_HOST = config('EMAIL_HOST', default='').strip()
+EMAIL_PORT = config('EMAIL_PORT', default=587, cast=int)
+EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='').strip()
+EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='').strip()
+EMAIL_USE_TLS = config_bool('EMAIL_USE_TLS', default=True)
+EMAIL_USE_SSL = config_bool('EMAIL_USE_SSL', default=False)
+EMAIL_TIMEOUT = config('EMAIL_TIMEOUT', default=10, cast=int)
+DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='BizonVR <no-reply@bizonvr.ru>').strip()
+EMAIL_VERIFICATION_SUBJECT = config(
+    'EMAIL_VERIFICATION_SUBJECT',
+    default='Подтверждение email для BizonVR',
+).strip()
+PASSWORD_RESET_EMAIL_SUBJECT = config(
+    'PASSWORD_RESET_EMAIL_SUBJECT',
+    default='Восстановление доступа BizonVR',
+).strip()
+EMAIL_BACKEND = config(
+    'EMAIL_BACKEND',
+    default=(
+        'django.core.mail.backends.console.EmailBackend'
+        if DEBUG and not EMAIL_HOST
+        else 'django.core.mail.backends.smtp.EmailBackend'
+    ),
+).strip()
 
 # Юридические реквизиты (используются на страницах legal/*)
 LEGAL_OPERATOR_FULL_NAME = config(

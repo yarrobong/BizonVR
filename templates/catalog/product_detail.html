@@ -421,12 +421,30 @@
              @touchmove="handleGalleryTouchMove($event)"
              @touchend="handleGalleryTouchEnd($event)"
              @touchcancel="handleGalleryTouchEnd($event)">
-          <template x-if="effectiveImage">
-            <img :src="effectiveImage" class="main-image" alt="{{ product.name|escapejs }}" loading="eager" />
-          </template>
-          <template x-if="!effectiveImage">
+          {% if product_gallery %}
+            <img
+              src="{{ product_gallery.0 }}"
+              x-bind:src="effectiveImage || '{{ product_gallery.0|escapejs }}'"
+              class="main-image"
+              alt="{{ product.name }}"
+              loading="eager" />
+          {% elif product.image %}
+            <img
+              src="{{ product.image.url }}"
+              x-bind:src="effectiveImage || '{{ product.image.url|escapejs }}'"
+              class="main-image"
+              alt="{{ product.name }}"
+              loading="eager" />
+          {% else %}
+            <img
+              x-show="effectiveImage"
+              x-bind:src="effectiveImage"
+              class="main-image"
+              alt="{{ product.name }}"
+              loading="eager"
+              x-cloak />
             <div style="color: var(--pd-muted);">Нет фото</div>
-          </template>
+          {% endif %}
         </div>
         <!-- Mobile Dots -->
         <div class="dots mobile-only" x-show="displayImages.length > 1">

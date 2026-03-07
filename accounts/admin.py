@@ -3,7 +3,7 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth import get_user_model
 from django.contrib import messages
 
-from .models import CommercialProposalContact, Profile, PhoneVerificationCode
+from .models import CommercialProposalContact, EmailVerificationCode, Profile, PhoneVerificationCode
 from .admin_roles import MANAGER_GROUP_NAME, user_has_manager_role, set_user_manager_role, ensure_manager_group
 
 User = get_user_model()
@@ -77,11 +77,18 @@ admin.site.register(User, CustomUserAdmin)
 
 @admin.register(Profile)
 class ProfileAdmin(admin.ModelAdmin):
-    list_display = ('phone', 'contact_name', 'privacy_agreed_at', 'user')
-    search_fields = ('phone', 'contact_name', 'user__username')
+    list_display = ('phone', 'contact_name', 'email_verified_at', 'privacy_agreed_at', 'user')
+    search_fields = ('phone', 'contact_name', 'user__username', 'user__email')
 
 
 @admin.register(PhoneVerificationCode)
 class PhoneVerificationCodeAdmin(admin.ModelAdmin):
     list_display = ('phone', 'code', 'created_at', 'used_at')
     list_filter = ('created_at', 'used_at')
+
+
+@admin.register(EmailVerificationCode)
+class EmailVerificationCodeAdmin(admin.ModelAdmin):
+    list_display = ('email', 'user', 'code', 'created_at', 'used_at')
+    list_filter = ('created_at', 'used_at')
+    search_fields = ('email', 'user__username', 'user__email')

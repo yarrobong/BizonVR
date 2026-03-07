@@ -1,18 +1,24 @@
 """Базовые тесты входа по телефону (Фаза 6)."""
+import os
 from decimal import Decimal
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from django.contrib.auth import get_user_model
-from django.test import Client, SimpleTestCase, TestCase
+from django.contrib.auth.tokens import default_token_generator
+from django.core.cache import cache
+from django.core import mail
+from django.test import Client, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.encoding import force_bytes
+from django.utils.http import urlsafe_base64_encode
 
 from config.env import parse_bool_value
 from config.legal_docs import LEGAL_BUNDLE_VERSION
 from catalog.models import Category, City, PickupPoint, Product
 from orders.models import Order
 
-from .models import CommercialProposalContact, PhoneVerificationCode, Profile, SavedAddress
+from .models import CommercialProposalContact, EmailVerificationCode, PhoneVerificationCode, Profile, SavedAddress
 
 User = get_user_model()
 
@@ -35,24 +41,87 @@ class ConfigBoolParsingTest(SimpleTestCase):
 
 class LoginViewsTest(TestCase):
     """Страница входа и ограничение частоты запросов."""
+    LOGIN_PENDING_PHONE_SESSION_KEY = 'accounts:login:pending_phone'
+    LOGIN_PENDING_SENT_AT_SESSION_KEY = 'accounts:login:last_sent_at'
 
     def setUp(self):
         self.client = Client()
+        cache.clear()
 
     def test_login_page_returns_200(self):
         resp = self.client.get(reverse('accounts:login'))
         self.assertEqual(resp.status_code, 200)
 
+    @override_settings(TURNSTILE_SITE_KEY='site-key', TURNSTILE_SECRET_KEY='secret-key')
+    def test_login_page_renders_turnstile_when_configured(self):
+        resp = self.client.get(reverse('accounts:login'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'cf-turnstile')
+        self.assertContains(resp, 'site-key')
+
+    @override_settings(DEBUG=True, TURNSTILE_SITE_KEY='', TURNSTILE_SECRET_KEY='')
+    def test_login_page_shows_turnstile_disabled_note_in_debug_without_keys(self):
+        resp = self.client.get(reverse('accounts:login'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Капча отключена локально')
+
+    def test_authenticated_login_view_ignores_external_next(self):
+        user = User.objects.create_user(username='9991234567', password='testpass')
+        self.client.force_login(user)
+
+        resp = self.client.get(reverse('accounts:login'), {'next': 'https://evil.example/phish'})
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.url, reverse('accounts:profile'))
+
+    @override_settings(TURNSTILE_SITE_KEY='site-key', TURNSTILE_SECRET_KEY='secret-key')
+    def test_send_code_requires_turnstile_token_when_enabled(self):
+        resp = self.client.post(
+            reverse('accounts:send_code'),
+            {
+                'phone': '+7 (999) 123-45-67',
+                'agree_privacy': 'on',
+            },
+        )
+        self.assertEqual(resp.status_code, 400)
+        data = resp.json()
+        self.assertFalse(data.get('ok'))
+        self.assertIn('робот', data.get('error', ''))
+
     def test_send_code_invalid_phone_returns_400(self):
         resp = self.client.post(
             reverse('accounts:send_code'),
             {'phone': '123'},
-            content_type='application/x-www-form-urlencoded',
         )
         self.assertEqual(resp.status_code, 400)
         data = resp.json()
         self.assertFalse(data.get('ok'))
         self.assertIn('error', data)
+
+    @override_settings(TURNSTILE_SITE_KEY='site-key', TURNSTILE_SECRET_KEY='secret-key')
+    @patch('accounts.views.auth.verify_turnstile_token', return_value=(True, ''))
+    @patch('accounts.views.auth.create_and_send_code', return_value=(True, ''))
+    def test_send_code_success_saves_pending_phone_in_session(
+        self,
+        mocked_create_and_send_code,
+        mocked_turnstile,
+    ):
+        resp = self.client.post(
+            reverse('accounts:send_code'),
+            {
+                'phone': '+7 (999) 123-45-67',
+                'agree_privacy': 'on',
+                'cf-turnstile-response': 'token',
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data.get('ok'))
+        self.assertEqual(data.get('phone'), '9991234567')
+        session = self.client.session
+        self.assertEqual(session.get(self.LOGIN_PENDING_PHONE_SESSION_KEY), '9991234567')
+        self.assertIsInstance(session.get(self.LOGIN_PENDING_SENT_AT_SESSION_KEY), int)
+        mocked_turnstile.assert_called_once()
+        mocked_create_and_send_code.assert_called_once()
 
     @patch('accounts.services.generate_code', return_value='654321')
     @patch('accounts.services.send_sms', return_value=False)
@@ -95,6 +164,58 @@ class LoginViewsTest(TestCase):
         self.assertEqual(post_response.url, reverse('home'))
         self.assertNotIn('_auth_user_id', self.client.session)
 
+    def test_resend_code_without_pending_session_returns_400(self):
+        resp = self.client.post(reverse('accounts:resend_code'))
+        self.assertEqual(resp.status_code, 400)
+        data = resp.json()
+        self.assertFalse(data.get('ok'))
+        self.assertIn('истекла', data.get('error', ''))
+
+    @override_settings(TURNSTILE_SITE_KEY='site-key', TURNSTILE_SECRET_KEY='secret-key')
+    @patch('accounts.views.auth.verify_turnstile_token', return_value=(True, ''))
+    @patch('accounts.views.auth.create_and_send_code', return_value=(True, ''))
+    def test_resend_code_is_rate_limited_for_one_minute(
+        self,
+        mocked_create_and_send_code,
+        mocked_turnstile,
+    ):
+        send_resp = self.client.post(
+            reverse('accounts:send_code'),
+            {
+                'phone': '+7 (999) 123-45-67',
+                'agree_privacy': 'on',
+                'cf-turnstile-response': 'token',
+            },
+        )
+        self.assertEqual(send_resp.status_code, 200)
+
+        resend_resp = self.client.post(reverse('accounts:resend_code'))
+        self.assertEqual(resend_resp.status_code, 429)
+        data = resend_resp.json()
+        self.assertFalse(data.get('ok'))
+        self.assertGreater(data.get('resend_available_in', 0), 0)
+
+    @patch('accounts.views.auth.verify_turnstile_token')
+    @patch('accounts.views.auth.create_and_send_code', return_value=(True, ''))
+    def test_resend_code_after_minute_succeeds_without_turnstile(
+        self,
+        mocked_create_and_send_code,
+        mocked_turnstile,
+    ):
+        session = self.client.session
+        session[self.LOGIN_PENDING_PHONE_SESSION_KEY] = '9991234567'
+        session[self.LOGIN_PENDING_SENT_AT_SESSION_KEY] = int((timezone.now() - timezone.timedelta(seconds=61)).timestamp())
+        session.save()
+        cache.clear()
+
+        resend_resp = self.client.post(reverse('accounts:resend_code'))
+        self.assertEqual(resend_resp.status_code, 200)
+        data = resend_resp.json()
+        self.assertTrue(data.get('ok'))
+        self.assertEqual(data.get('resend_available_in'), 60)
+        mocked_create_and_send_code.assert_called_once()
+        mocked_turnstile.assert_not_called()
+
 
 class OtpLifecycleTest(TestCase):
     @patch('accounts.services.generate_code', return_value='222222')
@@ -129,6 +250,326 @@ class OtpLifecycleTest(TestCase):
         self.assertEqual(second_error, 'Неверный или устаревший код')
 
 
+class PasswordAccessRecoveryTest(TestCase):
+    PASSWORD_RESET_PENDING_PHONE_SESSION_KEY = 'accounts:password-reset:pending-phone'
+    PASSWORD_RESET_VERIFIED_USER_SESSION_KEY = 'accounts:password-reset:verified-user-id'
+
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(
+            username='9991234567',
+            password='OldPassword123!',
+            email='verified@example.com',
+        )
+        self.profile = Profile.objects.create(
+            user=self.user,
+            phone='9991234567',
+            contact_name='Иван Иванов',
+            privacy_agreed_at=timezone.now(),
+            email_verified_at=timezone.now(),
+        )
+        cache.clear()
+
+    def test_password_login_accepts_phone(self):
+        response = self.client.post(reverse('accounts:login'), {
+            'login': '+7 (999) 123-45-67',
+            'password': 'OldPassword123!',
+        })
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse('home'))
+        self.assertEqual(self.client.session.get('_auth_user_id'), str(self.user.pk))
+
+    def test_password_login_accepts_verified_email(self):
+        response = self.client.post(reverse('accounts:login'), {
+            'login': 'verified@example.com',
+            'password': 'OldPassword123!',
+        })
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse('home'))
+        self.assertEqual(self.client.session.get('_auth_user_id'), str(self.user.pk))
+
+    @patch('accounts.services.generate_code', return_value='112233')
+    def test_phone_password_reset_sets_new_password_and_logs_user_in(self, mocked_generate_code):
+        request_response = self.client.post(reverse('accounts:password_reset_request'), {
+            'method': 'phone',
+            'phone': '+7 (999) 123-45-67',
+        })
+        self.assertEqual(request_response.status_code, 302)
+        self.assertEqual(request_response.url, f"{reverse('accounts:password_reset_phone_verify')}?phone=9991234567")
+        self.assertEqual(self.client.session.get(self.PASSWORD_RESET_PENDING_PHONE_SESSION_KEY), '9991234567')
+
+        verify_response = self.client.post(reverse('accounts:password_reset_phone_verify'), {
+            'phone': '9991234567',
+            'code': '112233',
+        })
+        self.assertEqual(verify_response.status_code, 302)
+        self.assertEqual(verify_response.url, reverse('accounts:password_reset_set_password'))
+        self.assertEqual(self.client.session.get(self.PASSWORD_RESET_VERIFIED_USER_SESSION_KEY), self.user.pk)
+
+        set_password_response = self.client.post(reverse('accounts:password_reset_set_password'), {
+            'new_password1': 'NewStrongPass456!',
+            'new_password2': 'NewStrongPass456!',
+        })
+        self.assertEqual(set_password_response.status_code, 302)
+        self.assertEqual(set_password_response.url, reverse('accounts:profile'))
+
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password('NewStrongPass456!'))
+        self.assertEqual(self.client.session.get('_auth_user_id'), str(self.user.pk))
+        self.assertNotIn(self.PASSWORD_RESET_PENDING_PHONE_SESSION_KEY, self.client.session)
+        self.assertNotIn(self.PASSWORD_RESET_VERIFIED_USER_SESSION_KEY, self.client.session)
+
+    @override_settings(
+        EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
+        PASSWORD_RESET_EMAIL_SUBJECT='Восстановление доступа BizonVR',
+    )
+    def test_email_password_reset_sends_mail_and_sets_new_password(self):
+        request_response = self.client.post(reverse('accounts:password_reset_request'), {
+            'method': 'email',
+            'email': 'verified@example.com',
+        })
+
+        self.assertEqual(request_response.status_code, 302)
+        self.assertEqual(request_response.url, f"{reverse('accounts:password_reset_request')}?sent=email")
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn('/accounts/password-reset/confirm/', mail.outbox[0].body)
+
+        uidb64 = urlsafe_base64_encode(force_bytes(self.user.pk))
+        token = default_token_generator.make_token(self.user)
+        confirm_response = self.client.post(
+            reverse('accounts:password_reset_confirm', kwargs={'uidb64': uidb64, 'token': token}),
+            {
+                'new_password1': 'EmailStrong789!',
+                'new_password2': 'EmailStrong789!',
+            },
+        )
+
+        self.assertEqual(confirm_response.status_code, 302)
+        self.assertEqual(confirm_response.url, reverse('accounts:profile'))
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password('EmailStrong789!'))
+        self.assertEqual(self.client.session.get('_auth_user_id'), str(self.user.pk))
+
+
+class SmsServiceTest(SimpleTestCase):
+    @override_settings(SMS_CODE_TTL_MINUTES=15)
+    def test_build_sms_message_uses_pretty_default_template(self):
+        from .services import build_sms_message
+
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop('SMS_MESSAGE_TEMPLATE', None)
+            message = build_sms_message('123456')
+
+        self.assertEqual(message, 'BizonVR: код 123456. Действует 15 мин. Не сообщайте его никому.')
+
+    @override_settings(SMS_CODE_TTL_MINUTES=7)
+    def test_build_sms_message_supports_custom_template(self):
+        from .services import build_sms_message
+
+        with patch.dict(os.environ, {'SMS_MESSAGE_TEMPLATE': 'Код входа {code}, срок {ttl_minutes} мин.'}, clear=False):
+            message = build_sms_message('654321')
+
+        self.assertEqual(message, 'Код входа 654321, срок 7 мин.')
+
+    @override_settings(SMS_CODE_TTL_MINUTES=9)
+    def test_build_sms_message_falls_back_on_invalid_template(self):
+        from .services import build_sms_message
+
+        with patch.dict(os.environ, {'SMS_MESSAGE_TEMPLATE': 'Код {unknown}'}, clear=False):
+            message = build_sms_message('111222')
+
+        self.assertEqual(message, 'BizonVR: код 111222. Действует 9 мин. Не сообщайте его никому.')
+
+    @override_settings(
+        EXOLVE_API_KEY='secret-api-key',
+        EXOLVE_SENDER='BizonVR',
+        EXOLVE_API_BASE='https://api.exolve.ru/messaging/v1',
+    )
+    @patch('accounts.services.requests.post')
+    def test_exolve_request_uses_bearer_and_json_payload(self, mocked_post):
+        from .services import _send_exolve
+
+        response = Mock()
+        response.json.return_value = {'message_id': 'sms-id'}
+        response.raise_for_status.return_value = None
+        mocked_post.return_value = response
+
+        ok = _send_exolve('79991234567', '123456')
+
+        self.assertTrue(ok)
+        mocked_post.assert_called_once_with(
+            'https://api.exolve.ru/messaging/v1/SendSMS',
+            json={
+                'number': 'BizonVR',
+                'destination': '79991234567',
+                'text': 'BizonVR: код 123456. Действует 10 мин. Не сообщайте его никому.',
+            },
+            headers={
+                'Authorization': 'Bearer secret-api-key',
+                'Content-Type': 'application/json',
+            },
+            timeout=10,
+        )
+
+    @override_settings(
+        EXOLVE_API_KEY='secret-api-key',
+        EXOLVE_SENDER='BizonVR',
+        EXOLVE_API_BASE='https://api.exolve.ru/messaging/v1',
+    )
+    @patch('accounts.services.requests.post')
+    def test_exolve_request_returns_false_on_invalid_json(self, mocked_post):
+        from .services import _send_exolve
+
+        response = Mock()
+        response.raise_for_status.return_value = None
+        response.json.side_effect = ValueError('bad payload')
+        mocked_post.return_value = response
+
+        self.assertFalse(_send_exolve('79991234567', '123456'))
+
+    @patch('accounts.services.requests.post')
+    def test_smsru_request_uses_message_template_and_sender(self, mocked_post):
+        from .services import _send_smsru
+
+        response = Mock()
+        response.json.return_value = {'status': 'OK'}
+        response.raise_for_status.return_value = None
+        mocked_post.return_value = response
+
+        with patch.dict(
+            os.environ,
+            {
+                'SMS_SENDER_NAME': 'BizonVR',
+                'SMS_MESSAGE_TEMPLATE': 'Ваш код {code}. Срок {ttl_minutes} мин.',
+            },
+            clear=False,
+        ):
+            ok = _send_smsru('79991234567', '123456', 'secret-api-key', client_ip='203.0.113.10')
+
+        self.assertTrue(ok)
+        mocked_post.assert_called_once_with(
+            'https://sms.ru/sms/send',
+            data={
+                'api_id': 'secret-api-key',
+                'to': '79991234567',
+                'msg': 'Ваш код 123456. Срок 10 мин.',
+                'json': 1,
+                'from': 'BizonVR',
+                'ip': '203.0.113.10',
+            },
+            timeout=10,
+        )
+
+
+@override_settings(
+    EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
+    DEFAULT_FROM_EMAIL='BizonVR <no-reply@bizonvr.ru>',
+    SITE_URL='https://bizonvr.ru',
+    SITE_CONTACT_EMAIL='support@bizonvr.ru',
+    SITE_CONTACT_PHONE='+7 (932) 491-04-82',
+    EMAIL_CODE_TTL_MINUTES=15,
+)
+class EmailVerificationServiceTest(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username='9991234567', password='testpass')
+        self.profile = Profile.objects.create(user=self.user, phone='9991234567')
+
+    @patch('accounts.services.generate_code', return_value='112233')
+    def test_create_and_send_email_code_sends_html_email(self, mocked_generate_code):
+        from .services import create_and_send_email_code
+
+        ok, error = create_and_send_email_code(self.user, 'client@example.com')
+
+        self.assertTrue(ok)
+        self.assertEqual(error, '')
+        self.assertTrue(EmailVerificationCode.objects.filter(user=self.user, email='client@example.com').exists())
+        self.assertEqual(len(mail.outbox), 1)
+        message = mail.outbox[0]
+        self.assertEqual(message.to, ['client@example.com'])
+        self.assertIn('112233', message.body)
+        self.assertEqual(len(message.alternatives), 1)
+        self.assertIn('112233', message.alternatives[0].content)
+
+    def test_confirm_email_verification_sets_user_email_once(self):
+        from .services import confirm_email_verification
+
+        EmailVerificationCode.objects.create(user=self.user, email='client@example.com', code='445566')
+
+        ok, error = confirm_email_verification(self.user, 'client@example.com', '445566')
+
+        self.assertTrue(ok)
+        self.assertEqual(error, '')
+        self.user.refresh_from_db()
+        self.profile.refresh_from_db()
+        self.assertEqual(self.user.email, 'client@example.com')
+        self.assertIsNotNone(self.profile.email_verified_at)
+
+        second_ok, second_error = confirm_email_verification(self.user, 'client@example.com', '445566')
+        self.assertFalse(second_ok)
+        self.assertIn('уже подтверждён', second_error)
+
+
+class TurnstileServiceTest(SimpleTestCase):
+    @override_settings(DEBUG=True, TURNSTILE_SITE_KEY='', TURNSTILE_SECRET_KEY='')
+    def test_turnstile_bypasses_in_debug_without_keys(self):
+        from .services import verify_turnstile_token
+
+        ok, error = verify_turnstile_token('')
+        self.assertTrue(ok)
+        self.assertEqual(error, '')
+
+    @override_settings(
+        DEBUG=False,
+        TURNSTILE_SITE_KEY='site-key',
+        TURNSTILE_SECRET_KEY='secret-key',
+        TURNSTILE_VERIFY_URL='https://turnstile.test/siteverify',
+    )
+    @patch('accounts.services.requests.post')
+    def test_turnstile_accepts_valid_token(self, mocked_post):
+        from .services import verify_turnstile_token
+
+        response = Mock()
+        response.raise_for_status.return_value = None
+        response.json.return_value = {'success': True}
+        mocked_post.return_value = response
+
+        ok, error = verify_turnstile_token('token-123', client_ip='203.0.113.5')
+
+        self.assertTrue(ok)
+        self.assertEqual(error, '')
+        mocked_post.assert_called_once_with(
+            'https://turnstile.test/siteverify',
+            data={
+                'secret': 'secret-key',
+                'response': 'token-123',
+                'remoteip': '203.0.113.5',
+            },
+            timeout=10,
+        )
+
+    @override_settings(
+        DEBUG=False,
+        TURNSTILE_SITE_KEY='site-key',
+        TURNSTILE_SECRET_KEY='secret-key',
+        TURNSTILE_VERIFY_URL='https://turnstile.test/siteverify',
+    )
+    @patch('accounts.services.requests.post')
+    def test_turnstile_rejects_invalid_token(self, mocked_post):
+        from .services import verify_turnstile_token
+
+        response = Mock()
+        response.raise_for_status.return_value = None
+        response.json.return_value = {'success': False, 'error-codes': ['invalid-input-response']}
+        mocked_post.return_value = response
+
+        ok, error = verify_turnstile_token('bad-token')
+
+        self.assertFalse(ok)
+        self.assertIn('проверку', error)
+
+
 class CompleteRegistrationLegalVersionTest(TestCase):
     def setUp(self):
         self.client = Client()
@@ -154,6 +595,7 @@ class ProfileDashboardTest(TestCase):
 
     def setUp(self):
         self.client = Client()
+        cache.clear()
         self.user = User.objects.create_user(username='9991234567', password='testpass')
         self.profile = Profile.objects.create(
             user=self.user,
@@ -252,6 +694,49 @@ class ProfileDashboardTest(TestCase):
         self.profile.refresh_from_db()
         self.assertEqual(self.user.username, '9991234567')
         self.assertEqual(self.profile.phone, '9991234567')
+
+    @override_settings(
+        EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
+        DEFAULT_FROM_EMAIL='BizonVR <no-reply@bizonvr.ru>',
+    )
+    @patch('accounts.services.generate_code', return_value='332211')
+    def test_send_email_code_action_creates_pending_code_and_mail(self, mocked_generate_code):
+        self.client.force_login(self.user)
+
+        resp = self.client.post(reverse('accounts:profile'), {
+            'action': 'send_email_code',
+            'email': 'client@example.com',
+        })
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(
+            EmailVerificationCode.objects.filter(user=self.user, email='client@example.com', used_at__isnull=True).exists()
+        )
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertContains(resp, 'Письмо отправлено на:')
+
+    def test_confirm_email_code_updates_user_email_and_profile_status(self):
+        self.client.force_login(self.user)
+        EmailVerificationCode.objects.create(user=self.user, email='client@example.com', code='123456')
+
+        resp = self.client.post(reverse('accounts:profile'), {
+            'action': 'confirm_email_code',
+            'email': 'client@example.com',
+            'code': '123456',
+        })
+
+        self.assertEqual(resp.status_code, 200)
+        self.user.refresh_from_db()
+        self.profile.refresh_from_db()
+        self.assertEqual(self.user.email, 'client@example.com')
+        self.assertIsNotNone(self.profile.email_verified_at)
+
+        second_resp = self.client.post(reverse('accounts:profile'), {
+            'action': 'send_email_code',
+            'email': 'new@example.com',
+        })
+        self.assertContains(second_resp, 'Email уже подтверждён')
+        self.assertFalse(EmailVerificationCode.objects.filter(user=self.user, email='new@example.com').exists())
 
     def test_balance_history_route_still_available(self):
         self.client.force_login(self.user)
@@ -452,15 +937,13 @@ class SavedAddressAndCheckoutTest(TestCase):
 
 
 class VerifyCodeTemplateTest(TestCase):
+    LOGIN_PENDING_PHONE_SESSION_KEY = 'accounts:login:pending_phone'
+    LOGIN_PENDING_SENT_AT_SESSION_KEY = 'accounts:login:last_sent_at'
+
     def setUp(self):
         self.client = Client()
         self.user = User.objects.create_user(username='9991234567', password='testpass')
-        Profile.objects.create(
-            user=self.user,
-            phone='9991234567',
-            contact_name='Иван Иванов',
-            privacy_agreed_at=timezone.now(),
-        )
+        cache.clear()
 
     @patch('accounts.views.auth.is_sms_debug_mode', return_value=True)
     def test_verify_code_page_shows_terminal_hint_in_debug_mode(self, mocked_debug):
@@ -475,3 +958,14 @@ class VerifyCodeTemplateTest(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertNotContains(resp, 'терминале, где запущен сервер')
         mocked_debug.assert_called()
+
+    def test_verify_code_page_shows_resend_controls_when_session_pending(self):
+        session = self.client.session
+        session[self.LOGIN_PENDING_PHONE_SESSION_KEY] = self.user.username
+        session[self.LOGIN_PENDING_SENT_AT_SESSION_KEY] = int(timezone.now().timestamp())
+        session.save()
+
+        resp = self.client.get(reverse('accounts:verify_code'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Отправить код повторно')
+        self.assertContains(resp, 'Повторная отправка будет доступна через')

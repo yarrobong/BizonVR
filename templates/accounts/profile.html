@@ -313,6 +313,13 @@
                   <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Основной контакт</p>
                   <p class="mt-2 text-white">{{ primary_contact_phone|default:"Не заполнен" }}</p>
                   <p class="mt-1 break-all text-gray-400">{{ primary_contact_email|default:"Email не заполнен" }}</p>
+                  <p class="mt-2 text-xs {% if profile.email_verified_at %}text-emerald-300{% else %}text-amber-300{% endif %}">
+                    {% if profile.email_verified_at %}
+                      Email подтверждён {{ profile.email_verified_at|date:"d.m.Y H:i" }}
+                    {% else %}
+                      Email ещё не подтверждён
+                    {% endif %}
+                  </p>
                 </div>
                 <div class="rounded-2xl border border-white/10 bg-dark-900/40 p-4">
                   <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Последний вход</p>
@@ -734,9 +741,9 @@
         <section id="security" class="rounded-[1.75rem] border border-white/10 bg-dark-800/90 p-6 md:p-7">
           <div class="max-w-3xl">
             <p class="text-[11px] uppercase tracking-[0.22em] text-accent">Безопасность</p>
-            <h2 class="mt-2 text-2xl font-semibold text-white">Вход, номер логина и подтверждение через SMS</h2>
+            <h2 class="mt-2 text-2xl font-semibold text-white">Вход, пароль, подтверждённый email и управление доступом</h2>
             <p class="mt-2 text-sm leading-6 text-gray-400">
-              Здесь собраны только реальные функции аккаунта: текущий номер входа, последний вход и смена логина по SMS-коду без лишних декоративных блоков.
+              Здесь собраны реальные функции доступа: текущий номер входа, подтверждённый email, установка пароля и смена логина по SMS.
             </p>
           </div>
 
@@ -756,69 +763,156 @@
                   <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Последний вход</p>
                   <p class="mt-2 text-white">{% if user.last_login %}{{ user.last_login|date:"d.m.Y H:i" }}{% else %}Нет данных{% endif %}</p>
                 </div>
-              </div>
-            </section>
-
-            <section class="rounded-[1.5rem] border border-white/10 bg-dark-900/40 p-5">
-              <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                <div>
-                  <h3 class="text-lg font-semibold text-white">Смена номера входа</h3>
-                  <p class="mt-1 text-sm text-gray-400">Новый номер станет логином после подтверждения SMS-кода.</p>
-                </div>
-                <span class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-gray-300">SMS-подтверждение</span>
-              </div>
-
-              <form method="post" class="mt-5 space-y-3" hx-boost="false">
-                {% csrf_token %}
-                <input type="hidden" name="action" value="send_phone_code">
-                <div>
-                  <label for="{{ phone_request_form.new_phone.id_for_label }}" class="block text-sm text-gray-300">{{ phone_request_form.new_phone.label }}</label>
-                  <p class="mt-1 text-xs text-gray-500">Введите номер, который хотите использовать для входа в кабинет.</p>
-                  <div class="mt-2">{{ phone_request_form.new_phone }}</div>
-                  {% if phone_request_form.new_phone.errors %}
-                    <p class="mt-1 text-sm text-red-400">{{ phone_request_form.new_phone.errors.0 }}</p>
-                  {% endif %}
-                </div>
-                <button type="submit" class="inline-flex items-center justify-center rounded-full bg-accent px-5 py-3 text-sm font-semibold text-dark-900 transition hover:bg-accent-hover">
-                  Отправить код
-                </button>
-              </form>
-
-              {% if pending_phone_change %}
-                <div class="mt-5 rounded-[1.5rem] border border-white/10 bg-white/5 p-5">
-                  <p class="text-sm text-gray-300">
-                    Код отправлен на номер:
-                    <span class="text-white">{{ pending_phone_change }}</span>
-                  </p>
-                  <form method="post" class="mt-4 space-y-3" hx-boost="false">
-                    {% csrf_token %}
-                    <input type="hidden" name="action" value="confirm_phone_code">
-                    {% if phone_confirm_form.non_field_errors %}
-                      <p class="text-sm text-red-400">{{ phone_confirm_form.non_field_errors.0 }}</p>
+                <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Подтверждённый email</p>
+                  <p class="mt-2 break-all text-white">{{ confirmed_email|default:"Не подтверждён" }}</p>
+                  <p class="mt-1 {% if profile.email_verified_at %}text-emerald-300{% else %}text-gray-400{% endif %}">
+                    {% if profile.email_verified_at %}
+                      Подтверждён {{ profile.email_verified_at|date:"d.m.Y H:i" }}
+                    {% elif pending_email_verification %}
+                      Ожидает подтверждения: {{ pending_email_verification.email }}
+                    {% else %}
+                      Добавьте email и подтвердите его кодом из письма.
                     {% endif %}
-                    <div class="grid gap-4 md:grid-cols-2">
-                      <div>
-                        <label for="{{ phone_confirm_form.new_phone.id_for_label }}" class="block text-sm text-gray-300">{{ phone_confirm_form.new_phone.label }}</label>
-                        <div class="mt-2">{{ phone_confirm_form.new_phone }}</div>
-                        {% if phone_confirm_form.new_phone.errors %}
-                          <p class="mt-1 text-sm text-red-400">{{ phone_confirm_form.new_phone.errors.0 }}</p>
-                        {% endif %}
-                      </div>
-                      <div>
-                        <label for="{{ phone_confirm_form.code.id_for_label }}" class="block text-sm text-gray-300">{{ phone_confirm_form.code.label }}</label>
-                        <div class="mt-2">{{ phone_confirm_form.code }}</div>
-                        {% if phone_confirm_form.code.errors %}
-                          <p class="mt-1 text-sm text-red-400">{{ phone_confirm_form.code.errors.0 }}</p>
-                        {% endif %}
-                      </div>
-                    </div>
-                    <button type="submit" class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white px-5 py-3 text-sm font-semibold text-dark-900 transition hover:bg-gray-100">
-                      Подтвердить смену номера
-                    </button>
-                  </form>
+                  </p>
                 </div>
-              {% endif %}
+                <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Пароль</p>
+                  <p class="mt-2 text-white">{% if user.has_usable_password %}Задан{% else %}Пока не задан{% endif %}</p>
+                  <a href="{% url 'accounts:password_reset_request' %}" class="mt-2 inline-flex text-sm text-accent hover:text-accent-hover">
+                    Установить или сбросить пароль
+                  </a>
+                </div>
+              </div>
             </section>
+
+            <div class="space-y-4">
+              <section class="rounded-[1.5rem] border border-white/10 bg-dark-900/40 p-5">
+                <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <h3 class="text-lg font-semibold text-white">Подтверждение email</h3>
+                    <p class="mt-1 text-sm text-gray-400">Один раз подтверждаете адрес кодом из письма, после этого он фиксируется как проверенный.</p>
+                  </div>
+                  <span class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-gray-300">Email-письмо</span>
+                </div>
+
+                <form method="post" class="mt-5 space-y-3" hx-boost="false">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="send_email_code">
+                  <div>
+                    <label for="{{ email_request_form.email.id_for_label }}" class="block text-sm text-gray-300">{{ email_request_form.email.label }}</label>
+                    <p class="mt-1 text-xs text-gray-500">На этот адрес отправим письмо с кодом подтверждения.</p>
+                    <div class="mt-2">{{ email_request_form.email }}</div>
+                    {% if email_request_form.email.errors %}
+                      <p class="mt-1 text-sm text-red-400">{{ email_request_form.email.errors.0 }}</p>
+                    {% endif %}
+                  </div>
+                  <button
+                    type="submit"
+                    class="inline-flex items-center justify-center rounded-full bg-accent px-5 py-3 text-sm font-semibold text-dark-900 transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60"
+                    {% if profile.email_verified_at %}disabled{% endif %}
+                  >
+                    {% if profile.email_verified_at %}Email уже подтверждён{% else %}Отправить письмо с кодом{% endif %}
+                  </button>
+                </form>
+
+                {% if pending_email_verification and not profile.email_verified_at %}
+                  <div class="mt-5 rounded-[1.5rem] border border-white/10 bg-white/5 p-5">
+                    <p class="text-sm text-gray-300">
+                      Письмо отправлено на:
+                      <span class="text-white">{{ pending_email_verification.email }}</span>
+                    </p>
+                    <form method="post" class="mt-4 space-y-3" hx-boost="false">
+                      {% csrf_token %}
+                      <input type="hidden" name="action" value="confirm_email_code">
+                      {% if email_confirm_form.non_field_errors %}
+                        <p class="text-sm text-red-400">{{ email_confirm_form.non_field_errors.0 }}</p>
+                      {% endif %}
+                      <div class="grid gap-4 md:grid-cols-2">
+                        <div>
+                          <label for="{{ email_confirm_form.email.id_for_label }}" class="block text-sm text-gray-300">{{ email_confirm_form.email.label }}</label>
+                          <div class="mt-2">{{ email_confirm_form.email }}</div>
+                          {% if email_confirm_form.email.errors %}
+                            <p class="mt-1 text-sm text-red-400">{{ email_confirm_form.email.errors.0 }}</p>
+                          {% endif %}
+                        </div>
+                        <div>
+                          <label for="{{ email_confirm_form.code.id_for_label }}" class="block text-sm text-gray-300">{{ email_confirm_form.code.label }}</label>
+                          <div class="mt-2">{{ email_confirm_form.code }}</div>
+                          {% if email_confirm_form.code.errors %}
+                            <p class="mt-1 text-sm text-red-400">{{ email_confirm_form.code.errors.0 }}</p>
+                          {% endif %}
+                        </div>
+                      </div>
+                      <button type="submit" class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white px-5 py-3 text-sm font-semibold text-dark-900 transition hover:bg-gray-100">
+                        Подтвердить email
+                      </button>
+                    </form>
+                  </div>
+                {% endif %}
+              </section>
+
+              <section class="rounded-[1.5rem] border border-white/10 bg-dark-900/40 p-5">
+                <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <h3 class="text-lg font-semibold text-white">Смена номера входа</h3>
+                    <p class="mt-1 text-sm text-gray-400">Новый номер станет логином после подтверждения SMS-кода.</p>
+                  </div>
+                  <span class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-gray-300">SMS-подтверждение</span>
+                </div>
+
+                <form method="post" class="mt-5 space-y-3" hx-boost="false">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="send_phone_code">
+                  <div>
+                    <label for="{{ phone_request_form.new_phone.id_for_label }}" class="block text-sm text-gray-300">{{ phone_request_form.new_phone.label }}</label>
+                    <p class="mt-1 text-xs text-gray-500">Введите номер, который хотите использовать для входа в кабинет.</p>
+                    <div class="mt-2">{{ phone_request_form.new_phone }}</div>
+                    {% if phone_request_form.new_phone.errors %}
+                      <p class="mt-1 text-sm text-red-400">{{ phone_request_form.new_phone.errors.0 }}</p>
+                    {% endif %}
+                  </div>
+                  <button type="submit" class="inline-flex items-center justify-center rounded-full bg-accent px-5 py-3 text-sm font-semibold text-dark-900 transition hover:bg-accent-hover">
+                    Отправить код
+                  </button>
+                </form>
+
+                {% if pending_phone_change %}
+                  <div class="mt-5 rounded-[1.5rem] border border-white/10 bg-white/5 p-5">
+                    <p class="text-sm text-gray-300">
+                      Код отправлен на номер:
+                      <span class="text-white">{{ pending_phone_change }}</span>
+                    </p>
+                    <form method="post" class="mt-4 space-y-3" hx-boost="false">
+                      {% csrf_token %}
+                      <input type="hidden" name="action" value="confirm_phone_code">
+                      {% if phone_confirm_form.non_field_errors %}
+                        <p class="text-sm text-red-400">{{ phone_confirm_form.non_field_errors.0 }}</p>
+                      {% endif %}
+                      <div class="grid gap-4 md:grid-cols-2">
+                        <div>
+                          <label for="{{ phone_confirm_form.new_phone.id_for_label }}" class="block text-sm text-gray-300">{{ phone_confirm_form.new_phone.label }}</label>
+                          <div class="mt-2">{{ phone_confirm_form.new_phone }}</div>
+                          {% if phone_confirm_form.new_phone.errors %}
+                            <p class="mt-1 text-sm text-red-400">{{ phone_confirm_form.new_phone.errors.0 }}</p>
+                          {% endif %}
+                        </div>
+                        <div>
+                          <label for="{{ phone_confirm_form.code.id_for_label }}" class="block text-sm text-gray-300">{{ phone_confirm_form.code.label }}</label>
+                          <div class="mt-2">{{ phone_confirm_form.code }}</div>
+                          {% if phone_confirm_form.code.errors %}
+                            <p class="mt-1 text-sm text-red-400">{{ phone_confirm_form.code.errors.0 }}</p>
+                          {% endif %}
+                        </div>
+                      </div>
+                      <button type="submit" class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white px-5 py-3 text-sm font-semibold text-dark-900 transition hover:bg-gray-100">
+                        Подтвердить смену номера
+                      </button>
+                    </form>
+                  </div>
+                {% endif %}
+              </section>
+            </div>
           </div>
         </section>
 

@@ -171,6 +171,25 @@ class VariantGalleryAndCatalogCardsTest(TestCase):
         invalid_data = self._extract_product_detail_data(invalid_resp)
         self.assertIsNone(invalid_data.get('initialVariantId'))
 
+    def test_product_detail_renders_initial_main_image_without_alpine(self):
+        png_bytes = (
+            b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01'
+            b'\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDAT\x08\xd7c\xf8\xff\xff?'
+            b'\x00\x05\xfe\x02\xfeA\xd9\x89\xc9\x00\x00\x00\x00IEND\xaeB`\x82'
+        )
+        self.product.image = SimpleUploadedFile('detail.png', png_bytes, content_type='image/png')
+        self.product.save(update_fields=['image'])
+
+        resp = self.client.get(reverse('catalog:product_detail', kwargs={'slug': self.product.slug}))
+        self.assertEqual(resp.status_code, 200)
+        html = resp.content.decode()
+
+        self.assertRegex(
+            html,
+            r'<img\s+src="http://testserver/media/products/[^"]+"[^>]*class="main-image"',
+        )
+        self.assertIn('x-bind:src="effectiveImage ||', html)
+
     def test_catalog_renders_all_variants_as_cards_without_base_product_card(self):
         resp = self.client.get(reverse('catalog:product_list'), {'category': self.category.slug})
         self.assertEqual(resp.status_code, 200)

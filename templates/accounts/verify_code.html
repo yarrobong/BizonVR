@@ -3,7 +3,63 @@
 {% block title %}Введите код — BizonVR{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 py-12 max-w-md">
+<div class="container mx-auto px-4 py-12 max-w-md"
+     x-data="{
+       resendAvailableIn: {{ resend_available_in|default:0 }},
+       resending: false,
+       resendError: '',
+       resendSuccess: '',
+       timer: null,
+       init() {
+         if (this.resendAvailableIn > 0) this.startTimer();
+       },
+       startTimer() {
+         if (this.timer) clearInterval(this.timer);
+         this.timer = setInterval(() => {
+           if (this.resendAvailableIn > 0) {
+             this.resendAvailableIn -= 1;
+             return;
+           }
+           clearInterval(this.timer);
+           this.timer = null;
+         }, 1000);
+       },
+       countdownLabel() {
+         const minutes = Math.floor(this.resendAvailableIn / 60);
+         const seconds = String(this.resendAvailableIn % 60).padStart(2, '0');
+         return `${minutes}:${seconds}`;
+       },
+       resendCode() {
+         if (this.resending || this.resendAvailableIn > 0) return;
+         this.resending = true;
+         this.resendError = '';
+         this.resendSuccess = '';
+         fetch('{% url 'accounts:resend_code' %}', {
+           method: 'POST',
+           headers: {
+             'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+             'X-Requested-With': 'XMLHttpRequest'
+           }
+         })
+           .then(async r => ({ ok: r.ok, data: await r.json().catch(() => ({})) }))
+           .then(({ ok, data }) => {
+             this.resending = false;
+             if (data.resend_available_in !== undefined && data.resend_available_in !== null) {
+               this.resendAvailableIn = data.resend_available_in;
+               if (this.resendAvailableIn > 0) this.startTimer();
+             }
+             if (ok && data.ok) {
+               this.resendSuccess = 'Новый код отправлен. Проверьте SMS.';
+               return;
+             }
+             this.resendError = data.error || 'Не удалось отправить код повторно.';
+           })
+           .catch(() => {
+             this.resending = false;
+             this.resendError = 'Ошибка сети. Попробуйте ещё раз.';
+           });
+       }
+     }">
   <h1 class="text-2xl font-light text-white mb-2">Введите код из SMS</h1>
   <p class="text-gray-400 text-sm mb-6">Код отправлен на номер <strong class="text-white">{{ phone }}</strong></p>
 
@@ -28,6 +84,31 @@
       Войти
     </button>
   </form>
+
+  {% if can_resend_code %}
+  <div class="mt-6 rounded-2xl border border-white/10 bg-dark-800/70 p-4">
+    <div class="flex items-center justify-between gap-4">
+      <div>
+        <p class="text-sm text-white">Не получили SMS?</p>
+        <p class="text-xs text-gray-400" x-show="resendAvailableIn > 0">
+          Повторная отправка будет доступна через <span x-text="countdownLabel()"></span>
+        </p>
+        <p class="text-xs text-gray-400" x-show="resendAvailableIn <= 0">
+          Можно отправить код повторно на этот же номер.
+        </p>
+      </div>
+      <button type="button"
+              @click="resendCode()"
+              :disabled="resending || resendAvailableIn > 0"
+              class="shrink-0 rounded-full border border-accent/30 px-4 py-2 text-sm font-medium text-accent transition hover:border-accent hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-50">
+        <span x-show="!resending">Отправить код повторно</span>
+        <span x-show="resending" x-cloak>Отправка…</span>
+      </button>
+    </div>
+    <p x-show="resendSuccess" x-text="resendSuccess" class="mt-3 text-xs text-emerald-300"></p>
+    <p x-show="resendError" x-text="resendError" class="mt-3 text-xs text-red-400"></p>
+  </div>
+  {% endif %}
 
   <p class="text-gray-500 text-sm mt-6">
     <a href="{% url 'accounts:login' %}" class="text-accent hover:text-accent-hover">Указать другой номер</a>

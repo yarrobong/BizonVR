@@ -10,14 +10,23 @@ from catalog.models import Favorite, Product
 from orders.models import Order
 
 from ..forms import (
+    EmailVerificationConfirmForm,
+    EmailVerificationRequestForm,
     PhoneChangeConfirmForm,
     PhoneChangeRequestForm,
     ProfileUpdateForm,
     SavedAddressForm,
 )
 from ..models import BalanceTransaction, CommercialProposalContact, Profile, SavedAddress
-from ..security import check_send_code_rate_limits, check_verify_code_rate_limits, mark_send_code_success
-from ..services import create_and_send_code, normalize_phone, verify_sms_code
+from ..security import check_send_code_rate_limits, check_verify_code_rate_limits, get_client_ip, mark_send_code_success
+from ..services import (
+    confirm_email_verification,
+    create_and_send_code,
+    create_and_send_email_code,
+    get_pending_email_verification,
+    normalize_phone,
+    verify_sms_code,
+)
 
 User = get_user_model()
 PHONE_CHANGE_SESSION_KEY = 'accounts:profile:phone_change_pending'
@@ -163,6 +172,11 @@ def _build_profile_completion(profile, saved_addresses, orders_total, favorites_
             'hint': 'Имя получателя будет подставляться в заказы и доставку.',
         },
         {
+            'label': 'Email подтверждён',
+            'done': bool(profile.email_verified_at),
+            'hint': 'Подтверждённый email нужен для писем по аккаунту и документам.',
+        },
+        {
             'label': 'Адрес сохранён',
             'done': bool(saved_addresses),
             'hint': 'Сохранённый адрес ускоряет checkout и повторные покупки.',
@@ -183,6 +197,8 @@ def _build_profile_completion(profile, saved_addresses, orders_total, favorites_
 
     if pending_phone_change:
         summary = 'Осталось подтвердить новый номер по SMS.'
+    elif not profile.email_verified_at:
+        summary = 'Подтвердите email, чтобы получать письма по аккаунту и заказам на проверенный адрес.'
     elif percent == 100:
         summary = 'Кабинет заполнен и готов к повторным заказам.'
     elif percent >= 50:
@@ -225,6 +241,14 @@ def _build_priority_actions(profile, saved_addresses, active_orders_count, favor
             'href': '#security',
             'variant': 'default',
             'icon': 'shield-check',
+        })
+    if not profile.email_verified_at:
+        actions.append({
+            'title': 'Подтвердить email',
+            'description': 'Проверенный email пригодится для уведомлений и документов.',
+            'href': '#security',
+            'variant': 'default',
+            'icon': 'mail-check',
         })
     if active_orders_count:
         actions.append({
@@ -298,6 +322,8 @@ def _build_profile_context(
     profile,
     alerts=None,
     profile_form=None,
+    email_request_form=None,
+    email_confirm_form=None,
     phone_request_form=None,
     phone_confirm_form=None,
     address_form=None,
@@ -308,11 +334,23 @@ def _build_profile_context(
     except CommercialProposalContact.DoesNotExist:
         cp_contact = None
     pending_phone = request.session.get(PHONE_CHANGE_SESSION_KEY, '')
+    pending_email_verification = get_pending_email_verification(request.user)
+    confirmed_email = (request.user.email or '').strip()
 
     if profile_form is None:
-        profile_form = ProfileUpdateForm(initial={
-            'contact_name': profile.contact_name or '',
-        })
+        profile_form = ProfileUpdateForm(initial={'contact_name': profile.contact_name or ''})
+    if email_request_form is None:
+        email_request_form = EmailVerificationRequestForm(
+            current_user=request.user,
+            email_locked=bool(profile.email_verified_at),
+            initial={'email': confirmed_email or (pending_email_verification.email if pending_email_verification else '')},
+        )
+    if email_confirm_form is None:
+        email_confirm_form = EmailVerificationConfirmForm(
+            current_user=request.user,
+            email_locked=bool(profile.email_verified_at),
+            initial={'email': pending_email_verification.email if pending_email_verification else confirmed_email},
+        )
     if phone_request_form is None:
         phone_request_form = PhoneChangeRequestForm(current_user=request.user, initial={
             'new_phone': pending_phone or '',
@@ -358,7 +396,7 @@ def _build_profile_context(
     )
     recent_orders = [_summarize_order(order) for order in last_orders]
     primary_contact_phone = (cp_contact.phone if cp_contact and cp_contact.phone else profile.phone or request.user.username)
-    primary_contact_email = cp_contact.email if cp_contact and cp_contact.email else ''
+    primary_contact_email = cp_contact.email if cp_contact and cp_contact.email else confirmed_email
     profile_completion = _build_profile_completion(
         profile=profile,
         saved_addresses=saved_addresses,
@@ -386,6 +424,10 @@ def _build_profile_context(
         'primary_contact_email': primary_contact_email,
         'alerts': alerts or [],
         'profile_form': profile_form,
+        'email_request_form': email_request_form,
+        'email_confirm_form': email_confirm_form,
+        'pending_email_verification': pending_email_verification,
+        'confirmed_email': confirmed_email,
         'phone_request_form': phone_request_form,
         'phone_confirm_form': phone_confirm_form,
         'pending_phone_change': pending_phone,
@@ -423,6 +465,8 @@ def profile_view(request):
     alerts = []
 
     profile_form = None
+    email_request_form = None
+    email_confirm_form = None
     phone_request_form = None
     phone_confirm_form = None
     address_form = None
@@ -452,6 +496,8 @@ def profile_view(request):
                         profile=profile,
                         alerts=alerts,
                         profile_form=profile_form,
+                        email_request_form=email_request_form,
+                        email_confirm_form=email_confirm_form,
                         phone_request_form=phone_request_form,
                         phone_confirm_form=phone_confirm_form,
                         address_form=address_form,
@@ -485,6 +531,62 @@ def profile_view(request):
             else:
                 alerts.append({'level': 'error', 'text': 'Не удалось сохранить адрес. Проверьте поля формы.'})
 
+        elif action == 'send_email_code':
+            email_request_form = EmailVerificationRequestForm(
+                request.POST,
+                current_user=request.user,
+                email_locked=bool(profile.email_verified_at),
+            )
+            if profile.email_verified_at:
+                alerts.append({'level': 'error', 'text': 'Email уже подтверждён и не требует повторной верификации.'})
+            elif email_request_form.is_valid():
+                email = email_request_form.cleaned_data['email']
+                ok, error = create_and_send_email_code(request.user, email)
+                if ok:
+                    email_confirm_form = EmailVerificationConfirmForm(
+                        current_user=request.user,
+                        initial={'email': email},
+                    )
+                    alerts.append({'level': 'success', 'text': 'Письмо с кодом подтверждения отправлено.'})
+                else:
+                    email_request_form.add_error('email', error)
+                    alerts.append({'level': 'error', 'text': 'Не удалось отправить письмо с кодом.'})
+            else:
+                alerts.append({'level': 'error', 'text': 'Проверьте email для отправки кода.'})
+
+        elif action == 'confirm_email_code':
+            email_confirm_form = EmailVerificationConfirmForm(
+                request.POST,
+                current_user=request.user,
+                email_locked=bool(profile.email_verified_at),
+            )
+            if profile.email_verified_at:
+                alerts.append({'level': 'error', 'text': 'Email уже подтверждён.'})
+            elif email_confirm_form.is_valid():
+                email = email_confirm_form.cleaned_data['email']
+                code = email_confirm_form.cleaned_data['code']
+                ok, error = confirm_email_verification(request.user, email, code)
+                if ok:
+                    profile.refresh_from_db(fields=['email_verified_at'])
+                    request.user.refresh_from_db(fields=['email'])
+                    email_request_form = EmailVerificationRequestForm(
+                        current_user=request.user,
+                        email_locked=True,
+                        initial={'email': request.user.email},
+                    )
+                    email_confirm_form = EmailVerificationConfirmForm(
+                        current_user=request.user,
+                        email_locked=True,
+                        initial={'email': request.user.email},
+                    )
+                    alerts.append({'level': 'success', 'text': 'Email успешно подтверждён.'})
+                else:
+                    target_field = 'email' if 'email' in error.lower() else 'code'
+                    email_confirm_form.add_error(target_field, error)
+                    alerts.append({'level': 'error', 'text': 'Не удалось подтвердить email.'})
+            else:
+                alerts.append({'level': 'error', 'text': 'Проверьте код подтверждения email.'})
+
         elif action == 'delete_address':
             address_id = (request.POST.get('address_id') or '').strip()
             address = SavedAddress.objects.filter(pk=address_id, user=request.user).first()
@@ -516,7 +618,7 @@ def profile_view(request):
                     phone_request_form.add_error('new_phone', rate_error)
                     alerts.append({'level': 'error', 'text': 'Не удалось отправить код на новый номер.'})
                 else:
-                    ok, error = create_and_send_code(new_phone)
+                    ok, error = create_and_send_code(new_phone, client_ip=get_client_ip(request))
                     if ok:
                         mark_send_code_success(request, new_phone)
                         request.session[PHONE_CHANGE_SESSION_KEY] = new_phone
@@ -597,6 +699,8 @@ def profile_view(request):
         profile=profile,
         alerts=alerts,
         profile_form=profile_form,
+        email_request_form=email_request_form,
+        email_confirm_form=email_confirm_form,
         phone_request_form=phone_request_form,
         phone_confirm_form=phone_confirm_form,
         address_form=address_form,

@@ -5,7 +5,7 @@ from ipaddress import ip_address, ip_network
 from django.conf import settings
 from django.core.cache import cache
 
-from .services import normalize_phone
+from .services import normalize_email, normalize_phone
 
 RATE_LIMIT_SESSION_KEY = 'accounts:rate_limit_session_key'
 
@@ -51,6 +51,28 @@ def mark_send_code_success(request, phone):
     _set_cooldown('send-code', 'ip', get_client_ip(request), cooldown)
     _set_cooldown('send-code', 'phone', phone, cooldown)
     _set_cooldown('send-code', 'session', get_rate_limit_session_key(request), cooldown)
+
+
+def check_send_email_rate_limits(request, email, *, endpoint='send-email-code'):
+    email = normalize_email(email)
+    cooldown = getattr(settings, 'EMAIL_CODE_COOLDOWN_SECONDS', 60)
+    checks = (
+        ('cooldown', endpoint, 'ip', get_client_ip(request), cooldown, f'Подождите {cooldown} сек. перед повторной отправкой.'),
+        ('cooldown', endpoint, 'email', email, cooldown, f'Письмо уже отправлено. Повторите через {cooldown} сек.'),
+        ('cooldown', endpoint, 'session', get_rate_limit_session_key(request), cooldown, f'Подождите {cooldown} сек. перед повторной отправкой.'),
+        ('window', endpoint, 'ip', get_client_ip(request), 5, 15 * 60, 'Слишком много запросов на отправку писем. Попробуйте позже.'),
+        ('window', endpoint, 'email', email, 3, 15 * 60, 'Слишком много запросов для этого email. Попробуйте позже.'),
+        ('window', endpoint, 'session', get_rate_limit_session_key(request), 5, 15 * 60, 'Слишком много запросов на отправку писем. Попробуйте позже.'),
+    )
+    return _run_rate_limit_checks(checks)
+
+
+def mark_send_email_success(request, email, *, endpoint='send-email-code'):
+    email = normalize_email(email)
+    cooldown = getattr(settings, 'EMAIL_CODE_COOLDOWN_SECONDS', 60)
+    _set_cooldown(endpoint, 'ip', get_client_ip(request), cooldown)
+    _set_cooldown(endpoint, 'email', email, cooldown)
+    _set_cooldown(endpoint, 'session', get_rate_limit_session_key(request), cooldown)
 
 
 def check_verify_code_rate_limits(request, phone, *, endpoint='verify-code'):

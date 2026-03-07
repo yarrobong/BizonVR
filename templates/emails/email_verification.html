@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Подтверждение email</title>
+</head>
+<body style="margin:0;padding:0;background:#07111f;color:#e5eefc;font-family:Arial,sans-serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:linear-gradient(180deg,#07111f 0%,#0c1b2f 100%);padding:32px 12px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#0f1f36;border:1px solid #24364f;border-radius:28px;overflow:hidden;">
+          <tr>
+            <td style="padding:32px 32px 16px;background:radial-gradient(circle at top right,#26d9ff 0%,rgba(38,217,255,0) 34%),linear-gradient(135deg,#102645 0%,#0b1730 100%);">
+              <p style="margin:0 0 12px;font-size:12px;letter-spacing:0.24em;text-transform:uppercase;color:#7ddfff;">{{ brand }}</p>
+              <h1 style="margin:0;font-size:30px;line-height:1.2;color:#ffffff;">Подтвердите email для аккаунта</h1>
+              <p style="margin:16px 0 0;font-size:16px;line-height:1.7;color:#d2def0;">
+                Введите код ниже в личном кабинете, чтобы один раз подтвердить адрес и использовать его для уведомлений, документов и заказов.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:24px 32px 32px;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:separate;border-spacing:0 18px;">
+                <tr>
+                  <td style="padding:24px;border-radius:24px;background:#081220;border:1px solid #1e3048;text-align:center;">
+                    <p style="margin:0 0 10px;font-size:12px;letter-spacing:0.18em;text-transform:uppercase;color:#7d93b7;">Код подтверждения</p>
+                    <div style="font-size:38px;line-height:1;font-weight:700;letter-spacing:0.28em;color:#ffffff;">{{ code }}</div>
+                    <p style="margin:14px 0 0;font-size:14px;line-height:1.6;color:#9fb2cd;">Код действует {{ ttl_minutes }} минут.</p>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding:22px 24px;border-radius:24px;background:#101d31;border:1px solid #1e3048;">
+                    <p style="margin:0 0 8px;font-size:15px;line-height:1.7;color:#e5eefc;">Если письмо запросили не вы, просто проигнорируйте его.</p>
+                    <p style="margin:0;font-size:14px;line-height:1.7;color:#9fb2cd;">
+                      {% if site_url %}Личный кабинет: <a href="{{ site_url }}/accounts/profile/" style="color:#7ddfff;text-decoration:none;">{{ site_url }}/accounts/profile/</a><br>{% endif %}
+                      {% if support_email %}Поддержка: <a href="mailto:{{ support_email }}" style="color:#7ddfff;text-decoration:none;">{{ support_email }}</a>{% endif %}
+                      {% if support_phone %}{% if support_email %}<br>{% endif %}Телефон: <span style="color:#e5eefc;">{{ support_phone }}</span>{% endif %}
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

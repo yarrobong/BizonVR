@@ -2,11 +2,12 @@
 Формы входа по телефону (Фаза 2).
 """
 from django import forms
+from django.contrib.auth.forms import SetPasswordForm as DjangoSetPasswordForm
 from django.contrib.auth import get_user_model
 
 from catalog.models import PickupPoint
 
-from .services import normalize_phone
+from .services import normalize_email, normalize_phone
 
 User = get_user_model()
 
@@ -88,12 +89,67 @@ class ProfileUpdateForm(forms.Form):
             'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
         }),
     )
-
     def clean_contact_name(self):
         value = (self.cleaned_data.get('contact_name') or '').strip()
         if not value:
             raise forms.ValidationError('Укажите ФИО.')
         return value
+
+
+class _BaseEmailVerificationForm(forms.Form):
+    """Общая форма для запроса и подтверждения email."""
+
+    email = forms.EmailField(
+        label='Email',
+        widget=forms.EmailInput(attrs={
+            'placeholder': 'email@example.com',
+            'autocomplete': 'email',
+            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
+        }),
+    )
+
+    def __init__(self, *args, current_user=None, email_locked=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.current_user = current_user
+        self.email_locked = email_locked
+        if email_locked:
+            self.fields['email'].disabled = True
+
+    def clean_email(self):
+        email = (self.cleaned_data.get('email') or '').strip().lower()
+        if not email:
+            raise forms.ValidationError('Введите корректный email.')
+        if self.email_locked:
+            return email
+        if self.current_user and User.objects.filter(email__iexact=email).exclude(pk=self.current_user.pk).exists():
+            raise forms.ValidationError('Этот email уже используется другим аккаунтом.')
+        return email
+
+
+class EmailVerificationRequestForm(_BaseEmailVerificationForm):
+    """Форма запроса письма с кодом подтверждения."""
+
+
+class EmailVerificationConfirmForm(_BaseEmailVerificationForm):
+    """Форма ввода кода подтверждения email."""
+
+    code = forms.CharField(
+        label='Код из письма',
+        max_length=10,
+        widget=forms.TextInput(attrs={
+            'placeholder': '123456',
+            'autocomplete': 'one-time-code',
+            'inputmode': 'numeric',
+            'pattern': '[0-9]*',
+            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent text-center tracking-widest',
+        }),
+    )
+
+    def clean_code(self):
+        code = (self.cleaned_data.get('code') or '').strip()
+        if not code or not code.isdigit():
+            raise forms.ValidationError('Введите цифровой код из письма.')
+        return code
 
 
 class SavedAddressForm(forms.Form):
@@ -277,3 +333,131 @@ class PhoneChangeConfirmForm(_BasePhoneChangeForm):
         if not code or not code.isdigit():
             raise forms.ValidationError('Введите цифровой код из SMS.')
         return code
+
+
+class PasswordLoginForm(forms.Form):
+    login = forms.CharField(
+        label='Телефон или email',
+        max_length=255,
+        widget=forms.TextInput(attrs={
+            'placeholder': '+7 (999) 123-45-67 или email@example.com',
+            'autocomplete': 'username',
+            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
+        }),
+    )
+    password = forms.CharField(
+        label='Пароль',
+        strip=False,
+        widget=forms.PasswordInput(attrs={
+            'placeholder': 'Введите пароль',
+            'autocomplete': 'current-password',
+            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
+        }),
+    )
+
+    def clean_login(self):
+        raw = (self.cleaned_data.get('login') or '').strip()
+        if not raw:
+            raise forms.ValidationError('Укажите телефон или email.')
+        if '@' in raw:
+            email = normalize_email(raw)
+            if not email:
+                raise forms.ValidationError('Введите корректный email.')
+            return email
+
+        phone = normalize_phone(raw)
+        if len(phone) < 10:
+            raise forms.ValidationError('Введите корректный номер телефона.')
+        return phone
+
+
+class PasswordResetRequestForm(forms.Form):
+    METHOD_PHONE = 'phone'
+    METHOD_EMAIL = 'email'
+    METHOD_CHOICES = [
+        (METHOD_PHONE, 'Через номер телефона'),
+        (METHOD_EMAIL, 'Через email'),
+    ]
+
+    method = forms.ChoiceField(
+        label='Способ восстановления',
+        choices=METHOD_CHOICES,
+        widget=forms.RadioSelect(),
+    )
+    phone = forms.CharField(
+        label='Номер телефона',
+        required=False,
+        max_length=20,
+        widget=forms.TextInput(attrs={
+            'placeholder': '+7 (999) 123-45-67',
+            'autocomplete': 'tel',
+            'inputmode': 'tel',
+            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
+        }),
+    )
+    email = forms.EmailField(
+        label='Email',
+        required=False,
+        widget=forms.EmailInput(attrs={
+            'placeholder': 'email@example.com',
+            'autocomplete': 'email',
+            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
+        }),
+    )
+
+    def clean(self):
+        cleaned_data = super().clean()
+        method = cleaned_data.get('method') or self.METHOD_PHONE
+
+        if method == self.METHOD_PHONE:
+            phone = normalize_phone(cleaned_data.get('phone') or '')
+            if len(phone) < 10:
+                self.add_error('phone', 'Введите корректный номер телефона.')
+            cleaned_data['phone'] = phone
+            cleaned_data['email'] = ''
+        else:
+            email = normalize_email(cleaned_data.get('email') or '')
+            if not email:
+                self.add_error('email', 'Введите корректный email.')
+            cleaned_data['email'] = email
+            cleaned_data['phone'] = ''
+
+        return cleaned_data
+
+
+class PasswordResetPhoneVerifyForm(forms.Form):
+    phone = forms.CharField(widget=forms.HiddenInput())
+    code = forms.CharField(
+        label='Код из SMS',
+        max_length=10,
+        widget=forms.TextInput(attrs={
+            'placeholder': '123456',
+            'autocomplete': 'one-time-code',
+            'inputmode': 'numeric',
+            'pattern': '[0-9]*',
+            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent text-center text-lg tracking-widest',
+        }),
+    )
+
+    def clean_code(self):
+        code = (self.cleaned_data.get('code') or '').strip()
+        if not code or not code.isdigit():
+            raise forms.ValidationError('Введите цифровой код из SMS.')
+        return code
+
+
+class PasswordSetupForm(DjangoSetPasswordForm):
+    def __init__(self, user, *args, **kwargs):
+        super().__init__(user, *args, **kwargs)
+        self.fields['new_password1'].label = 'Новый пароль'
+        self.fields['new_password2'].label = 'Повторите новый пароль'
+        self.fields['new_password1'].widget.attrs.update({
+            'placeholder': 'Не менее 8 символов',
+            'autocomplete': 'new-password',
+            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
+        })
+        self.fields['new_password2'].widget.attrs.update({
+            'placeholder': 'Введите пароль ещё раз',
+            'autocomplete': 'new-password',
+            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
+        })

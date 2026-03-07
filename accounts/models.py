@@ -27,6 +27,7 @@ class Profile(models.Model):
     )
     phone = models.CharField('Телефон', max_length=20, unique=True, db_index=True)
     contact_name = models.CharField('Контактное лицо (ФИО)', max_length=255, blank=True)
+    email_verified_at = models.DateTimeField('Email подтверждён', null=True, blank=True)
     privacy_agreed_at = models.DateTimeField('Согласие на обработку ПД', null=True, blank=True)
     privacy_policy_version = models.CharField('Версия политики ПД', max_length=32, blank=True)
     balance = models.DecimalField(
@@ -170,3 +171,26 @@ class PhoneVerificationCode(models.Model):
         verbose_name = 'Код подтверждения'
         verbose_name_plural = 'Коды подтверждения'
         ordering = ['-created_at']
+
+
+class EmailVerificationCode(models.Model):
+    """Код подтверждения email для одноразовой верификации адреса."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='email_verification_codes',
+        verbose_name='Пользователь',
+    )
+    email = models.EmailField('Email', db_index=True)
+    code = models.CharField('Код', max_length=10)
+    created_at = models.DateTimeField('Создан', auto_now_add=True)
+    used_at = models.DateTimeField('Использован', null=True, blank=True, db_index=True)
+
+    class Meta:
+        verbose_name = 'Код подтверждения email'
+        verbose_name_plural = 'Коды подтверждения email'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.email} ({self.user})'

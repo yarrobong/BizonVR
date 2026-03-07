@@ -3,64 +3,140 @@
 {% block title %}Вход — BizonVR{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 py-12 max-w-md">
-  <h1 class="text-2xl font-light text-white mb-6">Вход по номеру телефона</h1>
-  <p class="text-gray-400 text-sm mb-6">Введите номер — мы отправим код подтверждения в SMS.</p>
+<div class="container mx-auto max-w-3xl px-4 py-12">
+  <h1 class="text-2xl font-light text-white mb-2">Вход в аккаунт</h1>
+  <p class="text-sm text-gray-400 mb-8">Можно войти по паролю через телефон или email, либо получить одноразовый код по SMS.</p>
 
-    <form id="phone-form" method="post" action="{% url 'accounts:send_code' %}" class="space-y-4"
-        x-data="{ loading: false, error: '' }"
-        @submit.prevent="
-          loading = true; error = '';
-          fetch($el.action, {
-            method: 'POST',
-            body: new FormData($el),
-            headers: { 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value, 'X-Requested-With': 'XMLHttpRequest' }
-          })
-          .then(r => r.json())
-          .then(data => {
-            loading = false;
-            if (data.ok) {
-              var params = 'phone=' + encodeURIComponent(data.phone);
-              if (window.location.search) params += '&' + window.location.search.slice(1);
-              window.location.href = '{% url 'accounts:verify_code' %}?' + params;
-            } else { error = data.error || 'Ошибка отправки'; }
-          })
-          .catch(() => { loading = false; error = 'Ошибка сети'; });
-        ">
-    {% csrf_token %}
-    <div>
-      <label for="id_phone" class="block text-sm text-gray-400 mb-1">Телефон</label>
-      <div class="phone-input-wrapper flex items-center w-full bg-dark-700 rounded-lg overflow-hidden focus-within:ring-1 focus-within:ring-accent pl-5">
-        <span class="phone-prefix text-white font-medium py-2.5 flex-shrink-0 select-none">+7</span>
-        <span class="phone-prefix-bracket text-white font-medium py-2.5 flex-shrink-0 select-none" style="display: none;">&nbsp;(</span>
-        <input type="tel" name="phone" id="id_phone" required
-               placeholder="999 123-45-67"
-               class="js-phone-mask flex-1 min-w-0 bg-transparent text-white py-2.5 pl-1 pr-4 focus:outline-none focus:ring-0 border-0"
-               autocomplete="tel" inputmode="tel">
+  {% if turnstile_enabled %}
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+  {% endif %}
+
+  <div class="grid gap-6 lg:grid-cols-2">
+    <section class="rounded-[1.75rem] border border-white/10 bg-dark-800/90 p-6">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <h2 class="text-xl font-semibold text-white">Вход по паролю</h2>
+          <p class="mt-1 text-sm text-gray-400">Используйте подтверждённый телефон или email и свой пароль.</p>
+        </div>
+        <span class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-gray-300">Телефон / Email</span>
       </div>
-      <p x-show="error" x-text="error" class="text-red-400 text-sm mt-1"></p>
-    </div>
-    <div class="flex items-start gap-3">
-      <input type="checkbox" name="agree_privacy" id="id_agree_privacy" required
-             class="mt-1 w-4 h-4 rounded border-gray-600 bg-dark-700 text-accent focus:ring-accent focus:ring-offset-0">
-      <label for="id_agree_privacy" class="text-sm text-gray-400">
-        Я даю согласие на обработку персональных данных для авторизации по SMS и подтверждаю, что ознакомлен с
-        <a href="{% url 'privacy' %}" target="_blank" rel="noopener noreferrer" class="text-accent hover:text-accent-hover underline">политикой конфиденциальности</a>
-        и
-        <a href="{% url 'pd_consent' %}" target="_blank" rel="noopener noreferrer" class="text-accent hover:text-accent-hover underline">согласием на обработку ПД</a>.
-      </label>
-    </div>
-    <button type="submit" :disabled="loading"
-            class="w-full bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-4 rounded-full transition-colors disabled:opacity-50">
-      <span x-show="!loading">Получить код</span>
-      <span x-show="loading" x-cloak>Отправка…</span>
-    </button>
-  </form>
 
-  <p class="text-gray-500 text-xs mt-6">
-    В режиме разработки без SMS-провайдера код выводится в консоль сервера.
-  </p>
-  <p class="text-gray-500 text-xs mt-4">
+      <form method="post" action="{% url 'accounts:login' %}" class="mt-5 space-y-4" hx-boost="false">
+        {% csrf_token %}
+        {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}
+        {% if password_form.non_field_errors %}
+          <p class="rounded-2xl border border-red-300/20 bg-red-900/20 px-4 py-3 text-sm text-red-200">{{ password_form.non_field_errors.0 }}</p>
+        {% endif %}
+
+        <div>
+          <label for="{{ password_form.login.id_for_label }}" class="block text-sm text-gray-300">{{ password_form.login.label }}</label>
+          <div class="mt-2">{{ password_form.login }}</div>
+          {% if password_form.login.errors %}
+            <p class="mt-1 text-sm text-red-400">{{ password_form.login.errors.0 }}</p>
+          {% endif %}
+        </div>
+        <div>
+          <label for="{{ password_form.password.id_for_label }}" class="block text-sm text-gray-300">{{ password_form.password.label }}</label>
+          <div class="mt-2">{{ password_form.password }}</div>
+          {% if password_form.password.errors %}
+            <p class="mt-1 text-sm text-red-400">{{ password_form.password.errors.0 }}</p>
+          {% endif %}
+        </div>
+
+        <button type="submit" class="w-full rounded-full bg-accent px-4 py-3 font-bold text-dark-900 transition-colors hover:bg-accent-hover">
+          Войти по паролю
+        </button>
+      </form>
+
+      <div class="mt-5 flex flex-wrap gap-3 text-sm">
+        <a href="{% url 'accounts:password_reset_request' %}" class="text-accent hover:text-accent-hover">Забыли пароль?</a>
+        <span class="text-gray-500">Если пароль ещё не задан, установите его через восстановление доступа.</span>
+      </div>
+    </section>
+
+    <section class="rounded-[1.75rem] border border-white/10 bg-dark-800/90 p-6">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <h2 class="text-xl font-semibold text-white">Вход по SMS</h2>
+          <p class="mt-1 text-sm text-gray-400">Введите номер телефона, и мы отправим код подтверждения.</p>
+        </div>
+        <span class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-gray-300">Одноразовый код</span>
+      </div>
+
+      <form id="phone-form" method="post" action="{% url 'accounts:send_code' %}" class="mt-5 space-y-4"
+          x-data="{ loading: false, error: '', turnstileEnabled: {{ turnstile_enabled|yesno:'true,false' }} }"
+          @submit.prevent="
+            loading = true; error = '';
+            fetch($el.action, {
+              method: 'POST',
+              body: new FormData($el),
+              headers: { 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value, 'X-Requested-With': 'XMLHttpRequest' }
+            })
+            .then(async r => ({ ok: r.ok, data: await r.json().catch(() => ({})) }))
+            .then(({ ok, data }) => {
+              loading = false;
+              if (ok && data.ok) {
+                var params = 'phone=' + encodeURIComponent(data.phone);
+                if (window.location.search) params += '&' + window.location.search.slice(1);
+                window.location.href = '{% url 'accounts:verify_code' %}?' + params;
+              } else {
+                error = data.error || 'Ошибка отправки';
+                if (turnstileEnabled && window.turnstile) window.turnstile.reset();
+              }
+            })
+            .catch(() => {
+              loading = false; error = 'Ошибка сети';
+              if (turnstileEnabled && window.turnstile) window.turnstile.reset();
+            });
+          ">
+        {% csrf_token %}
+        <div>
+          <label for="id_phone" class="block text-sm text-gray-300 mb-1">Телефон</label>
+          <div class="phone-input-wrapper flex items-center w-full bg-dark-700 rounded-lg overflow-hidden focus-within:ring-1 focus-within:ring-accent pl-5">
+            <span class="phone-prefix text-white font-medium py-2.5 flex-shrink-0 select-none">+7</span>
+            <span class="phone-prefix-bracket text-white font-medium py-2.5 flex-shrink-0 select-none" style="display: none;">&nbsp;(</span>
+            <input type="tel" name="phone" id="id_phone" required
+                   placeholder="999 123-45-67"
+                   class="js-phone-mask flex-1 min-w-0 bg-transparent text-white py-2.5 pl-1 pr-4 focus:outline-none focus:ring-0 border-0"
+                   autocomplete="tel" inputmode="tel">
+          </div>
+          <p x-show="error" x-text="error" class="text-red-400 text-sm mt-1"></p>
+        </div>
+        <div class="flex items-start gap-3">
+          <input type="checkbox" name="agree_privacy" id="id_agree_privacy" required
+                 class="mt-1 h-4 w-4 rounded border-gray-600 bg-dark-700 text-accent focus:ring-accent focus:ring-offset-0">
+          <label for="id_agree_privacy" class="text-sm text-gray-400">
+            Я даю согласие на обработку персональных данных для авторизации по SMS и подтверждаю, что ознакомлен с
+            <a href="{% url 'privacy' %}" target="_blank" rel="noopener noreferrer" class="text-accent hover:text-accent-hover underline">политикой конфиденциальности</a>
+            и
+            <a href="{% url 'pd_consent' %}" target="_blank" rel="noopener noreferrer" class="text-accent hover:text-accent-hover underline">согласием на обработку ПД</a>.
+          </label>
+        </div>
+        {% if turnstile_enabled %}
+        <div class="rounded-2xl border border-white/10 bg-dark-800/80 p-4">
+          <div class="cf-turnstile"
+               data-sitekey="{{ turnstile_site_key }}"
+               data-theme="dark"
+               data-size="flexible"></div>
+        </div>
+        {% endif %}
+        <button type="submit" :disabled="loading"
+                class="w-full rounded-full bg-white px-4 py-3 font-bold text-dark-900 transition-colors hover:bg-gray-100 disabled:opacity-50">
+          <span x-show="!loading">Получить код</span>
+          <span x-show="loading" x-cloak>Отправка…</span>
+        </button>
+      </form>
+
+      {% if turnstile_disabled_locally %}
+      <p class="mt-4 rounded-lg border border-amber-400/20 bg-amber-500/10 p-3 text-xs text-amber-300">
+        Капча отключена локально: для разработки не заданы `TURNSTILE_SITE_KEY` и `TURNSTILE_SECRET_KEY`.
+      </p>
+      {% endif %}
+      <p class="mt-4 text-xs text-gray-500">В dev-режиме без SMS-провайдера код выводится в консоль сервера.</p>
+    </section>
+  </div>
+
+  <p class="mt-6 text-xs text-gray-500">
     Оформили заказ без входа? <a href="{% url 'orders:order_guest_lookup' %}" class="text-accent hover:text-accent-hover">Проверить статус заказа</a>
   </p>
 </div>
