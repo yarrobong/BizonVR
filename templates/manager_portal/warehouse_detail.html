@@ -1,0 +1,73 @@
+{% extends "manager_portal/base.html" %}
+
+{% block title %}{{ warehouse.name }}{% endblock %}
+
+{% block content %}
+  <div class="grid gap-6 xl:grid-cols-[1fr,24rem]">
+    <section class="space-y-6">
+      <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+        <h2 class="text-3xl font-semibold">{{ warehouse.name }}</h2>
+        <p class="mt-2 text-slate-400">{{ warehouse.address|default:"Адрес не заполнен" }}</p>
+        <p class="mt-4 text-sm text-slate-500">Связанная публичная точка: {{ warehouse.pickup_point|default:"не связана" }}</p>
+      </div>
+
+      <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+        <h3 class="text-xl font-semibold">Матрица остатка</h3>
+        <div class="mt-4 overflow-x-auto">
+          <table class="w-full min-w-[48rem] text-sm">
+            <thead class="text-left text-slate-400">
+              <tr>
+                <th class="pb-3 font-medium">Товар</th>
+                <th class="pb-3 font-medium">На складе</th>
+                <th class="pb-3 font-medium">Резерв</th>
+                <th class="pb-3 font-medium">Доступно</th>
+                <th class="pb-3 font-medium">В пути</th>
+                <th class="pb-3 font-medium">Свободно в пути</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800">
+              {% for row in balances %}
+                <tr>
+                  <td class="py-3 pr-4">{{ row.product_name }}{% if row.variant_name %} <span class="text-slate-500">/ {{ row.variant_name }}</span>{% endif %}</td>
+                  <td class="py-3 pr-4">{{ row.on_hand }}</td>
+                  <td class="py-3 pr-4">{{ row.reserved_on_hand }}</td>
+                  <td class="py-3 pr-4 {% if row.available < 0 %}text-rose-300{% endif %}">{{ row.available }}</td>
+                  <td class="py-3 pr-4">{{ row.inbound }}</td>
+                  <td class="py-3">{{ row.inbound_available }}</td>
+                </tr>
+              {% empty %}
+                <tr><td colspan="6" class="py-6 text-slate-400">По складу нет строк.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="warehouse-movements" class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+        <h3 class="text-xl font-semibold">Последние движения</h3>
+        <div class="mt-4 space-y-3">
+          {% for movement in movements %}
+            <div class="rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3">
+              <div class="flex items-center justify-between">
+                <p>{{ movement.product.name }}{% if movement.variant %} <span class="text-slate-500">/ {{ movement.variant.name }}</span>{% endif %}</p>
+                <span class="text-sm text-slate-400">{{ movement.get_movement_type_display }}</span>
+              </div>
+              <p class="mt-1 text-sm text-slate-400">{{ movement.quantity }} шт. · {{ movement.created_at|date:"d.m.Y H:i" }}</p>
+            </div>
+          {% empty %}
+            <p class="text-slate-400">Движений пока нет.</p>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+
+    <section class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+      <h3 class="text-xl font-semibold">Редактировать склад</h3>
+      <form method="post" class="mt-4 space-y-4">
+        {% csrf_token %}
+        {% include "manager_portal/_form_fields.html" with form=form %}
+        <button class="rounded-xl bg-cyan-500 px-4 py-2 font-medium text-slate-950">Сохранить</button>
+      </form>
+    </section>
+  </div>
+{% endblock %}

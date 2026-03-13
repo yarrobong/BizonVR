@@ -1,0 +1,192 @@
+{% extends "manager_portal/base.html" %}
+
+{% block title %}Дашборд менеджера{% endblock %}
+
+{% block content %}
+  <div class="space-y-8">
+    <section class="manager-dashboard-hero manager-panel rounded-[1.75rem] p-6 lg:p-8">
+      <div class="manager-dashboard-hero-grid">
+        <div>
+          <p class="text-sm uppercase tracking-[0.24em] text-cyan-300">Dashboard</p>
+          <h2 class="mt-3 text-4xl font-semibold lg:text-5xl">Операционный центр</h2>
+          <p class="mt-3 max-w-3xl text-slate-300">Быстрый обзор по заказам сайта, логистике, просроченным ETA и проблемным остаткам. Главная страница собрана как daily-console для менеджера, а не как обычный список ссылок.</p>
+          <div class="mt-6 flex flex-wrap gap-2">
+            <span class="manager-pill"><strong>{{ stats.new_orders }}</strong> новых заказов</span>
+            <span class="manager-pill"><strong>{{ stats.cargos_in_transit }}</strong> грузов в пути</span>
+            <span class="manager-pill"><strong>{{ stats.active_reservations }}</strong> активных броней</span>
+          </div>
+          <div class="mt-6 flex flex-wrap gap-3">
+            <a href="{% url 'manager_portal:order_list' %}" class="rounded-xl bg-cyan-500 px-4 py-3 text-sm font-medium text-slate-950">Открыть заказы</a>
+            <a href="{% url 'manager_portal:inventory' %}" class="rounded-xl border border-slate-700 px-4 py-3 text-sm text-slate-200 hover:bg-slate-800">Проверить остатки</a>
+          </div>
+        </div>
+
+        <div class="manager-dashboard-alerts">
+          <div class="manager-dashboard-alert-card">
+            <p class="manager-dashboard-alert-label">Срочные сигналы</p>
+            <div class="mt-4 space-y-3">
+              <div class="manager-dashboard-alert-row">
+                <span class="text-slate-300">Просроченные ETA</span>
+                <strong class="{% if stats.overdue_cargos %}manager-status-danger{% endif %}">{{ stats.overdue_cargos }}</strong>
+              </div>
+              <div class="manager-dashboard-alert-row">
+                <span class="text-slate-300">Проблемные остатки</span>
+                <strong class="{% if stats.inventory_problem_rows %}manager-status-danger{% endif %}">{{ stats.inventory_problem_rows }}</strong>
+              </div>
+              <div class="manager-dashboard-alert-row">
+                <span class="text-slate-300">Активные брони</span>
+                <strong>{{ stats.active_reservations }}</strong>
+              </div>
+            </div>
+          </div>
+          <div class="manager-dashboard-note">
+            <p class="manager-dashboard-alert-label">Фокус смены</p>
+            <p class="mt-3 text-sm leading-6 text-slate-300">Сначала разберите новые заказы, затем проверьте грузы с риском по ETA и после этого синхронизируйте остатки и резервы.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="manager-kpi-grid">
+      <div class="manager-kpi manager-panel rounded-[1.75rem] p-5">
+        <p class="text-sm text-slate-400">Новые заказы</p>
+        <p class="mt-3 text-4xl font-semibold">{{ stats.new_orders }}</p>
+        <p class="mt-2 text-sm text-slate-500">в фокусе менеджеров сайта</p>
+      </div>
+      <div class="manager-kpi manager-panel rounded-[1.75rem] p-5">
+        <p class="text-sm text-slate-400">Грузы в пути</p>
+        <p class="mt-3 text-4xl font-semibold">{{ stats.cargos_in_transit }}</p>
+        <p class="mt-2 text-sm text-slate-500">между закупкой и складом</p>
+      </div>
+      <div class="manager-kpi manager-panel rounded-[1.75rem] p-5">
+        <p class="text-sm text-slate-400">Просроченный ETA</p>
+        <p class="mt-3 text-4xl font-semibold {% if stats.overdue_cargos %}manager-status-danger{% endif %}">{{ stats.overdue_cargos }}</p>
+        <p class="mt-2 text-sm text-slate-500">требуют вмешательства</p>
+      </div>
+      <div class="manager-kpi manager-panel rounded-[1.75rem] p-5">
+        <p class="text-sm text-slate-400">Активные брони</p>
+        <p class="mt-3 text-4xl font-semibold">{{ stats.active_reservations }}</p>
+        <p class="mt-2 text-sm text-slate-500">в резерве склада или incoming</p>
+      </div>
+      <div class="manager-kpi manager-panel rounded-[1.75rem] p-5">
+        <p class="text-sm text-slate-400">Проблемные строки</p>
+        <p class="mt-3 text-4xl font-semibold {% if stats.inventory_problem_rows %}manager-status-danger{% endif %}">{{ stats.inventory_problem_rows }}</p>
+        <p class="mt-2 text-sm text-slate-500">конфликты availability</p>
+      </div>
+    </div>
+
+    <div class="manager-dashboard-main">
+      <section class="manager-panel rounded-[1.75rem] p-6">
+        <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h3 class="text-xl font-semibold">Срез остатков</h3>
+            <p class="mt-1 text-sm text-slate-400">Первые проблемные и приоритетные позиции по складам.</p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <span class="manager-pill"><strong>{{ stats.inventory_rows|length }}</strong> строк в срезе</span>
+            <a href="{% url 'manager_portal:inventory' %}" class="manager-pill text-cyan-200">Открыть полную матрицу</a>
+          </div>
+        </div>
+        <div class="manager-dashboard-table-wrap overflow-x-auto">
+          <table class="manager-table w-full min-w-[44rem] text-sm">
+            <thead class="text-left text-slate-400">
+              <tr>
+                <th class="px-4 py-4 font-medium">Склад</th>
+                <th class="px-4 py-4 font-medium">Товар</th>
+                <th class="px-4 py-4 font-medium">На складе</th>
+                <th class="px-4 py-4 font-medium">Резерв</th>
+                <th class="px-4 py-4 font-medium">Доступно</th>
+                <th class="px-4 py-4 font-medium">Свободно в пути</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800">
+              {% for row in stats.inventory_rows %}
+                <tr class="hover:bg-slate-950/60">
+                  <td class="px-4 py-4">{{ row.warehouse_name }}</td>
+                  <td class="px-4 py-4">
+                    {{ row.product_name }}
+                    {% if row.variant_name %}<span class="text-slate-500"> / {{ row.variant_name }}</span>{% endif %}
+                  </td>
+                  <td class="px-4 py-4">{{ row.on_hand }}</td>
+                  <td class="px-4 py-4">{{ row.reserved_on_hand }}</td>
+                  <td class="px-4 py-4 {% if row.available < 0 %}manager-status-danger{% else %}manager-status-positive{% endif %}">{{ row.available }}</td>
+                  <td class="px-4 py-4 {% if row.inbound_available < 0 %}manager-status-danger{% endif %}">{{ row.inbound_available }}</td>
+                </tr>
+              {% empty %}
+                <tr><td colspan="6" class="py-6 text-slate-400">Нет данных по складам.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <div class="space-y-6">
+        <section class="manager-panel rounded-[1.75rem] p-6">
+          <div class="flex items-center justify-between gap-3">
+            <h3 class="text-xl font-semibold">Статусы заказов</h3>
+            <span class="manager-pill"><strong>{{ stats.order_status_rows|length }}</strong> статусов</span>
+          </div>
+          <div class="manager-status-stack mt-4">
+            {% for row in stats.order_status_rows %}
+              <div class="manager-status-row">
+                <span class="text-slate-300">{{ row.status }}</span>
+                <strong>{{ row.total }}</strong>
+              </div>
+            {% empty %}
+              <p class="text-slate-400">Статусов пока нет.</p>
+            {% endfor %}
+          </div>
+        </section>
+        <section class="manager-panel rounded-[1.75rem] p-6">
+          <div class="flex items-center justify-between gap-3">
+            <h3 class="text-xl font-semibold">Статусы грузов</h3>
+            <span class="manager-pill"><strong>{{ stats.cargo_status_rows|length }}</strong> статусов</span>
+          </div>
+          <div class="manager-status-stack mt-4">
+            {% for row in stats.cargo_status_rows %}
+              <div class="manager-status-row">
+                <span class="text-slate-300">{{ row.status }}</span>
+                <strong>{{ row.total }}</strong>
+              </div>
+            {% empty %}
+              <p class="text-slate-400">Грузов пока нет.</p>
+            {% endfor %}
+          </div>
+        </section>
+        <section class="manager-panel rounded-[1.75rem] p-6">
+          <h3 class="text-xl font-semibold">Быстрые переходы</h3>
+          <div class="mt-4 grid gap-3">
+            <a href="{% url 'manager_portal:order_list' %}" class="manager-dashboard-action">
+              <span>
+                <span class="block text-sm font-semibold text-white">Проверить новые заказы</span>
+                <span class="mt-1 block text-sm text-slate-400">Открыть очередь обработки заказов сайта.</span>
+              </span>
+              <span class="manager-dashboard-action-arrow">→</span>
+            </a>
+            <a href="{% url 'manager_portal:cargo_list' %}" class="manager-dashboard-action">
+              <span>
+                <span class="block text-sm font-semibold text-white">Принять грузы и обновить ETA</span>
+                <span class="mt-1 block text-sm text-slate-400">Проверить входящие партии и задержки поставки.</span>
+              </span>
+              <span class="manager-dashboard-action-arrow">→</span>
+            </a>
+            <a href="{% url 'manager_portal:reservation_list' %}" class="manager-dashboard-action">
+              <span>
+                <span class="block text-sm font-semibold text-white">Пересобрать резервы и брони</span>
+                <span class="mt-1 block text-sm text-slate-400">Синхронизировать складской резерв с потребностями клиентов.</span>
+              </span>
+              <span class="manager-dashboard-action-arrow">→</span>
+            </a>
+            <a href="{% url 'manager_portal:shipments' %}" class="manager-dashboard-action">
+              <span>
+                <span class="block text-sm font-semibold text-white">Сформировать список отгрузок</span>
+                <span class="mt-1 block text-sm text-slate-400">Подготовить активные брони к выдаче и отправке.</span>
+              </span>
+              <span class="manager-dashboard-action-arrow">→</span>
+            </a>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+{% endblock %}

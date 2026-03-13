@@ -980,7 +980,7 @@
                 </div>
 
                 <a href="{% url 'orders:checkout' %}" class="cart-buy-btn">
-                  Купить
+                  Оформить
                 </a>
               </div>
             </li>
@@ -990,9 +990,15 @@
 
       <aside class="cart-sidebar" data-summary>
         <a href="{% url 'orders:checkout' %}" class="cart-checkout-btn" data-checkout-btn>
-          Перейти к оформлению
+          Оформить без регистрации
         </a>
-        <p class="cart-side-note">Способ доставки и оплаты можно выбрать при оформлении заказа.</p>
+        <div class="cart-side-note space-y-2">
+          <p>Способ доставки и оплаты можно выбрать при оформлении заказа.</p>
+          <div class="flex flex-wrap gap-3 text-xs">
+            <a href="{% url 'accounts:login' %}?next={% url 'orders:checkout' %}" class="text-accent hover:text-accent-hover">Войти в аккаунт</a>
+            <a href="{% url 'accounts:login' %}?next={% url 'orders:checkout' %}" class="text-accent hover:text-accent-hover">Создать аккаунт</a>
+          </div>
+        </div>
 
         <div class="cart-summary">
           <h2 class="cart-summary-title">Ваша корзина</h2>
@@ -1020,7 +1026,7 @@
         </div>
       </div>
       <a href="{% url 'orders:checkout' %}" class="cart-checkout-btn" data-checkout-btn>
-        Перейти к оформлению
+        Оформить без регистрации
       </a>
     </div>
   {% else %}
@@ -1056,8 +1062,17 @@
     root.dataset.initialized = '1';
 
     const formatRub = (value) => {
-      const safe = Number.isFinite(value) ? value : 0;
-      return `${new Intl.NumberFormat('ru-RU').format(Math.round(safe))} ₽`;
+      if (typeof window.formatRub === 'function') {
+        return window.formatRub(value);
+      }
+      const numeric = Number(value);
+      const safe = Number.isFinite(numeric) ? Math.round((numeric + Number.EPSILON) * 100) / 100 : 0;
+      const isInteger = Math.abs(safe % 1) < 0.000001;
+      const formatted = new Intl.NumberFormat('ru-RU', {
+        minimumFractionDigits: isInteger ? 0 : 2,
+        maximumFractionDigits: 2,
+      }).format(safe).replace(/[\u00A0\u202F]/g, ' ');
+      return `${formatted} ₽`;
     };
 
     const parseNum = (value) => {

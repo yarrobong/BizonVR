@@ -1,0 +1,36 @@
+[theme]
+base = "light"
+primaryColor = "#0d9488"
+backgroundColor = "#f8fafc"
+secondaryBackgroundColor = "#ffffff"
+textColor = "#1e293b"
+font = "sans serif"
+
+[theme.light]
+primaryColor = "#0d9488"
+backgroundColor = "#f8fafc"
+secondaryBackgroundColor = "#ffffff"
+textColor = "#1e293b"
+
+[theme.light.sidebar]
+backgroundColor = "#f1f5f9"
+primaryColor = "#0d9488"
+
+# Тёмная тема в цветах Google (Material / Google Dark)
+[theme.dark]
+primaryColor = "#8AB4F8"
+backgroundColor = "#202124"
+secondaryBackgroundColor = "#303134"
+textColor = "#E8EAED"
+
+[theme.dark.sidebar]
+backgroundColor = "#292A2D"
+primaryColor = "#8AB4F8"
+
+[server]
+headless = true
+# Слушать на всех интерфейсах — тогда приложение будет доступно по IP в локальной сети
+address = "0.0.0.0"
+
+[browser]
+gatherUsageStats = false

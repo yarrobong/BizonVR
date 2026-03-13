@@ -1,0 +1,252 @@
+{% extends "manager_portal/base.html" %}
+
+{% block title %}Заказ #{{ order.pk }}{% endblock %}
+
+{% block content %}
+  <div class="grid gap-6 xl:grid-cols-[1.3fr,0.7fr]">
+    <section class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="text-sm uppercase tracking-[0.24em] text-cyan-300">Order</p>
+          <h2 class="mt-2 text-3xl font-semibold">Заказ #{{ order.pk }}</h2>
+          <p class="mt-2 text-slate-400">{% if manager_deal %}Сделка от {{ manager_deal.deal_created_at|date:"d.m.Y H:i" }}{% else %}{{ order.created_at|date:"d.m.Y H:i" }}{% endif %}</p>
+        </div>
+        <div class="flex gap-2">
+          {% if manager_deal %}
+            <span class="manager-pill">{{ manager_deal.get_deal_type_display }}</span>
+          {% else %}
+            <span class="manager-pill">Заказ сайта</span>
+          {% endif %}
+          <a href="{% url 'manager_portal:order_list' %}" class="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800">К списку</a>
+        </div>
+      </div>
+
+      <div class="mt-6 grid gap-4 md:grid-cols-2">
+        <div class="rounded-2xl border border-slate-800 bg-slate-950 p-4">
+          <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Клиент</p>
+          <p class="mt-2 text-lg font-medium">{% if manager_deal %}{{ manager_deal.customer_name|default:"—" }}{% else %}{{ order.shipping_contact_name|default:"—" }}{% endif %}</p>
+          <p class="mt-1 text-slate-400">{% if manager_deal %}{{ manager_deal.customer_phone|default:"—" }}{% else %}{{ order.shipping_phone|default:"—" }}{% endif %}</p>
+          <p class="mt-1 text-slate-400">{% if manager_deal and manager_deal.buyer_type == manager_deal.BUYER_BUSINESS %}{{ manager_deal.business_contact_person|default:"—" }}{% else %}{{ order.email|default:"—" }}{% endif %}</p>
+        </div>
+        <div class="rounded-2xl border border-slate-800 bg-slate-950 p-4">
+          <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Доставка</p>
+          <p class="mt-2 text-lg font-medium">{% if manager_deal %}{{ manager_deal.get_delivery_method_display }}{% else %}{{ order.get_delivery_type_display }}{% endif %}</p>
+          <p class="mt-1 text-slate-400">{% if manager_deal %}{{ manager_deal.delivery_pickup_address|default:manager_deal.delivery_full_address|default:"—" }}{% else %}{{ order.display_address|default:"—" }}{% endif %}</p>
+          <p class="mt-1 text-slate-400">{% if manager_deal %}{{ manager_deal.delivery_to_city|default:manager_deal.customer_city|default:"—" }}{% else %}{{ order.city|default:order.city_text|default:"—" }}{% endif %}</p>
+        </div>
+      </div>
+
+      {% if manager_deal %}
+        <div class="mt-6 grid gap-4 md:grid-cols-2">
+          <div class="rounded-2xl border border-slate-800 bg-slate-950 p-4">
+            <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Сценарий</p>
+            <p class="mt-2 text-lg font-medium">{{ manager_deal.get_deal_type_display }}</p>
+            <p class="mt-1 text-slate-400">Статус: {{ manager_deal.get_deal_status_display }}</p>
+            <p class="mt-1 text-slate-400">Покупатель: {{ manager_deal.get_buyer_type_display }}</p>
+            <p class="mt-1 text-slate-400">Источник: {{ manager_deal.get_customer_source_display }}</p>
+            <p class="mt-1 text-slate-400">Менеджер: {{ manager_deal.responsible_manager|default:"—" }}</p>
+          </div>
+          <div class="rounded-2xl border border-slate-800 bg-slate-950 p-4">
+            <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Суммы</p>
+            <p class="mt-2 text-lg font-medium">{{ manager_deal.grand_total|rub }}</p>
+            <p class="mt-1 text-slate-400">Товары: {{ manager_deal.items_gross_total|rub }} · скидка: {{ manager_deal.items_discount_total|rub }}</p>
+            <p class="mt-1 text-slate-400">Trade-in: {{ manager_deal.trade_in_value|rub }} · доставка: {{ order.delivery_cost|rub }} · оплачено: {{ manager_deal.amount_paid|rub }}</p>
+            <p class="mt-1 text-slate-400">Ожидаемая маржа: {{ manager_deal.expected_margin|rub }} {% if manager_deal.balance_due < 0 %}· переплата клиенту: {{ manager_deal.overpayment_to_client|rub }}{% else %}· остаток: {{ manager_deal.balance_due|rub }}{% endif %}</p>
+          </div>
+        </div>
+      {% endif %}
+
+      <div class="mt-6 rounded-2xl border border-slate-800 bg-slate-950 p-4">
+        <h3 class="text-lg font-semibold">Позиции заказа</h3>
+        <div class="mt-4 space-y-3">
+          {% for item in order.items.all %}
+            <div class="flex items-center justify-between rounded-xl border border-slate-800 px-4 py-3">
+              <div>
+                <p>{{ item.product.name }}{% if item.variant_name %} <span class="text-slate-500">/ {{ item.variant_name }}</span>{% endif %}</p>
+                <p class="text-sm text-slate-400">{{ item.quantity }} шт. · {{ item.get_condition_display }} · продажа {{ item.price|rub }}{% if item.discount_amount %} · скидка {{ item.discount_amount|rub }}{% endif %}</p>
+                {% if item.comment %}<p class="text-sm text-slate-500">{{ item.comment }}</p>{% endif %}
+              </div>
+              <p>{{ item.subtotal|rub }}</p>
+            </div>
+          {% empty %}
+            <p class="text-slate-400">Позиции отсутствуют.</p>
+          {% endfor %}
+        </div>
+      </div>
+
+      {% if manager_deal %}
+        {% if manager_deal.trade_in_items.exists %}
+          <div class="mt-6 rounded-2xl border border-slate-800 bg-slate-950 p-4">
+            <h3 class="text-lg font-semibold">Сдаваемый товар</h3>
+            <div class="mt-4 space-y-3">
+              {% for trade_item in manager_deal.trade_in_items.all %}
+                <div class="rounded-xl border border-slate-800 px-4 py-3">
+                  <p>{{ trade_item.device_type }} · {{ trade_item.model_name }}{% if trade_item.version %} / <span class="text-slate-500">{{ trade_item.version }}</span>{% endif %}</p>
+                  <p class="mt-1 text-sm text-slate-400">Состояние: {{ trade_item.condition }} · работает: {% if trade_item.is_working %}да{% else %}нет{% endif %} · коробка: {% if trade_item.has_box %}да{% else %}нет{% endif %}</p>
+                  <p class="mt-1 text-sm text-slate-400">Комплектация: {{ trade_item.kit_description|default:"—" }}</p>
+                  <p class="mt-1 text-sm text-slate-400">Предварительно: {{ trade_item.preliminary_estimate|rub }} · финально: {{ trade_item.final_estimate|rub }}</p>
+                  {% if trade_item.defects %}<p class="mt-1 text-sm text-slate-500">{{ trade_item.defects }}</p>{% endif %}
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        {% endif %}
+        <div class="mt-6 rounded-2xl border border-slate-800 bg-slate-950 p-4">
+          <h3 class="text-lg font-semibold">Детали покупателя</h3>
+          <div class="mt-4 grid gap-4 md:grid-cols-2">
+            {% if manager_deal.buyer_type == manager_deal.BUYER_INDIVIDUAL %}
+              <div class="rounded-xl border border-slate-800 px-4 py-3">
+                <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Контакты</p>
+                <p class="mt-2">{{ manager_deal.individual_full_name|default:"—" }}</p>
+                <p class="mt-1 text-slate-400">{{ manager_deal.individual_phone|default:"—" }}</p>
+                <p class="mt-1 text-slate-400">{{ manager_deal.individual_additional_phone|default:"—" }}</p>
+                <p class="mt-1 text-slate-400">{{ manager_deal.individual_messenger|default:"—" }}</p>
+              </div>
+              <div class="rounded-xl border border-slate-800 px-4 py-3">
+                <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Адрес</p>
+                <p class="mt-2">{{ manager_deal.individual_city|default:"—" }}</p>
+                <p class="mt-1 text-slate-400">{{ manager_deal.individual_pickup_address|default:manager_deal.individual_delivery_address|default:"—" }}</p>
+                <p class="mt-1 text-slate-400">{{ manager_deal.individual_comment|default:"—" }}</p>
+              </div>
+            {% else %}
+              <div class="rounded-xl border border-slate-800 px-4 py-3">
+                <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Компания</p>
+                <p class="mt-2">{{ manager_deal.business_company_name|default:"—" }}</p>
+                <p class="mt-1 text-slate-400">ИНН: {{ manager_deal.business_inn|default:"—" }}</p>
+                <p class="mt-1 text-slate-400">КПП: {{ manager_deal.business_kpp|default:"—" }}</p>
+                <p class="mt-1 text-slate-400">ОГРН / ОГРНИП: {{ manager_deal.business_ogrn|default:"—" }}</p>
+              </div>
+              <div class="rounded-xl border border-slate-800 px-4 py-3">
+                <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Контакты</p>
+                <p class="mt-2">{{ manager_deal.business_contact_person|default:"—" }}</p>
+                <p class="mt-1 text-slate-400">{{ manager_deal.business_phone|default:"—" }}</p>
+                <p class="mt-1 text-slate-400">{{ manager_deal.business_email|default:"—" }}</p>
+                <p class="mt-1 text-slate-400">{{ manager_deal.business_city|default:"—" }}</p>
+                <p class="mt-1 text-slate-400">{{ manager_deal.business_legal_address|default:"—" }}</p>
+                <p class="mt-1 text-slate-400">{{ manager_deal.business_delivery_address|default:"—" }}</p>
+                <p class="mt-1 text-slate-400">{{ manager_deal.business_comment|default:"—" }}</p>
+              </div>
+            {% endif %}
+          </div>
+        </div>
+        <div class="mt-6 rounded-2xl border border-slate-800 bg-slate-950 p-4">
+          <h3 class="text-lg font-semibold">Сценарные данные</h3>
+          <div class="mt-4 grid gap-4 md:grid-cols-2">
+            {% if manager_deal.deal_type == manager_deal.DEAL_SALE_ON_REQUEST %}
+              <div class="rounded-xl border border-slate-800 px-4 py-3">
+                <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Закупка</p>
+                <p class="mt-2">Запрос: {{ manager_deal.customer_request|default:"—" }}</p>
+                <p class="mt-1 text-slate-400">Откуда: {{ manager_deal.procurement_origin|default:"—" }}</p>
+                <p class="mt-1 text-slate-400">Поставщик / агент: {{ manager_deal.supplier_agent|default:manager_deal.supplier_name|default:"—" }}</p>
+                <p class="mt-1 text-slate-400">План закупки: {{ manager_deal.planned_purchase_date|date:"d.m.Y"|default:"—" }}</p>
+                <p class="mt-1 text-slate-400">Поступление: {{ manager_deal.expected_arrival_date|date:"d.m.Y"|default:"—" }}</p>
+                <p class="mt-1 text-slate-400">Отправка клиенту: {{ manager_deal.expected_customer_ship_date|date:"d.m.Y"|default:"—" }}</p>
+              </div>
+            {% elif manager_deal.deal_type == manager_deal.DEAL_SALE_FROM_STOCK %}
+              <div class="rounded-xl border border-slate-800 px-4 py-3">
+                <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Резерв</p>
+                <p class="mt-2">Склад: {{ manager_deal.stock_warehouse|default:"—" }}</p>
+                <p class="mt-1 text-slate-400">Резерв создан: {{ manager_deal.reserve_created_at|date:"d.m.Y H:i"|default:"—" }}</p>
+                <p class="mt-1 text-slate-400">Связанный резерв: {% if manager_deal.reservation %}<a href="{% url 'manager_portal:reservation_detail' manager_deal.reservation.pk %}" class="text-cyan-300 hover:text-cyan-200">#{{ manager_deal.reservation.pk }}</a>{% else %}—{% endif %}</p>
+              </div>
+            {% elif manager_deal.deal_type == manager_deal.DEAL_AVITO %}
+              <div class="rounded-xl border border-slate-800 px-4 py-3">
+                <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Avito</p>
+                <p class="mt-2">{{ manager_deal.avito_listing_title|default:"—" }}</p>
+                <p class="mt-1 text-slate-400">ID: {{ manager_deal.avito_listing_id|default:"—" }}</p>
+                <p class="mt-1 text-slate-400">Цена в объявлении: {{ manager_deal.avito_list_price|rub }}</p>
+                <p class="mt-1 text-slate-400">Финальная цена: {{ manager_deal.avito_final_price|rub }}</p>
+                <p class="mt-1 text-slate-400">Комиссия: {{ manager_deal.avito_commission|rub }}</p>
+              </div>
+            {% endif %}
+            <div class="rounded-xl border border-slate-800 px-4 py-3">
+              <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Доставка и оплата</p>
+              <p class="mt-2">Требуемая предоплата: {{ manager_deal.prepayment_required_amount|rub }}</p>
+              <p class="mt-1 text-slate-400">Оплачено: {{ manager_deal.prepayment_amount|rub }}</p>
+              <p class="mt-1 text-slate-400">Трек: {{ manager_deal.tracking_number|default:"—" }}</p>
+              <p class="mt-1 text-slate-400">Комментарий: {{ manager_deal.shipping_comment|default:"—" }}</p>
+            </div>
+          </div>
+        </div>
+      {% endif %}
+    </section>
+
+    <section class="space-y-6">
+      <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+        <h3 class="text-xl font-semibold">{% if manager_deal %}Статус сделки{% else %}Статус заказа{% endif %}</h3>
+        <form method="post" action="{% url 'manager_portal:order_state_update' order.pk %}" class="mt-4 space-y-4">
+          {% csrf_token %}
+          {% if manager_deal %}
+            {% include "manager_portal/_form_fields.html" with form=manager_deal_state_form %}
+          {% else %}
+            {% include "manager_portal/_form_fields.html" with form=state_form %}
+          {% endif %}
+          <button class="rounded-xl bg-cyan-500 px-4 py-2 font-medium text-slate-950">Сохранить</button>
+        </form>
+      </div>
+
+      <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+        <h3 class="text-xl font-semibold">Связанные клиенты</h3>
+        <div class="mt-4 space-y-3">
+          {% for client in related_clients %}
+            <a href="{% url 'manager_portal:client_detail' client.pk %}" class="block rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 text-cyan-300 hover:text-cyan-200">{{ client.name }}</a>
+          {% empty %}
+            <p class="text-slate-400">Внутренний клиент пока не привязан.</p>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+        <h3 class="text-xl font-semibold">Связанные брони</h3>
+        <div class="mt-4 space-y-3">
+          {% for reservation in related_reservations %}
+            <a href="{% url 'manager_portal:reservation_detail' reservation.pk %}" class="block rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 hover:border-cyan-400/30">
+              Бронь #{{ reservation.pk }} · {{ reservation.client.name }} · {{ reservation.get_status_display }}
+            </a>
+          {% empty %}
+            <p class="text-slate-400">Брони к заказу не привязаны.</p>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+        <h3 class="text-xl font-semibold">Связанные закупки</h3>
+        <div class="mt-4 space-y-3">
+          {% for item in related_purchase_items %}
+            <a href="{% url 'manager_portal:purchase_detail' item.purchase.pk %}" class="block rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 hover:border-cyan-400/30">
+              Закупка #{{ item.purchase.pk }} · {{ item.product.name }}{% if item.variant %} / {{ item.variant.name }}{% endif %} · {{ item.received_quantity }}/{{ item.quantity }}
+            </a>
+          {% empty %}
+            <p class="text-slate-400">Закупки к строкам заказа пока не привязаны.</p>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+        <h3 class="text-xl font-semibold">Связанные грузы</h3>
+        <div class="mt-4 space-y-3">
+          {% for item in related_cargo_items %}
+            <a href="{% url 'manager_portal:cargo_detail' item.cargo.pk %}" class="block rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 hover:border-cyan-400/30">
+              {{ item.cargo.cargo_number }} · {{ item.product.name }}{% if item.variant %} / {{ item.variant.name }}{% endif %} · {{ item.received_quantity }}/{{ item.quantity }}
+            </a>
+          {% empty %}
+            <p class="text-slate-400">Грузы к заказу пока не привязаны.</p>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+        <h3 class="text-xl font-semibold">Отгрузки</h3>
+        <div class="mt-4 space-y-3">
+          {% for shipment in related_shipments %}
+            <a href="{% url 'manager_portal:shipment_detail' shipment.pk %}" class="block rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 hover:border-cyan-400/30">
+              Отгрузка #{{ shipment.pk }} · {{ shipment.get_status_display }}{% if shipment.tracking_number %} · {{ shipment.tracking_number }}{% endif %}
+            </a>
+          {% empty %}
+            <p class="text-slate-400">Документы отгрузки еще не созданы.</p>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+  </div>
+{% endblock %}

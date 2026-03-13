@@ -1,0 +1,113 @@
+{% if not query %}
+  <div class="manager-global-search-empty-state">
+    <p class="manager-global-search-empty-title">Глобальный поиск в shell</p>
+    <p class="manager-global-search-empty-copy">Ищет заказы, клиентов, телефоны, email, договоры, отгрузки, грузы, SKU, товары и номера документов.</p>
+    <div class="manager-global-search-empty-tags">
+      <span class="manager-pill">Заказы</span>
+      <span class="manager-pill">Клиенты</span>
+      <span class="manager-pill">Документы</span>
+      <span class="manager-pill">Отгрузки</span>
+      <span class="manager-pill">Грузы</span>
+      <span class="manager-pill">Товары</span>
+    </div>
+  </div>
+{% elif result_count %}
+  <div class="manager-global-search-summary">
+    Найдено {{ result_count }} совпадений по запросу «{{ query }}»
+  </div>
+  <div class="manager-global-search-groups">
+    {% for group in result_groups %}
+      <section class="manager-global-search-group">
+        <header class="manager-global-search-group-header">
+          <h3>{{ group.label }}</h3>
+          <span>{{ group.items|length }}</span>
+        </header>
+        <div class="manager-global-search-items">
+          {% for item in group.items %}
+            {% if group.key == 'deals' %}
+              <a href="{% url 'manager_portal:deal_detail' item.pk %}" class="manager-global-search-item" data-manager-search-result-link>
+                <div>
+                  <p class="manager-global-search-item-title">Заказ #{{ item.order_id }}</p>
+                  <p class="manager-global-search-item-copy">{{ item.customer_name|default:item.order.first_name|default:item.order.phone|default:"Без контакта" }}</p>
+                </div>
+                <div class="manager-global-search-item-meta">
+                  <span>{{ item.customer_phone|default:item.order.email|default:"—" }}</span>
+                  <span>{{ item.next_step_label }}</span>
+                </div>
+              </a>
+            {% elif group.key == 'clients' %}
+              <a href="{% url 'manager_portal:client_detail' item.pk %}" class="manager-global-search-item" data-manager-search-result-link>
+                <div>
+                  <p class="manager-global-search-item-title">{{ item.name }}</p>
+                  <p class="manager-global-search-item-copy">{{ item.phone|default:"Телефон не указан" }}</p>
+                </div>
+                <div class="manager-global-search-item-meta">
+                  <span>{{ item.email|default:"—" }}</span>
+                  <span>{{ item.get_status_display }}</span>
+                </div>
+              </a>
+            {% elif group.key == 'documents' %}
+              <a href="{% url 'manager_portal:contracts_detail' item.pk %}" class="manager-global-search-item" data-manager-search-result-link>
+                <div>
+                  <p class="manager-global-search-item-title">{{ item.number|default:"Черновик" }}</p>
+                  <p class="manager-global-search-item-copy">{{ item.title|default:item.counterparty_name|default:item.subject|default:"Без названия" }}</p>
+                </div>
+                <div class="manager-global-search-item-meta">
+                  <span>{{ item.counterparty_name|default:"—" }}</span>
+                  <span>{{ item.get_status_display }}</span>
+                </div>
+              </a>
+            {% elif group.key == 'shipments' %}
+              <a href="{% url 'manager_portal:shipment_detail' item.pk %}" class="manager-global-search-item" data-manager-search-result-link>
+                <div>
+                  <p class="manager-global-search-item-title">Отгрузка #{{ item.pk }}</p>
+                  <p class="manager-global-search-item-copy">{{ item.client.name|default:"Клиент не указан" }}</p>
+                </div>
+                <div class="manager-global-search-item-meta">
+                  <span>{{ item.tracking_number|default:"Без трека" }}</span>
+                  <span>{{ item.get_status_display }}</span>
+                </div>
+              </a>
+            {% elif group.key == 'cargos' %}
+              <a href="{% url 'manager_portal:cargo_detail' item.pk %}" class="manager-global-search-item" data-manager-search-result-link>
+                <div>
+                  <p class="manager-global-search-item-title">{{ item.cargo_number }}</p>
+                  <p class="manager-global-search-item-copy">{{ item.destination_warehouse.name|default:"Склад не указан" }}</p>
+                </div>
+                <div class="manager-global-search-item-meta">
+                  <span>{{ item.eta|date:"d.m.Y"|default:"ETA не задан" }}</span>
+                  <span>{{ item.get_status_display }}</span>
+                </div>
+              </a>
+            {% elif group.key == 'variants' %}
+              <a href="{% url 'catalog:product_detail' item.product.slug %}" class="manager-global-search-item" data-manager-search-result-link>
+                <div>
+                  <p class="manager-global-search-item-title">{{ item.product.name }} · {{ item.name }}</p>
+                  <p class="manager-global-search-item-copy">SKU / вариант</p>
+                </div>
+                <div class="manager-global-search-item-meta">
+                  <span>{{ item.sku|default:"—" }}</span>
+                </div>
+              </a>
+            {% else %}
+              <a href="{% url 'catalog:product_detail' item.slug %}" class="manager-global-search-item" data-manager-search-result-link>
+                <div>
+                  <p class="manager-global-search-item-title">{{ item.name }}</p>
+                  <p class="manager-global-search-item-copy">Товар</p>
+                </div>
+                <div class="manager-global-search-item-meta">
+                  <span>{{ item.sku|default:"—" }}</span>
+                </div>
+              </a>
+            {% endif %}
+          {% endfor %}
+        </div>
+      </section>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="manager-global-search-empty-state">
+    <p class="manager-global-search-empty-title">Ничего не найдено</p>
+    <p class="manager-global-search-empty-copy">Попробуйте номер заказа, телефон, email, номер документа, cargo number, SKU или название товара.</p>
+  </div>
+{% endif %}

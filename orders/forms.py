@@ -3,9 +3,10 @@
 Временно: PurchaseRequestForm — заявка на покупку (телефон + Telegram).
 """
 import re
+
 from django import forms
 
-from catalog.models import PickupPoint
+from .models import Order
 
 
 class PurchaseRequestForm(forms.Form):
@@ -53,6 +54,17 @@ class PurchaseRequestForm(forms.Form):
 
 class CheckoutForm(forms.Form):
     """Форма контактов и доставки при оформлении заказа."""
+
+    full_name = forms.CharField(
+        label='ФИО',
+        max_length=255,
+        required=True,
+        widget=forms.TextInput(attrs={
+            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
+            'placeholder': 'Иванов Иван Иванович',
+            'autocomplete': 'name',
+        }),
+    )
     phone = forms.CharField(
         label='Телефон',
         max_length=20,
@@ -64,49 +76,47 @@ class CheckoutForm(forms.Form):
             'autocomplete': 'tel',
         }),
     )
-    first_name = forms.CharField(
-        label='Имя',
-        max_length=150,
-        required=True,
-        widget=forms.TextInput(attrs={
-            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
-        }),
-    )
-    last_name = forms.CharField(
-        label='Фамилия',
-        max_length=150,
-        required=False,
-        widget=forms.TextInput(attrs={
-            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
-        }),
-    )
     email = forms.EmailField(
         label='Email',
         required=False,
         widget=forms.EmailInput(attrs={
             'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
+            'placeholder': 'Необязательно',
         }),
     )
-    address = forms.CharField(
-        label='Адрес доставки',
+    city_text = forms.CharField(
+        label='Город',
+        max_length=120,
+        required=True,
+        widget=forms.TextInput(attrs={
+            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
+            'placeholder': 'Екатеринбург',
+        }),
+    )
+    address_line = forms.CharField(
+        label='Адрес ПВЗ CDEK',
         required=True,
         widget=forms.Textarea(attrs={
             'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
             'rows': 3,
-            'placeholder': 'Город, улица, дом, квартира',
+            'placeholder': 'Название или адрес ПВЗ, который удобен для получения',
         }),
     )
-    delivery_type = forms.ChoiceField(
-        label='Способ доставки',
-        choices=[
-            ('courier', 'Курьером'),
-            ('pickup', 'Самовывоз'),
-            ('post', 'Почтой'),
-        ],
-        required=True,
-        widget=forms.Select(attrs={
+    delivery_comment = forms.CharField(
+        label='Комментарий для CDEK',
+        required=False,
+        widget=forms.Textarea(attrs={
             'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
+            'rows': 2,
+            'placeholder': 'Ориентир по ПВЗ, пожелания по выдаче',
         }),
+    )
+    payment_method = forms.ChoiceField(
+        label='Способ оплаты',
+        required=False,
+        initial=Order.PAYMENT_METHOD_BANK_CARD,
+        choices=Order.PUBLIC_PAYMENT_METHOD_CHOICES,
+        widget=forms.RadioSelect(),
     )
     comment = forms.CharField(
         label='Комментарий к заказу',
@@ -125,14 +135,6 @@ class CheckoutForm(forms.Form):
             'placeholder': 'Необязательно',
         }),
     )
-    pickup_point = forms.ModelChoiceField(
-        label='Точка выдачи',
-        queryset=PickupPoint.objects.none(),
-        required=False,
-        widget=forms.Select(attrs={
-            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
-        }),
-    )
     agree_personal_data = forms.BooleanField(
         label='Согласие на обработку персональных данных',
         required=True,
@@ -148,21 +150,19 @@ class CheckoutForm(forms.Form):
 
     def __init__(self, *args, user=None, selected_city=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['pickup_point'].queryset = PickupPoint.objects.order_by('city__order', 'order', 'name')
         self.user = user
-
-    def clean_pickup_point(self):
-        delivery = self.cleaned_data.get('delivery_type')
-        pickup_point = self.cleaned_data.get('pickup_point')
-        if delivery == 'pickup' and not pickup_point:
-            raise forms.ValidationError('Выберите точку выдачи.')
-        return pickup_point
 
     def clean_phone(self):
         value = (self.cleaned_data.get('phone') or '').strip()
         digits = re.sub(r'\D', '', value)
         if len(digits) < 10:
             raise forms.ValidationError('Введите корректный номер телефона.')
+        return value
+
+    def clean_full_name(self):
+        value = ' '.join((self.cleaned_data.get('full_name') or '').split())
+        if len(value.split()) < 2:
+            raise forms.ValidationError('Укажите ФИО полностью.')
         return value
 
     def clean_promo_code(self):
@@ -178,13 +178,39 @@ class CheckoutForm(forms.Form):
     def clean_email(self):
         return (self.cleaned_data.get('email') or '').strip()
 
+    def clean_city_text(self):
+        return (self.cleaned_data.get('city_text') or '').strip()
+
+    def clean_address_line(self):
+        return (self.cleaned_data.get('address_line') or '').strip()
+
+    def clean_delivery_comment(self):
+        return (self.cleaned_data.get('delivery_comment') or '').strip()
+
     def clean(self):
         cleaned_data = super().clean()
-        delivery_type = cleaned_data.get('delivery_type')
-        address = (cleaned_data.get('address') or '').strip()
+        address_line = (cleaned_data.get('address_line') or '').strip()
+        city_text = (cleaned_data.get('city_text') or '').strip()
+        full_name = (cleaned_data.get('full_name') or '').strip()
+        phone = (cleaned_data.get('phone') or '').strip()
 
-        if delivery_type in {'courier', 'post'} and not address:
-            self.add_error('address', 'Укажите адрес доставки.')
-        if delivery_type == 'pickup':
-            cleaned_data['address'] = ''
+        if not city_text:
+            self.add_error('city_text', 'Укажите город доставки.')
+        if not address_line:
+            self.add_error('address_line', 'Укажите адрес ПВЗ CDEK.')
+
+        name_parts = full_name.split()
+        cleaned_data['first_name'] = name_parts[0] if name_parts else ''
+        cleaned_data['last_name'] = ' '.join(name_parts[1:]) if len(name_parts) > 1 else ''
+        cleaned_data['recipient_name'] = full_name
+        cleaned_data['recipient_phone'] = phone
+        cleaned_data['recipient_is_customer'] = True
+        cleaned_data['delivery_type'] = Order.DELIVERY_CDEK_PVZ
+        cleaned_data['payment_method'] = (
+            cleaned_data.get('payment_method')
+            or Order.PAYMENT_METHOD_BANK_CARD
+        )
+        cleaned_data['country'] = 'Россия'
+        cleaned_data['postal_code'] = ''
+        cleaned_data['pickup_point'] = None
         return cleaned_data

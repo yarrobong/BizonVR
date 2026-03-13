@@ -43,7 +43,7 @@ class ProductVariantCharacteristicInline(admin.TabularInline):
 class ProductVariantInline(admin.TabularInline):
     model = ProductVariant
     extra = 1
-    fields = ('image_preview', 'name', 'image', 'price_override', 'order')
+    fields = ('image_preview', 'name', 'sku', 'image', 'price_override', 'order')
     readonly_fields = ('image_preview',)
     show_change_link = True
     verbose_name = 'Вариант товара'
@@ -72,9 +72,9 @@ class ProductImageInline(SortableInlineAdminMixin, admin.TabularInline):
 
 @admin.register(ProductVariant)
 class ProductVariantAdmin(admin.ModelAdmin):
-    list_display = ('name', 'product', 'price_override', 'order')
+    list_display = ('name', 'sku', 'product', 'price_override', 'order')
     list_filter = ('product__category',)
-    search_fields = ('name', 'product__name')
+    search_fields = ('name', 'sku', 'product__name', 'product__sku')
     autocomplete_fields = ('product',)
     inlines = (ProductVariantCharacteristicInline,)
     actions = ('copy_characteristics_from_product',)
@@ -99,9 +99,20 @@ class ProductVariantAdmin(admin.ModelAdmin):
 
 @admin.register(Product)
 class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
-    list_display = ('name', 'image_preview', 'category', 'price', 'option_label', 'is_active', 'allow_order_on_request', 'created_at')
+    list_display = (
+        'name',
+        'sku',
+        'image_preview',
+        'category',
+        'price',
+        'shipping_weight_kg',
+        'option_label',
+        'is_active',
+        'allow_order_on_request',
+        'created_at',
+    )
     list_filter = ('category', 'is_active', 'tags')
-    search_fields = ('name', 'description')
+    search_fields = ('name', 'sku', 'description')
     prepopulated_fields = {'slug': ('name',)}
     inlines = (ProductImageInline, ProductVariantInline, ProductCharacteristicInline, ProductStockInlineForProduct, ProductBundleItemInlineForProduct)
     readonly_fields = ('created_at', 'updated_at')
@@ -111,13 +122,18 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
     save_on_top = True
     fieldsets = (
         ('База карточки', {
-            'fields': ('name', 'category', 'price', 'description', 'is_active', 'allow_order_on_request'),
+            'fields': ('name', 'sku', 'category', 'price', 'description', 'is_active', 'allow_order_on_request'),
             'description': 'Минимум для публикации: название, категория, цена и описание.',
             'classes': ('product-fieldset', 'product-fieldset--primary'),
         }),
         ('Публикация и структура', {
             'fields': ('slug', 'option_label', 'tags'),
             'description': 'Slug заполняется автоматически из названия. Подпись к вариантам и теги можно добавить позже.',
+            'classes': ('product-fieldset', 'product-fieldset--secondary'),
+        }),
+        ('Логистика CDEK', {
+            'fields': ('shipping_weight_kg', 'shipping_length_cm', 'shipping_width_cm', 'shipping_height_cm'),
+            'description': 'Вес и габариты используются для расчёта стоимости доставки до ПВЗ CDEK.',
             'classes': ('product-fieldset', 'product-fieldset--secondary'),
         }),
         ('Служебное', {
@@ -130,13 +146,21 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
         if obj is None:
             return (
                 ('База карточки', {
-                    'fields': ('name', 'category', 'price', 'description', 'is_active', 'allow_order_on_request'),
+                    'fields': ('name', 'sku', 'category', 'price', 'description', 'is_active', 'allow_order_on_request'),
                     'description': 'Сначала заполните название, категорию, цену и описание. Этого достаточно для первого сохранения.',
                     'classes': ('product-fieldset', 'product-fieldset--primary'),
                 }),
                 ('Дополнительно', {
-                    'fields': ('slug', 'option_label', 'tags'),
-                    'description': 'Slug сформируется автоматически. Теги и подпись вариантов можно заполнить после первого сохранения.',
+                    'fields': (
+                        'slug',
+                        'option_label',
+                        'tags',
+                        'shipping_weight_kg',
+                        'shipping_length_cm',
+                        'shipping_width_cm',
+                        'shipping_height_cm',
+                    ),
+                    'description': 'Slug сформируется автоматически. Здесь же задаются теги, подпись вариантов и логистические параметры для CDEK.',
                     'classes': ('product-fieldset', 'product-fieldset--secondary', 'collapse'),
                 }),
             )

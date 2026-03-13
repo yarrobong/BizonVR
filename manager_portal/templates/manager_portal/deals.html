@@ -1,0 +1,472 @@
+{% extends "manager_portal/base.html" %}
+
+{% block title %}Сделки / Заказы{% endblock %}
+
+{% block content %}
+  <div class="space-y-5">
+    <section class="manager-panel rounded-[1.75rem] p-5 lg:p-6">
+      <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+        <div>
+          <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Очереди сделок</p>
+          <h2 class="mt-2 text-2xl font-semibold text-white">Основной вход в работу</h2>
+          <p class="mt-1 max-w-3xl text-sm text-slate-400">Топбар держит глобальный поиск, создание и сигналы. Здесь остаются только очереди и рабочая таблица.</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="manager-pill">Найдено <strong>{{ total_deals }}</strong></span>
+          <span class="manager-pill">Страница <strong>{{ deals_page.number }}</strong> / {{ deals_page.paginator.num_pages }}</span>
+          {% for metric in deal_kpis %}
+            <a
+              href="{% url 'manager_portal:deal_list' %}{% if metric.query_string %}?{{ metric.query_string }}{% endif %}"
+              class="manager-pill hover:border-cyan-500/40 hover:text-cyan-200"
+            >
+              {{ metric.label }} <strong>{{ metric.count }}</strong>
+            </a>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="manager-chip-scroll mt-5">
+        <a
+          href="{% url 'manager_portal:deal_list' %}"
+          class="manager-queue-chip {% if active_queue_chip == 'all' %}manager-queue-chip-active{% endif %}"
+        >
+          <span>Все сделки</span>
+          <span class="manager-queue-chip-count">{{ total_deals }}</span>
+        </a>
+        {% for queue in queue_chips %}
+          <a
+            href="{% url 'manager_portal:deal_list' %}{% if queue.query_string %}?{{ queue.query_string }}{% endif %}"
+            class="manager-queue-chip {% if active_queue_chip == queue.key %}manager-queue-chip-active{% endif %}"
+          >
+            <span>{{ queue.label }}</span>
+            <span class="manager-queue-chip-count">{{ queue.count }}</span>
+          </a>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="manager-panel rounded-[1.75rem] p-5 lg:p-6">
+      <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+        <div>
+          <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Список сделок</p>
+          <h2 class="mt-2 text-xl font-semibold text-white">Таблица как основной рабочий экран</h2>
+          <p class="mt-1 text-sm text-slate-400">Показываем {{ deals_page.start_index }}-{{ deals_page.end_index }} из {{ total_deals }}. Фильтры и problem views открываются справа только когда они нужны.</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <button type="button" data-drawer-target="#deal-filters-drawer" class="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800">
+            Фильтры
+            {% if deal_advanced_filters_count %}<span class="ml-1 text-cyan-300">{{ deal_advanced_filters_count }}</span>{% endif %}
+          </button>
+          <button type="button" data-drawer-target="#deal-problem-drawer" class="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800">
+            Problem views
+            <span class="ml-1 text-cyan-300">{{ signal_views|length }}</span>
+          </button>
+          <a
+            href="{% url 'manager_portal:deal_create' %}"
+            class="manager-create-action"
+            data-drawer-target="#manager-remote-drawer"
+            hx-get="{% url 'manager_portal:deal_create' %}"
+            hx-select="#manager-main-content > *"
+            hx-target="#manager-remote-drawer-content"
+            hx-swap="innerHTML"
+            hx-push-url="false"
+          >Новый заказ</a>
+        </div>
+      </div>
+
+      <div class="mt-5 border-y border-slate-800 py-4">
+        <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+          <div>
+            <h3 class="text-lg font-semibold text-white">Таблица сделок</h3>
+            <p class="mt-1 text-sm text-slate-400">Bulk bar липкий, появляется только после выделения и не конкурирует с основным списком.</p>
+          </div>
+          <div id="bulk-toolbar" class="manager-bulk-toolbar" hidden>
+            <span class="manager-bulk-counter">Выбрано: <strong id="bulk-selected-count">0</strong></span>
+            <button type="button" id="bulk-clear-selection" class="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800">Снять выделение</button>
+            <form method="post" id="bulk-assign-form" class="manager-bulk-form manager-bulk-form-select grid gap-3 md:grid-cols-[minmax(15rem,1fr),auto]">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="bulk_assign">
+              <input type="hidden" name="deal_ids" class="bulk-deal-ids-input">
+              <input type="hidden" name="return_query" value="{{ current_query_string }}">
+              {{ bulk_form.responsible_manager }}
+              <button type="submit" class="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800">Назначить</button>
+            </form>
+            <form method="post" id="bulk-case-status-form" class="manager-bulk-form manager-bulk-form-select grid gap-3 md:grid-cols-[minmax(15rem,1fr),auto]">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="bulk_case_status">
+              <input type="hidden" name="deal_ids" class="bulk-deal-ids-input">
+              <input type="hidden" name="return_query" value="{{ current_query_string }}">
+              {{ bulk_case_status_form.case_status }}
+              <button type="submit" class="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800">Сменить этап</button>
+            </form>
+            <form method="post" id="bulk-export-form" class="manager-bulk-form">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="bulk_export">
+              <input type="hidden" name="deal_ids" class="bulk-deal-ids-input">
+              <input type="hidden" name="return_query" value="{{ current_query_string }}">
+              <button type="submit" class="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800">Экспорт</button>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <div class="manager-deals-table-wrap mt-5 overflow-x-auto">
+        <table class="manager-table manager-table-dense manager-deals-table w-full min-w-[110rem] text-sm">
+          <thead class="text-left text-slate-400">
+            <tr>
+              <th class="px-4 py-3 font-medium"><input type="checkbox" id="bulk-select-all"></th>
+              <th class="px-4 py-3 font-medium">№ сделки</th>
+              <th class="px-4 py-3 font-medium">Клиент</th>
+              <th class="px-4 py-3 font-medium">Источник</th>
+              <th class="px-4 py-3 font-medium">Сумма</th>
+              <th class="px-4 py-3 font-medium">Следующий шаг</th>
+              <th class="px-4 py-3 font-medium">SLA</th>
+              <th class="px-4 py-3 font-medium">Наличие / резерв</th>
+              <th class="px-4 py-3 font-medium">Отгрузка</th>
+              <th class="px-4 py-3 font-medium">Документы</th>
+              <th class="px-4 py-3 font-medium">Ответственный</th>
+              <th class="px-4 py-3 font-medium">Последняя активность</th>
+              <th class="px-4 py-3 font-medium">Блокеры</th>
+              <th class="px-4 py-3 font-medium text-right">Действия</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-800">
+            {% for deal in deals %}
+              {% url 'manager_portal:deal_reservation_action' deal.pk as reservation_action_url %}
+              {% url 'manager_portal:deal_document_action' deal.pk 'contract' as contract_action_url %}
+              {% url 'manager_portal:deal_shipment_action' deal.pk as shipment_action_url %}
+              <tr class="hover:bg-slate-950/60">
+                <td class="px-4 py-4">
+                  <input type="checkbox" class="bulk-deal-checkbox" value="{{ deal.pk }}">
+                </td>
+                <td class="px-4 py-4">
+                  <a href="{% url 'manager_portal:deal_detail' deal.pk %}" class="text-base font-semibold text-cyan-300 hover:text-cyan-200">#{{ deal.order_id }}</a>
+                  <p class="mt-1 text-xs text-slate-500">{{ deal.get_deal_type_display }} · {{ deal.order.created_at|date:"d.m.Y H:i" }}</p>
+                </td>
+                <td class="px-4 py-4">
+                  <p class="font-medium text-white">{{ deal.customer_name|default:deal.order.first_name|default:deal.order.phone }}</p>
+                  <p class="mt-1 text-xs text-slate-500">{{ deal.customer_phone|default:deal.order.phone }}</p>
+                  <p class="mt-1 text-xs text-slate-500">{{ deal.order.email|default:"—" }}</p>
+                </td>
+                <td class="px-4 py-4">
+                  <p>{{ deal.get_customer_source_display }}</p>
+                  <p class="mt-1 text-xs text-slate-500">{{ deal.get_buyer_type_display }}</p>
+                </td>
+                <td class="px-4 py-4">
+                  <p class="font-medium text-white">{{ deal.grand_total|rub }}</p>
+                  <p class="mt-1 text-xs text-slate-500">{{ deal.order.items.all|length }} поз.</p>
+                </td>
+                <td class="px-4 py-4">
+                  <span class="manager-pill">{{ deal.next_step_label }}</span>
+                  {% if deal.next_step_reason_snapshot %}
+                    <p class="mt-2 max-w-xs text-xs text-slate-500">{{ deal.next_step_reason_snapshot }}</p>
+                  {% endif %}
+                </td>
+                <td class="px-4 py-4">
+                  {% if deal.sla_due_at %}
+                    <p class="font-medium text-white">{{ deal.sla_due_at|date:"d.m.Y H:i" }}</p>
+                    <p class="mt-1 text-xs {% if deal.sla_breached_at %}text-rose-300{% else %}text-slate-500{% endif %}">
+                      {% if deal.sla_breached_at %}Просрочен{% else %}В сроке{% endif %}
+                    </p>
+                  {% else %}
+                    <span class="text-slate-500">—</span>
+                  {% endif %}
+                </td>
+                <td class="px-4 py-4">
+                  <p>{{ deal.get_fulfillment_status_display }}</p>
+                  <p class="mt-1 text-xs text-slate-500">
+                    {% if deal.primary_reservation_id %}
+                      Резерв #{{ deal.primary_reservation_id }}
+                    {% elif deal.stock_warehouse %}
+                      {{ deal.stock_warehouse.name }}
+                    {% else %}
+                      Без резерва
+                    {% endif %}
+                  </p>
+                </td>
+                <td class="px-4 py-4">
+                  <p>{{ deal.get_delivery_status_display }}</p>
+                  <p class="mt-1 text-xs text-slate-500">{{ deal.get_delivery_method_display }}</p>
+                </td>
+                <td class="px-4 py-4">
+                  <p>{{ deal.get_documents_status_display }}</p>
+                  <p class="mt-1 text-xs text-slate-500">{{ deal.contract_documents.all|length }} док.</p>
+                </td>
+                <td class="px-4 py-4">
+                  <p>{{ deal.responsible_manager|default:"—" }}</p>
+                  {% if deal.assigned_at %}
+                    <p class="mt-1 text-xs text-slate-500">{{ deal.assigned_at|date:"d.m.Y H:i" }}</p>
+                  {% endif %}
+                </td>
+                <td class="px-4 py-4">
+                  {% if deal.last_activity_at %}
+                    <p class="font-medium text-white">{{ deal.last_activity_at|date:"d.m.Y H:i" }}</p>
+                  {% else %}
+                    <span class="text-slate-500">—</span>
+                  {% endif %}
+                </td>
+                <td class="px-4 py-4">
+                  <div class="flex max-w-xs flex-wrap gap-2">
+                    {% for label in deal.problem_flag_labels %}
+                      <span class="manager-pill">{{ label }}</span>
+                    {% empty %}
+                      <span class="text-slate-500">Нет</span>
+                    {% endfor %}
+                  </div>
+                </td>
+                <td class="px-4 py-4">
+                  <div class="flex justify-end">
+                    <div class="flex max-w-[18rem] flex-wrap justify-end gap-2">
+                      <a href="{% url 'manager_portal:deal_detail' deal.pk %}" class="manager-inline-action manager-inline-action-primary">Открыть</a>
+                      {% if deal.responsible_manager_id != request.user.id %}
+                        <form method="post" class="inline-flex">
+                          {% csrf_token %}
+                          <input type="hidden" name="action" value="assign_self">
+                          <input type="hidden" name="deal_id" value="{{ deal.pk }}">
+                          <input type="hidden" name="return_query" value="{{ current_query_string }}">
+                          <button type="submit" class="manager-inline-action">Назначить себя</button>
+                        </form>
+                      {% endif %}
+                      <a href="{% url 'manager_portal:deal_detail' deal.pk %}#deal-workflow" class="manager-inline-action">Управление</a>
+                      <a href="{% url 'manager_portal:deal_detail' deal.pk %}#deal-timeline" class="manager-inline-action">Комментарий</a>
+                      <a
+                        href="{{ reservation_action_url }}"
+                        class="manager-inline-action"
+                        data-drawer-target="#manager-remote-drawer"
+                        hx-get="{{ reservation_action_url }}"
+                        hx-select="#manager-main-content > *"
+                        hx-target="#manager-remote-drawer-content"
+                        hx-swap="innerHTML"
+                        hx-push-url="false"
+                      >Бронь</a>
+                      {% if deal.requires_documents %}
+                        <a
+                          href="{{ contract_action_url }}"
+                          class="manager-inline-action"
+                          data-drawer-target="#manager-remote-drawer"
+                          hx-get="{{ contract_action_url }}"
+                          hx-select="#manager-main-content > *"
+                          hx-target="#manager-remote-drawer-content"
+                          hx-swap="innerHTML"
+                          hx-push-url="false"
+                        >Договор</a>
+                      {% endif %}
+                      {% if deal.requires_delivery_workflow %}
+                        <a
+                          href="{{ shipment_action_url }}"
+                          class="manager-inline-action"
+                          data-drawer-target="#manager-remote-drawer"
+                          hx-get="{{ shipment_action_url }}"
+                          hx-select="#manager-main-content > *"
+                          hx-target="#manager-remote-drawer-content"
+                          hx-swap="innerHTML"
+                          hx-push-url="false"
+                        >Отгрузка</a>
+                      {% endif %}
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            {% empty %}
+              <tr>
+                <td colspan="14" class="px-4 py-10 text-center text-slate-400">Сделки по текущему фильтру не найдены.</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% if deals_page.paginator.num_pages > 1 %}
+        <nav class="mt-5 flex flex-col gap-3 border-t border-slate-800 pt-4 sm:flex-row sm:items-center sm:justify-between" aria-label="Пагинация сделок">
+          <p class="text-sm text-slate-400">Показаны {{ deals_page.start_index }}-{{ deals_page.end_index }} из {{ total_deals }}.</p>
+          <div class="flex flex-wrap items-center gap-2">
+            {% if deals_page.has_previous %}
+              <a href="?{% if current_filter_query_string %}{{ current_filter_query_string }}&{% endif %}page={{ deals_page.previous_page_number }}" class="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800">Назад</a>
+            {% endif %}
+            {% for page_number in deal_page_numbers %}
+              {% if page_number %}
+                {% if page_number == deals_page.number %}
+                  <span class="rounded-xl bg-cyan-500 px-4 py-2 text-sm font-medium text-slate-950">{{ page_number }}</span>
+                {% else %}
+                  <a href="?{% if current_filter_query_string %}{{ current_filter_query_string }}&{% endif %}page={{ page_number }}" class="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800">{{ page_number }}</a>
+                {% endif %}
+              {% else %}
+                <span class="px-2 text-slate-500">…</span>
+              {% endif %}
+            {% endfor %}
+            {% if deals_page.has_next %}
+              <a href="?{% if current_filter_query_string %}{{ current_filter_query_string }}&{% endif %}page={{ deals_page.next_page_number }}" class="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800">Вперед</a>
+            {% endif %}
+          </div>
+        </nav>
+      {% endif %}
+    </section>
+  </div>
+
+  <aside id="deal-filters-drawer" class="manager-drawer manager-glass border-l border-slate-800 p-6" aria-hidden="true">
+    <div class="flex items-start justify-between gap-4">
+      <div>
+        <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Drawer</p>
+        <h3 class="mt-2 text-2xl font-semibold text-white">Фильтры списка</h3>
+        <p class="mt-2 text-sm text-slate-400">Быстрый отбор и точные условия не занимают центральное полотно таблицы.</p>
+      </div>
+      <button type="button" data-drawer-close class="rounded-full border border-slate-700 px-3 py-1 text-sm">Закрыть</button>
+    </div>
+    <form method="get" class="mt-6 grid gap-4">
+      <div class="manager-form-field">
+        <label for="{{ filter_form.q.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.q.label }}</label>
+        {{ filter_form.q }}
+      </div>
+      <div class="manager-form-field">
+        <label for="{{ filter_form.queue.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.queue.label }}</label>
+        {{ filter_form.queue }}
+      </div>
+      <div class="manager-form-field">
+        <label for="{{ filter_form.responsible_manager.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.responsible_manager.label }}</label>
+        {{ filter_form.responsible_manager }}
+      </div>
+      <div class="manager-form-field">
+        <label for="{{ filter_form.payment_state.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.payment_state.label }}</label>
+        {{ filter_form.payment_state }}
+      </div>
+      <div class="manager-form-field">
+        <label for="{{ filter_form.case_status.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.case_status.label }}</label>
+        {{ filter_form.case_status }}
+      </div>
+      <div class="manager-form-field">
+        <label for="{{ filter_form.sort.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.sort.label }}</label>
+        {{ filter_form.sort }}
+      </div>
+      <div class="grid gap-4">
+        <label for="{{ filter_form.mine.id_for_label }}" class="manager-checkbox-field">
+          {{ filter_form.mine }}
+          <span class="text-sm font-medium text-slate-200">{{ filter_form.mine.label }}</span>
+        </label>
+        <label for="{{ filter_form.only_problematic.id_for_label }}" class="manager-checkbox-field">
+          {{ filter_form.only_problematic }}
+          <span class="text-sm font-medium text-slate-200">{{ filter_form.only_problematic.label }}</span>
+        </label>
+        <label for="{{ filter_form.only_unassigned.id_for_label }}" class="manager-checkbox-field">
+          {{ filter_form.only_unassigned }}
+          <span class="text-sm font-medium text-slate-200">{{ filter_form.only_unassigned.label }}</span>
+        </label>
+        <label for="{{ filter_form.action_today.id_for_label }}" class="manager-checkbox-field">
+          {{ filter_form.action_today }}
+          <span class="text-sm font-medium text-slate-200">{{ filter_form.action_today.label }}</span>
+        </label>
+      </div>
+      <div class="flex flex-wrap items-center gap-2 pt-2">
+        <button type="submit" class="rounded-xl bg-cyan-500 px-4 py-2 text-sm font-medium text-slate-950 hover:bg-cyan-400">Применить</button>
+        <a href="{% url 'manager_portal:deal_list' %}" class="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800">Сбросить</a>
+      </div>
+    </form>
+  </aside>
+
+  <aside id="deal-problem-drawer" class="manager-drawer manager-glass border-l border-slate-800 p-6" aria-hidden="true">
+    <div class="flex items-start justify-between gap-4">
+      <div>
+        <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Drawer</p>
+        <h3 class="mt-2 text-2xl font-semibold text-white">Problem views и сохраненные виды</h3>
+        <p class="mt-2 text-sm text-slate-400">Проблемные сигналы и повторяемые подборки открываются рядом с таблицей, а не смешиваются с ней.</p>
+      </div>
+      <button type="button" data-drawer-close class="rounded-full border border-slate-700 px-3 py-1 text-sm">Закрыть</button>
+    </div>
+
+    <section class="mt-6 rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Сохраненные виды</p>
+          <h4 class="mt-1 text-base font-semibold text-white">Повторяемые срезы</h4>
+        </div>
+        <span class="manager-pill">{{ saved_views|length }}</span>
+      </div>
+      <div class="mt-3 flex flex-wrap gap-2">
+        {% for saved_view in saved_views %}
+          <a href="{% url 'manager_portal:deal_list' %}{% if saved_view.query_string %}?{{ saved_view.query_string }}{% endif %}" class="manager-saved-view-chip">
+            {{ saved_view.name }}
+          </a>
+        {% empty %}
+          <span class="text-sm text-slate-500">Пока нет сохраненных видов.</span>
+        {% endfor %}
+      </div>
+      <form method="post" class="mt-4 grid gap-3">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="save_view">
+        <input type="hidden" name="query_string" value="{{ current_filter_query_string }}">
+        <input type="hidden" name="return_query" value="{{ current_query_string }}">
+        {% include "manager_portal/_form_fields.html" with form=save_view_form %}
+        <button type="submit" class="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800">Сохранить текущий вид</button>
+      </form>
+    </section>
+
+    <section class="mt-4 rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Problem views</p>
+          <h4 class="mt-1 text-base font-semibold text-white">Только риск и отклонения</h4>
+        </div>
+        <span class="manager-pill">{{ signal_views|length }}</span>
+      </div>
+      <div class="mt-3 space-y-2">
+        {% for signal in signal_views %}
+          <a href="{% url 'manager_portal:deal_list' %}?{{ signal.query_string }}" class="manager-signal-row" title="{{ signal.description }}">
+            <div class="flex min-w-0 items-center gap-3">
+              <p class="manager-signal-row-label">{{ signal.label }}</p>
+              <span class="manager-queue-chip-count">{{ signal.count }}</span>
+            </div>
+          </a>
+        {% endfor %}
+      </div>
+    </section>
+  </aside>
+
+  <script>
+    (() => {
+      const selectAll = document.getElementById('bulk-select-all');
+      const bulkToolbar = document.getElementById('bulk-toolbar');
+      const clearSelectionButton = document.getElementById('bulk-clear-selection');
+      const hiddenInputs = Array.from(document.querySelectorAll('.bulk-deal-ids-input'));
+      const selectedCount = document.getElementById('bulk-selected-count');
+      const checkboxes = Array.from(document.querySelectorAll('.bulk-deal-checkbox'));
+      const syncValue = () => {
+        const selectedItems = checkboxes.filter((checkbox) => checkbox.checked);
+        const selected = selectedItems.map((checkbox) => checkbox.value).join(',');
+        hiddenInputs.forEach((input) => {
+          input.value = selected;
+        });
+        if (selectedCount) {
+          selectedCount.textContent = selectedItems.length;
+        }
+        if (bulkToolbar) {
+          bulkToolbar.hidden = selectedItems.length === 0;
+        }
+        if (selectAll) {
+          selectAll.checked = checkboxes.length > 0 && selectedItems.length === checkboxes.length;
+          selectAll.indeterminate = selectedItems.length > 0 && selectedItems.length < checkboxes.length;
+        }
+      };
+      if (selectAll) {
+        selectAll.addEventListener('change', () => {
+          checkboxes.forEach((checkbox) => {
+            checkbox.checked = selectAll.checked;
+          });
+          syncValue();
+        });
+      }
+      if (clearSelectionButton) {
+        clearSelectionButton.addEventListener('click', () => {
+          checkboxes.forEach((checkbox) => {
+            checkbox.checked = false;
+          });
+          if (selectAll) {
+            selectAll.checked = false;
+            selectAll.indeterminate = false;
+          }
+          syncValue();
+        });
+      }
+      checkboxes.forEach((checkbox) => checkbox.addEventListener('change', syncValue));
+      syncValue();
+    })();
+  </script>
+{% endblock %}

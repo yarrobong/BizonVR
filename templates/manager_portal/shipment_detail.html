@@ -1,0 +1,93 @@
+{% extends "manager_portal/base.html" %}
+
+{% block title %}Отгрузка #{{ shipment.pk }}{% endblock %}
+
+{% block content %}
+  <div class="grid gap-6 xl:grid-cols-[1.1fr,0.9fr]">
+    <section class="space-y-6">
+      <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+        <h2 class="text-3xl font-semibold">Отгрузка #{{ shipment.pk }}</h2>
+        <p class="mt-2 text-slate-400">
+          {{ shipment.client.name }} · {{ shipment.get_status_display }}
+          {% if shipment.order %}· заказ #{{ shipment.order.pk }}{% endif %}
+        </p>
+      </div>
+
+      {% if shipment_missing_fields %}
+        <div class="rounded-3xl border border-amber-400/30 bg-amber-400/10 p-6">
+          <p class="text-xs uppercase tracking-[0.22em] text-amber-100">Чеклист полноты</p>
+          <div class="mt-4 flex flex-wrap gap-2">
+            {% for field in shipment_missing_fields %}
+              <span class="manager-pill">{{ field }}</span>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+
+      <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+        <h3 class="text-xl font-semibold">Позиции</h3>
+        <div class="mt-4 space-y-3">
+          {% for item in shipment.items.all %}
+            <div class="rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3">
+              <p>{{ item.product.name }}{% if item.variant %} <span class="text-slate-500">/ {{ item.variant.name }}</span>{% endif %} · {{ item.quantity }} шт.</p>
+              <p class="mt-1 text-sm text-slate-500">
+                {% if item.order_item %}
+                  <a href="{% url 'manager_portal:order_detail' item.order_item.order_id %}" class="text-cyan-300 hover:text-cyan-200">Заказ #{{ item.order_item.order_id }}</a>
+                {% endif %}
+                {% if item.reservation_item and item.reservation_item.reservation_id %}
+                  · <a href="{% url 'manager_portal:reservation_detail' item.reservation_item.reservation_id %}" class="text-cyan-300 hover:text-cyan-200">Бронь #{{ item.reservation_item.reservation_id }}</a>
+                {% endif %}
+              </p>
+            </div>
+          {% empty %}
+            <p class="text-slate-400">Позиции в отгрузке отсутствуют.</p>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+
+    <section class="space-y-6">
+      <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+        <h3 class="text-xl font-semibold">Маршрут</h3>
+        <div class="mt-4 space-y-3 text-sm text-slate-300">
+          <p>Получатель: {{ shipment.recipient_name|default:"—" }}</p>
+          <p>Телефон: {{ shipment.recipient_phone|default:"—" }}</p>
+          <p>Адрес: {{ shipment.delivery_address|default:"—" }}</p>
+          <p>Источник: {{ shipment.source_warehouse|default:"—" }}</p>
+          <p>Назначение: {{ shipment.target_warehouse|default:"—" }}</p>
+          <p>Способ доставки: {{ shipment.delivery_method|default:"—" }}</p>
+          <p>Плательщик доставки: {{ shipment.get_delivery_payer_display|default:shipment.delivery_payer|default:"—" }}</p>
+          <p>Плановое получение: {{ shipment.planned_receipt_at|date:"d.m.Y"|default:"—" }}</p>
+          <p>Трек: {{ shipment.tracking_number|default:"—" }}</p>
+          <p>Отправлено: {{ shipment.shipped_at|date:"d.m.Y H:i"|default:"—" }}</p>
+          <p>Доставлено: {{ shipment.delivered_at|date:"d.m.Y H:i"|default:"—" }}</p>
+        </div>
+      </div>
+
+      <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+        <h3 class="text-xl font-semibold">Чеклист</h3>
+        <div class="mt-4 grid gap-3">
+          {% for item in shipment_checklist %}
+            <div class="rounded-2xl border px-4 py-3 {% if item.is_ready %}border-emerald-500/30 bg-emerald-500/10{% else %}border-amber-400/30 bg-amber-400/10{% endif %}">
+              <p class="text-sm font-medium text-white">{{ item.label }}</p>
+              <p class="mt-1 text-xs text-slate-300">{{ item.value|default:"Не заполнено" }}</p>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+        <h3 class="text-xl font-semibold">Связи</h3>
+        <div class="mt-4 space-y-3">
+          {% if shipment.order %}
+            <a href="{% url 'manager_portal:order_detail' shipment.order.pk %}" class="block rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 hover:border-cyan-400/30">Заказ #{{ shipment.order.pk }}</a>
+          {% endif %}
+          {% if shipment.reservation %}
+            <a href="{% url 'manager_portal:reservation_detail' shipment.reservation.pk %}" class="block rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 hover:border-cyan-400/30">Бронь #{{ shipment.reservation.pk }}</a>
+          {% endif %}
+          <a href="{% url 'manager_portal:client_detail' shipment.client.pk %}" class="block rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 hover:border-cyan-400/30">{{ shipment.client.name }}</a>
+        </div>
+      </div>
+    </section>
+  </div>
+{% endblock %}

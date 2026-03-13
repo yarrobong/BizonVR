@@ -4,7 +4,7 @@
 {% block title %}Оформление заказа — BizonVR{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 py-8 max-w-5xl">
+<div class="container mx-auto max-w-6xl px-4 py-8">
   <nav class="mb-6">
     <a href="{% url 'catalog:cart' %}" class="text-gray-400 hover:text-accent text-sm flex items-center gap-1">
       <i data-lucide="arrow-left" class="w-4 h-4 inline-block"></i>
@@ -12,181 +12,231 @@
     </a>
   </nav>
 
-  <h1 class="text-2xl font-light text-white mb-8">Оформление заказа</h1>
+  <div class="mb-8">
+    <p class="text-xs uppercase tracking-[0.24em] text-accent/80">Оформление</p>
+    <h1 class="mt-2 text-3xl font-semibold text-white">Оформление заказа</h1>
+    <p class="mt-2 max-w-3xl text-sm text-gray-400">
+      Доставка выполняется только через CDEK до ПВЗ. Оплатить заказ можно по СБП, банковской картой или через менеджера для юридических лиц. Стоимость доставки оплачивается отдельно при получении.
+    </p>
+  </div>
 
   {% if cart_empty %}
-    <div class="bg-dark-800 border border-dark-600 rounded-xl p-8 text-center text-gray-400">
+    <div class="rounded-3xl border border-white/10 bg-dark-800/80 p-8 text-center text-gray-400">
       <p class="mb-4">Корзина пуста. Добавьте товары, чтобы перейти к оформлению заказа.</p>
-      <a href="{% url 'catalog:product_list' %}" class="inline-flex items-center gap-2 bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-6 rounded-full text-sm uppercase tracking-wide transition-colors">
+      <a href="{% url 'catalog:product_list' %}" class="inline-flex items-center gap-2 rounded-full bg-accent px-6 py-3 text-sm font-bold uppercase tracking-wide text-dark-900 transition hover:bg-accent-hover">
         Перейти в каталог
         <i data-lucide="arrow-right" class="w-4 h-4 inline-block"></i>
       </a>
     </div>
   {% else %}
-    <div class="grid grid-cols-1 lg:grid-cols-[1.05fr_0.95fr] gap-8">
-      <div class="space-y-6">
-        <div class="bg-dark-800 border border-dark-600 rounded-xl p-6">
-          <h2 class="text-lg font-medium text-white mb-4">Состав заказа</h2>
-          <ul class="space-y-3">
-            {% for item in cart_items %}
-            <li class="flex justify-between items-start gap-2 text-sm">
-              <span class="text-gray-300">{{ item.name }} × {{ item.quantity }}</span>
-              <span class="text-white font-medium whitespace-nowrap">{{ item.subtotal|price_format }} ₽</span>
-            </li>
-            {% endfor %}
-          </ul>
-          <p class="mt-4 pt-4 border-t border-dark-600 text-white font-bold text-lg">Итого: {{ cart_total|price_format }} ₽</p>
-        </div>
+    <div class="grid grid-cols-1 gap-8 lg:grid-cols-[1.15fr_0.85fr]">
+      <form method="post" action="{{ request.get_full_path }}" class="space-y-6">
+        {% csrf_token %}
+        {% if form.non_field_errors %}
+          <div class="rounded-2xl border border-red-400/20 bg-red-500/10 p-4 text-sm text-red-300">{{ form.non_field_errors.0 }}</div>
+        {% endif %}
 
-        <div class="bg-dark-800 border border-dark-600 rounded-xl p-6">
-          <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <section class="rounded-3xl border border-white/10 bg-dark-800/90 p-6">
+          <div class="mb-4 flex items-center justify-between gap-4">
             <div>
-              <h2 class="text-lg font-medium text-white">Сохранённые адреса</h2>
-              <p class="text-sm text-gray-400 mt-1">Выберите готовый адрес для предзаполнения формы или оформите заказ вручную.</p>
+              <p class="text-xs uppercase tracking-[0.24em] text-accent/80">Шаг 1</p>
+              <h2 class="mt-1 text-xl font-semibold text-white">Контакты</h2>
             </div>
-            <a href="{% url 'accounts:profile' %}#delivery" class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition-colors hover:border-white/20 hover:bg-white/10">
-              Управлять адресами
-            </a>
+            {% if not is_authenticated_checkout %}
+              <a href="{% url 'accounts:login' %}?next={% url 'orders:checkout' %}" class="text-sm text-accent hover:text-accent-hover">Уже есть аккаунт?</a>
+            {% endif %}
           </div>
+          <div class="grid gap-4 md:grid-cols-2">
+            <div class="md:col-span-2">
+              <label for="{{ form.full_name.id_for_label }}" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.full_name.label }} *</label>
+              {{ form.full_name }}
+              {% if form.full_name.errors %}<p class="mt-1 text-sm text-red-400">{{ form.full_name.errors.0 }}</p>{% endif %}
+            </div>
+            <div class="md:col-span-2">
+              <label for="id_phone" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.phone.label }} *</label>
+              <div class="phone-input-wrapper flex items-center w-full rounded-lg bg-dark-700 overflow-hidden focus-within:ring-1 focus-within:ring-accent pl-5">
+                <span class="phone-prefix text-white font-medium py-2.5 flex-shrink-0 select-none">+7</span>
+                <span class="phone-prefix-bracket text-white font-medium py-2.5 flex-shrink-0 select-none" style="display: none;">&nbsp;(</span>
+                <input type="tel" name="phone" id="id_phone" required value="{{ form.phone.value|default:'' }}" placeholder="999 123-45-67" class="js-phone-mask flex-1 min-w-0 bg-transparent text-white py-2.5 pl-1 pr-4 focus:outline-none focus:ring-0 border-0" autocomplete="tel" inputmode="tel">
+              </div>
+              {% if form.phone.errors %}<p class="mt-1 text-sm text-red-400">{{ form.phone.errors.0 }}</p>{% endif %}
+            </div>
+            <div>
+              <label for="id_email" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.email.label }}</label>
+              {{ form.email }}
+              {% if form.email.errors %}<p class="mt-1 text-sm text-red-400">{{ form.email.errors.0 }}</p>{% endif %}
+            </div>
+            <div>
+              <label for="id_city_text" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.city_text.label }} *</label>
+              {{ form.city_text }}
+              {% if form.city_text.errors %}<p class="mt-1 text-sm text-red-400">{{ form.city_text.errors.0 }}</p>{% endif %}
+            </div>
+          </div>
+        </section>
 
+        <section class="rounded-3xl border border-white/10 bg-dark-800/90 p-6">
+          <div class="mb-4">
+            <p class="text-xs uppercase tracking-[0.24em] text-accent/80">Шаг 2</p>
+            <h2 class="mt-1 text-xl font-semibold text-white">Доставка CDEK</h2>
+          </div>
           {% if saved_addresses %}
-            <div class="mt-5 grid gap-3">
-              {% for saved_address in saved_addresses %}
-                <a href="{% url 'orders:checkout' %}?saved_address={{ saved_address.pk }}"
-                   class="rounded-2xl border p-4 transition-colors {% if selected_saved_address_id == saved_address.pk %}border-accent bg-accent/10{% else %}border-dark-600 bg-dark-700/40 hover:border-white/20{% endif %}">
-                  <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                    <div class="min-w-0">
-                      <div class="flex flex-wrap items-center gap-2">
-                        <p class="text-base text-white">{{ saved_address.label }}</p>
-                        {% if saved_address.is_default %}
-                          <span class="rounded-full border border-accent/30 bg-accent/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-accent">По умолчанию</span>
-                        {% endif %}
-                      </div>
-                      <p class="mt-2 text-sm text-gray-300">{{ saved_address.recipient_name }}</p>
-                      <p class="mt-1 text-sm text-gray-400">{{ saved_address.phone }}{% if saved_address.email %} · {{ saved_address.email }}{% endif %}</p>
-                      <p class="mt-2 text-sm text-gray-400">
-                        {{ saved_address.get_delivery_type_display }}
-                        {% if saved_address.pickup_point %}
-                          · {{ saved_address.pickup_point.name }}
-                        {% endif %}
-                      </p>
-                      {% if saved_address.address %}
-                        <p class="mt-1 text-sm text-gray-300">{{ saved_address.address }}</p>
+            <div class="mb-5 rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <p class="text-sm text-gray-300">Сохранённые адреса можно использовать для быстрого предзаполнения оформления заказа.</p>
+                <a href="{% url 'accounts:profile_settings' %}#delivery" class="text-sm text-accent hover:text-accent-hover">Управлять адресами</a>
+              </div>
+              <div class="mt-4 grid gap-3">
+                {% for saved_address in saved_addresses %}
+                  <a href="{% url 'orders:checkout' %}?saved_address={{ saved_address.pk }}" class="rounded-2xl border p-4 transition-colors {% if selected_saved_address_id == saved_address.pk %}border-accent bg-accent/10{% else %}border-dark-600 bg-dark-700/40 hover:border-white/20{% endif %}">
+                    <p class="text-white">{{ saved_address.label }}</p>
+                    <p class="mt-1 text-sm text-gray-400">{{ saved_address.recipient_name }} · {{ saved_address.phone }}</p>
+                    <p class="mt-1 text-sm text-gray-500">{{ saved_address.city }}{% if saved_address.address %} · {{ saved_address.address }}{% endif %}</p>
+                  </a>
+                {% endfor %}
+              </div>
+            </div>
+          {% endif %}
+          <div class="mt-4">
+            <label for="id_address_line" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.address_line.label }} *</label>
+            {{ form.address_line }}
+            {% if form.address_line.errors %}<p class="mt-1 text-sm text-red-400">{{ form.address_line.errors.0 }}</p>{% endif %}
+          </div>
+          <div class="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-gray-300">
+            Если указанный ПВЗ не будет найден у CDEK, заказ отправим в ближайший к нему доступный пункт выдачи.
+          </div>
+          <div class="mt-4">
+            <label for="id_delivery_comment" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.delivery_comment.label }}</label>
+            {{ form.delivery_comment }}
+            {% if form.delivery_comment.errors %}<p class="mt-1 text-sm text-red-400">{{ form.delivery_comment.errors.0 }}</p>{% endif %}
+          </div>
+        </section>
+
+        <section class="rounded-3xl border border-white/10 bg-dark-800/90 p-6">
+          <div class="mb-4">
+            <p class="text-xs uppercase tracking-[0.24em] text-accent/80">Шаг 3</p>
+            <h2 class="mt-1 text-xl font-semibold text-white">Оплата</h2>
+          </div>
+          {% with selected_payment=form.payment_method.value|default:form.payment_method.field.initial %}
+            <div class="grid gap-3">
+              {% for value, label in form.payment_method.field.choices %}
+                <label class="flex cursor-pointer items-start gap-3 rounded-2xl border p-4 transition-colors {% if selected_payment == value %}border-accent bg-accent/10{% else %}border-white/10 bg-white/5 hover:border-white/20{% endif %}">
+                  <input type="radio" name="payment_method" value="{{ value }}" class="mt-1 h-4 w-4 border-gray-600 bg-dark-700 text-accent focus:ring-accent focus:ring-offset-0" {% if selected_payment == value %}checked{% endif %}>
+                  <span class="block">
+                    <span class="block text-sm font-semibold text-white">{{ label }}</span>
+                    <span class="mt-1 block text-sm text-gray-400">
+                      {% if value == 'bank_card' %}
+                        Перевод на банковскую карту по реквизитам, которые будут показаны после оформления заказа.
+                      {% elif value == 'sbp' %}
+                        Перевод по СБП на номер, который будет показан после оформления заказа.
+                      {% else %}
+                        Для оплаты от юридического лица менеджер свяжется с вами и согласует закрывающие документы и порядок расчёта.
                       {% endif %}
-                      {% if saved_address.comment %}
-                        <p class="mt-1 text-xs text-gray-500">{{ saved_address.comment }}</p>
-                      {% endif %}
-                    </div>
-                    {% if selected_saved_address_id == saved_address.pk %}
-                      <span class="rounded-full border border-accent/30 bg-accent/10 px-3 py-1 text-xs font-medium text-accent">Выбран</span>
-                    {% endif %}
-                  </div>
-                </a>
+                    </span>
+                  </span>
+                </label>
               {% endfor %}
             </div>
-            <a href="{% url 'orders:checkout' %}?saved_address=none" class="mt-4 inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition-colors hover:border-white/20 hover:bg-white/10">
-              Очистить выбор и заполнить вручную
-            </a>
-          {% else %}
-            <div class="mt-5 rounded-2xl border border-dashed border-dark-500 bg-dark-700/50 p-5 text-sm text-gray-400">
-              Сохранённых адресов пока нет. Их можно создать в <a href="{% url 'accounts:profile' %}#delivery" class="text-accent hover:underline">личном кабинете</a>.
-            </div>
-          {% endif %}
-        </div>
-      </div>
+          {% endwith %}
+          {% if form.payment_method.errors %}<p class="mt-3 text-sm text-red-400">{{ form.payment_method.errors.0 }}</p>{% endif %}
+        </section>
 
-      <div class="bg-dark-800 border border-dark-600 rounded-xl p-6">
-        <h2 class="text-lg font-medium text-white mb-4">Контактные данные и доставка</h2>
-        <p class="text-sm text-gray-500 mb-4">Укажите контакты и способ получения заказа. Сохранённые адреса только помогают предзаполнить форму и не меняются автоматически.</p>
-        <form method="post" action="{{ request.get_full_path }}" class="space-y-4">
-          {% csrf_token %}
-          {% if form.non_field_errors %}
-          <div class="text-red-400 text-sm">{{ form.non_field_errors }}</div>
-          {% endif %}
-          <div>
-            <label for="id_promo_code" class="block text-sm font-medium text-gray-300 mb-1">{{ form.promo_code.label }}</label>
-            {{ form.promo_code }}
-            {% if form.promo_code.errors %}<p class="text-red-400 text-xs mt-1">{{ form.promo_code.errors.0 }}</p>{% endif %}
+        <section class="rounded-3xl border border-white/10 bg-dark-800/90 p-6">
+          <div class="mb-4">
+            <p class="text-xs uppercase tracking-[0.24em] text-accent/80">Шаг 4</p>
+            <h2 class="mt-1 text-xl font-semibold text-white">Проверка и подтверждение</h2>
           </div>
-          <div>
-            <label for="id_phone" class="block text-sm font-medium text-gray-300 mb-1">{{ form.phone.label }} *</label>
-            <div class="phone-input-wrapper flex items-center w-full bg-dark-700 rounded-lg overflow-hidden focus-within:ring-1 focus-within:ring-accent pl-5">
-              <span class="phone-prefix text-white font-medium py-2.5 flex-shrink-0 select-none">+7</span>
-              <span class="phone-prefix-bracket text-white font-medium py-2.5 flex-shrink-0 select-none" style="display: none;">&nbsp;(</span>
-              <input type="tel" name="phone" id="id_phone" required
-                     value="{{ form.phone.value|default:'' }}"
-                     placeholder="999 123-45-67"
-                     class="js-phone-mask flex-1 min-w-0 bg-transparent text-white py-2.5 pl-1 pr-4 focus:outline-none focus:ring-0 border-0"
-                     autocomplete="tel" inputmode="tel">
-            </div>
-            {% if form.phone.errors %}<p class="text-red-400 text-xs mt-1">{{ form.phone.errors.0 }}</p>{% endif %}
-          </div>
-          <div class="grid grid-cols-2 gap-4">
+          <div class="grid gap-4 md:grid-cols-2">
             <div>
-              <label for="id_first_name" class="block text-sm font-medium text-gray-300 mb-1">{{ form.first_name.label }} *</label>
-              {{ form.first_name }}
-              {% if form.first_name.errors %}<p class="text-red-400 text-xs mt-1">{{ form.first_name.errors.0 }}</p>{% endif %}
+              <label for="id_promo_code" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.promo_code.label }}</label>
+              {{ form.promo_code }}
+              {% if form.promo_code.errors %}<p class="mt-1 text-sm text-red-400">{{ form.promo_code.errors.0 }}</p>{% endif %}
             </div>
             <div>
-              <label for="id_last_name" class="block text-sm font-medium text-gray-300 mb-1">{{ form.last_name.label }}</label>
-              {{ form.last_name }}
-              {% if form.last_name.errors %}<p class="text-red-400 text-xs mt-1">{{ form.last_name.errors.0 }}</p>{% endif %}
+              <label for="id_comment" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.comment.label }}</label>
+              {{ form.comment }}
+              {% if form.comment.errors %}<p class="mt-1 text-sm text-red-400">{{ form.comment.errors.0 }}</p>{% endif %}
             </div>
           </div>
-          <div>
-            <label for="id_email" class="block text-sm font-medium text-gray-300 mb-1">{{ form.email.label }}</label>
-            {{ form.email }}
-            {% if form.email.errors %}<p class="text-red-400 text-xs mt-1">{{ form.email.errors.0 }}</p>{% endif %}
-          </div>
-          <div>
-            <label for="id_delivery_type" class="block text-sm font-medium text-gray-300 mb-1">{{ form.delivery_type.label }} *</label>
-            {{ form.delivery_type }}
-          </div>
-          {% if pickup_points %}
-          <div id="pickup-point-field">
-            <label for="id_pickup_point" class="block text-sm font-medium text-gray-300 mb-1">{{ form.pickup_point.label }} (для самовывоза)</label>
-            {{ form.pickup_point }}
-            {% if form.pickup_point.errors %}<p class="text-red-400 text-xs mt-1">{{ form.pickup_point.errors.0 }}</p>{% endif %}
-          </div>
-          {% endif %}
-          <div>
-            <label for="id_address" class="block text-sm font-medium text-gray-300 mb-1">{{ form.address.label }}</label>
-            {{ form.address }}
-            {% if form.address.errors %}<p class="text-red-400 text-xs mt-1">{{ form.address.errors.0 }}</p>{% endif %}
-          </div>
-          <div>
-            <label for="id_comment" class="block text-sm font-medium text-gray-300 mb-1">{{ form.comment.label }}</label>
-            {{ form.comment }}
-          </div>
-          <div class="space-y-3 rounded-lg border border-dark-600 bg-dark-900/60 p-4">
+          <div class="mt-5 space-y-3 rounded-2xl border border-white/10 bg-dark-900/60 p-4">
             <label for="id_agree_personal_data_checkout" class="flex items-start gap-3 text-sm text-gray-300">
-              <input type="checkbox" name="agree_personal_data" id="id_agree_personal_data_checkout" required
-                     {% if form.agree_personal_data.value %}checked{% endif %}
-                     class="mt-1 w-4 h-4 rounded border-gray-600 bg-dark-700 text-accent focus:ring-accent focus:ring-offset-0">
+              <input type="checkbox" name="agree_personal_data" id="id_agree_personal_data_checkout" required {% if form.agree_personal_data.value %}checked{% endif %} class="mt-1 h-4 w-4 rounded border-gray-600 bg-dark-700 text-accent focus:ring-accent focus:ring-offset-0">
               <span>
                 Даю согласие на обработку персональных данных и подтверждаю ознакомление с
-                <a href="{% url 'privacy' %}" target="_blank" rel="noopener noreferrer" class="text-accent hover:text-accent-hover underline">политикой конфиденциальности</a>
-                и <a href="{% url 'pd_consent' %}" target="_blank" rel="noopener noreferrer" class="text-accent hover:text-accent-hover underline">согласием на обработку ПД</a>.
+                <a href="{% url 'privacy' %}" target="_blank" rel="noopener noreferrer" class="text-accent underline hover:text-accent-hover">политикой конфиденциальности</a>
+                и <a href="{% url 'pd_consent' %}" target="_blank" rel="noopener noreferrer" class="text-accent underline hover:text-accent-hover">согласием на обработку ПД</a>.
               </span>
             </label>
-            {% if form.agree_personal_data.errors %}<p class="text-red-400 text-xs">{{ form.agree_personal_data.errors.0 }}</p>{% endif %}
+            {% if form.agree_personal_data.errors %}<p class="text-xs text-red-400">{{ form.agree_personal_data.errors.0 }}</p>{% endif %}
 
             <label for="id_agree_offer" class="flex items-start gap-3 text-sm text-gray-300">
-              <input type="checkbox" name="agree_offer" id="id_agree_offer" required
-                     {% if form.agree_offer.value %}checked{% endif %}
-                     class="mt-1 w-4 h-4 rounded border-gray-600 bg-dark-700 text-accent focus:ring-accent focus:ring-offset-0">
+              <input type="checkbox" name="agree_offer" id="id_agree_offer" required {% if form.agree_offer.value %}checked{% endif %} class="mt-1 h-4 w-4 rounded border-gray-600 bg-dark-700 text-accent focus:ring-accent focus:ring-offset-0">
               <span>
-                Принимаю условия <a href="{% url 'oferta' %}" target="_blank" rel="noopener noreferrer" class="text-accent hover:text-accent-hover underline">публичной оферты</a>
-                и документа <a href="{% url 'sales_terms' %}" target="_blank" rel="noopener noreferrer" class="text-accent hover:text-accent-hover underline">оплата / доставка / возврат / гарантия</a>.
+                Принимаю условия <a href="{% url 'oferta' %}" target="_blank" rel="noopener noreferrer" class="text-accent underline hover:text-accent-hover">публичной оферты</a>
+                и документа <a href="{% url 'sales_terms' %}" target="_blank" rel="noopener noreferrer" class="text-accent underline hover:text-accent-hover">оплата / доставка / возврат / гарантия</a>.
               </span>
             </label>
-            {% if form.agree_offer.errors %}<p class="text-red-400 text-xs">{{ form.agree_offer.errors.0 }}</p>{% endif %}
+            {% if form.agree_offer.errors %}<p class="text-xs text-red-400">{{ form.agree_offer.errors.0 }}</p>{% endif %}
           </div>
-          <button type="submit" class="w-full bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-6 rounded-full text-sm uppercase tracking-wide transition-colors">
-            Оформить заказ
-          </button>
-        </form>
-      </div>
+        </section>
+
+        <button type="submit" class="w-full rounded-full bg-accent px-6 py-4 text-sm font-bold uppercase tracking-wide text-dark-900 transition hover:bg-accent-hover">
+          Оформить заказ
+        </button>
+      </form>
+
+      <aside class="space-y-6">
+        <section class="rounded-3xl border border-white/10 bg-dark-800/90 p-6">
+          <p class="text-xs uppercase tracking-[0.24em] text-accent/80">Ваш заказ</p>
+          <h2 class="mt-1 text-xl font-semibold text-white">Проверка состава</h2>
+          <ul class="mt-5 space-y-4">
+            {% for item in cart_items %}
+              <li class="flex items-start justify-between gap-3 text-sm">
+                <div>
+                  <p class="text-white">{{ item.name }}</p>
+                  <p class="text-gray-500">Количество: {{ item.quantity }}</p>
+                </div>
+                <p class="whitespace-nowrap font-semibold text-white">{{ item.subtotal|price_format }} ₽</p>
+              </li>
+            {% endfor %}
+          </ul>
+          <div class="mt-5 space-y-2 border-t border-white/10 pt-4 text-sm">
+            <div class="flex items-center justify-between text-gray-300">
+              <span>Товары</span>
+              <span>{{ cart_total|price_format }} ₽</span>
+            </div>
+            <div class="flex items-center justify-between text-gray-300">
+              <span>К оплате за товар</span>
+              <span>{{ online_total|price_format }} ₽</span>
+            </div>
+            <div class="flex items-center justify-between text-gray-300">
+              <span>Доставка CDEK при получении</span>
+              <span>{{ delivery_cost|price_format }} ₽</span>
+            </div>
+            <div class="flex items-center justify-between text-gray-400">
+              <span>Вес / объём отправки</span>
+              <span>{{ shipping_weight_kg }} кг / {{ shipping_volume_liters }} л</span>
+            </div>
+            <div class="flex items-center justify-between text-base font-semibold text-white">
+              <span>Полная сумма</span>
+              <span>{{ grand_total|price_format }} ₽</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="rounded-3xl border border-white/10 bg-dark-800/90 p-6">
+          <p class="text-sm text-gray-300">После оформления заказа откроются инструкции по выбранному способу оплаты. Доставка CDEK оплачивается отдельно в ПВЗ при получении.</p>
+          {% if not is_authenticated_checkout %}
+            <div class="mt-4 flex flex-col gap-3">
+              <a href="{% url 'accounts:login' %}?next={% url 'orders:checkout' %}" class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm text-white transition hover:border-white/20 hover:bg-white/10">
+                Войти в аккаунт
+              </a>
+              <a href="{% url 'accounts:login' %}?next={% url 'orders:checkout' %}" class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm text-white transition hover:border-white/20 hover:bg-white/10">
+                Создать аккаунт
+              </a>
+            </div>
+          {% endif %}
+        </section>
+      </aside>
     </div>
   {% endif %}
 </div>

@@ -1,0 +1,73 @@
+{% extends "manager_portal/base.html" %}
+
+{% block title %}Финансы: расходы{% endblock %}
+
+{% block content %}
+  <div class="grid gap-8 xl:grid-cols-[24rem_1fr]">
+    <section class="manager-panel rounded-3xl p-6">
+      <p class="text-xs uppercase tracking-[0.22em] text-cyan-300">Operational Expense</p>
+      <h2 class="mt-3 text-2xl font-semibold text-white">Новый расход</h2>
+      <form method="post" class="mt-5 grid gap-4">
+        {% csrf_token %}
+        {% include "manager_portal/_form_fields.html" with form=finance_expense_form %}
+        <button type="submit" class="rounded-xl bg-cyan-400 px-4 py-3 text-sm font-semibold text-slate-950">Сохранить расход</button>
+      </form>
+    </section>
+    <section class="space-y-8">
+      <div class="manager-panel rounded-3xl p-6">
+        <h2 class="text-2xl font-semibold text-white">Наши расходы</h2>
+        <div class="mt-5 overflow-x-auto">
+          <table class="min-w-full text-sm text-slate-300">
+            <thead class="text-left text-xs uppercase tracking-[0.18em] text-slate-500">
+              <tr>
+                <th class="pb-3 pr-4">Дата</th>
+                <th class="pb-3 pr-4">Категория</th>
+                <th class="pb-3 pr-4">Сумма</th>
+                <th class="pb-3 pr-4">Комментарий</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for expense in finance_our_expenses %}
+                <tr class="border-t border-slate-800">
+                  <td class="py-3 pr-4">{{ expense.date }}</td>
+                  <td class="py-3 pr-4">{{ expense.category.name }}</td>
+                  <td class="py-3 pr-4">{{ expense.amount|rub }}</td>
+                  <td class="py-3 pr-4">{{ expense.comment|default:"—" }}</td>
+                </tr>
+              {% empty %}
+                <tr><td colspan="4" class="py-4 text-slate-500">Наших расходов пока нет.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="manager-panel rounded-3xl p-6">
+        <h2 class="text-2xl font-semibold text-white">Расходы партнера</h2>
+        <div class="mt-5 overflow-x-auto">
+          <table class="min-w-full text-sm text-slate-300">
+            <thead class="text-left text-xs uppercase tracking-[0.18em] text-slate-500">
+              <tr>
+                <th class="pb-3 pr-4">Дата</th>
+                <th class="pb-3 pr-4">Категория</th>
+                <th class="pb-3 pr-4">Сумма</th>
+                <th class="pb-3 pr-4">Комментарий</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for expense in finance_partner_expenses %}
+                <tr class="border-t border-slate-800">
+                  <td class="py-3 pr-4">{{ expense.date }}</td>
+                  <td class="py-3 pr-4">{{ expense.category.name }}</td>
+                  <td class="py-3 pr-4">{{ expense.amount|rub }}</td>
+                  <td class="py-3 pr-4">{{ expense.comment|default:"—" }}</td>
+                </tr>
+              {% empty %}
+                <tr><td colspan="4" class="py-4 text-slate-500">Расходов партнера пока нет.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </div>
+{% endblock %}

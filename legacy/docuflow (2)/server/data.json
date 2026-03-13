@@ -1,0 +1,245 @@
+{
+  "counterparties": [
+    {
+      "id": "1",
+      "name": "ООО \"ТехноСолюшнс\"",
+      "inn": "7701234567",
+      "address": "123000, г. Москва, ул. Инновационная, д. 1",
+      "contactPerson": "Иванов Иван",
+      "email": "ivanov@techsol.ru"
+    },
+    {
+      "id": "2",
+      "name": "АО \"Глобал Логистик\"",
+      "inn": "7709876543",
+      "address": "190000, г. Санкт-Петербург, Невский пр-т, д. 45",
+      "contactPerson": "Смирнова Анна",
+      "email": "smirnova@globallog.ru"
+    },
+    {
+      "id": "3",
+      "name": "ИП Петров П.П.",
+      "inn": "5029384756",
+      "address": "141400, г. Химки, ул. Ленина, д. 5",
+      "contactPerson": "Петров Петр",
+      "email": "petrov@design.ru"
+    }
+  ],
+  "invoices": [
+    {
+      "id": "inv-001",
+      "number": "СЧ-2023-001",
+      "date": "25.10.2023",
+      "amount": 500000,
+      "currency": "RUB",
+      "status": "Не оплачен",
+      "commissionPercent": 6,
+      "items": [
+        {
+          "id": "i1",
+          "description": "Разработка веб-сайта (этап 1)",
+          "quantity": 1,
+          "price": 500000,
+          "unit": "Проект"
+        }
+      ]
+    },
+    {
+      "id": "inv-002",
+      "number": "СЧ-2023-002",
+      "date": "26.10.2023",
+      "amount": 120000,
+      "currency": "RUB",
+      "status": "Оплачен",
+      "commissionPercent": 6,
+      "items": [
+        {
+          "id": "i2",
+          "description": "Техническая поддержка серверов",
+          "quantity": 12,
+          "price": 10000,
+          "unit": "Час"
+        }
+      ]
+    },
+    {
+      "id": "inv-003",
+      "number": "СЧ-2023-003",
+      "date": "27.10.2023",
+      "amount": 85000,
+      "currency": "RUB",
+      "status": "Не оплачен",
+      "commissionPercent": 6,
+      "items": [
+        {
+          "id": "i3",
+          "description": "Консультационные услуги",
+          "quantity": 5,
+          "price": 17000,
+          "unit": "Час"
+        }
+      ]
+    }
+  ],
+  "templates": [
+    {
+      "id": "t1",
+      "name": "Стандартный договор поставки",
+      "type": "Договор поставки",
+      "version": "2.1",
+      "updatedAt": "20.10.2023"
+    },
+    {
+      "id": "t2",
+      "name": "Договор об уровне сервиса (SLA)",
+      "type": "Договор оказания услуг",
+      "version": "1.5",
+      "updatedAt": "15.10.2023"
+    },
+    {
+      "id": "t3",
+      "name": "Соглашение о конфиденциальности (NDA)",
+      "type": "Соглашение о конфиденциальности (NDA)",
+      "version": "3.0",
+      "updatedAt": "01.09.2023"
+    },
+    {
+      "id": "t4",
+      "name": "Договор аренды оборудования",
+      "type": "Договор аренды",
+      "version": "1.0",
+      "updatedAt": "12.08.2023"
+    }
+  ],
+  "contracts": [
+    {
+      "id": "c1",
+      "number": "Д-2023-085",
+      "title": "Разработка сайта для ООО \"ТехноСолюшнс\"",
+      "type": "Договор оказания услуг",
+      "counterparty": {
+        "id": "1",
+        "name": "ООО \"ТехноСолюшнс\"",
+        "inn": "7701234567",
+        "address": "123000, г. Москва, ул. Инновационная, д. 1",
+        "contactPerson": "Иванов Иван",
+        "email": "ivanov@techsol.ru"
+      },
+      "status": "Черновик",
+      "createdAt": "26.10.2023",
+      "amount": 500000,
+      "invoiceId": "inv-001",
+      "paymentTerms": 10,
+      "includeDelivery": true,
+      "deliveryDate": null,
+      "vatRate": "none",
+      "vatMode": "included",
+      "markupPercent": 6,
+      "markupMode": "per_item",
+      "markupCalcMode": "simple"
+    },
+    {
+      "id": "c2",
+      "number": "Д-2023-084",
+      "title": "Поставка логистического ПО",
+      "type": "Договор поставки",
+      "counterparty": {
+        "id": "2",
+        "name": "АО \"Глобал Логистик\"",
+        "inn": "7709876543",
+        "address": "190000, г. Санкт-Петербург, Невский пр-т, д. 45",
+        "contactPerson": "Смирнова Анна",
+        "email": "smirnova@globallog.ru"
+      },
+      "status": "Подписан",
+      "createdAt": "20.10.2023",
+      "amount": 1500000,
+      "paymentTerms": 15,
+      "includeDelivery": true,
+      "deliveryDate": null,
+      "vatRate": "none",
+      "vatMode": "included",
+      "markupPercent": 6,
+      "markupMode": "per_item",
+      "markupCalcMode": "simple"
+    },
+    {
+      "id": "c3",
+      "number": "Д-2023-083",
+      "title": "NDA с ИП Петров",
+      "type": "Соглашение о конфиденциальности (NDA)",
+      "counterparty": {
+        "id": "3",
+        "name": "ИП Петров П.П.",
+        "inn": "5029384756",
+        "address": "141400, г. Химки, ул. Ленина, д. 5",
+        "contactPerson": "Петров Петр",
+        "email": "petrov@design.ru"
+      },
+      "status": "На согласовании",
+      "createdAt": "18.10.2023",
+      "paymentTerms": 10,
+      "includeDelivery": false,
+      "deliveryDate": null,
+      "vatRate": "none",
+      "vatMode": "included",
+      "markupPercent": 6,
+      "markupMode": "per_item",
+      "markupCalcMode": "simple"
+    }
+  ],
+  "settings": {
+    "legalType": "ooo",
+    "companyName": "ООО \"Моя Компания\"",
+    "inn": "7701234567",
+    "kpp": "770101001",
+    "ogrn": "1127746000000",
+    "ogrnip": "",
+    "directorGenitive": "Иванова Ивана Ивановича",
+    "legalAddress": "123000, г. Москва, Пресненская наб., д. 12",
+    "email": "docs@mycompany.ru",
+    "phone": "+7 (495) 123-45-67",
+    "bankName": "ПАО \"Сбербанк\"",
+    "bik": "044525225",
+    "correspondentAccount": "30101810400000000225",
+    "checkingAccount": "40702810938000000000",
+    "bankAccounts": [
+      {
+        "bankName": "ПАО \"Сбербанк\"",
+        "bik": "044525225",
+        "correspondentAccount": "30101810400000000225",
+        "checkingAccount": "40702810938000000000"
+      }
+    ],
+    "companyProfiles": [
+      {
+        "id": "company-1",
+        "legalType": "ooo",
+        "companyName": "ООО \"Моя Компания\"",
+        "inn": "7701234567",
+        "kpp": "770101001",
+        "ogrn": "1127746000000",
+        "ogrnip": "",
+        "directorGenitive": "Иванова Ивана Ивановича",
+        "legalAddress": "123000, г. Москва, Пресненская наб., д. 12",
+        "email": "docs@mycompany.ru",
+        "phone": "+7 (495) 123-45-67",
+        "bankName": "ПАО \"Сбербанк\"",
+        "bik": "044525225",
+        "correspondentAccount": "30101810400000000225",
+        "checkingAccount": "40702810938000000000",
+        "bankAccounts": [
+          {
+            "bankName": "ПАО \"Сбербанк\"",
+            "bik": "044525225",
+            "correspondentAccount": "30101810400000000225",
+            "checkingAccount": "40702810938000000000"
+          }
+        ]
+      }
+    ],
+    "activeCompanyProfileId": "company-1",
+    "defaultCurrency": "RUB",
+    "autoNumbering": true
+  }
+}

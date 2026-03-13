@@ -7,11 +7,14 @@
 
 {% block content %}
 <link rel="stylesheet" href="{% static 'css/catalog/product_list.css' %}">
-<script defer src="{% static 'js/catalog/product_list.js' %}"></script>
+<script src="{% static 'js/catalog/product_list.js' %}"></script>
 
 <div class="container mx-auto px-0 md:px-4 pt-0 pb-8 md:py-8"
      x-data="catalogProductList()"
+     x-init="init()"
      x-effect="syncBodyOverflow()"
+     @filters-dirty="mobileFiltersDirty = true"
+     @filters-url="pendingFiltersUrl = $event.detail"
      @keydown.escape.window="filtersModalOpen = false; sortDropdownOpen = false">
 
   {% include "catalog/product_list/_mobile_topbar.html" %}
@@ -19,8 +22,7 @@
   <div class="catalog-layout">
     {% include "catalog/product_list/_filters_sidebar.html" %}
 
-    <!-- Основной контент -->
-    <div class="flex-1 min-w-0">
+    <div class="catalog-main-column flex-1 min-w-0">
       {% include "catalog/product_list/_sort_controls.html" %}
       {% include "catalog/product_list/_grid_content.html" %}
     </div>

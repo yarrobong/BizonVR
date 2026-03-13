@@ -149,7 +149,7 @@
       </div>
 
       <div class="mobile-card mobile-only">
-        <div class="mobile-price">{{ total_with_discount|floatformat:0 }} ₽</div>
+        <div class="mobile-price">{{ total_with_discount|rub }}</div>
         <h1 class="mobile-product-title">{{ bundle.name|default:"Набор" }}</h1>
       </div>
 
@@ -195,9 +195,9 @@
         <div class="buy-box">
           <div class="price-block">
             <div class="price-row">
-              <span class="main-price">{{ total_with_discount|floatformat:0 }} ₽</span>
+              <span class="main-price">{{ total_with_discount|rub }}</span>
               {% if total_without_discount != total_with_discount %}
-              <span style="font-size: 18px; color: var(--pd-muted); text-decoration: line-through;">{{ total_without_discount|floatformat:0 }} ₽</span>
+              <span style="font-size: 18px; color: var(--pd-muted); text-decoration: line-through;">{{ total_without_discount|rub }}</span>
               <span style="font-size: 13px; font-weight: 700; color: var(--pd-success);">−5%</span>
               {% endif %}
             </div>
@@ -297,15 +297,15 @@
             </td>
             <td>{{ item.quantity }}</td>
             <td>
-              <span class="bundle-old-price">{{ item.product.price|floatformat:0 }} ₽</span>
-              <span class="bundle-new-price">{{ item.effective_price|floatformat:0 }} ₽</span>
+              <span class="bundle-old-price">{{ item.product.price|rub }}</span>
+              <span class="bundle-new-price">{{ item.effective_price|rub }}</span>
             </td>
-            <td>{{ item.line_total|floatformat:0 }} ₽</td>
+            <td>{{ item.line_total|rub }}</td>
           </tr>
           {% endfor %}
           <tr class="bundle-total-row">
             <td colspan="4">Итого со скидкой −5%:</td>
-            <td>{{ total_with_discount|floatformat:0 }} ₽</td>
+            <td>{{ total_with_discount|rub }}</td>
           </tr>
         </tbody>
       </table>

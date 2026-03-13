@@ -1,0 +1,1141 @@
+{% extends "manager_portal/base.html" %}
+
+{% block title %}{% firstof deal.code deal.order_id %}{% endblock %}
+
+{% block content %}
+  {% url 'manager_portal:deal_reservation_action' deal.pk as deal_reservation_url %}
+  {% url 'manager_portal:deal_document_action' deal.pk 'contract' as deal_contract_url %}
+  {% url 'manager_portal:deal_shipment_action' deal.pk as deal_shipment_url %}
+  {% url 'manager_portal:deal_finance_action' deal.pk as deal_finance_url %}
+  <div class="deal-detail-page space-y-6">
+    <section id="deal-sticky-header" class="sticky top-4 z-20">
+      <div class="manager-panel rounded-[1.75rem] border border-slate-800/80 bg-slate-950/95 p-5 backdrop-blur">
+        <div class="flex flex-col gap-5">
+          <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+            <div class="min-w-0">
+              <p class="text-xs uppercase tracking-[0.22em] text-slate-500">Сделка</p>
+              <h2 class="deal-detail-header-code mt-2 text-2xl font-semibold text-white">{% firstof deal.code deal.order_id %}</h2>
+              <p class="deal-detail-header-label mt-2">{% firstof deal.short_label customer_label %}</p>
+              <div class="mt-4 flex flex-wrap gap-2">
+                <span class="manager-pill">Сумма · {{ deal.grand_total|rub }}</span>
+                <span class="manager-pill">SLA · {% if operation_hub.next_step.sla_due_at %}{{ operation_hub.next_step.sla_due_at|date:"d.m.Y H:i" }}{% else %}—{% endif %}</span>
+                <span class="manager-pill">{{ deal.get_case_status_display }}</span>
+              </div>
+            </div>
+          </div>
+
+          <section id="deal-next-step-panel" class="rounded-[1.5rem] border border-cyan-400/30 bg-[linear-gradient(180deg,rgba(34,211,238,0.16),rgba(15,23,42,0.92))] p-5 shadow-[0_18px_48px_rgba(0,0,0,0.28)]">
+            <div class="grid gap-6 xl:grid-cols-[minmax(0,1.2fr),minmax(20rem,0.8fr)] xl:items-start">
+              <div class="min-w-0">
+                <div class="flex flex-wrap items-center gap-2">
+                  <p class="text-xs uppercase tracking-[0.2em] text-cyan-200">Операционный блок</p>
+                  {% if operation_hub.has_manual_override %}
+                    <span class="rounded-full border border-cyan-300/30 bg-cyan-300/10 px-2.5 py-1 text-[11px] text-cyan-100">{{ operation_hub.next_step.source_label }}</span>
+                  {% endif %}
+                </div>
+                <h3 class="mt-2 text-2xl font-semibold text-white">Следующий шаг: {{ operation_hub.next_step.label }}</h3>
+                <dl class="mt-4 grid gap-3 md:grid-cols-3">
+                  <div class="deal-inline-card rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-4">
+                    <dt class="text-xs uppercase tracking-[0.16em] text-cyan-100/70">Почему</dt>
+                    <dd class="mt-2 text-sm text-white">{{ operation_hub.next_step.reason }}</dd>
+                  </div>
+                  <div class="deal-inline-card rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-4">
+                    <dt class="text-xs uppercase tracking-[0.16em] text-cyan-100/70">Срок</dt>
+                    <dd class="mt-2 text-sm text-white">{% if operation_hub.next_step.sla_due_at %}{{ operation_hub.next_step.sla_due_at|date:"d.m H:i" }}{% else %}—{% endif %}</dd>
+                  </div>
+                  <div class="deal-inline-card rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-4">
+                    <dt class="text-xs uppercase tracking-[0.16em] text-cyan-100/70">Ответственный</dt>
+                    <dd class="mt-2 text-sm text-white">{{ operation_hub.responsible_manager }}</dd>
+                  </div>
+                </dl>
+
+                <div class="mt-5 flex flex-wrap gap-2">
+                  {% for item in operation_hub.state_pills %}
+                    <a
+                      href="{{ item.href }}"
+                      class="inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm transition hover:bg-slate-900/70 {% if item.tone == 'ready' %}border-emerald-500/30 bg-emerald-500/10 text-emerald-100{% elif item.tone == 'working' %}border-amber-400/30 bg-amber-400/10 text-amber-100{% elif item.tone == 'neutral' %}border-slate-700 bg-slate-900/80 text-slate-200{% else %}border-slate-700 bg-slate-900/60 text-slate-200{% endif %}"
+                    >
+                      <span class="text-xs uppercase tracking-[0.14em] opacity-80">{{ item.label }}</span>
+                      <span class="font-medium">{{ item.status }}</span>
+                    </a>
+                  {% endfor %}
+                </div>
+
+                {% if operation_hub.blockers %}
+                  <div class="mt-4 flex flex-wrap gap-2">
+                    {% for blocker in operation_hub.blockers %}
+                      <div class="flex flex-wrap items-center gap-2 rounded-2xl border px-3 py-2 text-sm {% if blocker.tone == 'working' %}border-amber-400/30 bg-amber-400/10 text-amber-100{% else %}border-rose-500/30 bg-rose-500/10 text-rose-100{% endif %}">
+                        <span>{{ blocker.text }}</span>
+                        {% if blocker.action %}
+                          {% if blocker.action.kind == 'form' %}
+                            <form method="post" action="{{ blocker.action.url }}">
+                              {% csrf_token %}
+                              {% for key, value in blocker.action.fields.items %}
+                                <input type="hidden" name="{{ key }}" value="{{ value }}">
+                              {% endfor %}
+                              <button type="submit" class="rounded-full border border-current/25 bg-black/10 px-2.5 py-1 text-xs font-medium text-current transition hover:bg-black/20">{{ blocker.action.label }}</button>
+                            </form>
+                          {% elif blocker.action.kind == 'drawer' %}
+                            <button type="button" data-drawer-target="{{ blocker.action.target }}" class="rounded-full border border-current/25 bg-black/10 px-2.5 py-1 text-xs font-medium text-current transition hover:bg-black/20">{{ blocker.action.label }}</button>
+                          {% else %}
+                            <a
+                              href="{{ blocker.action.url }}"
+                              class="rounded-full border border-current/25 bg-black/10 px-2.5 py-1 text-xs font-medium text-current transition hover:bg-black/20"
+                              {% if blocker.action.url == deal_reservation_url or blocker.action.url == deal_contract_url or blocker.action.url == deal_shipment_url or blocker.action.url == deal_finance_url %}
+                                data-drawer-target="#manager-remote-drawer"
+                                hx-get="{{ blocker.action.url }}"
+                                hx-select="#manager-main-content > *"
+                                hx-target="#manager-remote-drawer-content"
+                                hx-swap="innerHTML"
+                                hx-push-url="false"
+                              {% endif %}
+                            >{{ blocker.action.label }}</a>
+                          {% endif %}
+                        {% endif %}
+                      </div>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+              </div>
+
+              <div class="space-y-3">
+                <div class="flex flex-wrap gap-2">
+                  {% for action in operation_hub.actions %}
+                    {% if action.kind == 'form' %}
+                      <form method="post" action="{{ action.url }}" class="flex-1 min-w-[10.5rem]">
+                        {% csrf_token %}
+                        {% for key, value in action.fields.items %}
+                          <input type="hidden" name="{{ key }}" value="{{ value }}">
+                        {% endfor %}
+                        <button type="submit" class="{% if forloop.first %}manager-primary-cta manager-primary-cta-large{% else %}rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-center text-sm text-white transition hover:bg-white/10{% endif %} w-full">{{ action.label }}</button>
+                      </form>
+                    {% else %}
+                      <a
+                        href="{{ action.url }}"
+                        class="{% if forloop.first %}manager-primary-cta manager-primary-cta-large{% else %}rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-center text-sm text-white transition hover:bg-white/10{% endif %} block min-w-[10.5rem] flex-1 text-center"
+                        {% if action.url == deal_reservation_url or action.url == deal_contract_url or action.url == deal_shipment_url or action.url == deal_finance_url %}
+                          data-drawer-target="#manager-remote-drawer"
+                          hx-get="{{ action.url }}"
+                          hx-select="#manager-main-content > *"
+                          hx-target="#manager-remote-drawer-content"
+                          hx-swap="innerHTML"
+                          hx-push-url="false"
+                        {% endif %}
+                      >{{ action.label }}</a>
+                    {% endif %}
+                  {% endfor %}
+                  <button type="button" data-drawer-target="#deal-management-drawer" class="rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-center text-sm text-white transition hover:bg-white/10">Изменить вручную</button>
+                </div>
+
+                <div class="deal-inline-card rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-4">
+                  <p class="text-xs uppercase tracking-[0.16em] text-cyan-100/70">Последнее событие</p>
+                  {% if operation_hub.latest_event %}
+                    <p class="mt-2 text-sm font-medium text-white">{{ operation_hub.latest_event.title }}</p>
+                    <p class="mt-1 text-xs text-slate-300">{{ operation_hub.latest_event.timestamp|date:"d.m.Y H:i" }} · {{ operation_hub.latest_event.meta }}</p>
+                    {% if operation_hub.latest_event.body %}
+                      <p class="mt-2 text-xs text-slate-400">{{ operation_hub.latest_event.body|truncatechars:120 }}</p>
+                    {% endif %}
+                  {% else %}
+                    <p class="mt-2 text-sm text-white">Событий пока нет.</p>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </section>
+
+    <section id="deal-tabs" class="manager-panel rounded-[1.75rem] p-6">
+      <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr),360px] xl:items-start">
+        <div data-manager-tabs data-tab-initial="{{ deal_tab_initial }}" data-tab-url-key="tab" class="space-y-5 min-w-0">
+        <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div>
+            <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Tabs</p>
+            <h3 class="mt-2 text-2xl font-semibold text-white">Рабочие разделы сделки</h3>
+            <p class="mt-1 text-sm text-slate-400">Ниже только один активный рабочий слой, а не длинная вертикальная лента.</p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button type="button" id="deal-tab-overview-button" data-tab-target="overview" class="rounded-xl border px-4 py-2 text-sm transition">Обзор</button>
+            <button type="button" id="deal-tab-supply-button" data-tab-target="supply" class="rounded-xl border px-4 py-2 text-sm transition">Снабжение</button>
+            <button type="button" id="deal-tab-documents-button" data-tab-target="documents" class="rounded-xl border px-4 py-2 text-sm transition">Документы</button>
+            <button type="button" id="deal-tab-finance-button" data-tab-target="finance" class="rounded-xl border px-4 py-2 text-sm transition">Финансы</button>
+            <button type="button" id="deal-tab-history-button" data-tab-target="history" class="rounded-xl border px-4 py-2 text-sm transition">История</button>
+          </div>
+        </div>
+
+        <section data-tab-panel="overview" id="related-processes" class="space-y-5"{% if deal_tab_initial != 'overview' %} hidden{% endif %}>
+          <div class="space-y-6 min-w-0">
+              <section class="deal-subpanel deal-subpanel-quiet rounded-2xl border border-slate-800 bg-slate-950/55 p-4">
+                <div class="flex flex-wrap gap-2">
+                  {% for item in linked_entities_strip %}
+                    <a
+                      href="{{ item.url|default:'#' }}"
+                      class="deal-list-item inline-flex min-w-[11rem] items-center gap-3 rounded-xl border px-3 py-3 transition hover:bg-slate-900/80 {% if item.tone == 'ready' %}border-emerald-500/30 bg-emerald-500/10{% elif item.tone == 'working' %}border-amber-400/30 bg-amber-400/10{% elif item.tone == 'neutral' %}border-slate-700 bg-slate-900/80{% else %}border-slate-800 bg-slate-900/60{% endif %}"
+                    >
+                      <div class="min-w-0">
+                        <p class="text-xs uppercase tracking-[0.16em] text-slate-500">{{ item.label }}</p>
+                        <p class="mt-1 text-sm font-medium text-white">{{ item.status }}</p>
+                      </div>
+                    </a>
+                  {% endfor %}
+                </div>
+              </section>
+
+              <section id="deal-finance-strip" class="deal-subpanel rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
+                <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                  <div>
+                    <p class="text-xs uppercase tracking-[0.22em] text-slate-500">Finance Strip</p>
+                    <h4 class="mt-2 text-2xl font-semibold text-white">Короткая финансовая сводка</h4>
+                    <p class="mt-2 text-sm text-slate-400">Сумма, оплата и экономика сделки в одном блоке.</p>
+                  </div>
+                  <div class="flex flex-wrap gap-2">
+                    <span class="manager-pill">Статус: {{ finance_summary.status_label }}</span>
+                    {% if finance_summary.uses_finance_case %}
+                      <span class="manager-pill">Данные из финкейса</span>
+                    {% else %}
+                      <span class="manager-pill">Данные из сделки</span>
+                    {% endif %}
+                  </div>
+                </div>
+                <div class="mt-5 grid gap-3 xl:grid-cols-3">
+                  <div class="deal-inline-card rounded-2xl border border-slate-800 bg-slate-900/80 px-4 py-4">
+                    <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Деньги клиента</p>
+                    <div class="mt-3 space-y-3">
+                      <div class="flex items-center justify-between gap-3">
+                        <span class="text-sm text-slate-400">Сумма</span>
+                        <span class="text-sm font-medium text-white">{{ finance_summary.sum_total|rub }}</span>
+                      </div>
+                      <div class="flex items-center justify-between gap-3">
+                        <span class="text-sm text-slate-400">Оплачено</span>
+                        <span class="text-sm font-medium text-white">{{ finance_summary.paid_total|rub }}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="deal-inline-card rounded-2xl border border-slate-800 bg-slate-900/80 px-4 py-4">
+                    <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Экономика товара</p>
+                    <div class="mt-3 space-y-3">
+                      <div class="flex items-center justify-between gap-3">
+                        <span class="text-sm text-slate-400">Остаток</span>
+                        <span class="text-sm font-medium text-white">{{ finance_summary.remaining_total|rub }}</span>
+                      </div>
+                      <div class="flex items-center justify-between gap-3">
+                        <span class="text-sm text-slate-400">Себестоимость</span>
+                        <span class="text-sm font-medium text-white">{{ finance_summary.cost_total|rub }}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="deal-inline-card rounded-2xl border border-slate-800 bg-slate-900/80 px-4 py-4">
+                    <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Результат</p>
+                    <div class="mt-3 space-y-3">
+                      <div class="flex items-center justify-between gap-3">
+                        <span class="text-sm text-slate-400">Расходы</span>
+                        <span class="text-sm font-medium text-white">{{ finance_summary.operating_expenses_total|rub }}</span>
+                      </div>
+                      <div class="flex items-center justify-between gap-3">
+                        <span class="text-sm text-slate-400">Маржа</span>
+                        <span class="text-sm font-medium text-white">{{ finance_summary.margin_total|rub }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="mt-4 flex flex-wrap gap-2 text-xs text-slate-500">
+                  <span>Записано расходов: {{ finance_summary.expenses_total|rub }}</span>
+                  <span>Выплаты: {{ finance_summary.payouts_total|rub }}</span>
+                </div>
+                {% if finance_summary.planned_allocations %}
+                  <div class="deal-inline-card mt-4 rounded-2xl border border-slate-800 bg-slate-900/60 px-4 py-4">
+                    <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Плановые начисления</p>
+                    <div class="mt-3 flex flex-wrap gap-2">
+                      {% for allocation in finance_summary.planned_allocations %}
+                        <span class="rounded-full border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-[11px] text-cyan-100">
+                          {{ allocation.name }} · {{ allocation.amount|default:0|rub }}
+                        </span>
+                      {% endfor %}
+                    </div>
+                  </div>
+                {% endif %}
+              </section>
+
+              <section id="goods" class="deal-subpanel rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
+                <div class="flex items-center justify-between gap-3">
+                  <div>
+                    <h4 class="text-2xl font-semibold">Товары заказа</h4>
+                    <p class="mt-1 text-sm text-slate-400">Что продаём клиенту и какой следующий шаг нужен по каждой позиции.</p>
+                  </div>
+                  <span class="manager-pill">{{ order_items|length }} поз.</span>
+                </div>
+                <div class="mt-4 overflow-x-auto">
+                  <table class="manager-table w-full min-w-[96rem] text-sm">
+                    <thead class="text-left text-slate-400">
+                      <tr>
+                        <th class="px-4 py-3 font-medium">Товар</th>
+                        <th class="px-4 py-3 font-medium">SKU</th>
+                        <th class="px-4 py-3 font-medium">Кол-во</th>
+                        <th class="px-4 py-3 font-medium">Цена</th>
+                        <th class="px-4 py-3 font-medium">Сценарий</th>
+                        <th class="px-4 py-3 font-medium">Статус позиции</th>
+                        <th class="px-4 py-3 font-medium">Связанные сущности</th>
+                        <th class="px-4 py-3 font-medium">Обеспечение</th>
+                        <th class="px-4 py-3 font-medium">Действия</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-800">
+                      {% for item in order_items %}
+                        <tr>
+                          <td class="px-4 py-3">
+                            <p class="font-medium text-white">{{ item.item.product.name }}</p>
+                            {% if item.item.variant %}
+                              <p class="mt-1 text-xs text-slate-500">{{ item.item.variant.name }}</p>
+                            {% elif item.item.variant_name %}
+                              <p class="mt-1 text-xs text-slate-500">{{ item.item.variant_name }}</p>
+                            {% endif %}
+                            {% if item.item.comment %}
+                              <p class="mt-2 text-xs text-slate-500">{{ item.item.comment|truncatechars:80 }}</p>
+                            {% endif %}
+                          </td>
+                          <td class="px-4 py-3">
+                            <p class="text-slate-300">{{ item.sku }}</p>
+                            <p class="mt-1 text-xs {% if item.has_sku %}text-emerald-300{% else %}text-amber-300{% endif %}">
+                              {% if item.has_sku %}SKU заполнен{% else %}SKU не заполнен{% endif %}
+                            </p>
+                          </td>
+                          <td class="px-4 py-3 text-white">{{ item.item.quantity }}</td>
+                          <td class="px-4 py-3">
+                            <p class="text-white">{{ item.item.subtotal|rub }}</p>
+                            <p class="mt-1 text-xs text-slate-500">{{ item.item.unit_price|rub }} / шт.</p>
+                          </td>
+                          <td class="px-4 py-3">
+                            <p class="text-white">{{ item.scenario }}</p>
+                            <p class="mt-1 text-xs {% if item.availability_code == 'in_stock_high' %}text-emerald-300{% elif item.availability_code == 'in_stock_low' %}text-amber-300{% else %}text-slate-400{% endif %}">{{ item.availability_label }}</p>
+                          </td>
+                          <td class="px-4 py-3">
+                            <span class="inline-flex rounded-full border px-2.5 py-1 text-[11px] {% if item.position_status_tone == 'ready' %}border-emerald-500/30 bg-emerald-500/10 text-emerald-100{% elif item.position_status_tone == 'working' %}border-amber-400/30 bg-amber-400/10 text-amber-100{% else %}border-rose-500/30 bg-rose-500/10 text-rose-100{% endif %}">{{ item.position_status }}</span>
+                            <p class="mt-2 text-sm text-white">{{ item.position_status_detail }}</p>
+                            <p class="mt-1 text-xs text-slate-500">Свободно {{ item.free_stock }} шт.</p>
+                          </td>
+                          <td class="px-4 py-3">
+                            <div class="flex flex-wrap gap-1.5">
+                              {% for entity in item.linked_entities %}
+                                <a
+                                  href="{{ entity.url }}"
+                                  class="rounded-full border px-2.5 py-1 text-[11px] {% if entity.tone == 'ready' %}border-emerald-500/30 bg-emerald-500/10 text-emerald-100{% elif entity.tone == 'working' %}border-amber-400/30 bg-amber-400/10 text-amber-100{% else %}border-slate-700 bg-slate-900/70 text-slate-300{% endif %}"
+                                >{{ entity.label }} {{ entity.status }}</a>
+                              {% endfor %}
+                            </div>
+                          </td>
+                          <td class="px-4 py-3">
+                            <p class="text-white">{{ item.coverage_summary }}</p>
+                            <p class="mt-2 inline-flex rounded-full border px-2.5 py-1 text-[11px] {% if item.coverage_tone == 'ready' %}border-emerald-500/30 bg-emerald-500/10 text-emerald-100{% elif item.coverage_tone == 'working' %}border-amber-400/30 bg-amber-400/10 text-amber-100{% else %}border-slate-700 bg-slate-900/70 text-slate-300{% endif %}">{{ item.coverage_label }}</p>
+                            <div class="mt-2 flex flex-wrap gap-1">
+                              {% for label in item.reservation_links %}
+                                <span class="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[11px] text-emerald-100">{{ label }}</span>
+                              {% endfor %}
+                              {% for label in item.purchase_links %}
+                                <span class="rounded-full border border-amber-400/30 bg-amber-400/10 px-2 py-1 text-[11px] text-amber-100">{{ label }}</span>
+                              {% endfor %}
+                              {% for label in item.cargo_links %}
+                                <span class="rounded-full border border-cyan-400/30 bg-cyan-500/10 px-2 py-1 text-[11px] text-cyan-100">{{ label }}</span>
+                              {% endfor %}
+                              {% for label in item.shipment_links %}
+                                <span class="rounded-full border border-fuchsia-400/30 bg-fuchsia-500/10 px-2 py-1 text-[11px] text-fuchsia-100">{{ label }}</span>
+                              {% endfor %}
+                            </div>
+                          </td>
+                          <td class="px-4 py-3">
+                            <p class="text-sm font-medium text-white">{{ item.next_step }}</p>
+                            <div class="mt-3 flex flex-wrap gap-2">
+                              {% for action in item.quick_actions %}
+                                <a
+                                  href="{{ action.url }}"
+                                  class="rounded-xl border px-3 py-2 text-xs transition {% if action.tone == 'ready' %}border-emerald-500/30 bg-emerald-500/10 text-emerald-100 hover:bg-emerald-500/20{% elif action.tone == 'working' %}border-amber-400/30 bg-amber-400/10 text-amber-100 hover:bg-amber-400/20{% elif action.tone == 'blocked' %}border-rose-500/30 bg-rose-500/10 text-rose-100 hover:bg-rose-500/20{% else %}border-slate-700 bg-slate-900/70 text-slate-200 hover:bg-slate-800{% endif %}"
+                                  {% if action.is_drawer %}
+                                    data-drawer-target="#manager-remote-drawer"
+                                    hx-get="{{ action.url }}"
+                                    hx-select="#manager-main-content > *"
+                                    hx-target="#manager-remote-drawer-content"
+                                    hx-swap="innerHTML"
+                                    hx-push-url="false"
+                                  {% endif %}
+                                >{{ action.label }}</a>
+                              {% endfor %}
+                            </div>
+                          </td>
+                        </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+          </div>
+        </section>
+
+        <section data-tab-panel="supply" id="process-supply" class="space-y-5"{% if deal_tab_initial != 'supply' %} hidden{% endif %}>
+          <div id="supply" class="space-y-5">
+            <div class="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+              <div>
+                <h4 class="text-xl font-semibold">Обеспечение и поставка</h4>
+                <p class="mt-1 text-sm text-slate-400">Короткая сводка по риску и ETA, ниже один активный detail-слой по табам.</p>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <span class="manager-pill">Резервов: {{ supply_summary.reservation_count }}</span>
+                <span class="manager-pill">Закупок: {{ supply_summary.purchase_count }}</span>
+                <span class="manager-pill">Грузов: {{ supply_summary.cargo_count }}</span>
+              </div>
+            </div>
+
+            <div class="grid gap-4 xl:grid-cols-[1.15fr,0.85fr,0.85fr]">
+              <div class="rounded-2xl border border-cyan-400/30 bg-[linear-gradient(180deg,rgba(34,211,238,0.12),rgba(15,23,42,0.86))] p-5">
+                <p class="text-xs uppercase tracking-[0.18em] text-cyan-200">Ближайший ETA</p>
+                <p class="mt-2 text-3xl font-semibold text-white">{% if supply_summary.earliest_eta %}{{ supply_summary.earliest_eta|date:"d.m.Y" }}{% else %}Не указан{% endif %}</p>
+                <p class="mt-2 text-sm text-slate-300">
+                  {% if supply_summary.latest_eta and supply_summary.latest_eta != supply_summary.earliest_eta %}
+                    Последний ETA: {{ supply_summary.latest_eta|date:"d.m.Y" }}
+                  {% else %}
+                    Ориентир по ближайшей поставке для этой сделки.
+                  {% endif %}
+                </p>
+                <div class="mt-4 rounded-xl border border-white/10 bg-slate-950/40 px-4 py-4">
+                  <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Источник проблемы</p>
+                  <p class="mt-2 text-sm font-medium text-white">{{ supply_summary.problem_source }}</p>
+                  <p class="mt-1 text-xs text-slate-400">{{ supply_summary.risk_label }}</p>
+                </div>
+                <div class="mt-4">
+                  <p class="mb-2 text-xs uppercase tracking-[0.16em] text-slate-500">Главное действие</p>
+                  <a
+                    href="{{ supply_summary.primary_cta.url }}"
+                    class="inline-flex rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-100 transition hover:bg-slate-800"
+                    {% if supply_summary.primary_cta.url == deal_reservation_url or supply_summary.primary_cta.url == deal_contract_url or supply_summary.primary_cta.url == deal_shipment_url or supply_summary.primary_cta.url == deal_finance_url %}
+                      data-drawer-target="#manager-remote-drawer"
+                      hx-get="{{ supply_summary.primary_cta.url }}"
+                      hx-select="#manager-main-content > *"
+                      hx-target="#manager-remote-drawer-content"
+                      hx-swap="innerHTML"
+                      hx-push-url="false"
+                    {% endif %}
+                  >{{ supply_summary.primary_cta.label }}</a>
+                </div>
+              </div>
+
+              <div class="grid gap-4">
+                <div class="deal-inline-card rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+                  <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Резервы</p>
+                  <p class="mt-2 text-sm font-medium text-white">{{ supply_summary.reservation_count }}</p>
+                  <p class="mt-2 text-sm text-slate-400">{{ supply_summary.reserve_status_label }}</p>
+                  <p class="mt-1 text-xs text-slate-500">{% if supply_summary.reserve_source_label %}Источник: {{ supply_summary.reserve_source_label }}{% else %}Источник не определён{% endif %}</p>
+                </div>
+                <div class="deal-subpanel deal-subpanel-quiet rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+                  <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Связанные сущности</p>
+                  <div class="mt-3 space-y-2">
+                    {% for entity in supply_summary.linked_entities %}
+                      {% if entity %}
+                        <a href="{{ entity.url }}" class="deal-list-item flex items-center justify-between gap-3 rounded-xl border border-slate-800 px-3 py-3 hover:bg-slate-900/80">
+                          <span class="text-sm font-medium text-white">{{ entity.label }}</span>
+                          <span class="text-xs text-slate-400">{{ entity.status }}</span>
+                        </a>
+                      {% endif %}
+                    {% empty %}
+                      <p class="text-sm text-slate-400">Связанных сущностей пока нет.</p>
+                    {% endfor %}
+                  </div>
+                </div>
+              </div>
+
+              <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-1">
+                <div class="deal-inline-card rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+                  <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Закупки</p>
+                  <p class="mt-2 text-sm font-medium text-white">{{ supply_summary.purchase_count }}</p>
+                  <p class="mt-2 text-sm text-slate-400">{{ supply_summary.purchase_received }} / {{ supply_summary.purchase_quantity }}</p>
+                  <p class="mt-1 text-xs text-slate-500">Принято / заказано</p>
+                </div>
+                <div class="deal-inline-card rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+                  <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Грузы</p>
+                  <p class="mt-2 text-sm font-medium text-white">{{ supply_summary.cargo_count }}</p>
+                  <p class="mt-2 text-sm text-slate-400">{{ supply_summary.cargo_received }} / {{ supply_summary.cargo_quantity }}</p>
+                  <p class="mt-1 text-xs text-slate-500">Принято / в пути</p>
+                </div>
+                <div class="rounded-2xl border p-4 {% if supply_summary.risk_tone == 'ready' %}border-emerald-500/30 bg-emerald-500/10{% elif supply_summary.risk_tone == 'working' %}border-amber-400/30 bg-amber-400/10{% else %}border-rose-500/30 bg-rose-500/10{% endif %}">
+                  <p class="text-xs uppercase tracking-[0.18em] {% if supply_summary.risk_tone == 'ready' %}text-emerald-200{% elif supply_summary.risk_tone == 'working' %}text-amber-200{% else %}text-rose-200{% endif %}">Риск</p>
+                  <p class="mt-2 text-sm font-medium text-white">{{ supply_summary.risk_label }}</p>
+                  <p class="mt-1 text-xs text-slate-500">Основной сигнал по снабжению для этой сделки.</p>
+                </div>
+              </div>
+            </div>
+
+            <div
+              data-manager-tabs
+              data-tab-initial="{% if purchase_items %}purchases{% elif cargo_items %}cargos{% elif reservations %}reservations{% else %}purchases{% endif %}"
+              class="space-y-4"
+            >
+              <div class="flex flex-wrap gap-2">
+                <button type="button" data-tab-target="purchases" class="rounded-xl border px-4 py-2 text-sm transition">Закупки</button>
+                <button type="button" data-tab-target="cargos" class="rounded-xl border px-4 py-2 text-sm transition">Грузы</button>
+                <button type="button" data-tab-target="reservations" class="rounded-xl border px-4 py-2 text-sm transition">Резервы</button>
+              </div>
+
+              <section data-tab-panel="purchases" class="deal-subpanel rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+                <div class="flex items-center justify-between gap-3">
+                  <div>
+                    <h5 class="text-lg font-semibold text-white">Позиции закупки</h5>
+                    <p class="mt-1 text-xs text-slate-500">Связка заказа с поставщиком.</p>
+                  </div>
+                  <a href="{% url 'manager_portal:purchase_list' %}" class="rounded-xl border border-slate-700 px-3 py-2 text-xs hover:bg-slate-800">Реестр закупок</a>
+                </div>
+                <div class="mt-4 overflow-x-auto">
+                  <table class="manager-table w-full min-w-[34rem] text-sm">
+                    <thead class="text-left text-slate-400">
+                      <tr>
+                        <th class="px-4 py-3 font-medium">Закупка</th>
+                        <th class="px-4 py-3 font-medium">Позиция</th>
+                        <th class="px-4 py-3 font-medium">Статус</th>
+                        <th class="px-4 py-3 font-medium">Получено</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-800">
+                      {% for item in purchase_items %}
+                        <tr>
+                          <td class="px-4 py-3">
+                            <p class="font-medium text-white">{% firstof item.purchase.code item.purchase_id %}</p>
+                            <p class="mt-1 text-xs text-slate-500">{{ item.purchase.date|date:"d.m.Y" }}</p>
+                          </td>
+                          <td class="px-4 py-3">
+                            <p>{{ item.product.name }}</p>
+                            {% if item.variant %}<p class="mt-1 text-xs text-slate-500">{{ item.variant.name }}</p>{% endif %}
+                          </td>
+                          <td class="px-4 py-3 text-slate-300">{{ item.purchase.get_status_display }}</td>
+                          <td class="px-4 py-3 text-slate-300">{{ item.received_quantity }} / {{ item.quantity }}</td>
+                        </tr>
+                      {% empty %}
+                        <tr><td colspan="4" class="px-4 py-8 text-center text-slate-400">Закупка по этой сделке ещё не заведена.</td></tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+
+              <section data-tab-panel="cargos" class="deal-subpanel rounded-2xl border border-slate-800 bg-slate-950/60 p-4" hidden>
+                <div class="flex items-center justify-between gap-3">
+                  <div>
+                    <h5 class="text-lg font-semibold text-white">Позиции груза</h5>
+                    <p class="mt-1 text-xs text-slate-500">Путь поставки до приёмки на склад.</p>
+                  </div>
+                  <a href="{% url 'manager_portal:cargo_list' %}" class="rounded-xl border border-slate-700 px-3 py-2 text-xs hover:bg-slate-800">Реестр грузов</a>
+                </div>
+                <div class="mt-4 overflow-x-auto">
+                  <table class="manager-table w-full min-w-[34rem] text-sm">
+                    <thead class="text-left text-slate-400">
+                      <tr>
+                        <th class="px-4 py-3 font-medium">Груз</th>
+                        <th class="px-4 py-3 font-medium">Позиция</th>
+                        <th class="px-4 py-3 font-medium">Статус</th>
+                        <th class="px-4 py-3 font-medium">Принято</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-800">
+                      {% for item in cargo_items %}
+                        <tr>
+                          <td class="px-4 py-3">
+                            <p class="font-medium text-white">{{ item.cargo.cargo_number }}</p>
+                            <p class="mt-1 text-xs text-slate-500">{% if item.cargo.eta %}{{ item.cargo.eta|date:"d.m.Y" }}{% else %}ETA не указан{% endif %}</p>
+                          </td>
+                          <td class="px-4 py-3">
+                            <p>{{ item.product.name }}</p>
+                            {% if item.variant %}<p class="mt-1 text-xs text-slate-500">{{ item.variant.name }}</p>{% endif %}
+                          </td>
+                          <td class="px-4 py-3 text-slate-300">{{ item.cargo.get_status_display }}</td>
+                          <td class="px-4 py-3 text-slate-300">{{ item.received_quantity }} / {{ item.quantity }}</td>
+                        </tr>
+                      {% empty %}
+                        <tr><td colspan="4" class="px-4 py-8 text-center text-slate-400">Поставка по этой сделке ещё не создана.</td></tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+
+              <section data-tab-panel="reservations" class="deal-subpanel rounded-2xl border border-slate-800 bg-slate-950/60 p-5" hidden>
+                <div id="reservation" class="space-y-4">
+                  <div class="flex items-center justify-between gap-3">
+                    <div>
+                      <h5 class="text-lg font-semibold text-white">Брони</h5>
+                      <p class="mt-1 text-xs text-slate-500">Резерв товара под сделку и источник покрытия.</p>
+                    </div>
+                    <a href="{% url 'manager_portal:reservation_list' %}" class="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800">Реестр броней</a>
+                  </div>
+                  <div class="space-y-3">
+                    {% for reservation in reservations %}
+                      <a href="{% url 'manager_portal:reservation_detail' reservation.pk %}?deal={{ deal.pk }}&return_anchor=reservation" class="deal-list-item block rounded-2xl border border-slate-800 px-4 py-4 hover:bg-slate-900/80">
+                        <div class="flex items-center justify-between gap-4">
+                          <div>
+                            <p class="font-medium text-white">{% firstof reservation.code reservation.pk %}</p>
+                            <p class="mt-1 text-sm text-slate-400">{{ reservation.get_source_type_display }} · {{ reservation.source_warehouse|default:reservation.source_cargo|default:"—" }}</p>
+                          </div>
+                          <span class="manager-pill">{{ reservation.get_status_display }}</span>
+                        </div>
+                      </a>
+                    {% empty %}
+                      <div class="rounded-2xl border border-dashed border-slate-700 px-4 py-5">
+                        <p class="text-sm text-slate-300">Резерв под сделку ещё не создан.</p>
+                      </div>
+                    {% endfor %}
+                  </div>
+                </div>
+              </section>
+            </div>
+
+            <section id="process-shipment" class="deal-subpanel rounded-2xl border border-slate-800 bg-slate-950/60 p-5">
+              <div class="flex items-center justify-between gap-3">
+                <div>
+                  <h4 class="text-xl font-semibold">Поставка / отгрузка</h4>
+                  <p class="mt-1 text-sm text-slate-400">{{ deal.get_delivery_method_display }} · {{ deal.delivery_to_city|default:deal.order.city_text|default:"—" }}</p>
+                </div>
+                <a href="{% url 'manager_portal:shipments' %}" class="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800">Реестр отправлений</a>
+              </div>
+              <div class="mt-4 space-y-3">
+                {% for shipment in shipments %}
+                  <a href="{% url 'manager_portal:shipment_detail' shipment.pk %}?deal={{ deal.pk }}&return_anchor=shipment" class="deal-list-item block rounded-2xl border border-slate-800 px-4 py-4 hover:bg-slate-900/80">
+                    <div class="flex items-center justify-between gap-4">
+                      <div>
+                        <p class="font-medium text-white">{% firstof shipment.code shipment.pk %}</p>
+                        <p class="mt-1 text-sm text-slate-400">{{ shipment.tracking_number|default:"Без трека" }}</p>
+                      </div>
+                      <span class="manager-pill">{{ shipment.get_status_display }}</span>
+                    </div>
+                  </a>
+                {% empty %}
+                  <div class="rounded-2xl border border-dashed border-slate-700 px-4 py-5 text-sm text-slate-300">Отправление по сделке ещё не создано.</div>
+                {% endfor %}
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section data-tab-panel="documents" id="process-documents" class="space-y-5"{% if deal_tab_initial != 'documents' %} hidden{% endif %}>
+          <div class="grid gap-6 xl:grid-cols-[minmax(0,1.05fr),minmax(0,0.95fr)]">
+            <section id="documents" class="deal-subpanel rounded-2xl border border-slate-800 bg-slate-950/55 p-5">
+              <div class="flex items-center justify-between gap-3">
+                <div>
+                  <h4 class="text-xl font-semibold">Документы</h4>
+                  <p class="mt-1 text-sm text-slate-400">Какой документ нужен по workflow и что уже готово.</p>
+                </div>
+                <a href="{% url 'manager_portal:contracts_documents' %}" class="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800">Реестр документов</a>
+              </div>
+              <div class="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                <div class="deal-inline-card rounded-2xl border border-slate-800 bg-slate-900/80 px-4 py-4">
+                  <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Требуется</p>
+                  <p class="mt-2 text-sm font-medium text-white">{{ documents_summary.required_document_label }}</p>
+                </div>
+                <div class="deal-inline-card rounded-2xl border border-slate-800 bg-slate-900/80 px-4 py-4">
+                  <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Черновик</p>
+                  <p class="mt-2 text-sm font-medium text-white">{{ documents_summary.draft_label }}</p>
+                </div>
+                <div class="deal-inline-card rounded-2xl border border-slate-800 bg-slate-900/80 px-4 py-4">
+                  <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Шаблон</p>
+                  <p class="mt-2 text-sm font-medium text-white">{{ documents_summary.template_label }}</p>
+                </div>
+                <div class="deal-inline-card rounded-2xl border border-slate-800 bg-slate-900/80 px-4 py-4">
+                  <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Последний редактор</p>
+                  <p class="mt-2 text-sm font-medium text-white">{{ documents_summary.last_editor }}</p>
+                </div>
+                <div class="deal-inline-card rounded-2xl border border-slate-800 bg-slate-900/80 px-4 py-4">
+                  <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Обновлено</p>
+                  <p class="mt-2 text-sm font-medium text-white">{% if documents_summary.updated_at %}{{ documents_summary.updated_at|date:"d.m.Y H:i" }}{% else %}—{% endif %}</p>
+                </div>
+                <div class="deal-inline-card rounded-2xl border border-slate-800 bg-slate-900/80 px-4 py-4">
+                  <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Статус</p>
+                  <p class="mt-2 text-sm font-medium text-white">{{ documents_summary.status_label }}</p>
+                </div>
+              </div>
+              <div class="mt-5 flex flex-wrap gap-2">
+                <a
+                  href="{{ documents_summary.primary_action.url }}"
+                  class="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-100 hover:bg-slate-800"
+                  data-drawer-target="#manager-remote-drawer"
+                  hx-get="{{ documents_summary.primary_action.url }}"
+                  hx-select="#manager-main-content > *"
+                  hx-target="#manager-remote-drawer-content"
+                  hx-swap="innerHTML"
+                  hx-push-url="false"
+                >{{ documents_summary.primary_action.label }}</a>
+                {% if documents_summary.open_latest_action %}
+                  <a href="{{ documents_summary.open_latest_action.url }}" class="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800">{{ documents_summary.open_latest_action.label }}</a>
+                {% endif %}
+              </div>
+            </section>
+
+            <section class="deal-subpanel deal-subpanel-quiet rounded-2xl border border-slate-800/70 bg-slate-950/35 p-5">
+              <div class="flex items-center justify-between gap-3">
+                <div>
+                  <h4 class="text-xl font-semibold">Последние документы</h4>
+                  <p class="mt-1 text-sm text-slate-500">Последние 1-3 документа по сделке и их статус.</p>
+                </div>
+                <a href="{% url 'manager_portal:contracts_documents' %}" class="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800">Открыть реестр</a>
+              </div>
+              {% if documents_summary.recent_documents %}
+                <div class="mt-4 space-y-3">
+                  {% for document in documents_summary.recent_documents %}
+                    <a href="{{ document.url }}" class="deal-list-item block rounded-2xl border border-slate-800 px-4 py-4 hover:bg-slate-900/80">
+                      <div class="flex items-start justify-between gap-4">
+                        <div>
+                          <p class="font-medium text-white">{{ document.title }}</p>
+                          <p class="mt-1 text-sm text-slate-400">{{ document.subtitle }}</p>
+                        </div>
+                        <span class="manager-pill">{{ document.status }}</span>
+                      </div>
+                      <p class="mt-2 text-xs text-slate-500">Обновлено {{ document.updated_at|date:"d.m.Y H:i" }}</p>
+                    </a>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <div class="mt-4 rounded-xl border border-dashed border-slate-700 bg-slate-950/40 px-4 py-4">
+                  <p class="text-sm text-slate-200">Последних документов пока нет.</p>
+                  <p class="mt-1 text-xs text-slate-500">Подготовьте первый документ через рабочий CTA слева.</p>
+                </div>
+              {% endif %}
+            </section>
+          </div>
+        </section>
+
+        <section data-tab-panel="finance" id="process-finance" class="space-y-5"{% if deal_tab_initial != 'finance' %} hidden{% endif %}>
+          <div class="grid gap-6 xl:grid-cols-[minmax(0,1.05fr),minmax(0,0.95fr)]">
+            <section id="finance" class="deal-subpanel rounded-2xl border border-slate-800 bg-slate-950/55 p-5">
+              <div class="flex items-center justify-between gap-3">
+                <div>
+                  <h4 class="text-xl font-semibold">Финансы</h4>
+                  <p class="mt-1 text-sm text-slate-400">Связанный финансовый контур и расходы по сделке.</p>
+                </div>
+                <a href="{% url 'manager_portal:finance_deal_list' %}" class="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800">Реестр финансов</a>
+              </div>
+              <div class="mt-4 flex flex-wrap gap-2">
+                <span class="manager-pill">Статус: {{ finance_summary.status_label }}</span>
+                {% if finance_summary.updated_at %}
+                  <span class="manager-pill">Обновлено: {{ finance_summary.updated_at|date:"d.m.Y H:i" }}</span>
+                {% endif %}
+              </div>
+              <div class="mt-4 flex flex-wrap gap-2">
+                {% for item in finance_summary.missing_items %}
+                  <span class="rounded-full border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs text-amber-100">{{ item }}</span>
+                {% empty %}
+                  <span class="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-2 text-xs text-emerald-100">Контур заполнен</span>
+                {% endfor %}
+              </div>
+              <div class="mt-5 flex flex-wrap gap-2">
+                <a
+                  href="{{ finance_summary.expense_action.url }}"
+                  class="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-100 hover:bg-slate-800"
+                  {% if finance_summary.expense_action.url == deal_finance_url %}
+                    data-drawer-target="#manager-remote-drawer"
+                    hx-get="{{ finance_summary.expense_action.url }}"
+                    hx-select="#manager-main-content > *"
+                    hx-target="#manager-remote-drawer-content"
+                    hx-swap="innerHTML"
+                    hx-push-url="false"
+                  {% endif %}
+                >{{ finance_summary.expense_action.label }}</a>
+                <a href="{{ finance_summary.payout_action.url }}" class="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800">{{ finance_summary.payout_action.label }}</a>
+                <a
+                  href="{{ finance_summary.case_action.url }}"
+                  class="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800"
+                  {% if finance_summary.case_action.url == deal_finance_url %}
+                    data-drawer-target="#manager-remote-drawer"
+                    hx-get="{{ finance_summary.case_action.url }}"
+                    hx-select="#manager-main-content > *"
+                    hx-target="#manager-remote-drawer-content"
+                    hx-swap="innerHTML"
+                    hx-push-url="false"
+                  {% endif %}
+                >{{ finance_summary.case_action.label }}</a>
+              </div>
+              <div class="mt-5 grid gap-3 xl:grid-cols-3">
+                <div class="deal-inline-card rounded-2xl border border-slate-800 bg-slate-900/80 px-4 py-4">
+                  <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Деньги клиента</p>
+                  <div class="mt-3 space-y-3">
+                    <div class="flex items-center justify-between gap-3">
+                      <span class="text-sm text-slate-400">Сумма</span>
+                      <span class="text-sm font-medium text-white" data-raw-amount="{{ finance_summary.sum_total }}">{{ finance_summary.sum_total|rub }}</span>
+                    </div>
+                    <div class="flex items-center justify-between gap-3">
+                      <span class="text-sm text-slate-400">Оплачено</span>
+                      <span class="text-sm font-medium text-white" data-raw-amount="{{ finance_summary.paid_total }}">{{ finance_summary.paid_total|rub }}</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="deal-inline-card rounded-2xl border border-slate-800 bg-slate-900/80 px-4 py-4">
+                  <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Экономика товара</p>
+                  <div class="mt-3 space-y-3">
+                    <div class="flex items-center justify-between gap-3">
+                      <span class="text-sm text-slate-400">Остаток</span>
+                      <span class="text-sm font-medium text-white" data-raw-amount="{{ finance_summary.remaining_total }}">{{ finance_summary.remaining_total|rub }}</span>
+                    </div>
+                    <div class="flex items-center justify-between gap-3">
+                      <span class="text-sm text-slate-400">Себестоимость</span>
+                      <span class="text-sm font-medium text-white" data-raw-amount="{{ finance_summary.cost_total }}">{{ finance_summary.cost_total|rub }}</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="deal-inline-card rounded-2xl border border-slate-800 bg-slate-900/80 px-4 py-4">
+                  <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Результат</p>
+                  <div class="mt-3 space-y-3">
+                    <div class="flex items-center justify-between gap-3">
+                      <span class="text-sm text-slate-400">Расходы</span>
+                      <span class="text-sm font-medium text-white" data-raw-amount="{{ finance_summary.operating_expenses_total }}">{{ finance_summary.operating_expenses_total|rub }}</span>
+                    </div>
+                    <div class="flex items-center justify-between gap-3">
+                      <span class="text-sm text-slate-400">Маржа</span>
+                      <span class="text-sm font-medium text-white" data-raw-amount="{{ finance_summary.margin_total }}">{{ finance_summary.margin_total|rub }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="mt-4 flex flex-wrap gap-2 text-xs text-slate-500">
+                <span data-raw-amount="{{ finance_summary.expenses_total }}">Записано расходов: {{ finance_summary.expenses_total|rub }}</span>
+                <span data-raw-amount="{{ finance_summary.payouts_total }}">Выплаты: {{ finance_summary.payouts_total|rub }}</span>
+                {% if finance_summary.balance or finance_summary.balance == 0 %}
+                  <span data-raw-amount="{{ finance_summary.balance }}">Остаток после выплат: {{ finance_summary.balance|rub }}</span>
+                {% endif %}
+              </div>
+              {% if finance_summary.planned_allocations %}
+                <div class="deal-inline-card mt-5 rounded-2xl border border-slate-800 bg-slate-900/60 px-4 py-4">
+                  <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Плановые начисления</p>
+                  <div class="mt-3 flex flex-wrap gap-2">
+                    {% for allocation in finance_summary.planned_allocations %}
+                      <span class="rounded-full border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-[11px] text-cyan-100">
+                        {{ allocation.name }} · {{ allocation.amount|default:0|rub }}
+                      </span>
+                    {% endfor %}
+                  </div>
+                </div>
+              {% endif %}
+            </section>
+
+            <section class="deal-subpanel deal-subpanel-quiet rounded-2xl border border-slate-800/70 bg-slate-950/35 p-5">
+              <div class="flex items-center justify-between gap-3">
+                <h4 class="text-xl font-semibold">Расходы и выплаты</h4>
+                <span class="text-sm text-slate-500">Последние операции по кейсу.</span>
+              </div>
+              {% if finance_expenses or finance_payouts %}
+                <div class="mt-4 space-y-3">
+                  {% for expense in finance_expenses|slice:":4" %}
+                    <div class="deal-list-item rounded-2xl border border-slate-800 px-4 py-4">
+                      <div class="flex items-center justify-between gap-3">
+                        <p class="font-medium text-white">{{ expense.category.name|default:"Расход" }}</p>
+                        <p class="text-sm text-slate-300" data-raw-amount="{{ expense.amount }}">{{ expense.amount|rub }}</p>
+                      </div>
+                      <p class="mt-1 text-xs text-slate-500">{{ expense.date|date:"d.m.Y" }}</p>
+                    </div>
+                  {% endfor %}
+                  {% for payout in finance_payouts|slice:":4" %}
+                    <div class="deal-list-item rounded-2xl border border-slate-800 px-4 py-4">
+                      <div class="flex items-center justify-between gap-3">
+                        <p class="font-medium text-white">Выплата</p>
+                        <p class="text-sm text-slate-300" data-raw-amount="{{ payout.amount }}">{{ payout.amount|rub }}</p>
+                      </div>
+                      <p class="mt-1 text-xs text-slate-500">{{ payout.date|date:"d.m.Y" }}</p>
+                    </div>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <div class="mt-4 rounded-xl border border-dashed border-slate-700 bg-slate-950/40 px-4 py-4 text-sm text-slate-400">Записи расходов и выплат пока не добавлены.</div>
+              {% endif %}
+            </section>
+          </div>
+        </section>
+
+        <section data-tab-panel="history" id="deal-history" class="space-y-5"{% if deal_tab_initial != 'history' %} hidden{% endif %}>
+          {% if deal_participants_summary.has_any %}
+            <section class="deal-subpanel rounded-2xl border border-slate-800 bg-slate-950/55 p-5">
+              <div class="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                <div>
+                  <h4 class="text-xl font-semibold">Команда сделки</h4>
+                  <p class="mt-1 text-sm text-slate-400">Участники сделки: кто вёл клиента и кто закрывал отгрузку по этой сделке.</p>
+                </div>
+                {% if deal_participants_summary.planned_allocations %}
+                  <p class="text-sm text-slate-500">Плановые начисления перенесены во вкладку «Финансы».</p>
+                {% endif %}
+              </div>
+              <div class="mt-4 grid gap-3 md:grid-cols-2">
+                <div class="deal-inline-card rounded-2xl border border-slate-800 bg-slate-900/80 px-4 py-4">
+                  <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Ответил</p>
+                  <p class="mt-2 text-sm font-medium text-white">{% if deal_participants_summary.answered %}{{ deal_participants_summary.answered|join:", " }}{% else %}—{% endif %}</p>
+                </div>
+                <div class="deal-inline-card rounded-2xl border border-slate-800 bg-slate-900/80 px-4 py-4">
+                  <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Отправил</p>
+                  <p class="mt-2 text-sm font-medium text-white">{% if deal_participants_summary.shipped %}{{ deal_participants_summary.shipped|join:", " }}{% else %}—{% endif %}</p>
+                </div>
+              </div>
+            </section>
+          {% endif %}
+          <section class="deal-subpanel deal-subpanel-quiet rounded-2xl border border-dashed border-slate-800/70 bg-slate-950/35 p-5">
+            <div class="flex items-center justify-between gap-3">
+              <div>
+                <h4 class="text-xl font-semibold">Полная история</h4>
+                <p class="mt-1 text-sm text-slate-500">Вторичный слой: таймлайн, комментарии и системные события по сделке.</p>
+              </div>
+              <button type="button" data-drawer-target="#deal-comment-drawer" class="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800">Комментарий</button>
+            </div>
+            {% if timeline_entries %}
+              <div class="mt-5 space-y-3 border-t border-slate-800 pt-5">
+                {% for entry in timeline_entries %}
+                  <div class="deal-list-item manager-timeline-entry rounded-2xl border border-slate-800 px-4 py-4 {% if entry.is_system %}manager-timeline-entry-system{% endif %}">
+                    <div class="flex items-center justify-between gap-4">
+                      <p class="font-medium text-white">{{ entry.title }}</p>
+                      <p class="text-xs text-slate-500">{{ entry.timestamp|date:"d.m.Y H:i" }}</p>
+                    </div>
+                    <p class="mt-1 text-sm text-slate-400">{{ entry.meta }}</p>
+                    {% if entry.body %}
+                      <p class="mt-3 text-sm text-slate-300">{{ entry.body }}</p>
+                    {% endif %}
+                  </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <div class="mt-4 rounded-xl border border-dashed border-slate-700 bg-slate-950/40 px-4 py-4 text-sm text-slate-400">Пока нет записей в таймлайне.</div>
+            {% endif %}
+          </section>
+        </section>
+
+        </div>
+
+        <aside id="deal-side-rail" class="space-y-6 xl:sticky xl:top-32 xl:self-start">
+          <section id="deal-client" class="deal-subpanel rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
+            <div class="flex items-center justify-between gap-3">
+              <div>
+                <p class="text-xs uppercase tracking-[0.2em] text-cyan-300">Клиент</p>
+                <h4 class="mt-2 text-xl font-semibold text-white">{% if deal_client %}{{ deal_client.name|default:customer_label }}{% else %}{{ customer_label|default:"—" }}{% endif %}</h4>
+              </div>
+              {% if deal_client %}
+                <a
+                  href="{% url 'manager_portal:client_detail' deal_client.pk %}"
+                  class="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800"
+                  data-drawer-target="#manager-remote-drawer"
+                  hx-get="{% url 'manager_portal:client_detail' deal_client.pk %}"
+                  hx-select="#manager-main-content > *"
+                  hx-target="#manager-remote-drawer-content"
+                  hx-swap="innerHTML"
+                  hx-push-url="false"
+                >Открыть клиента</a>
+              {% endif %}
+            </div>
+            <div class="mt-5 grid gap-3">
+              <div class="deal-inline-card rounded-2xl border border-slate-800 bg-slate-900/80 px-4 py-4">
+                <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Телефон</p>
+                <p class="mt-2 text-sm font-medium text-white">{% firstof deal_client.phone deal.customer_phone deal.order.shipping_phone deal.order.phone "—" %}</p>
+              </div>
+              <div class="deal-inline-card rounded-2xl border border-slate-800 bg-slate-900/80 px-4 py-4">
+                <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Город</p>
+                <p class="mt-2 text-sm font-medium text-white">{% firstof deal.customer_city deal.delivery_to_city deal.order.city_text "Город не указан" %}</p>
+              </div>
+            </div>
+            {% if client_comment %}
+              <div class="deal-inline-card mt-4 rounded-xl border border-slate-800 bg-slate-900/70 px-4 py-4">
+                <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Комментарий клиента</p>
+                <p class="mt-2 whitespace-pre-line text-sm text-slate-300">{{ client_comment }}</p>
+              </div>
+            {% endif %}
+          </section>
+
+          <section id="deal-quick-actions" class="deal-subpanel deal-subpanel-quiet rounded-2xl border border-slate-800/70 bg-slate-950/35 p-5">
+            <div class="flex items-start justify-between gap-4">
+              <div>
+                <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Быстрые действия</p>
+                <p class="mt-1 text-sm text-slate-500">Только то, что двигает сделку прямо сейчас.</p>
+              </div>
+              <details class="manager-inline-dropdown">
+                <summary class="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-200 transition hover:bg-slate-800">Еще действия</summary>
+                <div class="manager-inline-dropdown-menu manager-inline-dropdown-menu-right grid gap-2">
+                  <a
+                    href="{{ deal_shipment_url }}"
+                    class="rounded-xl border border-slate-700 px-4 py-2.5 text-sm text-slate-200 hover:bg-slate-800"
+                    data-drawer-target="#manager-remote-drawer"
+                    hx-get="{{ deal_shipment_url }}"
+                    hx-select="#manager-main-content > *"
+                    hx-target="#manager-remote-drawer-content"
+                    hx-swap="innerHTML"
+                    hx-push-url="false"
+                  >Отгрузка</a>
+                  {% for action in next_step_panel.secondary_actions %}
+                    {% if action.label != 'Управление' and action.label != 'История' and action.url != deal_reservation_url and action.url != deal_contract_url and action.url != deal_shipment_url and action.url != deal_finance_url %}
+                      <a
+                        href="{{ action.url }}"
+                        class="rounded-xl border border-slate-700 px-4 py-2.5 text-sm text-slate-200 hover:bg-slate-800"
+                        {% if action.url == deal_reservation_url or action.url == deal_contract_url or action.url == deal_shipment_url or action.url == deal_finance_url %}
+                          data-drawer-target="#manager-remote-drawer"
+                          hx-get="{{ action.url }}"
+                          hx-select="#manager-main-content > *"
+                          hx-target="#manager-remote-drawer-content"
+                          hx-swap="innerHTML"
+                          hx-push-url="false"
+                        {% endif %}
+                      >{{ action.label }}</a>
+                    {% endif %}
+                  {% endfor %}
+                  {% if deal_client %}
+                    <a
+                      href="{% url 'manager_portal:client_detail' deal_client.pk %}"
+                      class="rounded-xl border border-slate-700 px-4 py-2.5 text-sm text-slate-200 hover:bg-slate-800"
+                      data-drawer-target="#manager-remote-drawer"
+                      hx-get="{% url 'manager_portal:client_detail' deal_client.pk %}"
+                      hx-select="#manager-main-content > *"
+                      hx-target="#manager-remote-drawer-content"
+                      hx-swap="innerHTML"
+                      hx-push-url="false"
+                    >Карточка клиента</a>
+                  {% endif %}
+                </div>
+              </details>
+            </div>
+            <div class="mt-4 grid gap-3 sm:grid-cols-2">
+              <a
+                href="{{ deal_reservation_url }}"
+                class="rounded-xl border border-slate-700 px-4 py-3 text-center text-sm text-slate-200 hover:bg-slate-800"
+                data-drawer-target="#manager-remote-drawer"
+                hx-get="{{ deal_reservation_url }}"
+                hx-select="#manager-main-content > *"
+                hx-target="#manager-remote-drawer-content"
+                hx-swap="innerHTML"
+                hx-push-url="false"
+              >Обеспечение</a>
+              <a
+                href="{{ deal_contract_url }}"
+                class="rounded-xl border border-slate-700 px-4 py-3 text-center text-sm text-slate-200 hover:bg-slate-800"
+                data-drawer-target="#manager-remote-drawer"
+                hx-get="{{ deal_contract_url }}"
+                hx-select="#manager-main-content > *"
+                hx-target="#manager-remote-drawer-content"
+                hx-swap="innerHTML"
+                hx-push-url="false"
+              >Договор</a>
+              <a
+                href="{{ deal_finance_url }}"
+                class="rounded-xl border border-slate-700 px-4 py-3 text-center text-sm text-slate-200 hover:bg-slate-800"
+                data-drawer-target="#manager-remote-drawer"
+                hx-get="{{ deal_finance_url }}"
+                hx-select="#manager-main-content > *"
+                hx-target="#manager-remote-drawer-content"
+                hx-swap="innerHTML"
+                hx-push-url="false"
+              >Финансы</a>
+              <button type="button" data-drawer-target="#deal-management-drawer" class="rounded-xl border border-slate-700 px-4 py-3 text-center text-sm text-slate-200 hover:bg-slate-800">Настройки сделки</button>
+            </div>
+          </section>
+        </aside>
+      </div>
+    </section>
+
+    <aside id="deal-management-drawer" class="manager-drawer manager-glass border-l border-slate-800 p-6" aria-hidden="true">
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <h3 class="text-2xl font-semibold">Настройки сделки</h3>
+          <p class="mt-2 text-sm text-slate-400">Ответственный, этап и ручной next step без лишнего шума в правой колонке.</p>
+        </div>
+        <button type="button" data-drawer-close class="rounded-full border border-slate-700 px-3 py-1 text-sm">Закрыть</button>
+      </div>
+
+      <div class="mt-6 grid gap-3 sm:grid-cols-2">
+        <div class="deal-inline-card rounded-2xl border border-slate-800 bg-slate-900/80 px-4 py-4">
+          <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Ответственный</p>
+          <p class="mt-2 text-sm font-medium text-white">{{ management_summary.responsible_manager }}</p>
+        </div>
+        <div class="deal-inline-card rounded-2xl border border-slate-800 bg-slate-900/80 px-4 py-4">
+          <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Этап</p>
+          <p class="mt-2 text-sm font-medium text-white">{{ management_summary.case_status }}</p>
+        </div>
+      </div>
+
+      <form method="post" class="mt-6 grid gap-4">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="update_management">
+        <div class="grid gap-4">
+          <div class="manager-form-field space-y-1">
+            <label for="{{ management_form.case_status.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ management_form.case_status.label }}</label>
+            {{ management_form.case_status }}
+            {% if management_form.case_status.errors %}
+              <p class="text-xs text-rose-300">{{ management_form.case_status.errors|join:', ' }}</p>
+            {% endif %}
+          </div>
+          <div class="manager-form-field space-y-1">
+            <label for="{{ management_form.responsible_manager.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ management_form.responsible_manager.label }}</label>
+            {{ management_form.responsible_manager }}
+            {% if management_form.responsible_manager.errors %}
+              <p class="text-xs text-rose-300">{{ management_form.responsible_manager.errors|join:', ' }}</p>
+            {% endif %}
+          </div>
+          <div class="manager-form-field space-y-1">
+            <label for="{{ management_form.customer_deadline.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ management_form.customer_deadline.label }}</label>
+            {{ management_form.customer_deadline }}
+            {% if management_form.customer_deadline.errors %}
+              <p class="text-xs text-rose-300">{{ management_form.customer_deadline.errors|join:', ' }}</p>
+            {% endif %}
+          </div>
+          <div class="manager-form-field space-y-1">
+            <label for="{{ management_form.next_step_code.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ management_form.next_step_code.label }}</label>
+            {{ management_form.next_step_code }}
+            {% if management_form.next_step_code.help_text %}
+              <p class="text-xs text-slate-400">{{ management_form.next_step_code.help_text }}</p>
+            {% endif %}
+            {% if management_form.next_step_code.errors %}
+              <p class="text-xs text-rose-300">{{ management_form.next_step_code.errors|join:', ' }}</p>
+            {% endif %}
+          </div>
+        </div>
+        <div class="manager-form-field space-y-1">
+          <label for="{{ management_form.manager_comment.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ management_form.manager_comment.label }}</label>
+          {{ management_form.manager_comment }}
+          {% if management_form.manager_comment.help_text %}
+            <p class="text-xs text-slate-400">{{ management_form.manager_comment.help_text }}</p>
+          {% endif %}
+          {% if management_form.manager_comment.errors %}
+            <p class="text-xs text-rose-300">{{ management_form.manager_comment.errors|join:', ' }}</p>
+          {% endif %}
+        </div>
+        <button type="submit" class="rounded-xl bg-cyan-500 px-4 py-2 text-sm font-medium text-slate-950 hover:bg-cyan-400">Сохранить</button>
+      </form>
+    </aside>
+
+    <aside id="deal-comment-drawer" class="manager-drawer manager-glass border-l border-slate-800 p-6" aria-hidden="true">
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <h3 class="text-2xl font-semibold">Комментарий и история</h3>
+          <p class="mt-2 text-sm text-slate-400">Комментарии и последние системные события без разворачивания всей страницы.</p>
+        </div>
+        <button type="button" data-drawer-close class="rounded-full border border-slate-700 px-3 py-1 text-sm">Закрыть</button>
+      </div>
+
+      <form method="post" class="mt-6 space-y-3">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="add_comment">
+        <div>
+          {{ comment_form.comment }}
+          {% if comment_form.comment.errors %}
+            <p class="mt-2 text-xs text-rose-300">{{ comment_form.comment.errors|join:', ' }}</p>
+          {% endif %}
+        </div>
+        <button type="submit" class="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800">Комментарий</button>
+      </form>
+
+      <div class="mt-6 space-y-3 border-t border-slate-800 pt-5">
+        {% for entry in timeline_preview %}
+          <div class="deal-inline-card rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-3">
+            <div class="flex items-center justify-between gap-3">
+              <p class="text-sm font-medium text-white">{{ entry.title }}</p>
+              <p class="text-xs text-slate-500">{{ entry.timestamp|date:"d.m H:i" }}</p>
+            </div>
+            <p class="mt-1 text-xs text-slate-500">{{ entry.meta }}</p>
+            {% if entry.body %}
+              <p class="mt-2 text-sm text-slate-300">{{ entry.body|truncatechars:140 }}</p>
+            {% endif %}
+          </div>
+        {% empty %}
+          <div class="rounded-xl border border-dashed border-slate-700 px-3 py-4 text-sm text-slate-400">Пока нет событий.</div>
+        {% endfor %}
+      </div>
+    </aside>
+
+    {% if management_form.errors %}
+      <div data-open-drawer-on-load="#deal-management-drawer" hidden></div>
+    {% endif %}
+    {% if comment_form.comment.errors %}
+      <div data-open-drawer-on-load="#deal-comment-drawer" hidden></div>
+    {% endif %}
+  </div>
+{% endblock %}

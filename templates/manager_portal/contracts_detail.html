@@ -1,0 +1,96 @@
+{% extends "manager_portal/base.html" %}
+
+{% block title %}{{ contract_document.number }}{% endblock %}
+
+{% block content %}
+  <div class="space-y-6">
+    <section class="manager-panel rounded-[1.75rem] p-6">
+      <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <p class="text-xs uppercase tracking-[0.24em] text-cyan-300">Document</p>
+          <h2 class="mt-2 text-3xl font-semibold text-white">{{ contract_document.number }}</h2>
+          <p class="mt-2 text-sm leading-6 text-slate-400">{{ contract_document.title }}</p>
+        </div>
+        <div class="flex flex-wrap gap-2 text-xs text-slate-400">
+          <span class="manager-pill">{{ contract_document.get_document_type_display }}</span>
+          <span class="manager-pill">{{ contract_document.get_status_display }}</span>
+          <span class="manager-pill">{{ contract_document.issue_date|date:"d.m.Y" }}</span>
+        </div>
+      </div>
+    </section>
+
+    {% if contract_missing_fields %}
+      <section class="manager-panel rounded-[1.75rem] border border-amber-400/30 bg-amber-400/10 p-6">
+        <p class="text-xs uppercase tracking-[0.22em] text-amber-100">Не хватает реквизитов</p>
+        <div class="mt-4 flex flex-wrap gap-2">
+          {% for field in contract_missing_fields %}
+            <span class="manager-pill">{{ field }}</span>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+
+    <div class="grid gap-6 xl:grid-cols-[0.82fr_1.18fr]">
+      <section class="space-y-6">
+        <article class="manager-panel rounded-[1.75rem] p-6">
+          <p class="text-xs uppercase tracking-[0.22em] text-slate-500">Карточка</p>
+          <div class="mt-5 grid gap-3 text-sm text-slate-300">
+            <div class="flex items-start justify-between gap-4"><span class="text-slate-500">Контрагент</span><span class="text-right text-white">{{ contract_document.counterparty_display }}</span></div>
+            <div class="flex items-start justify-between gap-4"><span class="text-slate-500">Менеджер</span><span class="text-right text-white">{{ contract_document.responsible_manager.username|default:"—" }}</span></div>
+            <div class="flex items-start justify-between gap-4"><span class="text-slate-500">Создал</span><span class="text-right text-white">{{ contract_document.created_by.username|default:"—" }}</span></div>
+            <div class="flex items-start justify-between gap-4"><span class="text-slate-500">Шаблон</span><span class="text-right text-white">{{ contract_document.template.name|default:"—" }}</span></div>
+            <div class="flex items-start justify-between gap-4"><span class="text-slate-500">Профиль компании</span><span class="text-right text-white">{{ contract_document.company_profile.name|default:"—" }}</span></div>
+            <div class="flex items-start justify-between gap-4"><span class="text-slate-500">Сумма</span><span class="text-right text-white">{% if contract_document.amount is not None %}{{ contract_document.amount|currency_amount:contract_document.currency }}{% else %}—{% endif %}</span></div>
+            <div class="flex items-start justify-between gap-4"><span class="text-slate-500">Срок действия</span><span class="text-right text-white">{{ contract_document.effective_until|date:"d.m.Y"|default:"—" }}</span></div>
+            <div class="flex items-start justify-between gap-4"><span class="text-slate-500">Срок оплаты</span><span class="text-right text-white">{{ contract_document.payment_terms|default:"—" }}</span></div>
+            <div class="flex items-start justify-between gap-4"><span class="text-slate-500">Связанный заказ</span><span class="text-right text-white">{% if contract_document.linked_order_id %}<a href="{% url 'manager_portal:order_detail' contract_document.linked_order_id %}" class="text-cyan-300 hover:text-cyan-200">#{{ contract_document.linked_order_id }}</a>{% else %}—{% endif %}</span></div>
+          </div>
+        </article>
+
+        <article class="manager-panel rounded-[1.75rem] p-6">
+          <p class="text-xs uppercase tracking-[0.22em] text-slate-500">Реквизиты</p>
+          <div class="mt-5 space-y-3 text-sm text-slate-300">
+            <p><span class="text-slate-500">Email:</span> {{ contract_document.counterparty_email|default:"—" }}</p>
+            <p><span class="text-slate-500">Телефон:</span> {{ contract_document.counterparty_phone|default:"—" }}</p>
+            <p><span class="text-slate-500">ИНН:</span> {{ contract_document.counterparty_inn|default:"—" }}</p>
+            <p><span class="text-slate-500">КПП:</span> {{ contract_document.counterparty_kpp|default:"—" }}</p>
+            <p><span class="text-slate-500">ОГРН:</span> {{ contract_document.counterparty_ogrn|default:"—" }}</p>
+            <p><span class="text-slate-500">ОГРНИП:</span> {{ contract_document.counterparty_ogrnip|default:"—" }}</p>
+            <p><span class="text-slate-500">Адрес:</span> {{ contract_document.counterparty_address|default:"—"|linebreaksbr }}</p>
+          </div>
+        </article>
+
+        {% if contract_document.subject or contract_document.notes %}
+          <article class="manager-panel rounded-[1.75rem] p-6">
+            <p class="text-xs uppercase tracking-[0.22em] text-slate-500">Текст</p>
+            {% if contract_document.subject %}
+              <div class="mt-4">
+                <p class="text-sm font-medium text-white">Предмет</p>
+                <p class="mt-2 text-sm leading-6 text-slate-300">{{ contract_document.subject|linebreaksbr }}</p>
+              </div>
+            {% endif %}
+            {% if contract_document.notes %}
+              <div class="mt-5">
+                <p class="text-sm font-medium text-white">Комментарий</p>
+                <p class="mt-2 text-sm leading-6 text-slate-300">{{ contract_document.notes|linebreaksbr }}</p>
+              </div>
+            {% endif %}
+          </article>
+        {% endif %}
+      </section>
+
+      <section class="manager-panel rounded-[1.75rem] p-6">
+        <div class="flex items-center justify-between gap-3">
+          <div>
+            <p class="text-xs uppercase tracking-[0.22em] text-slate-500">Preview</p>
+            <h3 class="mt-2 text-2xl font-semibold text-white">Предпросмотр</h3>
+          </div>
+          <a href="{% url 'manager_portal:contracts_documents' %}" class="text-sm text-cyan-300">Назад к реестру</a>
+        </div>
+        <div class="mt-6 rounded-[1.5rem] border border-slate-800 bg-white p-6 text-slate-900">
+          {{ contract_preview_html|safe }}
+        </div>
+      </section>
+    </div>
+  </div>
+{% endblock %}

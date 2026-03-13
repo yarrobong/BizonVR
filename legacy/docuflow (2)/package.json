@@ -1,0 +1,45 @@
+{
+  "name": "docuflow",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:client": "vite",
+    "dev:server": "npm --prefix server run dev",
+    "start:server": "npm --prefix server start",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit",
+    "test": "npm run test:unit && npm run test:server",
+    "test:unit": "vitest run",
+    "test:server": "npm --prefix server run test",
+    "test:e2e": "playwright test",
+    "generate:api-types": "openapi-typescript server/src/api/v2/openapi.yaml -o src/shared/api/generated/v2.ts",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.66.9",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-router-dom": "^7.6.2",
+    "zod": "^3.25.76",
+    "zustand": "^5.0.6"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.54.1",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.3.0",
+    "@types/node": "^22.14.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "autoprefixer": "^10.4.20",
+    "concurrently": "^9.1.2",
+    "jsdom": "^26.1.0",
+    "openapi-typescript": "^7.8.0",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0",
+    "vitest": "^3.2.4"
+  }
+}

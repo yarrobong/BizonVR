@@ -1,19 +1,45 @@
 from django.conf import settings
-from django.contrib.auth import logout
+from django.contrib.auth import get_user_model, login, logout
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_http_methods, require_POST
 
-from ..forms import CodeVerifyForm, PhoneRequestForm
+from config.legal_consent import get_legal_bundle_version
+
+from ..forms import (
+    CodeVerifyForm,
+    EmailLoginRequestForm,
+    EmailLoginVerifyForm,
+    PasswordLoginForm,
+    PhoneRequestForm,
+    RegistrationForm,
+)
 from ..models import Profile
-from ..security import check_send_code_rate_limits, check_verify_code_rate_limits, get_client_ip, mark_send_code_success
+from ..security import (
+    check_send_code_rate_limits,
+    check_send_email_rate_limits,
+    check_verify_code_rate_limits,
+    check_verify_email_code_rate_limits,
+    get_client_ip,
+    mark_send_code_success,
+    mark_send_email_success,
+)
 from ..services import (
+    authenticate_by_login_identifier,
+    auto_claim_guest_orders_for_user,
+    build_phone_display,
+    build_unique_email_username,
     create_and_send_code,
+    create_and_send_email_login_code,
+    ensure_profile,
+    get_default_profile_phone,
+    get_or_create_notification_preferences,
     is_sms_debug_mode,
-    is_turnstile_debug_bypass,
     is_turnstile_enabled,
+    login_with_email_code,
     normalize_phone,
     verify_code_and_login,
     verify_turnstile_token,
@@ -21,6 +47,7 @@ from ..services import (
 
 LOGIN_PENDING_PHONE_SESSION_KEY = 'accounts:login:pending_phone'
 LOGIN_PENDING_SENT_AT_SESSION_KEY = 'accounts:login:last_sent_at'
+User = get_user_model()
 
 
 def _safe_redirect_url(next_path, default='home'):
@@ -65,40 +92,35 @@ def _get_login_resend_available_in(request):
 
 
 def _format_phone_display(phone):
-    digits = normalize_phone(phone)
-    if len(digits) == 10:
-        return f'+7 ({digits[:3]}) {digits[3:6]}-{digits[6:8]}-{digits[8:10]}'
-    return phone
+    return build_phone_display(phone) or phone
 
 
 def _redirect_after_successful_auth(request):
-    Profile.objects.get_or_create(user=request.user, defaults={'phone': request.user.username})
+    ensure_profile(request.user)
     profile = request.user.profile
     next_path = request.POST.get('next') or request.GET.get('next') or ''
 
+    if next_path:
+        return redirect(_safe_redirect_url(next_path, 'home'))
+
     if not profile.contact_name or not profile.privacy_agreed_at:
-        from urllib.parse import urlencode
         from django.urls import reverse
 
-        url = reverse('accounts:complete_registration')
-        if next_path:
-            url += '?' + urlencode({'next': next_path})
-        return redirect(url)
+        return redirect(f"{reverse('accounts:profile_settings')}#profile")
 
-    return redirect(_safe_redirect_url(next_path, 'home'))
+    return redirect('home')
 
 
 @require_http_methods(['GET'])
 def login_view(request):
-    """Страница входа: авторизация только по SMS-коду."""
+    """Публичный экран входа: email + пароль и регистрация."""
     if request.user.is_authenticated:
         return redirect(_safe_redirect_url(request.GET.get('next'), 'accounts:profile'))
     return render(request, 'accounts/login.html', {
-        'form': PhoneRequestForm(),
+        'password_form': PasswordLoginForm(),
+        'register_form': RegistrationForm(),
         'next_url': request.GET.get('next', ''),
-        'turnstile_enabled': is_turnstile_enabled(),
-        'turnstile_site_key': settings.TURNSTILE_SITE_KEY,
-        'turnstile_disabled_locally': is_turnstile_debug_bypass(),
+        'active_panel': 'login',
     })
 
 
@@ -214,7 +236,141 @@ def resend_code_view(request):
 
 
 @require_POST
+def password_login_view(request):
+    if request.user.is_authenticated:
+        return redirect(_safe_redirect_url(request.POST.get('next'), 'accounts:profile'))
+
+    form = PasswordLoginForm(request.POST)
+    if form.is_valid():
+        user, error = authenticate_by_login_identifier(
+            form.cleaned_data['login'],
+            request.POST.get('password', ''),
+            request=request,
+        )
+        if user is not None:
+            login(request, user, backend='django.contrib.auth.backends.ModelBackend')
+            get_or_create_notification_preferences(user)
+            auto_claim_guest_orders_for_user(user)
+            return _redirect_after_successful_auth(request)
+        form.add_error(None, error)
+
+    return render(request, 'accounts/login.html', {
+        'password_form': form,
+        'register_form': RegistrationForm(),
+        'next_url': request.POST.get('next', ''),
+        'active_panel': 'login',
+    })
+
+
+@require_POST
+def send_email_login_code_view(request):
+    if request.user.is_authenticated:
+        return redirect(_safe_redirect_url(request.POST.get('next'), 'accounts:profile'))
+
+    form = EmailLoginRequestForm(request.POST)
+    if form.is_valid():
+        email = form.cleaned_data['email']
+        ok_rate, rate_error = check_send_email_rate_limits(request, email, endpoint='login-email-code')
+        if not ok_rate:
+            form.add_error('email', rate_error)
+        else:
+            ok, error = create_and_send_email_login_code(email)
+            if ok:
+                mark_send_email_success(request, email, endpoint='login-email-code')
+                next_url = request.POST.get('next', '')
+                redirect_url = f"{reverse('accounts:verify_email_login')}?email={email}"
+                if next_url:
+                    redirect_url += f"&next={next_url}"
+                return redirect(redirect_url)
+            form.add_error('email', error)
+
+    return render(request, 'accounts/login.html', {
+        'password_form': PasswordLoginForm(initial={'login': request.POST.get('login', '')}),
+        'register_form': RegistrationForm(),
+        'next_url': request.POST.get('next', ''),
+        'active_panel': 'login',
+    })
+
+
+@require_http_methods(['GET', 'POST'])
+@ensure_csrf_cookie
+def verify_email_login_view(request):
+    if request.user.is_authenticated:
+        return redirect(_safe_redirect_url(request.GET.get('next'), 'accounts:profile'))
+
+    email = (request.GET.get('email') or '').strip().lower()
+    next_url = request.GET.get('next', '')
+    if request.method == 'POST':
+        form = EmailLoginVerifyForm(request.POST)
+        email = (request.POST.get('email') or email).strip().lower()
+        next_url = request.POST.get('next') or next_url
+        ok_rate, rate_error = check_verify_email_code_rate_limits(
+            request,
+            email,
+            endpoint='verify-email-login',
+        )
+        if not ok_rate:
+            return render(request, 'accounts/verify_email_login.html', {
+                'form': form,
+                'email': email,
+                'next_url': next_url,
+                'error': rate_error,
+            })
+        if form.is_valid():
+            ok, error, _user = login_with_email_code(email, form.cleaned_data['code'], request)
+            if ok:
+                return _redirect_after_successful_auth(request)
+            form.add_error('code', error)
+    else:
+        form = EmailLoginVerifyForm(initial={'email': email})
+
+    return render(request, 'accounts/verify_email_login.html', {
+        'form': form,
+        'email': email,
+        'next_url': next_url,
+    })
+
+
+@require_POST
 def logout_view(request):
     """Выход."""
     logout(request)
     return redirect('home')
+
+
+@require_http_methods(['GET', 'POST'])
+def register_view(request):
+    if request.user.is_authenticated:
+        target = request.POST.get('next') if request.method == 'POST' else request.GET.get('next')
+        return redirect(_safe_redirect_url(target, 'accounts:profile'))
+
+    if request.method == 'POST':
+        form = RegistrationForm(request.POST)
+        if form.is_valid():
+            user = User.objects.create_user(
+                username=build_unique_email_username(),
+                email=form.cleaned_data['email'],
+                password=form.cleaned_data['password1'],
+                is_active=True,
+            )
+            Profile.objects.create(
+                user=user,
+                phone=get_default_profile_phone(user),
+                contact_name=form.cleaned_data['contact_name'],
+                email_verified_at=timezone.now(),
+                privacy_agreed_at=timezone.now(),
+                privacy_policy_version=get_legal_bundle_version(),
+            )
+            get_or_create_notification_preferences(user)
+            auto_claim_guest_orders_for_user(user)
+            login(request, user, backend='django.contrib.auth.backends.ModelBackend')
+            return _redirect_after_successful_auth(request)
+    else:
+        form = RegistrationForm()
+
+    return render(request, 'accounts/login.html', {
+        'password_form': PasswordLoginForm(),
+        'register_form': form,
+        'next_url': request.POST.get('next', '') if request.method == 'POST' else request.GET.get('next', ''),
+        'active_panel': 'register',
+    })

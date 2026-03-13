@@ -1,7 +1,6 @@
 """
 Экспорт каталога товаров в CSV: название, цена, артикул (slug), категория, описание, характеристики.
 Запуск: python manage.py export_catalog
-В Docker: docker compose exec web python manage.py export_catalog
 """
 import csv
 from django.core.management.base import BaseCommand

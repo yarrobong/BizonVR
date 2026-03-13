@@ -1,5 +1,7 @@
 from django.contrib import admin
 
+from config.formatting import format_currency_amount
+
 from ..models import ProductBundle, ProductBundleItem
 from .shared import _admin_image_preview
 
@@ -13,7 +15,7 @@ class ProductBundleItemInline(admin.TabularInline):
 
     def price_preview(self, obj):
         if obj and obj.product_id:
-            return f'{obj.effective_price} ₽ (−5%)'
+            return f'{format_currency_amount(obj.effective_price)} (−5%)'
         return '—'
     price_preview.short_description = 'Цена в комплекте'
 
@@ -32,7 +34,7 @@ class ProductBundleItemInlineForProduct(admin.TabularInline):
 
     def price_preview(self, obj):
         if obj and obj.product_id:
-            return f'{obj.effective_price} ₽ (−5%)'
+            return f'{format_currency_amount(obj.effective_price)} (−5%)'
         return '—'
     price_preview.short_description = 'Цена в комплекте'
 
@@ -62,7 +64,7 @@ class ProductBundleAdmin(admin.ModelAdmin):
     def bundle_total(self, obj):
         if obj.pk:
             total = sum(float(i.effective_price) * i.quantity for i in obj.items.all())
-            return f'{total:,.0f} ₽'.replace(',', ' ')
+            return format_currency_amount(total)
         return '—'
 
     bundle_total.short_description = 'Сумма набора'

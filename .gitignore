@@ -1,8 +1,10 @@
 # Media uploads (product images, etc.)
 media/products/
+media/manager/
 
 # macOS
 .DS_Store
+.claude/
 
 # Environment
 .env
@@ -14,10 +16,25 @@ __pycache__/
 .venv/
 venv/
 .run/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+/db.sqlite3
 launchers/apps/
 *.egg-info/
 .eggs/
-db.sqlite3
+
+# Django generated static build output
+staticfiles/
 
 # Node
 node_modules/
+
+# Archived legacy runtimes
+legacy/BusinessFinance/.env
+legacy/BusinessFinance/venv/
+legacy/docuflow (2)/.env.local
+legacy/docuflow (2)/.docuflow-runtime/
+legacy/docuflow (2)/node_modules/
+legacy/docuflow (2)/dist/
+legacy/docuflow (2)/test-results/

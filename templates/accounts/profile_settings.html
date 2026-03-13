@@ -1,0 +1,936 @@
+{% extends "base.html" %}
+{% load catalog_tags %}
+
+{% block title %}Профиль и настройки — BizonVR{% endblock %}
+
+{% block content %}
+<div class="relative overflow-hidden">
+  <div class="pointer-events-none absolute inset-x-0 top-0 h-[28rem] bg-[radial-gradient(circle_at_top_left,rgba(0,212,255,0.14),transparent_30%),radial-gradient(circle_at_top_right,rgba(245,158,11,0.10),transparent_24%),linear-gradient(180deg,rgba(11,13,20,0.2),rgba(11,13,20,0))]"></div>
+
+  <div class="container relative mx-auto max-w-7xl px-4 py-8 md:py-10">
+    {% if alerts %}
+      <div class="mb-6 space-y-2">
+        {% for alert in alerts %}
+          <div class="rounded-2xl border px-4 py-3 text-sm {% if alert.level == 'success' %}border-emerald-400/20 bg-emerald-500/10 text-emerald-200{% else %}border-red-300/30 bg-red-900/20 text-red-100{% endif %}">
+            {{ alert.text }}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <div
+      class="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]"
+      x-data="{
+        activeSectionId: window.location.hash ? window.location.hash.slice(1) : 'profile',
+        sectionIds: ['profile', 'delivery', 'security', 'communication', 'notifications', 'service'],
+        setSectionFromHash() {
+          const hash = window.location.hash ? window.location.hash.slice(1) : '';
+          if (hash) {
+            this.activeSectionId = hash;
+          }
+        },
+        init() {
+          this.setSectionFromHash();
+          const sections = this.sectionIds
+            .map(id => document.getElementById(id))
+            .filter(Boolean);
+          if (!sections.length || typeof IntersectionObserver === 'undefined') {
+            return;
+          }
+          const observer = new IntersectionObserver((entries) => {
+            const visible = entries
+              .filter(entry => entry.isIntersecting)
+              .sort((left, right) => right.intersectionRatio - left.intersectionRatio)[0];
+            if (visible && visible.target.id) {
+              this.activeSectionId = visible.target.id;
+            }
+          }, {
+            rootMargin: '-18% 0px -55% 0px',
+            threshold: [0.2, 0.35, 0.6],
+          });
+          sections.forEach(section => observer.observe(section));
+        }
+      }"
+      @hashchange.window="setSectionFromHash()"
+    >
+      {% include "accounts/_account_sidebar.html" %}
+
+      <div class="min-w-0 space-y-6">
+        <section class="rounded-[2rem] border border-white/10 bg-dark-800/90 px-6 py-7 shadow-[0_24px_80px_rgba(0,0,0,0.35)] backdrop-blur md:px-8 md:py-8">
+          <div class="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+            <div class="max-w-3xl">
+              <span class="inline-flex items-center rounded-full border border-accent/20 bg-accent/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-accent" style="font-family:'Orbitron',sans-serif;">
+                Профиль и настройки
+              </span>
+              <h1 class="mt-4 text-3xl font-semibold tracking-tight text-white md:text-4xl">Просмотр данных отдельно от редактирования</h1>
+              <p class="mt-3 text-sm leading-7 text-gray-300 md:text-base">
+                По умолчанию здесь только read-only карточки. Редактирование открывается точечно внутри нужной секции.
+              </p>
+            </div>
+            <div class="grid gap-3 sm:grid-cols-3">
+              <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Готовность</p>
+                <p class="mt-2 text-2xl font-semibold text-white" style="font-family:'Orbitron',sans-serif;">{{ profile_completion.percent }}%</p>
+              </div>
+              <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Активные заказы</p>
+                <p class="mt-2 text-base font-semibold text-white">{{ active_orders_count }}</p>
+              </div>
+              <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Последняя активность</p>
+                <p class="mt-2 text-base font-semibold text-white">{% if last_activity_at %}{{ last_activity_at|date:"d.m.Y" }}{% else %}Пока нет{% endif %}</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-6 flex flex-wrap gap-2">
+            {% for status in account_quick_statuses %}
+              <span class="rounded-full border px-3 py-1 text-xs {% if status.tone == 'success' %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% elif status.tone == 'warning' %}border-amber-400/20 bg-amber-500/10 text-amber-100{% else %}border-white/10 bg-white/5 text-gray-200{% endif %}">
+                {{ status.label }} — {{ status.value }}
+              </span>
+            {% endfor %}
+          </div>
+        </section>
+
+        <section class="rounded-[1.75rem] border border-white/10 bg-dark-800/90 p-5 lg:hidden">
+          <p class="text-[11px] uppercase tracking-[0.22em] text-accent">Разделы</p>
+          <div class="mt-4 flex flex-wrap gap-3">
+            <a href="#profile" class="inline-flex items-center justify-center rounded-full border border-white/10 px-4 py-3 text-sm text-white transition hover:border-white/20 hover:bg-white/10" :class="activeSectionId === 'profile' ? 'border-accent bg-accent text-dark-900' : 'bg-white/5'">Получатель</a>
+            <a href="#delivery" class="inline-flex items-center justify-center rounded-full border border-white/10 px-4 py-3 text-sm text-white transition hover:border-white/20 hover:bg-white/10" :class="activeSectionId === 'delivery' ? 'border-accent bg-accent text-dark-900' : 'bg-white/5'">Адреса</a>
+            <a href="#security" class="inline-flex items-center justify-center rounded-full border border-white/10 px-4 py-3 text-sm text-white transition hover:border-white/20 hover:bg-white/10" :class="activeSectionId === 'security' ? 'border-accent bg-accent text-dark-900' : 'bg-white/5'">Доступ</a>
+            <a href="#communication" class="inline-flex items-center justify-center rounded-full border border-white/10 px-4 py-3 text-sm text-white transition hover:border-white/20 hover:bg-white/10" :class="activeSectionId === 'communication' ? 'border-accent bg-accent text-dark-900' : 'bg-white/5'">Связь</a>
+            <a href="#notifications" class="inline-flex items-center justify-center rounded-full border border-white/10 px-4 py-3 text-sm text-white transition hover:border-white/20 hover:bg-white/10" :class="activeSectionId === 'notifications' ? 'border-accent bg-accent text-dark-900' : 'bg-white/5'">Уведомления</a>
+            <a href="#service" class="inline-flex items-center justify-center rounded-full border border-white/10 px-4 py-3 text-sm text-white transition hover:border-white/20 hover:bg-white/10" :class="activeSectionId === 'service' ? 'border-accent bg-accent text-dark-900' : 'bg-white/5'">Сервис</a>
+          </div>
+        </section>
+
+        <div class="space-y-6">
+          <section id="profile" class="rounded-[1.75rem] border border-white/10 bg-dark-800/90 p-6 transition md:p-7" x-bind:class="activeSectionId === 'profile' ? 'ring-1 ring-accent/30' : ''">
+            <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div class="max-w-3xl">
+                <p class="text-[11px] uppercase tracking-[0.22em] text-accent">Профиль</p>
+                <h2 class="mt-2 text-2xl font-semibold text-white">Данные получателя</h2>
+                <p class="mt-2 text-sm leading-6 text-gray-400">ФИО и основные контактные данные для заказов и документов.</p>
+              </div>
+              <span class="inline-flex items-center rounded-full border px-3 py-1 text-xs {% if profile.contact_name %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% else %}border-white/10 bg-white/5 text-gray-200{% endif %}">
+                Получатель — {% if profile.contact_name %}указан{% else %}не заполнен{% endif %}
+              </span>
+            </div>
+
+            <div class="mt-6 grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(280px,0.95fr)]">
+              <section class="rounded-[1.5rem] border border-white/10 bg-dark-900/40 p-5">
+                <div class="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 class="text-lg font-semibold text-white">Текущие данные</h3>
+                    <p class="mt-1 text-sm text-gray-400">Секция остаётся в read-only, пока вы не откроете форму.</p>
+                  </div>
+                  {% if profile_edit_mode %}
+                    <a href="{% url 'accounts:profile_settings' %}#profile" class="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs text-white transition hover:border-white/20 hover:bg-white/10">
+                      Отменить
+                    </a>
+                  {% else %}
+                    <a href="{% url 'accounts:profile_settings' %}?edit_profile=1#profile" class="inline-flex items-center justify-center rounded-full bg-accent px-4 py-2 text-xs font-semibold text-dark-900 transition hover:bg-accent-hover">
+                      Редактировать
+                    </a>
+                  {% endif %}
+                </div>
+
+                {% if profile_edit_mode %}
+                  <div x-data="{ dirty: false }" @input="dirty = true" @change="dirty = true">
+                    <form id="profile-edit-form" method="post" class="mt-5 space-y-4" hx-boost="false">
+                      {% csrf_token %}
+                      <input type="hidden" name="action" value="save_profile">
+
+                      {% if profile_form.non_field_errors %}
+                        <p class="text-sm text-red-400">{{ profile_form.non_field_errors.0 }}</p>
+                      {% endif %}
+
+                      <div>
+                        <label for="{{ profile_form.contact_name.id_for_label }}" class="block text-sm text-gray-300">{{ profile_form.contact_name.label }}</label>
+                        <div class="mt-2">{{ profile_form.contact_name }}</div>
+                        {% if profile_form.contact_name.errors %}
+                          <p class="mt-1 text-sm text-red-400">{{ profile_form.contact_name.errors.0 }}</p>
+                        {% endif %}
+                      </div>
+
+                      {% if profile_form.agree_privacy %}
+                        <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                          <div class="flex items-start gap-3">
+                            {{ profile_form.agree_privacy }}
+                            <div class="min-w-0">
+                              <label for="{{ profile_form.agree_privacy.id_for_label }}" class="text-sm leading-6 text-gray-300">
+                                Подтверждаю согласие с
+                                <a href="{% url 'privacy' %}" target="_blank" rel="noopener noreferrer" class="text-accent hover:text-accent-hover underline">политикой конфиденциальности</a>,
+                                <a href="{% url 'pd_consent' %}" target="_blank" rel="noopener noreferrer" class="text-accent hover:text-accent-hover underline">согласием на обработку ПД</a>
+                                и <a href="{% url 'user_agreement' %}" target="_blank" rel="noopener noreferrer" class="text-accent hover:text-accent-hover underline">пользовательским соглашением</a>.
+                              </label>
+                              {% if profile_form.agree_privacy.errors %}
+                                <p class="mt-2 text-sm text-red-400">{{ profile_form.agree_privacy.errors.0 }}</p>
+                              {% endif %}
+                            </div>
+                          </div>
+                        </div>
+                      {% endif %}
+
+                      <div class="flex flex-wrap gap-3 pt-2">
+                        <button type="submit" class="inline-flex items-center justify-center rounded-full bg-accent px-5 py-3 text-sm font-semibold text-dark-900 transition hover:bg-accent-hover">
+                          Сохранить данные
+                        </button>
+                        <a href="{% url 'accounts:profile_settings' %}#profile" class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm text-white transition hover:border-white/20 hover:bg-white/10">
+                          Отменить
+                        </a>
+                      </div>
+                    </form>
+
+                    <div x-cloak x-show="dirty" class="fixed inset-x-4 bottom-4 z-40 rounded-2xl border border-accent/30 bg-dark-900/95 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur md:left-[max(2rem,22rem)] md:right-8">
+                      <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                        <p class="text-sm text-white">Есть несохранённые изменения</p>
+                        <div class="flex flex-wrap gap-3">
+                          <button type="submit" form="profile-edit-form" class="inline-flex items-center justify-center rounded-full bg-accent px-5 py-3 text-sm font-semibold text-dark-900 transition hover:bg-accent-hover">
+                            Сохранить
+                          </button>
+                          <a href="{% url 'accounts:profile_settings' %}#profile" class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm text-white transition hover:border-white/20 hover:bg-white/10">
+                            Отменить
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                {% else %}
+                  <div class="mt-5 grid gap-3">
+                    <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Получатель</p>
+                      <p class="mt-2 text-white">{{ profile.contact_name|default:"Не заполнено" }}</p>
+                    </div>
+                    <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <div class="flex items-start justify-between gap-3">
+                        <div>
+                          <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Телефон</p>
+                          <p class="mt-2 text-white">{{ phone_display }}</p>
+                        </div>
+                        <span class="rounded-full border px-3 py-1 text-xs {% if phone_verified_at %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% else %}border-amber-400/20 bg-amber-500/10 text-amber-100{% endif %}">
+                          Телефон — {% if phone_verified_at %}подтверждён{% else %}не подтверждён{% endif %}
+                        </span>
+                      </div>
+                    </div>
+                    <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <div class="flex items-start justify-between gap-3">
+                        <div>
+                          <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Email</p>
+                          <p class="mt-2 break-all text-white">{{ primary_contact_email|default:"Не заполнен" }}</p>
+                        </div>
+                        <span class="rounded-full border px-3 py-1 text-xs {% if profile.email_verified_at %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% else %}border-amber-400/20 bg-amber-500/10 text-amber-100{% endif %}">
+                          Email — {% if profile.email_verified_at %}подтверждён{% else %}не подтверждён{% endif %}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                {% endif %}
+              </section>
+
+              <section class="rounded-[1.5rem] border border-white/10 bg-white/5 p-5">
+                <h3 class="text-lg font-semibold text-white">Быстрый статус</h3>
+                <div class="mt-4 flex flex-wrap gap-2">
+                  <span class="rounded-full border px-3 py-1 text-xs {% if phone_verified_at %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% else %}border-amber-400/20 bg-amber-500/10 text-amber-100{% endif %}">
+                    Телефон — {% if phone_verified_at %}подтверждён{% else %}не подтверждён{% endif %}
+                  </span>
+                  <span class="rounded-full border px-3 py-1 text-xs {% if profile.email_verified_at %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% else %}border-amber-400/20 bg-amber-500/10 text-amber-100{% endif %}">
+                    Email — {% if profile.email_verified_at %}подтверждён{% else %}не подтверждён{% endif %}
+                  </span>
+                  <span class="rounded-full border px-3 py-1 text-xs {% if profile.contact_name %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% else %}border-white/10 bg-dark-900/40 text-gray-200{% endif %}">
+                    Получатель — {% if profile.contact_name %}указан{% else %}не заполнен{% endif %}
+                  </span>
+                </div>
+                <div class="mt-5 space-y-3">
+                  <div class="rounded-2xl border border-white/10 bg-dark-900/40 p-4">
+                    <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Для чего используются эти данные</p>
+                    <p class="mt-2 text-sm leading-6 text-gray-300">Имя, телефон и email подставляются в checkout, документы по заказу и сообщения от магазина.</p>
+                  </div>
+                  <div class="rounded-2xl border border-white/10 bg-dark-900/40 p-4">
+                    <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Последнее подтверждение</p>
+                    <p class="mt-2 text-sm text-white">
+                      {% if profile.email_verified_at %}
+                        Email подтверждён {{ profile.email_verified_at|date:"d.m.Y H:i" }}
+                      {% else %}
+                        Email ещё не подтверждён
+                      {% endif %}
+                    </p>
+                    <p class="mt-2 text-sm text-white">
+                      {% if phone_verified_at %}
+                        Телефон подтверждён {{ phone_verified_at|date:"d.m.Y H:i" }}
+                      {% else %}
+                        Телефон станет подтверждённым после входа по SMS
+                      {% endif %}
+                    </p>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </section>
+
+          <section id="delivery" class="rounded-[1.75rem] border border-white/10 bg-dark-800/90 p-6 transition md:p-7" x-bind:class="activeSectionId === 'delivery' ? 'ring-1 ring-accent/30' : ''">
+            <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div class="max-w-3xl">
+                <p class="text-[11px] uppercase tracking-[0.22em] text-accent">Адреса</p>
+                <h2 class="mt-2 text-2xl font-semibold text-white">Сохранённые сценарии доставки</h2>
+                <p class="mt-2 text-sm leading-6 text-gray-400">Список адресов остаётся видимым всегда, форма появляется только по действию.</p>
+              </div>
+              <span class="inline-flex items-center rounded-full border px-3 py-1 text-xs {% if default_saved_address %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% else %}border-white/10 bg-white/5 text-gray-200{% endif %}">
+                Основной адрес — {% if default_saved_address %}{{ default_saved_address.label }}{% else %}не добавлен{% endif %}
+              </span>
+            </div>
+
+            <div class="mt-6 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+              <section class="rounded-[1.5rem] border border-white/10 bg-dark-900/40 p-5">
+                <div class="flex items-center justify-between gap-3">
+                  <h3 class="text-lg font-semibold text-white">Сохранённые адреса</h3>
+                  <a href="{% url 'accounts:profile_settings' %}?add_address=1#delivery" class="inline-flex items-center justify-center rounded-full bg-accent px-4 py-2 text-xs font-semibold text-dark-900 transition hover:bg-accent-hover">
+                    Добавить адрес
+                  </a>
+                </div>
+
+                {% if saved_addresses %}
+                  <div class="mt-5 space-y-4">
+                    {% for saved_address in saved_addresses %}
+                      <article class="rounded-[1.5rem] border border-white/10 bg-white/5 p-4">
+                        <div class="flex flex-wrap items-center gap-2">
+                          <p class="text-base font-semibold text-white">{{ saved_address.label }}</p>
+                          {% if saved_address.is_default %}
+                            <span class="rounded-full border border-accent/20 bg-accent/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-accent">По умолчанию</span>
+                          {% endif %}
+                        </div>
+                        <p class="mt-2 text-sm text-gray-300">{{ saved_address.recipient_name }}</p>
+                        <p class="mt-1 text-sm text-gray-400">{{ saved_address.phone }}{% if saved_address.email %} · {{ saved_address.email }}{% endif %}</p>
+                        <p class="mt-2 text-sm text-white">
+                          {{ saved_address.city }}{% if saved_address.address %} · {{ saved_address.address }}{% endif %}
+                        </p>
+                        <div class="mt-4 flex flex-wrap gap-2">
+                          {% if not saved_address.is_default %}
+                            <form method="post" hx-boost="false">
+                              {% csrf_token %}
+                              <input type="hidden" name="action" value="set_default_address">
+                              <input type="hidden" name="address_id" value="{{ saved_address.pk }}">
+                              <button type="submit" class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs text-white transition hover:border-white/20 hover:bg-white/10">
+                                Сделать основным
+                              </button>
+                            </form>
+                          {% endif %}
+                          <a href="{% url 'accounts:profile_settings' %}?edit_address={{ saved_address.pk }}#delivery" class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs text-white transition hover:border-white/20 hover:bg-white/10">
+                            Редактировать
+                          </a>
+                          <form method="post" hx-boost="false">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="delete_address">
+                            <input type="hidden" name="address_id" value="{{ saved_address.pk }}">
+                            <button type="submit" class="inline-flex items-center justify-center rounded-full border border-red-300/30 bg-red-900/20 px-4 py-2 text-xs text-red-100 transition hover:border-red-300/40 hover:bg-red-900/30">
+                              Удалить
+                            </button>
+                          </form>
+                        </div>
+                      </article>
+                    {% endfor %}
+                  </div>
+                {% else %}
+                  <div class="mt-5 rounded-[1.5rem] border border-dashed border-white/10 bg-white/5 p-5 text-sm leading-6 text-gray-400">
+                    <p>У вас пока нет сохранённых адресов. Добавьте основной адрес, чтобы не заполнять доставку вручную.</p>
+                    <a href="{% url 'accounts:profile_settings' %}?add_address=1#delivery" class="mt-4 inline-flex items-center justify-center rounded-full bg-accent px-4 py-2 text-xs font-semibold text-dark-900 transition hover:bg-accent-hover">
+                      Добавить адрес
+                    </a>
+                  </div>
+                {% endif %}
+              </section>
+
+              <section class="rounded-[1.5rem] border border-white/10 bg-dark-900/40 p-5">
+                <div class="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 class="text-lg font-semibold text-white">{% if editing_address %}Редактирование адреса{% elif address_edit_mode %}Новый адрес{% else %}Форма адреса скрыта{% endif %}</h3>
+                    <p class="mt-1 text-sm text-gray-400">Редактирование открывается только для текущего адреса или при создании нового.</p>
+                  </div>
+                  {% if editing_address or address_edit_mode %}
+                    <a href="{% url 'accounts:profile_settings' %}#delivery" class="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs text-white transition hover:border-white/20 hover:bg-white/10">
+                      Отменить
+                    </a>
+                  {% else %}
+                    <a href="{% url 'accounts:profile_settings' %}?add_address=1#delivery" class="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs text-white transition hover:border-white/20 hover:bg-white/10">
+                      Открыть форму
+                    </a>
+                  {% endif %}
+                </div>
+
+                {% if address_edit_mode or editing_address %}
+                  <div x-data="{ dirty: false }" @input="dirty = true" @change="dirty = true">
+                    <form id="address-edit-form" method="post" class="mt-5 space-y-4" hx-boost="false">
+                      {% csrf_token %}
+                      <input type="hidden" name="action" value="save_address">
+                      {% if editing_address %}<input type="hidden" name="address_id" value="{{ editing_address.pk }}">{% endif %}
+
+                      {% if address_form.non_field_errors %}
+                        <p class="text-sm text-red-400">{{ address_form.non_field_errors.0 }}</p>
+                      {% endif %}
+
+                      <div class="grid gap-4 md:grid-cols-2">
+                        <div>
+                          <label for="{{ address_form.label.id_for_label }}" class="block text-sm text-gray-300">{{ address_form.label.label }}</label>
+                          <div class="mt-2">{{ address_form.label }}</div>
+                          {% if address_form.label.errors %}<p class="mt-1 text-sm text-red-400">{{ address_form.label.errors.0 }}</p>{% endif %}
+                        </div>
+                        <div>
+                          <label for="{{ address_form.recipient_name.id_for_label }}" class="block text-sm text-gray-300">{{ address_form.recipient_name.label }}</label>
+                          <div class="mt-2">{{ address_form.recipient_name }}</div>
+                          {% if address_form.recipient_name.errors %}<p class="mt-1 text-sm text-red-400">{{ address_form.recipient_name.errors.0 }}</p>{% endif %}
+                        </div>
+                      </div>
+
+                      <div class="grid gap-4 md:grid-cols-2">
+                        <div>
+                          <label for="{{ address_form.phone.id_for_label }}" class="block text-sm text-gray-300">{{ address_form.phone.label }}</label>
+                          <div class="mt-2">{{ address_form.phone }}</div>
+                          {% if address_form.phone.errors %}<p class="mt-1 text-sm text-red-400">{{ address_form.phone.errors.0 }}</p>{% endif %}
+                        </div>
+                        <div>
+                          <label for="{{ address_form.email.id_for_label }}" class="block text-sm text-gray-300">{{ address_form.email.label }}</label>
+                          <div class="mt-2">{{ address_form.email }}</div>
+                          {% if address_form.email.errors %}<p class="mt-1 text-sm text-red-400">{{ address_form.email.errors.0 }}</p>{% endif %}
+                        </div>
+                      </div>
+
+                      {{ address_form.delivery_type }}
+
+                      <div>
+                        <label for="{{ address_form.city.id_for_label }}" class="block text-sm text-gray-300">{{ address_form.city.label }}</label>
+                        <div class="mt-2">{{ address_form.city }}</div>
+                        {% if address_form.city.errors %}<p class="mt-1 text-sm text-red-400">{{ address_form.city.errors.0 }}</p>{% endif %}
+                      </div>
+
+                      <div>
+                        <label for="{{ address_form.address.id_for_label }}" class="block text-sm text-gray-300">{{ address_form.address.label }}</label>
+                        <div class="mt-2">{{ address_form.address }}</div>
+                        {% if address_form.address.errors %}<p class="mt-1 text-sm text-red-400">{{ address_form.address.errors.0 }}</p>{% endif %}
+                      </div>
+                      <p class="text-sm text-gray-400">Если ПВЗ не будет найден у CDEK, отправим заказ в ближайший доступный пункт.</p>
+                      <div>
+                        <label for="{{ address_form.comment.id_for_label }}" class="block text-sm text-gray-300">{{ address_form.comment.label }}</label>
+                        <div class="mt-2">{{ address_form.comment }}</div>
+                      </div>
+                      <label for="{{ address_form.is_default.id_for_label }}" class="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-gray-300">
+                        {{ address_form.is_default }}
+                        <span>{{ address_form.is_default.label }}</span>
+                      </label>
+                      <div class="flex flex-wrap gap-3 pt-2">
+                        <button type="submit" class="inline-flex items-center justify-center rounded-full bg-accent px-5 py-3 text-sm font-semibold text-dark-900 transition hover:bg-accent-hover">
+                          {% if editing_address %}Сохранить изменения{% else %}Сохранить адрес{% endif %}
+                        </button>
+                        <a href="{% url 'accounts:profile_settings' %}#delivery" class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm text-white transition hover:border-white/20 hover:bg-white/10">
+                          Отменить
+                        </a>
+                      </div>
+                    </form>
+
+                    <div x-cloak x-show="dirty" class="fixed inset-x-4 bottom-4 z-40 rounded-2xl border border-accent/30 bg-dark-900/95 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur md:left-[max(2rem,22rem)] md:right-8">
+                      <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                        <p class="text-sm text-white">Есть несохранённые изменения</p>
+                        <div class="flex flex-wrap gap-3">
+                          <button type="submit" form="address-edit-form" class="inline-flex items-center justify-center rounded-full bg-accent px-5 py-3 text-sm font-semibold text-dark-900 transition hover:bg-accent-hover">
+                            Сохранить
+                          </button>
+                          <a href="{% url 'accounts:profile_settings' %}#delivery" class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm text-white transition hover:border-white/20 hover:bg-white/10">
+                            Отменить
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                {% else %}
+                  <div class="mt-5 rounded-[1.5rem] border border-dashed border-white/10 bg-white/5 p-5">
+                    <p class="text-sm leading-6 text-gray-300">Сейчас открыт только просмотр адресов. Для изменений откройте нужный адрес или добавьте новый.</p>
+                    <div class="mt-4 flex flex-wrap gap-3">
+                      <a href="{% url 'accounts:profile_settings' %}?add_address=1#delivery" class="inline-flex items-center justify-center rounded-full bg-accent px-5 py-3 text-sm font-semibold text-dark-900 transition hover:bg-accent-hover">
+                        Добавить адрес
+                      </a>
+                      <a href="{% url 'orders:checkout' %}" class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm text-white transition hover:border-white/20 hover:bg-white/10">
+                        Перейти к checkout
+                      </a>
+                    </div>
+                  </div>
+                {% endif %}
+              </section>
+            </div>
+          </section>
+
+          <section id="security" class="rounded-[1.75rem] border border-white/10 bg-dark-800/90 p-6 transition md:p-7" x-bind:class="activeSectionId === 'security' ? 'ring-1 ring-accent/30' : ''">
+            <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div class="max-w-3xl">
+                <p class="text-[11px] uppercase tracking-[0.22em] text-accent">Безопасность</p>
+                <h2 class="mt-2 text-2xl font-semibold text-white">Доступ в аккаунт</h2>
+                <p class="mt-2 text-sm leading-6 text-gray-400">По умолчанию показываем только статус доступа. Инструменты изменения email, телефона и пароля раскрываются отдельно.</p>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <span class="rounded-full border px-3 py-1 text-xs {% if phone_verified_at %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% else %}border-amber-400/20 bg-amber-500/10 text-amber-100{% endif %}">
+                  Телефон — {% if phone_verified_at %}подтверждён{% else %}не подтверждён{% endif %}
+                </span>
+                <span class="rounded-full border px-3 py-1 text-xs {% if profile.email_verified_at %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% else %}border-amber-400/20 bg-amber-500/10 text-amber-100{% endif %}">
+                  Email — {% if profile.email_verified_at %}подтверждён{% else %}не подтверждён{% endif %}
+                </span>
+                <span class="rounded-full border px-3 py-1 text-xs {% if has_password %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% else %}border-white/10 bg-white/5 text-gray-200{% endif %}">
+                  Пароль — {% if has_password %}установлен{% else %}не установлен{% endif %}
+                </span>
+              </div>
+            </div>
+
+            <div class="mt-6 grid gap-4 xl:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)]">
+              <section class="rounded-[1.5rem] border border-white/10 bg-dark-900/40 p-5">
+                <h3 class="text-lg font-semibold text-white">Состояние доступа</h3>
+                <div class="mt-5 space-y-3 text-sm">
+                  <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Статус аккаунта</p>
+                    <p class="mt-2 text-white">{{ account_status }}</p>
+                  </div>
+                  <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <div class="flex items-start justify-between gap-3">
+                      <div>
+                        <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Номер входа</p>
+                        <p class="mt-2 text-white">{{ phone_display }}</p>
+                      </div>
+                      <span class="rounded-full border px-3 py-1 text-xs {% if phone_verified_at %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% else %}border-amber-400/20 bg-amber-500/10 text-amber-100{% endif %}">
+                        {% if phone_verified_at %}Подтверждён{% else %}Не подтверждён{% endif %}
+                      </span>
+                    </div>
+                  </div>
+                  <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <div class="flex items-start justify-between gap-3">
+                      <div>
+                        <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Email</p>
+                        <p class="mt-2 break-all text-white">{{ primary_contact_email|default:"Не заполнен" }}</p>
+                      </div>
+                      <span class="rounded-full border px-3 py-1 text-xs {% if profile.email_verified_at %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% else %}border-amber-400/20 bg-amber-500/10 text-amber-100{% endif %}">
+                        {% if profile.email_verified_at %}Подтверждён{% else %}Не подтверждён{% endif %}
+                      </span>
+                    </div>
+                  </div>
+                  <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <div class="flex items-start justify-between gap-3">
+                      <div>
+                        <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Пароль</p>
+                        <p class="mt-2 text-white">{% if has_password %}Можно войти по паролю{% else %}Используется вход по SMS{% endif %}</p>
+                      </div>
+                      <span class="rounded-full border px-3 py-1 text-xs {% if has_password %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% else %}border-white/10 bg-dark-900/40 text-gray-200{% endif %}">
+                        {% if has_password %}Установлен{% else %}Не установлен{% endif %}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section class="rounded-[1.5rem] border border-white/10 bg-dark-900/40 p-5">
+                <div class="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 class="text-lg font-semibold text-white">{% if security_edit_mode %}Инструменты доступа открыты{% else %}Изменения скрыты{% endif %}</h3>
+                    <p class="mt-1 text-sm text-gray-400">Открывайте эту зону только когда действительно меняете входные данные.</p>
+                  </div>
+                  {% if security_edit_mode %}
+                    <a href="{% url 'accounts:profile_settings' %}#security" class="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs text-white transition hover:border-white/20 hover:bg-white/10">
+                      Закрыть
+                    </a>
+                  {% else %}
+                    <a href="{% url 'accounts:profile_settings' %}?edit_security=1#security" class="inline-flex items-center justify-center rounded-full bg-accent px-4 py-2 text-xs font-semibold text-dark-900 transition hover:bg-accent-hover">
+                      Редактировать
+                    </a>
+                  {% endif %}
+                </div>
+
+                {% if security_edit_mode %}
+                  <div class="mt-5 space-y-4">
+                    <div class="rounded-[1.5rem] border border-white/10 bg-white/5 p-5">
+                      <div class="flex flex-wrap items-center justify-between gap-3">
+                        <h4 class="text-base font-semibold text-white">Подтверждение email</h4>
+                        <span class="rounded-full border px-3 py-1 text-xs {% if profile.email_verified_at %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% else %}border-amber-400/20 bg-amber-500/10 text-amber-100{% endif %}">
+                          Email — {% if profile.email_verified_at %}подтверждён{% else %}не подтверждён{% endif %}
+                        </span>
+                      </div>
+                      <form method="post" class="mt-4 space-y-3" hx-boost="false">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="send_email_code">
+                        <div>
+                          <label for="{{ email_request_form.email.id_for_label }}" class="block text-sm text-gray-300">{{ email_request_form.email.label }}</label>
+                          <div class="mt-2">{{ email_request_form.email }}</div>
+                          {% if email_request_form.email.errors %}
+                            <p class="mt-1 text-sm text-red-400">{{ email_request_form.email.errors.0 }}</p>
+                          {% endif %}
+                        </div>
+                        <button type="submit" class="inline-flex items-center justify-center rounded-full bg-accent px-5 py-3 text-sm font-semibold text-dark-900 transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-60" {% if profile.email_verified_at %}disabled{% endif %}>
+                          {% if profile.email_verified_at %}Email уже подтверждён{% else %}Отправить письмо с кодом{% endif %}
+                        </button>
+                      </form>
+
+                      {% if pending_email_verification and not profile.email_verified_at %}
+                        <div class="mt-4 rounded-[1.25rem] border border-white/10 bg-dark-900/40 p-4">
+                          <p class="text-sm text-gray-300">Код отправлен на <span class="text-white">{{ pending_email_verification.email }}</span>.</p>
+                          <form method="post" class="mt-4 space-y-3" hx-boost="false">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="confirm_email_code">
+                            <div class="grid gap-4 md:grid-cols-2">
+                              <div>
+                                <label for="{{ email_confirm_form.email.id_for_label }}" class="block text-sm text-gray-300">{{ email_confirm_form.email.label }}</label>
+                                <div class="mt-2">{{ email_confirm_form.email }}</div>
+                                {% if email_confirm_form.email.errors %}
+                                  <p class="mt-1 text-sm text-red-400">{{ email_confirm_form.email.errors.0 }}</p>
+                                {% endif %}
+                              </div>
+                              <div>
+                                <label for="{{ email_confirm_form.code.id_for_label }}" class="block text-sm text-gray-300">{{ email_confirm_form.code.label }}</label>
+                                <div class="mt-2">{{ email_confirm_form.code }}</div>
+                                {% if email_confirm_form.code.errors %}
+                                  <p class="mt-1 text-sm text-red-400">{{ email_confirm_form.code.errors.0 }}</p>
+                                {% endif %}
+                              </div>
+                            </div>
+                            <button type="submit" class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white px-5 py-3 text-sm font-semibold text-dark-900 transition hover:bg-gray-100">
+                              Подтвердить email
+                            </button>
+                          </form>
+                        </div>
+                      {% endif %}
+                    </div>
+
+                    <div class="rounded-[1.5rem] border border-white/10 bg-white/5 p-5">
+                      <div class="flex flex-wrap items-center justify-between gap-3">
+                        <h4 class="text-base font-semibold text-white">Смена номера входа</h4>
+                        <span class="rounded-full border px-3 py-1 text-xs {% if phone_verified_at %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% else %}border-amber-400/20 bg-amber-500/10 text-amber-100{% endif %}">
+                          Телефон — {% if phone_verified_at %}подтверждён{% else %}не подтверждён{% endif %}
+                        </span>
+                      </div>
+                      <form method="post" class="mt-4 space-y-3" hx-boost="false">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="send_phone_code">
+                        <div>
+                          <label for="{{ phone_request_form.new_phone.id_for_label }}" class="block text-sm text-gray-300">{{ phone_request_form.new_phone.label }}</label>
+                          <div class="mt-2">{{ phone_request_form.new_phone }}</div>
+                          {% if phone_request_form.new_phone.errors %}
+                            <p class="mt-1 text-sm text-red-400">{{ phone_request_form.new_phone.errors.0 }}</p>
+                          {% endif %}
+                        </div>
+                        <button type="submit" class="inline-flex items-center justify-center rounded-full bg-accent px-5 py-3 text-sm font-semibold text-dark-900 transition hover:bg-accent-hover">
+                          Отправить код
+                        </button>
+                      </form>
+
+                      {% if pending_phone_change %}
+                        <div class="mt-4 rounded-[1.25rem] border border-white/10 bg-dark-900/40 p-4">
+                          <p class="text-sm text-gray-300">Код отправлен на <span class="text-white">{{ pending_phone_change }}</span>.</p>
+                          <form method="post" class="mt-4 space-y-3" hx-boost="false">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="confirm_phone_code">
+                            <div class="grid gap-4 md:grid-cols-2">
+                              <div>
+                                <label for="{{ phone_confirm_form.new_phone.id_for_label }}" class="block text-sm text-gray-300">{{ phone_confirm_form.new_phone.label }}</label>
+                                <div class="mt-2">{{ phone_confirm_form.new_phone }}</div>
+                                {% if phone_confirm_form.new_phone.errors %}
+                                  <p class="mt-1 text-sm text-red-400">{{ phone_confirm_form.new_phone.errors.0 }}</p>
+                                {% endif %}
+                              </div>
+                              <div>
+                                <label for="{{ phone_confirm_form.code.id_for_label }}" class="block text-sm text-gray-300">{{ phone_confirm_form.code.label }}</label>
+                                <div class="mt-2">{{ phone_confirm_form.code }}</div>
+                                {% if phone_confirm_form.code.errors %}
+                                  <p class="mt-1 text-sm text-red-400">{{ phone_confirm_form.code.errors.0 }}</p>
+                                {% endif %}
+                              </div>
+                            </div>
+                            <button type="submit" class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white px-5 py-3 text-sm font-semibold text-dark-900 transition hover:bg-gray-100">
+                              Подтвердить смену номера
+                            </button>
+                          </form>
+                        </div>
+                      {% endif %}
+                    </div>
+
+                    <div class="rounded-[1.5rem] border border-white/10 bg-white/5 p-5">
+                      <div class="flex flex-wrap items-center justify-between gap-3">
+                        <h4 class="text-base font-semibold text-white">Пароль</h4>
+                        <span class="rounded-full border px-3 py-1 text-xs {% if has_password %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% else %}border-white/10 bg-dark-900/40 text-gray-200{% endif %}">
+                          Пароль — {% if has_password %}установлен{% else %}не установлен{% endif %}
+                        </span>
+                      </div>
+                      <p class="mt-3 text-sm leading-6 text-gray-300">Если нужен вход по паролю, откройте безопасный сценарий восстановления и установки нового пароля.</p>
+                      <a href="{% url 'accounts:password_reset_request' %}" class="mt-4 inline-flex items-center justify-center rounded-full border border-white/10 bg-white px-5 py-3 text-sm font-semibold text-dark-900 transition hover:bg-gray-100">
+                        Установить или сбросить пароль
+                      </a>
+                    </div>
+                  </div>
+                {% else %}
+                  <div class="mt-5 rounded-[1.5rem] border border-dashed border-white/10 bg-white/5 p-5">
+                    <p class="text-sm leading-6 text-gray-300">Изменение email, телефона и пароля скрыто, пока вы только просматриваете настройки доступа.</p>
+                    <a href="{% url 'accounts:profile_settings' %}?edit_security=1#security" class="mt-4 inline-flex items-center justify-center rounded-full bg-accent px-5 py-3 text-sm font-semibold text-dark-900 transition hover:bg-accent-hover">
+                      Открыть инструменты доступа
+                    </a>
+                  </div>
+                {% endif %}
+              </section>
+            </div>
+          </section>
+
+          <section id="communication" class="rounded-[1.75rem] border border-white/10 bg-dark-800/90 p-6 transition md:p-7" x-bind:class="activeSectionId === 'communication' ? 'ring-1 ring-accent/30' : ''">
+            <div class="max-w-3xl">
+              <p class="text-[11px] uppercase tracking-[0.22em] text-accent">Связь</p>
+              <h2 class="mt-2 text-2xl font-semibold text-white">Каналы связи</h2>
+              <p class="mt-2 text-sm leading-6 text-gray-400">Основные контакты и сценарий связи с менеджером вынесены отдельно от настроек уведомлений.</p>
+            </div>
+
+            <div class="mt-6 grid gap-4 xl:grid-cols-3">
+              <section class="rounded-[1.5rem] border border-white/10 bg-dark-900/40 p-5">
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Основной контакт</p>
+                    <p class="mt-2 text-base font-semibold text-white">{{ phone_display }}</p>
+                    <p class="mt-2 break-all text-sm text-gray-400">{{ confirmed_email|default:primary_contact_email|default:"Email не добавлен" }}</p>
+                  </div>
+                  <span class="rounded-full border px-3 py-1 text-xs {% if phone_verified_at %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% else %}border-amber-400/20 bg-amber-500/10 text-amber-100{% endif %}">
+                    {% if phone_verified_at %}Телефон подтверждён{% else %}Телефон не подтверждён{% endif %}
+                  </span>
+                </div>
+              </section>
+
+              <section class="rounded-[1.5rem] border border-white/10 bg-dark-900/40 p-5">
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Резервный контакт</p>
+                    <p class="mt-2 text-base font-semibold text-white">{% if default_saved_address and default_saved_address.phone %}{{ default_saved_address.phone }}{% else %}Не добавлен{% endif %}</p>
+                    <p class="mt-2 break-all text-sm text-gray-400">{% if default_saved_address and default_saved_address.email %}{{ default_saved_address.email }}{% else %}Добавьте email или адрес доставки{% endif %}</p>
+                  </div>
+                  <span class="rounded-full border px-3 py-1 text-xs {% if default_saved_address %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% else %}border-white/10 bg-white/5 text-gray-200{% endif %}">
+                    {% if default_saved_address %}Адрес сохранён{% else %}Резерв не настроен{% endif %}
+                  </span>
+                </div>
+              </section>
+
+              <section class="rounded-[1.5rem] border border-white/10 bg-dark-900/40 p-5">
+                <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Как связываться менеджеру</p>
+                <p class="mt-2 text-base font-semibold text-white">Сначала телефон, затем email и страница контактов</p>
+                <p class="mt-3 text-sm leading-6 text-gray-300">Для быстрых вопросов используем подтверждённый телефон. Для документов и длинной переписки лучше подходит email.</p>
+                <a href="{% url 'contacts' %}" class="mt-4 inline-flex text-sm text-accent hover:text-accent-hover">Открыть контакты</a>
+              </section>
+            </div>
+          </section>
+
+          <section id="notifications" class="rounded-[1.75rem] border border-white/10 bg-dark-800/90 p-6 transition md:p-7" x-bind:class="activeSectionId === 'notifications' ? 'ring-1 ring-accent/30' : ''">
+            <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div class="max-w-3xl">
+                <p class="text-[11px] uppercase tracking-[0.22em] text-accent">Уведомления</p>
+                <h2 class="mt-2 text-2xl font-semibold text-white">Сервисные сообщения и подписки</h2>
+                <p class="mt-2 text-sm leading-6 text-gray-400">Настройки уведомлений вынесены в отдельную секцию, чтобы не смешивать их с каналами связи.</p>
+              </div>
+              <span class="inline-flex items-center rounded-full border px-3 py-1 text-xs {% if notification_preferences.sms_order_updates_enabled or notification_preferences.marketing_email_enabled or notification_preferences.back_in_stock_enabled %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% else %}border-white/10 bg-white/5 text-gray-200{% endif %}">
+                {% if notification_preferences.sms_order_updates_enabled or notification_preferences.marketing_email_enabled or notification_preferences.back_in_stock_enabled %}
+                  Есть активные настройки
+                {% else %}
+                  Используются настройки по умолчанию
+                {% endif %}
+              </span>
+            </div>
+
+            <div class="mt-6 grid gap-4 xl:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)]">
+              <section class="rounded-[1.5rem] border border-white/10 bg-dark-900/40 p-5">
+                <h3 class="text-lg font-semibold text-white">Текущее состояние</h3>
+                <div class="mt-5 space-y-3">
+                  <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <div class="flex items-start justify-between gap-3">
+                      <div>
+                        <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Статусы заказа</p>
+                        <p class="mt-2 text-white">SMS по ключевым этапам заказа</p>
+                      </div>
+                      <span class="rounded-full border px-3 py-1 text-xs {% if notification_preferences.sms_order_updates_enabled %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% else %}border-white/10 bg-dark-900/40 text-gray-200{% endif %}">
+                        {% if notification_preferences.sms_order_updates_enabled %}Включены{% else %}Выключены{% endif %}
+                      </span>
+                    </div>
+                  </div>
+                  <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <div class="flex items-start justify-between gap-3">
+                      <div>
+                        <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Маркетинг</p>
+                        <p class="mt-2 text-white">Письма о подборках и предложениях</p>
+                      </div>
+                      <span class="rounded-full border px-3 py-1 text-xs {% if notification_preferences.marketing_email_enabled %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% else %}border-white/10 bg-dark-900/40 text-gray-200{% endif %}">
+                        {% if notification_preferences.marketing_email_enabled %}Включён{% else %}Выключен{% endif %}
+                      </span>
+                    </div>
+                  </div>
+                  <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <div class="flex items-start justify-between gap-3">
+                      <div>
+                        <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Наличие товара</p>
+                        <p class="mt-2 text-white">Оповещения о возвращении товара в наличие</p>
+                      </div>
+                      <span class="rounded-full border px-3 py-1 text-xs {% if notification_preferences.back_in_stock_enabled %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% else %}border-white/10 bg-dark-900/40 text-gray-200{% endif %}">
+                        {% if notification_preferences.back_in_stock_enabled %}Включены{% else %}Выключены{% endif %}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section class="rounded-[1.5rem] border border-white/10 bg-dark-900/40 p-5">
+                <div class="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 class="text-lg font-semibold text-white">{% if notifications_edit_mode %}Редактирование уведомлений{% else %}Форма скрыта{% endif %}</h3>
+                    <p class="mt-1 text-sm text-gray-400">Настройка раскрывается отдельно и не мешает просмотру каналов связи.</p>
+                  </div>
+                  {% if notifications_edit_mode %}
+                    <a href="{% url 'accounts:profile_settings' %}#notifications" class="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs text-white transition hover:border-white/20 hover:bg-white/10">
+                      Отменить
+                    </a>
+                  {% else %}
+                    <a href="{% url 'accounts:profile_settings' %}?edit_notifications=1#notifications" class="inline-flex items-center justify-center rounded-full bg-accent px-4 py-2 text-xs font-semibold text-dark-900 transition hover:bg-accent-hover">
+                      Редактировать
+                    </a>
+                  {% endif %}
+                </div>
+
+                {% if notifications_edit_mode %}
+                  <div x-data="{ dirty: false }" @input="dirty = true" @change="dirty = true">
+                    <form id="notification-form" method="post" class="mt-5 space-y-4" hx-boost="false">
+                      {% csrf_token %}
+                      <input type="hidden" name="action" value="save_notification_preferences">
+
+                      <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                        <div class="flex items-start gap-3">
+                          {{ notification_form.sms_order_updates_enabled }}
+                          <div class="min-w-0">
+                            <label for="{{ notification_form.sms_order_updates_enabled.id_for_label }}" class="text-sm font-medium text-white">{{ notification_form.sms_order_updates_enabled.label }}</label>
+                            <p class="mt-1 text-sm leading-6 text-gray-400">Важные SMS по изменениям статуса заказа.</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                        <div class="flex items-start gap-3">
+                          {{ notification_form.marketing_email_enabled }}
+                          <div class="min-w-0">
+                            <label for="{{ notification_form.marketing_email_enabled.id_for_label }}" class="text-sm font-medium text-white">{{ notification_form.marketing_email_enabled.label }}</label>
+                            <p class="mt-1 text-sm leading-6 text-gray-400">Будущие проморассылки и подборки.</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+                        <div class="flex items-start gap-3">
+                          {{ notification_form.back_in_stock_enabled }}
+                          <div class="min-w-0">
+                            <label for="{{ notification_form.back_in_stock_enabled.id_for_label }}" class="text-sm font-medium text-white">{{ notification_form.back_in_stock_enabled.label }}</label>
+                            <p class="mt-1 text-sm leading-6 text-gray-400">Оповещения, когда товар снова появится в наличии.</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div class="flex flex-wrap gap-3 pt-2">
+                        <button type="submit" class="inline-flex items-center justify-center rounded-full bg-accent px-5 py-3 text-sm font-semibold text-dark-900 transition hover:bg-accent-hover">
+                          Сохранить настройки
+                        </button>
+                        <a href="{% url 'accounts:profile_settings' %}#notifications" class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm text-white transition hover:border-white/20 hover:bg-white/10">
+                          Отменить
+                        </a>
+                      </div>
+                    </form>
+
+                    <div x-cloak x-show="dirty" class="fixed inset-x-4 bottom-4 z-40 rounded-2xl border border-accent/30 bg-dark-900/95 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur md:left-[max(2rem,22rem)] md:right-8">
+                      <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                        <p class="text-sm text-white">Есть несохранённые изменения</p>
+                        <div class="flex flex-wrap gap-3">
+                          <button type="submit" form="notification-form" class="inline-flex items-center justify-center rounded-full bg-accent px-5 py-3 text-sm font-semibold text-dark-900 transition hover:bg-accent-hover">
+                            Сохранить
+                          </button>
+                          <a href="{% url 'accounts:profile_settings' %}#notifications" class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm text-white transition hover:border-white/20 hover:bg-white/10">
+                            Отменить
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                {% else %}
+                  <div class="mt-5 rounded-[1.5rem] border border-dashed border-white/10 bg-white/5 p-5">
+                    <p class="text-sm leading-6 text-gray-300">Настройки уведомлений скрыты до тех пор, пока вы не захотите их изменить.</p>
+                    <a href="{% url 'accounts:profile_settings' %}?edit_notifications=1#notifications" class="mt-4 inline-flex items-center justify-center rounded-full bg-accent px-5 py-3 text-sm font-semibold text-dark-900 transition hover:bg-accent-hover">
+                      Открыть настройки уведомлений
+                    </a>
+                  </div>
+                {% endif %}
+              </section>
+            </div>
+          </section>
+
+          <section id="service" class="rounded-[1.75rem] border border-white/10 bg-dark-800/90 p-6 transition md:p-7" x-bind:class="activeSectionId === 'service' ? 'ring-1 ring-accent/30' : ''">
+            <div class="max-w-3xl">
+              <p class="text-[11px] uppercase tracking-[0.22em] text-accent">Сервис</p>
+              <h2 class="mt-2 text-2xl font-semibold text-white">Документы, гарантии и поддержка</h2>
+              <p class="mt-2 text-sm leading-6 text-gray-400">Меньше мелких карточек: слева список материалов, справа одна крупная зона для обращения в поддержку.</p>
+            </div>
+
+            <div class="mt-6 grid gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
+              <section class="rounded-[1.5rem] border border-white/10 bg-dark-900/40 p-5">
+                <h3 class="text-lg font-semibold text-white">Документы и гарантийные материалы</h3>
+                <div class="mt-5 space-y-3">
+                  <a href="{% url 'orders:order_list' %}" class="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white transition hover:border-white/20 hover:bg-white/10">
+                    <span>
+                      <span class="block text-[11px] uppercase tracking-[0.22em] text-gray-500">Документы по заказам</span>
+                      <span class="mt-2 block">{% if orders_total %}Документы доступны в истории заказов{% else %}Появятся после первого заказа{% endif %}</span>
+                    </span>
+                    <span class="rounded-full border border-white/10 bg-dark-900/40 px-3 py-1 text-xs text-gray-300">{{ orders_total }}</span>
+                  </a>
+                  <a href="{% url 'sales_terms' %}" class="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white transition hover:border-white/20 hover:bg-white/10">
+                    <span>
+                      <span class="block text-[11px] uppercase tracking-[0.22em] text-gray-500">Оплата, доставка и гарантия</span>
+                      <span class="mt-2 block">Основные условия покупки и сервисной поддержки.</span>
+                    </span>
+                    <i data-lucide="shield-check" class="h-5 w-5 text-accent"></i>
+                  </a>
+                  <a href="{% url 'oferta' %}" class="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white transition hover:border-white/20 hover:bg-white/10">
+                    <span>
+                      <span class="block text-[11px] uppercase tracking-[0.22em] text-gray-500">Оферта и юридические документы</span>
+                      <span class="mt-2 block">Публичная оферта, политика конфиденциальности и условия обработки данных.</span>
+                    </span>
+                    <i data-lucide="file-text" class="h-5 w-5 text-accent"></i>
+                  </a>
+                  <a href="{% url 'privacy' %}" class="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-4 py-4 text-sm text-white transition hover:border-white/20 hover:bg-white/10">
+                    <span>
+                      <span class="block text-[11px] uppercase tracking-[0.22em] text-gray-500">Политика конфиденциальности</span>
+                      <span class="mt-2 block">Юридическая база для работы с персональными данными и аккаунтом.</span>
+                    </span>
+                    <i data-lucide="book-open" class="h-5 w-5 text-accent"></i>
+                  </a>
+                </div>
+              </section>
+
+              <section class="rounded-[1.5rem] border border-white/10 bg-dark-900/40 p-5">
+                <div class="rounded-[1.5rem] border border-accent/20 bg-accent/10 p-6">
+                  <p class="text-[11px] uppercase tracking-[0.22em] text-accent">Поддержка</p>
+                  <h3 class="mt-2 text-2xl font-semibold text-white">Нужна помощь?</h3>
+                  <p class="mt-3 text-sm leading-6 text-cyan-100">
+                    Вопросы по возвратам, гарантии, документам и сервису пока стартуют через менеджера. Внутренней истории обращений в кабинете ещё нет.
+                  </p>
+                  <a href="{% url 'contacts' %}" class="mt-5 inline-flex w-full items-center justify-center rounded-full bg-accent px-5 py-3 text-sm font-semibold text-dark-900 transition hover:bg-accent-hover">
+                    Создать обращение
+                  </a>
+                  <div class="mt-4 flex flex-wrap gap-3">
+                    <a href="{% url 'sales_terms' %}#sales-warranty" class="inline-flex items-center justify-center rounded-full border border-white/10 bg-dark-900/40 px-4 py-2 text-xs text-white transition hover:border-white/20 hover:bg-white/10">
+                      Гарантийные условия
+                    </a>
+                    <a href="{% url 'catalog:product_list' %}" class="inline-flex items-center justify-center rounded-full border border-white/10 bg-dark-900/40 px-4 py-2 text-xs text-white transition hover:border-white/20 hover:bg-white/10">
+                      Вернуться в каталог
+                    </a>
+                  </div>
+                </div>
+
+                <form method="post" action="{% url 'accounts:logout' %}" class="mt-5" hx-boost="false">
+                  {% csrf_token %}
+                  <button type="submit" class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm text-white transition hover:border-white/20 hover:bg-white/10">
+                    Выйти из аккаунта
+                  </button>
+                </form>
+              </section>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

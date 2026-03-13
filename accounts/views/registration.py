@@ -7,7 +7,7 @@ from django.views.decorators.http import require_http_methods
 from config.legal_consent import get_legal_bundle_version
 
 from ..forms import CompleteRegistrationForm
-from ..services import create_and_send_email_code
+from ..services import build_phone_display, create_and_send_email_code, ensure_profile, get_user_phone
 from .auth import _safe_redirect_url
 
 PROFILE_PENDING_ALERTS_SESSION_KEY = 'accounts:profile:pending_alerts'
@@ -20,10 +20,8 @@ def complete_registration_view(request):
     if not request.user.is_authenticated:
         from django.contrib.auth.views import redirect_to_login
         return redirect_to_login(request.get_full_path())
-    from ..models import Profile
 
-    Profile.objects.get_or_create(user=request.user, defaults={'phone': request.user.username})
-    profile = request.user.profile
+    profile = ensure_profile(request.user)
     if profile.contact_name and profile.privacy_agreed_at:
         next_path = request.GET.get('next', '')
         return redirect(_safe_redirect_url(next_path, 'home'))
@@ -46,7 +44,7 @@ def complete_registration_view(request):
                     })
                     request.session[PROFILE_PENDING_ALERTS_SESSION_KEY] = pending_alerts
                     request.session.modified = True
-                    return redirect(f"{reverse('accounts:profile')}#security")
+                    return redirect(f"{reverse('accounts:profile_settings')}#security")
                 form.add_error('email', error)
             else:
                 return redirect(_safe_redirect_url(next_url, 'home'))
@@ -55,11 +53,7 @@ def complete_registration_view(request):
             'contact_name': profile.contact_name or '',
             'email': request.user.email or '',
         }, current_user=request.user)
-    digits = profile.phone
-    if len(digits) == 10 and digits.isdigit():
-        phone_display = f'+7 ({digits[:3]}) {digits[3:6]}-{digits[6:8]}-{digits[8:10]}'
-    else:
-        phone_display = profile.phone
+    phone_display = build_phone_display(get_user_phone(request.user, profile)) or 'Телефон не указан'
     return render(request, 'accounts/complete_registration.html', {
         'form': form,
         'phone': phone_display,

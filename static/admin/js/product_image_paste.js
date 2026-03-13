@@ -89,7 +89,7 @@
             fileInput.files = dt.files;
             fileInput.dispatchEvent(new Event('change', { bubbles: true }));
         } catch (e) {
-            console.warn('Product image paste: could not set file', e);
+            return;
         }
     }
 

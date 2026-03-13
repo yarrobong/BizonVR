@@ -37,7 +37,7 @@
 - Подтверждение заказа
 
 ### 2.5 Платежная система
-- Интеграция с NowPayments
+- Оплата по СБП, банковской карте и через менеджера для юрлиц
 - Обработка платежей
 - Статусы заказов
 
@@ -51,7 +51,7 @@
   - HTMX (для SPA-подобного поведения)
   - Alpine.js (для интерактивности)
 - **Infrastructure:**
-  - Docker (контейнеризация)
+  - Gunicorn
   - Nginx (веб-сервер)
 
 ### 3.2 Архитектурные требования
@@ -86,10 +86,8 @@ bizon/
 ├── static/ (статические файлы)
 │   ├── css/ (Tailwind)
 │   └── js/ (Alpine.js, HTMX)
-├── docker/
-│   ├── Dockerfile
-│   ├── docker-compose.yml
-│   └── nginx/
+├── deploy/
+│   └── nginx.conf.example
 ├── database/
 │   └── migrations/
 ├── manage.py

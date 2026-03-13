@@ -8,6 +8,78 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer components {
+  .auth-switcher {
+    @apply grid grid-cols-2 gap-2 rounded-2xl border border-white/10 bg-dark-900/60 p-1.5;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.04),
+      0 18px 44px rgba(0, 0, 0, 0.22);
+  }
+
+  .auth-switcher__tab {
+    @apply relative rounded-[0.9rem] px-4 py-[0.62rem] text-sm font-semibold text-gray-300 transition duration-200 ease-out;
+  }
+
+  .auth-switcher__tab:hover {
+    @apply text-white;
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  .auth-switcher__tab:focus-visible {
+    @apply outline-none ring-2 ring-accent/50 ring-offset-2 ring-offset-dark-800;
+  }
+
+  .auth-switcher__tab.is-active {
+    @apply text-dark-900;
+    background:
+      linear-gradient(135deg, rgba(247, 251, 255, 0.96), rgba(231, 242, 248, 0.92));
+    box-shadow:
+      0 10px 22px rgba(0, 0, 0, 0.14),
+      0 0 0 1px rgba(255, 255, 255, 0.08);
+  }
+
+  .auth-switcher__tab.is-active::after {
+    content: "";
+    position: absolute;
+    inset: auto 24% 0.42rem;
+    height: 1px;
+    border-radius: 9999px;
+    background: rgba(0, 212, 255, 0.52);
+  }
+
+  .auth-mode-link {
+    @apply inline-flex items-center text-[13px] font-medium text-gray-300 transition duration-150 ease-out hover:text-white;
+  }
+
+  .auth-mode-link:focus-visible {
+    @apply rounded-md outline-none ring-2 ring-accent/50 ring-offset-2 ring-offset-dark-800;
+  }
+
+  .auth-helper-text {
+    @apply text-sm leading-6 text-gray-300;
+  }
+
+  .auth-subtle-text {
+    @apply text-[13px] leading-5 text-gray-400;
+  }
+
+  .auth-inline-error {
+    @apply mt-1.5 text-sm text-red-400;
+  }
+
+  .auth-consent {
+    @apply flex items-start gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-3;
+  }
+
+  .auth-consent__copy {
+    @apply text-[13px] leading-5 text-gray-300;
+  }
+
+  .auth-resend-link {
+    @apply inline-flex items-center text-[13px] font-medium text-gray-300 transition hover:text-white disabled:cursor-not-allowed disabled:opacity-50;
+  }
+}
+
 /* Fix для позиционирования сердечка избранного справа */
 article[id^="product-"] > div > div.absolute.top-2,
 article[id^="product-"] > div > div.absolute.top-3 {

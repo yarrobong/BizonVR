@@ -478,9 +478,13 @@
   }
 
   function formatMoney(value) {
-    const n = Number(value) || 0;
-    const rounded = Math.round(n);
-    return rounded.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    const numeric = Number(value);
+    const safe = Number.isFinite(numeric) ? Math.round((numeric + Number.EPSILON) * 100) / 100 : 0;
+    const isInteger = Math.abs(safe % 1) < 0.000001;
+    return new Intl.NumberFormat('ru-RU', {
+      minimumFractionDigits: isInteger ? 0 : 2,
+      maximumFractionDigits: 2
+    }).format(safe).replace(/[\u00A0\u202F]/g, ' ');
   }
 
   function doSearch() {
@@ -506,7 +510,7 @@
             item.innerHTML = imgHtml +
               '<div class="cp-item-info"><div class="cp-item-name">' + escapeHtml(p.name) + '</div>' +
               '<div class="cp-item-meta">' + escapeHtml(p.category) + '</div></div>' +
-              '<div class="cp-item-price">' + p.price + ' ₽</div>';
+              '<div class="cp-item-price">' + formatMoney(p.price) + ' ₽</div>';
             item.onclick = function() {
               addProduct(p);
               searchInput.value = '';

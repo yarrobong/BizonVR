@@ -8,6 +8,18 @@
   <meta name="description" content="{% block description %}Магазин VR оборудования, аттракционов и аксессуаров. Лучшие цены, гарантия качества, доставка по всей России.{% endblock %}">
   <link rel="canonical" href="https://bizonvr.ru{{ request.path }}">
   {% include "layout/_head_assets.html" %}
+  <script>
+    window.formatRub = function formatRub(value) {
+      const numeric = Number(value);
+      const safe = Number.isFinite(numeric) ? Math.round((numeric + Number.EPSILON) * 100) / 100 : 0;
+      const isInteger = Math.abs(safe % 1) < 0.000001;
+      const formatted = new Intl.NumberFormat('ru-RU', {
+        minimumFractionDigits: isInteger ? 0 : 2,
+        maximumFractionDigits: 2
+      }).format(safe).replace(/[\u00A0\u202F]/g, ' ');
+      return `${formatted} ₽`;
+    };
+  </script>
 </head>
 <body class="min-h-screen bg-dark-900 text-white font-sans preload"
       id="main-body"

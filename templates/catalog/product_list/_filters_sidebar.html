@@ -1,24 +1,29 @@
 <!-- Левая панель фильтров: только на десктопе, сразу применяются по клику -->
 <aside class="catalog-filters w-full hidden lg:block">
-  <div class="bg-dark-800 rounded-xl sticky top-24 flex flex-col">
-    <h3 class="text-xs font-bold text-white uppercase tracking-wider px-4 pt-4 pb-2 flex-shrink-0">Фильтры</h3>
-    <div class="filters-panel-scroll flex-1 min-h-0 px-4 pb-4 space-y-6">
-      {% include "catalog/_filters_main.html" with defer_category_apply=False %}
-
-      {% if not is_catalog_root %}
-      <a href="{% url 'catalog:product_list' %}"
-         class="flex w-full items-center justify-center gap-2 py-2.5 rounded-lg border border-dark-600 text-gray-400 hover:text-white hover:bg-dark-700 hover:border-dark-500 text-sm font-medium transition-colors">
-        <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
-        Сбросить фильтры
-      </a>
-      {% endif %}
-
+  <div class="filters-panel filters-panel--quick sticky top-24 flex flex-col">
+    <div class="filters-panel-header filters-panel-header--quick flex items-start justify-between gap-3">
+      <div class="min-w-0">
+        <h3 class="filters-panel-title">Быстрые фильтры</h3>
+        <p class="filters-panel-note">Категория, цена и ключевые параметры без лишнего шума.</p>
+      </div>
       <button type="button"
-              class="flex w-full items-center justify-center gap-2 py-2.5 rounded-lg bg-dark-700 hover:bg-dark-600 text-gray-300 hover:text-white text-sm font-medium transition-colors"
+              class="filter-ghost-button filter-ghost-button--quick"
               @click="filtersModalOpen = true">
         <i data-lucide="sliders-horizontal" class="w-4 h-4"></i>
-        Все фильтры
+        Все
       </button>
     </div>
+
+    <div class="filters-panel-body filters-panel-body--quick filters-panel-scroll">
+      {% include "catalog/product_list/_filters_summary.html" %}
+    </div>
+
+    {% if not is_catalog_root %}
+    <div class="filters-panel-footer filters-panel-footer--quick">
+      <a href="{% url 'catalog:product_list' %}" class="filter-secondary-link filter-secondary-link--inline">
+        Сбросить фильтры
+      </a>
+    </div>
+    {% endif %}
   </div>
 </aside>

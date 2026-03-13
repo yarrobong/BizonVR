@@ -1,7 +1,6 @@
 """
 Восстановление каталога из бэкапа (ZIP архив с JSON и изображениями).
 Запуск: python manage.py restore_catalog backup.zip [--clear]
-В Docker: docker compose exec web python manage.py restore_catalog backup.zip
 """
 import json
 import os

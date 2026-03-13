@@ -1,7 +1,6 @@
 """
 Синтетические данные для каталога: разделы, категории, товары, города, точки выдачи, остатки, теги.
 Запуск: python manage.py load_catalog_data
-В Docker: docker compose exec web python manage.py load_catalog_data
 """
 import random
 from decimal import Decimal

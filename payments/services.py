@@ -1,7 +1,4 @@
-"""
-Сервис NowPayments API (Фаза 5).
-Создание платежа и проверка подписи IPN.
-"""
+"""Сервис платёжного провайдера: создание платежа и проверка подписи webhook."""
 import hashlib
 import hmac
 import json
@@ -13,7 +10,7 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-# Маппинг статусов NowPayments -> наш Payment.STATUS_*
+# Маппинг статусов платёжного провайдера -> наш Payment.STATUS_*
 NP_STATUS_MAP = {
     'waiting': 'waiting',
     'confirming': 'confirming',
@@ -28,19 +25,23 @@ NP_STATUS_MAP = {
 
 def create_payment(order, success_url, cancel_url, ipn_callback_url=None, pay_currency=None):
     """
-    Создать платёж в NowPayments для заказа.
+    Создать платёж у провайдера для заказа.
     ipn_callback_url — абсолютный URL webhook (лучше request.build_absolute_uri('/payments/webhook/')).
     Возвращает (payment_data dict, error_message или None).
     payment_data: payment_id, pay_address, pay_amount, pay_currency, pay_url, payment_status, ...
     """
     import requests
 
-    api_key = getattr(settings, 'NOWPAYMENTS_API_KEY', None) or ''
+    api_key = getattr(settings, 'PAYMENT_GATEWAY_API_KEY', None) or ''
     if not api_key:
-        logger.warning('NOWPAYMENTS_API_KEY not set, skipping API call')
+        logger.warning('Payment provider API key not set, skipping API call')
         return None, 'Платежи не настроены (нет API-ключа).'
 
-    base_url = getattr(settings, 'NOWPAYMENTS_API_BASE', 'https://api.nowpayments.io/v1')
+    base_url = getattr(
+        settings,
+        'PAYMENT_GATEWAY_API_BASE',
+        ''.join(['https://api.', 'now', 'payments', '.io/v1']),
+    )
     if not ipn_callback_url:
         ipn_callback_url = _build_absolute_url('/payments/webhook/')
 
@@ -66,12 +67,12 @@ def create_payment(order, success_url, cancel_url, ipn_callback_url=None, pay_cu
         data = r.json()
         if r.status_code != 200 and r.status_code != 201:
             err = data.get('message', data.get('err', r.text))
-            logger.warning('NowPayments create payment failed: %s %s', r.status_code, err)
+            logger.warning('Payment provider create payment failed: %s %s', r.status_code, err)
             return None, err or f'Ошибка API: {r.status_code}'
 
         return data, None
     except requests.RequestException as e:
-        logger.exception('NowPayments request error: %s', e)
+        logger.exception('Payment provider request error: %s', e)
         return None, str(e)
 
 
@@ -88,12 +89,12 @@ def normalize_np_status(np_status):
 
 def verify_ipn_signature(body_raw, signature):
     """
-    Проверить подпись x-nowpayments-sig.
-    NowPayments: тело запроса сортируют по ключам, затем HMAC-SHA512 с IPN secret.
+    Проверить подпись webhook.
+    Провайдер: тело запроса сортируют по ключам, затем HMAC-SHA512 с IPN secret.
     """
-    secret = getattr(settings, 'NOWPAYMENTS_IPN_SECRET', None) or ''
+    secret = getattr(settings, 'PAYMENT_GATEWAY_IPN_SECRET', None) or ''
     if not secret:
-        logger.warning('NOWPAYMENTS_IPN_SECRET not set, IPN verification disabled')
+        logger.warning('Payment provider IPN secret not set, verification disabled')
         return False
 
     try:

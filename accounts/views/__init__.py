@@ -1,11 +1,21 @@
-from .auth import login_view, logout_view, resend_code_view, send_code_view, verify_code_view
+from .auth import (
+    login_view,
+    logout_view,
+    password_login_view,
+    register_view,
+    resend_code_view,
+    send_code_view,
+    send_email_login_code_view,
+    verify_code_view,
+    verify_email_login_view,
+)
 from .password_reset import (
     password_reset_confirm_view,
     password_reset_phone_verify_view,
     password_reset_request_view,
     password_reset_set_password_view,
 )
-from .profile import balance_history_view, profile_view
+from .profile import balance_history_view, profile_settings_view, profile_view
 from .registration import complete_registration_view
 
 __all__ = [
@@ -13,12 +23,17 @@ __all__ = [
     'complete_registration_view',
     'login_view',
     'logout_view',
+    'password_login_view',
+    'register_view',
     'password_reset_confirm_view',
     'password_reset_phone_verify_view',
     'password_reset_request_view',
     'password_reset_set_password_view',
+    'profile_settings_view',
     'profile_view',
     'resend_code_view',
     'send_code_view',
+    'send_email_login_code_view',
     'verify_code_view',
+    'verify_email_login_view',
 ]

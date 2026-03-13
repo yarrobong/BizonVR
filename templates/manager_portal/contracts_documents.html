@@ -1,0 +1,81 @@
+{% extends "manager_portal/base.html" %}
+
+{% block title %}Договоры: документы{% endblock %}
+
+{% block content %}
+  <div class="space-y-6">
+    <section class="manager-panel rounded-[1.75rem] p-6">
+      <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <p class="text-xs uppercase tracking-[0.24em] text-cyan-300">Registry</p>
+          <h2 class="mt-2 text-3xl font-semibold text-white">Реестр документов</h2>
+          <p class="mt-2 text-sm leading-6 text-slate-400">Общий список договоров и счетов внутри менеджерского кабинета. Все записи живут в общей базе проекта.</p>
+          <a href="/manager/contracts/app/documents/all/" class="mt-3 inline-flex text-sm text-cyan-300 hover:text-cyan-200">Внутренний route documents/all</a>
+        </div>
+        <a href="{% url 'manager_portal:contracts_create' %}" class="manager-create-action">Новый документ</a>
+      </div>
+      <form method="get" class="mt-6 grid gap-4 md:grid-cols-4">
+        {% include "manager_portal/_form_fields.html" with form=contracts_filter_form %}
+        <div class="flex items-end gap-3 md:col-span-4">
+          <button type="submit" class="rounded-xl border border-slate-700 px-4 py-3 text-sm text-slate-200 hover:bg-slate-800">Фильтровать</button>
+          <a href="{% url 'manager_portal:contracts_documents' %}" class="rounded-xl border border-slate-700 px-4 py-3 text-sm text-slate-400 hover:bg-slate-800">Сбросить</a>
+          <span class="manager-pill">{{ contract_document_total }} записей</span>
+        </div>
+      </form>
+    </section>
+
+    <section class="manager-panel rounded-[1.75rem] p-6">
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead class="text-left text-slate-500">
+            <tr>
+              <th class="pb-3 pr-4">Номер</th>
+              <th class="pb-3 pr-4">Название</th>
+              <th class="pb-3 pr-4">Контрагент</th>
+              <th class="pb-3 pr-4">Менеджер</th>
+              <th class="pb-3 pr-4">Заказ</th>
+              <th class="pb-3 pr-4">Статус</th>
+              <th class="pb-3 pr-4">Сумма</th>
+              <th class="pb-3">Дата</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-800">
+            {% for item in contract_documents %}
+              <tr>
+                <td class="py-3 pr-4">
+                  <a href="{% url 'manager_portal:contracts_detail' item.pk %}" class="font-medium text-white hover:text-cyan-300">{{ item.number }}</a>
+                </td>
+                <td class="py-3 pr-4">
+                  <div class="font-medium text-white">{{ item.title }}</div>
+                  <div class="mt-1 text-xs text-slate-500">{{ item.get_document_type_display }}</div>
+                </td>
+                <td class="py-3 pr-4 text-slate-300">{{ item.counterparty_display }}</td>
+                <td class="py-3 pr-4 text-slate-300">{{ item.responsible_manager.username|default:"—" }}</td>
+                <td class="py-3 pr-4 text-slate-300">
+                  {% if item.linked_order_id %}
+                    <a href="{% url 'manager_portal:order_detail' item.linked_order_id %}" class="text-cyan-300 hover:text-cyan-200">#{{ item.linked_order_id }}</a>
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+                <td class="py-3 pr-4 text-slate-300">{{ item.get_status_display }}</td>
+                <td class="py-3 pr-4 text-slate-300">
+                  {% if item.amount is not None %}
+                    {{ item.amount|currency_amount:item.currency }}
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+                <td class="py-3 text-slate-400">{{ item.issue_date|date:"d.m.Y" }}</td>
+              </tr>
+            {% empty %}
+              <tr>
+                <td colspan="8" class="py-8 text-slate-500">Документы не найдены.</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+{% endblock %}

@@ -2,27 +2,109 @@
 {% for ch_name, ch_values in filter_characteristics.items %}
 {% if ch_values|length > 1 %}
 {% with char_key="char_"|add:ch_name %}
-<div>
-  <div class="text-[10px] text-gray-500 uppercase mb-2">{{ ch_name }}</div>
-  <div class="flex flex-wrap gap-2">
+<div x-data="{ showAllValues: false }" class="filter-block filter-block--characteristic">
+  <div class="filter-block-title">{{ ch_name }}</div>
+  {% with current_value=char_filters|get_item:ch_name %}
+  {% if ch_values|length > 6 %}
+  <div class="filter-option-list">
     {% if defer_category_apply %}
     <button type="button"
-            @click="pendingFiltersUrl = '{% url 'catalog:product_list' %}{% filter_url_unset char_key %}'; mobileFiltersDirty = true"
-            class="inline-flex items-center text-sm py-1.5 px-3 rounded-full border transition-all {% if not char_filters|get_item:ch_name %}filter-selected{% else %}border-dark-600 text-gray-400 hover:text-white{% endif %}">Все</button>
-    {% for val in ch_values %}
+            @click="$dispatch('filters-url', '{% url 'catalog:product_list' %}{% filter_url_unset char_key %}'); $dispatch('filters-dirty')"
+            class="filter-option filter-option--list w-full text-left {% if not current_value %}filter-selected{% endif %}">
+      <span class="filter-option-main">Любое значение</span>
+    </button>
+    {% if current_value %}
     <button type="button"
-            @click="pendingFiltersUrl = '{% url 'catalog:product_list' %}{% filter_url_set char_key val %}'; mobileFiltersDirty = true"
-            class="inline-flex items-center text-sm py-1.5 px-3 rounded-full border transition-all {% if char_filters|get_item:ch_name == val %}filter-selected{% else %}border-dark-600 text-gray-400 hover:text-white{% endif %}">{{ val }}</button>
+            @click="$dispatch('filters-url', '{% url 'catalog:product_list' %}{% filter_url_set char_key current_value %}'); $dispatch('filters-dirty')"
+            class="filter-option filter-option--list filter-selected w-full text-left">
+      <span class="filter-option-main">{{ current_value }}</span>
+      {% if filter_characteristic_counts|get_dict_item:ch_name|get_dict_item:current_value %}
+      <span class="filter-option-meta">{{ filter_characteristic_counts|get_dict_item:ch_name|get_dict_item:current_value }}</span>
+      {% endif %}
+    </button>
+    {% endif %}
+    {% for val in ch_values %}
+    {% if val != current_value %}
+    <button type="button"
+            x-show="showAllValues || {{ forloop.counter }} <= 5"
+            @click="$dispatch('filters-url', '{% url 'catalog:product_list' %}{% filter_url_set char_key val %}'); $dispatch('filters-dirty')"
+            class="filter-option filter-option--list w-full text-left">
+      <span class="filter-option-main">{{ val }}</span>
+      {% if filter_characteristic_counts|get_dict_item:ch_name|get_dict_item:val %}
+      <span class="filter-option-meta">{{ filter_characteristic_counts|get_dict_item:ch_name|get_dict_item:val }}</span>
+      {% endif %}
+    </button>
+    {% endif %}
     {% endfor %}
     {% else %}
     <a href="{% url 'catalog:product_list' %}{% filter_url_unset char_key %}"
-       class="inline-flex items-center text-sm py-1.5 px-3 rounded-full border transition-all {% if not char_filters|get_item:ch_name %}filter-selected{% else %}border-dark-600 text-gray-400 hover:text-white{% endif %}">Все</a>
+       class="filter-option filter-option--list w-full text-left {% if not current_value %}filter-selected{% endif %}">
+      <span class="filter-option-main">Любое значение</span>
+    </a>
+    {% if current_value %}
+    <a href="{% url 'catalog:product_list' %}{% filter_url_set char_key current_value %}"
+       class="filter-option filter-option--list filter-selected w-full text-left">
+      <span class="filter-option-main">{{ current_value }}</span>
+      {% if filter_characteristic_counts|get_dict_item:ch_name|get_dict_item:current_value %}
+      <span class="filter-option-meta">{{ filter_characteristic_counts|get_dict_item:ch_name|get_dict_item:current_value }}</span>
+      {% endif %}
+    </a>
+    {% endif %}
     {% for val in ch_values %}
+    {% if val != current_value %}
     <a href="{% url 'catalog:product_list' %}{% filter_url_set char_key val %}"
-       class="inline-flex items-center text-sm py-1.5 px-3 rounded-full border transition-all {% if char_filters|get_item:ch_name == val %}filter-selected{% else %}border-dark-600 text-gray-400 hover:text-white{% endif %}">{{ val }}</a>
+       x-show="showAllValues || {{ forloop.counter }} <= 5"
+       class="filter-option filter-option--list w-full text-left">
+      <span class="filter-option-main">{{ val }}</span>
+      {% if filter_characteristic_counts|get_dict_item:ch_name|get_dict_item:val %}
+      <span class="filter-option-meta">{{ filter_characteristic_counts|get_dict_item:ch_name|get_dict_item:val }}</span>
+      {% endif %}
+    </a>
+    {% endif %}
     {% endfor %}
     {% endif %}
   </div>
+  {% if ch_values|length > 5 %}
+  <div class="filter-branch-action">
+    <button type="button"
+            class="filter-inline-link"
+            @click="showAllValues = !showAllValues"
+            x-text="showAllValues ? 'Свернуть' : 'Показать еще'">
+    </button>
+  </div>
+  {% endif %}
+  {% else %}
+  <div class="filter-chip-list">
+    {% if defer_category_apply %}
+    <button type="button"
+            @click="$dispatch('filters-url', '{% url 'catalog:product_list' %}{% filter_url_unset char_key %}'); $dispatch('filters-dirty')"
+            class="filter-chip {% if not current_value %}filter-selected{% endif %}">Все</button>
+    {% for val in ch_values %}
+    <button type="button"
+            @click="$dispatch('filters-url', '{% url 'catalog:product_list' %}{% filter_url_set char_key val %}'); $dispatch('filters-dirty')"
+            class="filter-chip {% if current_value == val %}filter-selected{% endif %}">
+      <span>{{ val }}</span>
+      {% if filter_characteristic_counts|get_dict_item:ch_name|get_dict_item:val %}
+      <span class="filter-chip-count">{{ filter_characteristic_counts|get_dict_item:ch_name|get_dict_item:val }}</span>
+      {% endif %}
+    </button>
+    {% endfor %}
+    {% else %}
+    <a href="{% url 'catalog:product_list' %}{% filter_url_unset char_key %}"
+       class="filter-chip {% if not current_value %}filter-selected{% endif %}">Все</a>
+    {% for val in ch_values %}
+    <a href="{% url 'catalog:product_list' %}{% filter_url_set char_key val %}"
+       class="filter-chip {% if current_value == val %}filter-selected{% endif %}">
+      <span>{{ val }}</span>
+      {% if filter_characteristic_counts|get_dict_item:ch_name|get_dict_item:val %}
+      <span class="filter-chip-count">{{ filter_characteristic_counts|get_dict_item:ch_name|get_dict_item:val }}</span>
+      {% endif %}
+    </a>
+    {% endfor %}
+    {% endif %}
+  </div>
+  {% endif %}
+  {% endwith %}
 </div>
 {% endwith %}
 {% endif %}

@@ -1,6 +1,18 @@
 from decimal import Decimal
+from urllib.parse import urlparse
 
 from django.utils.html import escape
+
+
+def _display_site_url(site_url):
+    value = (site_url or '').strip()
+    if not value:
+        return ''
+    parsed = urlparse(value if '://' in value else f'https://{value}')
+    if parsed.hostname in {'localhost', '127.0.0.1', '0.0.0.0'}:
+        return 'https://bizonvr.ru'
+    return value.rstrip('/')
+
 
 def build_commercial_proposal_html(
     rows,
@@ -140,6 +152,8 @@ def build_commercial_proposal_html(
         tr:hover td { background: transparent; }
     }
     '''
+    display_site_url = _display_site_url(site_url)
+
     lines = [
         '<!DOCTYPE html>',
         '<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">',
@@ -160,8 +174,8 @@ def build_commercial_proposal_html(
         lines.append(f'<p><span>Тел:</span> {escape(site_phone)}</p>')
     if site_email:
         lines.append(f'<p><span>Email:</span> {escape(site_email)}</p>')
-    if site_url:
-        lines.append(f'<p><span>Сайт:</span> {escape(site_url)}</p>')
+    if display_site_url:
+        lines.append(f'<p><span>Сайт:</span> {escape(display_site_url)}</p>')
     lines.append('</div></div>')
     lines.append('<div class="title-block">')
     lines.append('<h1>Коммерческое предложение</h1>')

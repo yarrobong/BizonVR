@@ -1,0 +1,84 @@
+{% extends "manager_portal/base.html" %}
+
+{% block title %}Бронь #{{ reservation.pk }}{% endblock %}
+
+{% block content %}
+  <div class="grid gap-6 xl:grid-cols-[1fr,24rem]">
+    <section class="space-y-6">
+      <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+        <h2 class="text-3xl font-semibold">Бронь #{{ reservation.pk }}</h2>
+        <p class="mt-2 text-slate-400">{{ reservation.client.name }} · {{ reservation.get_source_type_display }} · {{ reservation.get_status_display }}</p>
+        <p class="mt-2 text-sm text-slate-500">
+          Заказ:
+          {% if reservation.linked_order %}
+            <a href="{% url 'manager_portal:order_detail' reservation.linked_order.pk %}" class="text-cyan-300 hover:text-cyan-200">#{{ reservation.linked_order.pk }}</a>
+          {% else %}
+            —
+          {% endif %}
+        </p>
+      </div>
+
+      <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+        <h3 class="text-xl font-semibold">Позиции брони</h3>
+        <div class="mt-4 space-y-3">
+          {% for item in reservation.items.all %}
+            <div class="rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3">
+              {{ item.product.name }}{% if item.variant %} <span class="text-slate-500">/ {{ item.variant.name }}</span>{% endif %} · {{ item.quantity }} шт.
+              <p class="mt-1 text-sm text-slate-500">
+                Строка заказа:
+                {% if item.order_item %}
+                  <a href="{% url 'manager_portal:order_detail' item.order_item.order_id %}" class="text-cyan-300 hover:text-cyan-200">#{{ item.order_item.order_id }}</a>
+                {% else %}
+                  —
+                {% endif %}
+              </p>
+            </div>
+          {% empty %}
+            <p class="text-slate-400">Позиции пока не добавлены.</p>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+        <h3 class="text-xl font-semibold">Связанные отгрузки</h3>
+        <div class="mt-4 space-y-3">
+          {% for shipment in reservation.shipments.all %}
+            <a href="{% url 'manager_portal:shipment_detail' shipment.pk %}" class="block rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 hover:border-cyan-400/30">
+              Отгрузка #{{ shipment.pk }} · {{ shipment.get_status_display }}
+            </a>
+          {% empty %}
+            <p class="text-slate-400">По броне еще нет документов отгрузки.</p>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+        <h3 class="text-xl font-semibold">Добавить позицию</h3>
+        <form method="post" action="{% url 'manager_portal:reservation_add_item' reservation.pk %}" class="mt-4 space-y-4">
+          {% csrf_token %}
+          {% include "manager_portal/_form_fields.html" with form=item_form %}
+          <button class="rounded-xl bg-cyan-500 px-4 py-2 font-medium text-slate-950">Добавить позицию</button>
+        </form>
+      </div>
+    </section>
+
+    <section class="space-y-6">
+      <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+        <h3 class="text-xl font-semibold">Редактировать бронь</h3>
+        <form method="post" class="mt-4 space-y-4">
+          {% csrf_token %}
+          {% include "manager_portal/_form_fields.html" with form=form %}
+          <button class="rounded-xl bg-cyan-500 px-4 py-2 font-medium text-slate-950">Сохранить</button>
+        </form>
+      </div>
+      <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+        <h3 class="text-xl font-semibold">Смена статуса</h3>
+        <form method="post" action="{% url 'manager_portal:reservation_status_update' reservation.pk %}" class="mt-4 space-y-4">
+          {% csrf_token %}
+          {% include "manager_portal/_form_fields.html" with form=status_form %}
+          <button class="rounded-xl bg-cyan-500 px-4 py-2 font-medium text-slate-950">Обновить статус</button>
+        </form>
+      </div>
+    </section>
+  </div>
+{% endblock %}

@@ -1,7 +1,6 @@
 """
 Экспорт полного бэкапа каталога: все модели в JSON + изображения в ZIP архиве.
 Запуск: python manage.py backup_catalog [--output backup.zip]
-В Docker: docker compose exec web python manage.py backup_catalog
 """
 import json
 import os

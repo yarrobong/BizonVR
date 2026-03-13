@@ -1,13 +1,11 @@
-"""
-Модель платежа (Фаза 5). Интеграция NowPayments.
-"""
+"""Сущности платёжного провайдера для заказов."""
 from decimal import Decimal
 from django.db import models
 from django.conf import settings
 
 
 class Payment(models.Model):
-    """Платёж: заказ, внешний id NowPayments, сумма, статус, адрес/ссылка оплаты."""
+    """Платёж: заказ, внешний id провайдера, сумма, статус, реквизиты/ссылка оплаты."""
     STATUS_PENDING = 'pending'
     STATUS_WAITING = 'waiting'
     STATUS_CONFIRMING = 'confirming'
@@ -34,7 +32,7 @@ class Payment(models.Model):
         verbose_name='Заказ',
     )
     external_id = models.CharField(
-        'ID в NowPayments',
+        'ID у платёжного провайдера',
         max_length=64,
         blank=True,
         db_index=True,
@@ -51,19 +49,19 @@ class Payment(models.Model):
         default='usd',
     )
     pay_amount = models.DecimalField(
-        'Сумма к оплате (крипто)',
+        'Сумма у платёжного провайдера',
         max_digits=24,
         decimal_places=8,
         null=True,
         blank=True,
     )
     pay_currency = models.CharField(
-        'Криптовалюта',
+        'Валюта провайдера',
         max_length=20,
         blank=True,
     )
     pay_address = models.CharField(
-        'Адрес для оплаты',
+        'Платёжный адрес / реквизит',
         max_length=256,
         blank=True,
     )

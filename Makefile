@@ -1,114 +1,82 @@
-# BizonVR — управление Docker
-# Локальная разработка: make dev
-# Продакшен (сервер): make up
+# BizonVR — локальная разработка и обслуживание
+# Однократно: createdb bizon && cp .env.example .env
+# Затем: make install-local && make migrate-local && make run-local
 
-COMPOSE_BASE = docker compose -f docker-compose.yml
-COMPOSE_PROD = docker compose -f docker-compose.yml -f docker-compose.prod.yml
-
-.PHONY: dev up down ps logs logs-f restart build migrate load-data load-data-clear shell superuser collectstatic
-.PHONY: install-local run-local migrate-local load-data-local load-data-clear-local superuser-local
-
-# ========== Локально без Docker (нужен установленный PostgreSQL) ==========
-# Однократно: создайте БД (createdb bizon), скопируйте .env.example в .env, укажите DB_HOST=localhost DB_PORT=5432
-# make install-local   # venv + зависимости + tailwind
-# make migrate-local  # миграции
-# make run-local      # сервер на http://127.0.0.1:8000
 PY = .venv/bin/python
 PIP = .venv/bin/pip
+TEST_SETTINGS_MODULE = config.settings_test
+TEST_MANAGE = DJANGO_SETTINGS_MODULE=$(TEST_SETTINGS_MODULE) $(PY) manage.py
+
+.PHONY: install install-local migrate migrate-local run run-local load-data load-data-local
+.PHONY: load-data-clear load-data-clear-local shell superuser superuser-local collectstatic clear-cache check-single-db test test-shop test-manager test-manager-smoke
+.PHONY: clear-manager-data seed-manager-test-deal
+.DEFAULT_GOAL := run-local
+
+install: install-local
 
 install-local:
 	python3 -m venv .venv
 	$(PIP) install -r requirements.txt
 	npm install
 
+migrate: migrate-local
+
 migrate-local:
 	$(PY) manage.py migrate
+
+run: run-local
 
 run-local:
 	@[ -f static/css/tailwind.css ] || (npm run build:css || true)
 	$(PY) manage.py runserver
 
+load-data: load-data-local
+
 load-data-local:
 	$(PY) manage.py load_catalog_data
+
+load-data-clear: load-data-clear-local
 
 load-data-clear-local:
 	$(PY) manage.py load_catalog_data --clear
 
+superuser: superuser-local
+
 superuser-local:
 	$(PY) manage.py createsuperuser
 
-# ========== Локальная разработка в Docker (код монтируется, порт 8000) ==========
-# make или make dev — запуск для разработки
-dev:
-	$(COMPOSE_BASE) up -d
-
-# Алиас: make = make dev
-.DEFAULT_GOAL := dev
-
-dev-down:
-	$(COMPOSE_BASE) down
-
-dev-ps:
-	$(COMPOSE_BASE) ps
-
-# ========== Продакшен (образ, порт из .env PORT, по умолчанию 8001) ==========
-up:
-	$(COMPOSE_PROD) up -d
-
-down:
-	$(COMPOSE_PROD) down
-
-ps:
-	$(COMPOSE_PROD) ps
-
-logs:
-	$(COMPOSE_PROD) logs web --tail 100
-
-logs-f:
-	$(COMPOSE_PROD) logs -f web
-
-restart:
-	$(COMPOSE_PROD) restart web
-
-build:
-	$(COMPOSE_PROD) build --no-cache
-	$(COMPOSE_PROD) up -d
-
-pull:
-	git pull
-	$(COMPOSE_PROD) build --no-cache
-	$(COMPOSE_PROD) up -d
-
-# ========== Django (работает с dev или prod — тот же проект) ==========
-migrate:
-	$(COMPOSE_BASE) exec web python manage.py migrate
-
-# Миграции и данные в контейнере prod (когда запущен make up / make restart)
-migrate-prod:
-	$(COMPOSE_PROD) exec web python manage.py migrate
-load-data-prod:
-	$(COMPOSE_PROD) exec web python manage.py load_catalog_data
-shell-prod:
-	$(COMPOSE_PROD) exec web python manage.py shell
-
-# Сбросить кэш каталога (города/разделы), чтобы на сайте отобразились города из БД
-clear-cache-prod:
-	$(COMPOSE_PROD) exec web python manage.py clear_catalog_cache
-
-load-data:
-	$(COMPOSE_BASE) exec web python manage.py load_catalog_data
-
-load-data-clear:
-	$(COMPOSE_BASE) exec web python manage.py load_catalog_data --clear
-
 shell:
-	$(COMPOSE_BASE) exec web python manage.py shell
-
-superuser:
-	$(COMPOSE_BASE) exec web python manage.py createsuperuser
+	$(PY) manage.py shell
 
 collectstatic:
-	$(COMPOSE_BASE) exec web python manage.py collectstatic --noinput
+	$(PY) manage.py collectstatic --noinput
 
-recreate-web:
-	$(COMPOSE_PROD) up -d --force-recreate web
+clear-cache:
+	$(PY) manage.py clear_catalog_cache
+
+check-single-db:
+	$(PY) scripts/check_single_db_contract.py
+
+test:
+	$(TEST_MANAGE) test config catalog orders accounts payments manager_portal --keepdb --noinput
+
+test-shop:
+	$(TEST_MANAGE) test config catalog orders accounts payments --keepdb --noinput
+
+test-manager:
+	$(TEST_MANAGE) test manager_portal --keepdb --noinput
+
+test-manager-smoke:
+	$(TEST_MANAGE) test \
+		manager_portal.tests.ManagerPortalAccessTests.test_staff_entry_shows_internal_modules \
+		manager_portal.tests.ManagerPortalServiceTests.test_website_workflow_creates_client_deal_and_variant_aware_reservation \
+		manager_portal.tests.ManagerPortalViewTests.test_deal_list_overview_separates_kpis_queues_and_signals \
+		manager_portal.test_legacy_imports.LegacyImportCommandTests.test_single_db_contract_helper_passes_for_archived_layout \
+		--keepdb --noinput
+
+# Менеджерский портал: очистка и тестовые данные
+clear-manager-data:
+	$(PY) manage.py clear_manager_data --confirm
+
+seed-manager-test-deal:
+	$(PY) manage.py seed_manager_test_deal

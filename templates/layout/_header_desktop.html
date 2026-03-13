@@ -216,14 +216,14 @@
                           </div>
                           <span class="flex-1 min-w-0 text-gray-300 truncate" x-text="item.name"></span>
                           <span class="text-gray-400" x-text="item.quantity + ' шт.'"></span>
-                          <span class="font-medium text-white" x-text="Math.round(item.subtotal).toLocaleString('ru-RU') + ' ₽'"></span>
+                          <span class="font-medium text-white" x-text="window.formatRub(item.subtotal)"></span>
                         </li>
                       </template>
                     </ul>
                   </div>
                 </template>
                 <div class="flex items-center justify-between pt-2 border-t border-dark-600">
-                  <span class="text-sm text-gray-400">Итого: <span class="font-bold text-white" x-text="miniCartData ? Math.round(miniCartData.total).toLocaleString('ru-RU') + ' ₽' : ''"></span></span>
+                  <span class="text-sm text-gray-400">Итого: <span class="font-bold text-white" x-text="miniCartData ? window.formatRub(miniCartData.total) : ''"></span></span>
                   <div class="flex gap-2">
                     <a href="{% url 'catalog:cart' %}" @click="miniCartOpen = false" class="px-3 py-1.5 text-xs font-medium rounded-lg bg-dark-700 text-gray-300 hover:text-white transition-colors">В корзину</a>
                     <a href="{% url 'orders:checkout' %}" @click="miniCartOpen = false" class="px-3 py-1.5 text-xs font-bold rounded-lg bg-accent text-dark-900 hover:bg-accent-hover transition-colors">Оформить</a>

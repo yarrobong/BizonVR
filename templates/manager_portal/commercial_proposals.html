@@ -1,0 +1,255 @@
+{% extends "manager_portal/base.html" %}
+
+{% block title %}Генератор КП{% endblock %}
+
+{% block content %}
+  <div class="space-y-8">
+    <section class="manager-entry-hero manager-panel rounded-[1.75rem] p-6 lg:p-8">
+      <div class="manager-entry-hero-grid">
+        <div>
+          <p class="text-sm uppercase tracking-[0.24em] text-cyan-300">Module</p>
+          <h2 class="mt-3 text-4xl font-semibold lg:text-5xl">Генератор КП</h2>
+          <p class="mt-3 max-w-3xl text-slate-300">Подбор товаров, настройка количества и цены, затем выгрузка коммерческого предложения в PDF или HTML без захода в Django admin.</p>
+          <div class="mt-6 flex flex-wrap gap-2">
+            <span class="manager-pill"><strong>Статус</strong> Готово</span>
+            <span class="manager-pill"><strong>Источник</strong> Каталог сайта</span>
+          </div>
+        </div>
+        <div class="manager-entry-summary">
+          <div class="manager-entry-summary-card">
+            <p class="manager-dashboard-alert-label">Как использовать</p>
+            <div class="mt-4 space-y-3">
+              <div class="manager-dashboard-alert-row">
+                <span class="text-slate-300">Найти товары</span>
+                <strong>1</strong>
+              </div>
+              <div class="manager-dashboard-alert-row">
+                <span class="text-slate-300">Проверить цену и количество</span>
+                <strong>2</strong>
+              </div>
+              <div class="manager-dashboard-alert-row">
+                <span class="text-slate-300">Скачать PDF или HTML</span>
+                <strong>3</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="manager-proposal-shell">
+      <section class="manager-panel rounded-[1.75rem] p-6">
+        <div class="manager-proposal-search-row">
+          <div class="min-w-0 flex-1">
+            <label for="product-search" class="block text-sm font-medium text-slate-200">Добавить товар</label>
+            <div class="manager-proposal-search-wrap mt-3">
+              <input
+                type="text"
+                id="product-search"
+                class="manager-proposal-search-input"
+                placeholder="Введите название товара..."
+                autocomplete="off"
+              >
+              <div id="search-dropdown" class="manager-proposal-dropdown"></div>
+            </div>
+            <p class="mt-3 text-sm text-slate-400">Начните вводить название. После выбора товар появится в списке ниже, где можно скорректировать цену и количество.</p>
+          </div>
+          <button type="button" id="add-more-btn" class="rounded-xl border border-slate-700 px-4 py-3 text-sm text-slate-200 hover:bg-slate-800">Добавить ещё</button>
+        </div>
+      </section>
+
+      <section class="manager-panel rounded-[1.75rem] p-6">
+        <form method="post" id="commercial-proposal-form" hx-boost="false">
+          {% csrf_token %}
+          <div id="hidden-inputs"></div>
+          <div class="flex items-center justify-between gap-3 border-b border-slate-800/80 pb-4">
+            <div>
+              <p class="text-xs uppercase tracking-[0.22em] text-slate-500">Selection</p>
+              <h3 class="mt-2 text-2xl font-semibold">Выбранные товары</h3>
+            </div>
+          </div>
+
+          <div id="selected-products" class="mt-5">
+            <div id="empty-msg" class="manager-empty rounded-[1.5rem] p-8 text-center text-slate-400">Выберите товары через поиск выше.</div>
+          </div>
+
+          <div class="mt-6 flex flex-wrap gap-3">
+            <button type="submit" id="submit-pdf-btn" class="rounded-xl bg-cyan-500 px-4 py-3 text-sm font-medium text-slate-950 disabled:cursor-not-allowed disabled:opacity-50" name="export_format" value="pdf" disabled>Скачать PDF</button>
+            <button type="submit" id="submit-html-btn" class="rounded-xl border border-slate-700 px-4 py-3 text-sm text-slate-200 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50" name="export_format" value="html" disabled>Скачать HTML</button>
+            <a href="{% url 'manager_portal:entry' %}" class="rounded-xl border border-slate-700 px-4 py-3 text-sm text-slate-200 hover:bg-slate-800">Назад к модулям</a>
+          </div>
+        </form>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      const searchUrl = "{% url 'manager_portal:commercial_proposals_search' %}";
+      const container = document.getElementById('selected-products');
+      const emptyMsg = document.getElementById('empty-msg');
+      const dropdown = document.getElementById('search-dropdown');
+      const searchInput = document.getElementById('product-search');
+      const addMoreBtn = document.getElementById('add-more-btn');
+      const submitPdfBtn = document.getElementById('submit-pdf-btn');
+      const submitHtmlBtn = document.getElementById('submit-html-btn');
+      const hiddenInputs = document.getElementById('hidden-inputs');
+      const selected = new Map();
+
+      function debounce(fn, ms) {
+        let timer;
+        return function(...args) {
+          clearTimeout(timer);
+          timer = setTimeout(() => fn.apply(this, args), ms);
+        };
+      }
+
+      function escapeHtml(value) {
+        const div = document.createElement('div');
+        div.textContent = value;
+        return div.innerHTML;
+      }
+
+      function formatMoney(value) {
+        const numeric = Number(value);
+        const safe = Number.isFinite(numeric) ? Math.round((numeric + Number.EPSILON) * 100) / 100 : 0;
+        const isInteger = Math.abs(safe % 1) < 0.000001;
+        return new Intl.NumberFormat('ru-RU', {
+          minimumFractionDigits: isInteger ? 0 : 2,
+          maximumFractionDigits: 2
+        }).format(safe).replace(/[\u00A0\u202F]/g, ' ');
+      }
+
+      function updateButtons() {
+        const disabled = selected.size === 0;
+        submitPdfBtn.disabled = disabled;
+        submitHtmlBtn.disabled = disabled;
+        emptyMsg.style.display = disabled ? 'block' : 'none';
+      }
+
+      function addProduct(product) {
+        if (selected.has(product.id)) {
+          const card = document.querySelector('[data-product-id="' + product.id + '"]');
+          if (card) {
+            const qtyInput = card.querySelector('.manager-proposal-field-qty input');
+            qtyInput.value = parseInt(qtyInput.value || 1, 10) + 1;
+            qtyInput.dispatchEvent(new Event('input'));
+          }
+          return;
+        }
+        selected.set(product.id, product);
+        const card = document.createElement('div');
+        card.className = 'manager-proposal-card';
+        card.dataset.productId = product.id;
+        const imageHtml = product.image_url
+          ? '<img src="' + product.image_url.replace(/"/g, '&quot;') + '" alt="">'
+          : '<div class="manager-proposal-thumb-placeholder">Нет фото</div>';
+        card.innerHTML =
+          '<div class="manager-proposal-thumb">' + imageHtml + '</div>' +
+          '<div class="manager-proposal-info"><div class="manager-proposal-name">' + escapeHtml(product.name) + '</div><div class="manager-proposal-meta">' + escapeHtml(product.category) + ' · базовая: ' + formatMoney(product.price) + ' ₽</div></div>' +
+          '<div class="manager-proposal-field manager-proposal-field-qty"><label>Кол-во</label><input type="number" name="qty_' + product.id + '" value="1" min="1"></div>' +
+          '<div class="manager-proposal-field manager-proposal-field-price"><label>Цена за шт.</label><input type="number" name="price_' + product.id + '" value="' + product.price + '" min="0" step="0.01"></div>' +
+          '<div class="manager-proposal-sum">' + formatMoney(product.price) + ' ₽</div>' +
+          '<button type="button" class="manager-proposal-remove">Удалить</button>';
+
+        const qtyInput = card.querySelector('.manager-proposal-field-qty input');
+        const priceInput = card.querySelector('.manager-proposal-field-price input');
+        const sumNode = card.querySelector('.manager-proposal-sum');
+
+        function updateSum() {
+          const qty = parseInt(qtyInput.value || '1', 10) || 1;
+          const price = parseFloat(priceInput.value || '0') || 0;
+          sumNode.textContent = formatMoney(qty * price) + ' ₽';
+        }
+
+        qtyInput.addEventListener('input', updateSum);
+        priceInput.addEventListener('input', updateSum);
+        card.querySelector('.manager-proposal-remove').addEventListener('click', function() {
+          selected.delete(product.id);
+          card.remove();
+          updateButtons();
+        });
+
+        container.appendChild(card);
+        updateButtons();
+      }
+
+      function doSearch() {
+        const q = searchInput.value.trim();
+        if (q.length < 2) {
+          dropdown.classList.remove('show');
+          dropdown.innerHTML = '';
+          return;
+        }
+        fetch(searchUrl + '?q=' + encodeURIComponent(q))
+          .then(response => response.json())
+          .then(data => {
+            dropdown.innerHTML = '';
+            if (data.length === 0) {
+              dropdown.innerHTML = '<div class="manager-proposal-dropdown-item manager-proposal-dropdown-empty">Ничего не найдено</div>';
+            } else {
+              data.forEach(product => {
+                const item = document.createElement('div');
+                item.className = 'manager-proposal-dropdown-item';
+                const imageHtml = product.image_url
+                  ? '<img src="' + product.image_url.replace(/"/g, '&quot;') + '" alt="">'
+                  : '<div class="manager-proposal-thumb-placeholder-sm"></div>';
+                item.innerHTML =
+                  imageHtml +
+                  '<div><div class="manager-proposal-dropdown-name">' + escapeHtml(product.name) + '</div><div class="manager-proposal-dropdown-meta">' + escapeHtml(product.category) + '</div></div>' +
+                  '<div class="manager-proposal-dropdown-price">' + formatMoney(product.price) + ' ₽</div>';
+                item.addEventListener('click', function() {
+                  addProduct(product);
+                  searchInput.value = '';
+                  dropdown.classList.remove('show');
+                  dropdown.innerHTML = '';
+                  searchInput.focus();
+                });
+                dropdown.appendChild(item);
+              });
+            }
+            dropdown.classList.add('show');
+          })
+          .catch(() => {
+            dropdown.innerHTML = '<div class="manager-proposal-dropdown-item manager-proposal-dropdown-empty">Ошибка загрузки</div>';
+            dropdown.classList.add('show');
+          });
+      }
+
+      searchInput.addEventListener('input', debounce(doSearch, 300));
+      searchInput.addEventListener('focus', function() {
+        if (searchInput.value.trim().length >= 2) {
+          doSearch();
+        }
+      });
+      document.addEventListener('click', function(event) {
+        if (!searchInput.contains(event.target) && !dropdown.contains(event.target)) {
+          dropdown.classList.remove('show');
+        }
+      });
+      addMoreBtn.addEventListener('click', function() {
+        searchInput.focus();
+      });
+
+      document.getElementById('commercial-proposal-form').addEventListener('submit', function() {
+        hiddenInputs.innerHTML = '';
+        container.querySelectorAll('.manager-proposal-card').forEach(card => {
+          const id = card.dataset.productId;
+          const qtyInput = card.querySelector('.manager-proposal-field-qty input');
+          const qty = parseInt(qtyInput.value || '1', 10) || 1;
+          const productInput = document.createElement('input');
+          productInput.type = 'hidden';
+          productInput.name = 'products';
+          productInput.value = id;
+          hiddenInputs.appendChild(productInput);
+
+          const qtyHidden = document.createElement('input');
+          qtyHidden.type = 'hidden';
+          qtyHidden.name = 'qty_' + id;
+          qtyHidden.value = qty;
+          hiddenInputs.appendChild(qtyHidden);
+        });
+      });
+    })();
+  </script>
+{% endblock %}

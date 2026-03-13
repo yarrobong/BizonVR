@@ -1,0 +1,192 @@
+{% load catalog_tags %}
+<div class="filters-quick-stack">
+  <div class="filter-block filter-block--quick">
+    <div class="filter-block-title">Категория</div>
+    {% if current_section_effective %}
+    <div class="filter-path-chip">
+      <span>{{ section_name_map|get_item:current_section_effective }}</span>
+      {% if current_category %}
+      <span class="filter-path-separator">/</span>
+      <span>{{ category_name_map|get_item:current_category }}</span>
+      {% endif %}
+    </div>
+    {% endif %}
+    <div class="space-y-1.5">
+      <a href="{% url 'catalog:product_list' %}{% filter_url section=filter_clear category=filter_clear %}"
+         class="filter-option filter-option--compact w-full text-left {% if not current_section and not current_category %}filter-selected{% endif %}">
+        <span class="filter-option-main">Весь каталог</span>
+      </a>
+
+      {% if not current_section_effective %}
+      <div class="space-y-1">
+        {% for section in catalog_sections %}
+        {% if section.slug in section_slugs_to_show %}
+        <a href="{% url 'catalog:product_list' %}{% filter_url section=section.slug category=filter_clear %}"
+           class="filter-option filter-option--compact w-full text-left">
+          <span class="filter-option-main">{{ section.name }}</span>
+          {% if section_result_counts|get_item:section.slug %}
+          <span class="filter-option-meta">{{ section_result_counts|get_item:section.slug }}</span>
+          {% endif %}
+        </a>
+        {% endif %}
+        {% endfor %}
+      </div>
+      {% else %}
+      {% for section in catalog_sections %}
+      {% if section.slug in section_slugs_to_show and section.slug == current_section_effective %}
+      <div class="space-y-1.5">
+        <a href="{% url 'catalog:product_list' %}{% filter_url section=section.slug category=filter_clear %}"
+           class="filter-option filter-option--compact filter-selected w-full text-left">
+          <span class="filter-option-main">{{ section.name }}</span>
+          {% if section_result_counts|get_item:section.slug %}
+          <span class="filter-option-meta">{{ section_result_counts|get_item:section.slug }}</span>
+          {% endif %}
+        </a>
+
+        <div class="filter-branch filter-branch--compact">
+          {% for cat in section.categories.all %}
+          {% if cat.id in category_ids_to_show and current_category == cat.slug %}
+          <a href="{% url 'catalog:product_list' %}{% filter_url section=section.slug category=cat.slug %}"
+             class="filter-option filter-option--compact filter-option--step filter-selected">
+            <span class="filter-option-main">{{ cat.name }}</span>
+            {% if category_result_counts|get_item:cat.id %}
+            <span class="filter-option-meta">{{ category_result_counts|get_item:cat.id }}</span>
+            {% endif %}
+          </a>
+          {% endif %}
+          {% endfor %}
+
+          {% for cat in section.categories.all %}
+          {% if cat.id in category_ids_to_show and current_category != cat.slug and forloop.counter <= 3 %}
+          <a href="{% url 'catalog:product_list' %}{% filter_url section=section.slug category=cat.slug %}"
+             class="filter-option filter-option--compact filter-option--step">
+            <span class="filter-option-main">{{ cat.name }}</span>
+            {% if category_result_counts|get_item:cat.id %}
+            <span class="filter-option-meta">{{ category_result_counts|get_item:cat.id }}</span>
+            {% endif %}
+          </a>
+          {% endif %}
+          {% endfor %}
+        </div>
+
+        <button type="button"
+                class="filter-inline-link filter-inline-link--compact"
+                @click="filtersModalOpen = true">
+          Все категории
+        </button>
+      </div>
+      {% endif %}
+      {% endfor %}
+      {% endif %}
+    </div>
+  </div>
+
+  {% if filter_price_min is not None and filter_price_max is not None and filter_price_max > filter_price_min %}
+  <div class="filter-block filter-block--quick">
+    <div class="filter-block-title">Цена, ₽</div>
+    <form method="get"
+          action="{% url 'catalog:product_list' %}"
+          class="space-y-2"
+          @submit="normalizePriceInputs($el)">
+      <input type="hidden" name="category" value="{{ current_category }}">
+      <input type="hidden" name="section" value="{{ current_section }}">
+      <input type="hidden" name="tag" value="{{ current_tag }}">
+      <input type="hidden" name="sort" value="{{ current_sort }}">
+      <input type="hidden" name="q" value="{{ search_query }}">
+      {% for k, v in char_filters.items %}
+      <input type="hidden" name="char_{{ k }}" value="{{ v }}">
+      {% endfor %}
+      <div class="filter-price-panel filter-price-panel--quick"
+           data-filters-price
+           data-min="{{ filter_price_min }}"
+           data-max="{{ filter_price_max }}"
+           x-init="$nextTick(() => syncPriceRange($el))">
+        <div class="filter-price-grid filter-price-grid--compact">
+          <label class="filter-price-field filter-price-field--compact">
+            <span class="filter-price-label">От</span>
+            <input type="number" name="price_min" value="{{ price_min_filter }}" placeholder="{{ filter_price_min }}" min="{{ filter_price_min }}" max="{{ filter_price_max }}"
+                   inputmode="numeric"
+                   @input="syncPriceRange($el.closest('[data-filters-price]'), 'min-input'); queueQuickPriceSubmit($el.form)"
+                   @keydown.enter.prevent="submitQuickPrice($el.form)"
+                   class="filter-price-input">
+          </label>
+          <label class="filter-price-field filter-price-field--compact">
+            <span class="filter-price-label">До</span>
+            <input type="number" name="price_max" value="{{ price_max_filter }}" placeholder="{{ filter_price_max }}" min="{{ filter_price_min }}" max="{{ filter_price_max }}"
+                   inputmode="numeric"
+                   @input="syncPriceRange($el.closest('[data-filters-price]'), 'max-input'); queueQuickPriceSubmit($el.form)"
+                   @keydown.enter.prevent="submitQuickPrice($el.form)"
+                   class="filter-price-input">
+          </label>
+        </div>
+        <div class="filter-price-range">
+          <div class="filter-price-range-track"></div>
+          <div class="filter-price-range-active"></div>
+          <input type="range"
+                 min="{{ filter_price_min }}"
+                 max="{{ filter_price_max }}"
+                 value="{{ price_min_filter|default:filter_price_min }}"
+                 data-price-range="min"
+                 @input="syncPriceRange($el.closest('[data-filters-price]'), 'min-range'); queueQuickPriceSubmit($el.form.closest('form'))">
+          <input type="range"
+                 min="{{ filter_price_min }}"
+                 max="{{ filter_price_max }}"
+                 value="{{ price_max_filter|default:filter_price_max }}"
+                 data-price-range="max"
+                 @input="syncPriceRange($el.closest('[data-filters-price]'), 'max-range'); queueQuickPriceSubmit($el.form.closest('form'))">
+        </div>
+        <div class="filter-price-values">
+          <span data-price-current="min">{{ filter_price_min|rub }}</span>
+          <span data-price-current="max">{{ filter_price_max|rub }}</span>
+        </div>
+      </div>
+      <p class="filter-support-copy">Диапазон применяется автоматически.</p>
+      <button type="submit" class="hidden" tabindex="-1" aria-hidden="true"></button>
+    </form>
+  </div>
+  {% endif %}
+
+  {% if product_tags and product_tags|length > 1 %}
+  <div class="filter-block filter-block--quick">
+    <div class="filter-block-title">Теги</div>
+    <div class="filter-chip-list filter-chip-list--compact">
+      <a href="{% url 'catalog:product_list' %}{% filter_url tag=filter_clear category=current_category section=current_section sort=current_sort q=search_query price_min=price_min_filter price_max=price_max_filter %}"
+         class="filter-chip {% if not current_tag %}filter-selected{% endif %}">Все</a>
+      {% for tag in product_tags %}
+      <a href="{% url 'catalog:product_list' %}?tag={{ tag.slug }}{% if current_category %}&category={{ current_category }}{% endif %}{% if current_section %}&section={{ current_section }}{% endif %}&sort={{ current_sort }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if price_min_filter %}&price_min={{ price_min_filter }}{% endif %}{% if price_max_filter %}&price_max={{ price_max_filter }}{% endif %}"
+         class="filter-chip {% if current_tag == tag.slug %}filter-selected{% endif %}">
+        <span>{{ tag.name }}</span>
+        {% if tag.result_count %}
+        <span class="filter-chip-count">{{ tag.result_count }}</span>
+        {% endif %}
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if current_section_effective %}
+  {% for ch_name, ch_values in filter_characteristics.items %}
+  {% if ch_values|length > 1 and forloop.counter <= 2 %}
+  {% with char_key="char_"|add:ch_name %}
+  <div class="filter-block filter-block--quick">
+    <div class="filter-block-title">{{ ch_name }}</div>
+    <div class="filter-chip-list filter-chip-list--compact">
+      <a href="{% url 'catalog:product_list' %}{% filter_url_unset char_key %}"
+         class="filter-chip {% if not char_filters|get_item:ch_name %}filter-selected{% endif %}">Все</a>
+      {% for val in ch_values %}
+      <a href="{% url 'catalog:product_list' %}{% filter_url_set char_key val %}"
+         class="filter-chip {% if char_filters|get_item:ch_name == val %}filter-selected{% endif %}">
+        <span>{{ val }}</span>
+        {% if filter_characteristic_counts|get_dict_item:ch_name|get_dict_item:val %}
+        <span class="filter-chip-count">{{ filter_characteristic_counts|get_dict_item:ch_name|get_dict_item:val }}</span>
+        {% endif %}
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endwith %}
+  {% endif %}
+  {% endfor %}
+  {% endif %}
+</div>

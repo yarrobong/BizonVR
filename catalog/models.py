@@ -5,6 +5,8 @@ from django.db import models
 from django.urls import reverse
 from django.utils.text import slugify
 
+from config.formatting import format_currency_amount
+
 
 class CatalogSection(models.Model):
     """Раздел каталога в меню: Решения для VR бизнеса, VR-аттракционы и т.д."""
@@ -106,6 +108,13 @@ class Product(models.Model):
         verbose_name='Категория',
     )
     name = models.CharField('Название', max_length=300)
+    sku = models.CharField(
+        'SKU',
+        max_length=64,
+        blank=True,
+        db_index=True,
+        help_text='Используется только для товаров без вариантов. Для variant-first товаров задавайте SKU на уровне варианта.',
+    )
     slug = models.SlugField('Slug', max_length=300, unique=True, blank=True)
     description = models.TextField('Описание', blank=True)
     price = models.DecimalField('Цена', max_digits=12, decimal_places=2)
@@ -128,6 +137,28 @@ class Product(models.Model):
         max_length=100,
         blank=True,
         help_text='Например: Цвет, Размер, Модель. Показывается над выбором варианта.',
+    )
+    shipping_weight_kg = models.DecimalField(
+        'Вес отправки, кг',
+        max_digits=7,
+        decimal_places=3,
+        default=Decimal('0.500'),
+        help_text='Используется для расчёта доставки CDEK на один товар.',
+    )
+    shipping_length_cm = models.PositiveIntegerField(
+        'Длина упаковки, см',
+        default=25,
+        help_text='Используется для расчёта доставки CDEK на один товар.',
+    )
+    shipping_width_cm = models.PositiveIntegerField(
+        'Ширина упаковки, см',
+        default=20,
+        help_text='Используется для расчёта доставки CDEK на один товар.',
+    )
+    shipping_height_cm = models.PositiveIntegerField(
+        'Высота упаковки, см',
+        default=15,
+        help_text='Используется для расчёта доставки CDEK на один товар.',
     )
     views_count = models.PositiveIntegerField(
         'Просмотры',
@@ -173,6 +204,10 @@ class Product(models.Model):
             return first_extra.image
         return None
 
+    @property
+    def shipping_volume_cm3(self):
+        return self.shipping_length_cm * self.shipping_width_cm * self.shipping_height_cm
+
 
 class ProductVariant(models.Model):
     """Вариант товара: цвет, размер, модель и т.п. Своё фото и цена (опционально)."""
@@ -183,6 +218,7 @@ class ProductVariant(models.Model):
         verbose_name='Товар',
     )
     name = models.CharField('Название', max_length=100)
+    sku = models.CharField('SKU', max_length=64, blank=True, db_index=True)
     image = models.ImageField('Изображение', upload_to='products/', blank=True, null=True)
     price_override = models.DecimalField(
         'Цена (переопределение)',
@@ -377,7 +413,7 @@ class ProductBundleItem(models.Model):
         return Decimal('0')
 
     def __str__(self):
-        return f'{self.product.name} × {self.quantity} — {self.effective_price} ₽'
+        return f'{self.product.name} × {self.quantity} — {format_currency_amount(self.effective_price)}'
 
 
 class City(models.Model):

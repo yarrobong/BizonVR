@@ -25,7 +25,8 @@ class Profile(models.Model):
         on_delete=models.CASCADE,
         related_name='profile',
     )
-    phone = models.CharField('Телефон', max_length=20, unique=True, db_index=True)
+    phone = models.CharField('Телефон', max_length=20, unique=True, db_index=True, blank=True, null=True)
+    phone_verified_at = models.DateTimeField('Телефон подтверждён', null=True, blank=True)
     contact_name = models.CharField('Контактное лицо (ФИО)', max_length=255, blank=True)
     email_verified_at = models.DateTimeField('Email подтверждён', null=True, blank=True)
     privacy_agreed_at = models.DateTimeField('Согласие на обработку ПД', null=True, blank=True)
@@ -42,7 +43,30 @@ class Profile(models.Model):
         verbose_name_plural = 'Профили'
 
     def __str__(self):
-        return self.phone
+        return self.phone or self.user.username
+
+
+class NotificationPreference(models.Model):
+    """Пользовательские настройки каналов уведомлений."""
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='notification_preferences',
+        verbose_name='Пользователь',
+    )
+    sms_order_updates_enabled = models.BooleanField('SMS по статусам заказа', default=True)
+    marketing_email_enabled = models.BooleanField('Маркетинговые email', default=False)
+    back_in_stock_enabled = models.BooleanField('Уведомления о наличии', default=False)
+    created_at = models.DateTimeField('Создано', auto_now_add=True)
+    updated_at = models.DateTimeField('Обновлено', auto_now=True)
+
+    class Meta:
+        verbose_name = 'Настройки уведомлений'
+        verbose_name_plural = 'Настройки уведомлений'
+
+    def __str__(self):
+        return f'Уведомления: {self.user}'
 
 
 class CommercialProposalContact(models.Model):
@@ -77,6 +101,14 @@ class CommercialProposalContact(models.Model):
 class SavedAddress(models.Model):
     """Сохранённый адрес/сценарий доставки пользователя для повторных заказов."""
 
+    DELIVERY_CDEK_PVZ = 'cdek_pvz'
+    DELIVERY_CHOICES = [
+        (DELIVERY_CDEK_PVZ, 'CDEK до ПВЗ'),
+        ('courier', 'Курьером'),
+        ('pickup', 'Самовывоз'),
+        ('post', 'Почтой'),
+    ]
+
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -87,14 +119,11 @@ class SavedAddress(models.Model):
     recipient_name = models.CharField('Получатель', max_length=255)
     phone = models.CharField('Телефон', max_length=40)
     email = models.EmailField('Email', blank=True)
+    city = models.CharField('Город', max_length=120, blank=True)
     delivery_type = models.CharField(
         'Способ доставки',
         max_length=20,
-        choices=[
-            ('courier', 'Курьером'),
-            ('pickup', 'Самовывоз'),
-            ('post', 'Почтой'),
-        ],
+        choices=DELIVERY_CHOICES,
     )
     pickup_point = models.ForeignKey(
         'catalog.PickupPoint',
@@ -194,3 +223,28 @@ class EmailVerificationCode(models.Model):
 
     def __str__(self):
         return f'{self.email} ({self.user})'
+
+
+class EmailLoginCode(models.Model):
+    """Одноразовый код для входа по email и привязки guest-заказов."""
+
+    PURPOSE_LOGIN = 'login'
+    PURPOSE_ORDER_CLAIM = 'order_claim'
+    PURPOSE_CHOICES = [
+        (PURPOSE_LOGIN, 'Вход'),
+        (PURPOSE_ORDER_CLAIM, 'Привязка заказа'),
+    ]
+
+    email = models.EmailField('Email', db_index=True)
+    code = models.CharField('Код', max_length=10)
+    purpose = models.CharField('Назначение', max_length=20, choices=PURPOSE_CHOICES, default=PURPOSE_LOGIN)
+    created_at = models.DateTimeField('Создан', auto_now_add=True)
+    used_at = models.DateTimeField('Использован', null=True, blank=True, db_index=True)
+
+    class Meta:
+        verbose_name = 'Код входа по email'
+        verbose_name_plural = 'Коды входа по email'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.email} ({self.purpose})'

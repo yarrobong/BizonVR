@@ -1,0 +1,112 @@
+{% extends "manager_portal/base.html" %}
+
+{% block title %}Финансы: сделка{% endblock %}
+
+{% block content %}
+  <div class="space-y-8">
+    <section class="manager-panel rounded-3xl p-6">
+      <div class="flex items-center justify-between gap-4">
+        <div>
+          <p class="text-xs uppercase tracking-[0.22em] text-cyan-300">Deal Card</p>
+          <h2 class="mt-2 text-2xl font-semibold text-white">{{ finance_deal.contract_number|default:"Сделка" }}</h2>
+        </div>
+        <a href="{% url 'manager_portal:finance_deal_list' %}" class="rounded-xl border border-slate-700 px-4 py-2 text-xs text-slate-300 hover:bg-slate-800">К списку</a>
+      </div>
+      <div class="mt-5 grid gap-4 md:grid-cols-3">
+        <div class="rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
+          <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Выручка</p>
+          <p class="mt-2 text-2xl font-semibold text-white">{{ finance_deal.revenue }}</p>
+        </div>
+        <div class="rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
+          <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Маржа</p>
+          <p class="mt-2 text-2xl font-semibold text-white">{{ finance_deal.margin }}</p>
+        </div>
+        <div class="rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
+          <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Доля партнера</p>
+          <p class="mt-2 text-2xl font-semibold text-white">{{ finance_deal.partner_share_amount|rub }}</p>
+        </div>
+      </div>
+    </section>
+
+    {% if finance_missing_fields %}
+      <section class="manager-panel rounded-3xl border border-amber-400/30 bg-amber-400/10 p-6">
+        <p class="text-xs uppercase tracking-[0.22em] text-amber-100">Не хватает данных</p>
+        <div class="mt-4 flex flex-wrap gap-2">
+          {% for field in finance_missing_fields %}
+            <span class="manager-pill">{{ field }}</span>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+
+    <div class="grid gap-8 xl:grid-cols-[1.1fr_0.9fr]">
+      <section class="manager-panel rounded-3xl p-6">
+        <h3 class="text-xl font-semibold text-white">P&amp;L snapshot</h3>
+        <div class="mt-5 grid gap-3 text-sm text-slate-300">
+          <div class="flex items-start justify-between gap-4"><span class="text-slate-500">Ответственный</span><span class="text-right text-white">{{ finance_deal.responsible_manager.username|default:"—" }}</span></div>
+          <div class="flex items-start justify-between gap-4"><span class="text-slate-500">Связанный документ</span><span class="text-right text-white">{% if finance_deal.linked_document_id %}<a href="{% url 'manager_portal:contracts_detail' finance_deal.linked_document_id %}" class="text-cyan-300 hover:text-cyan-200">{{ finance_deal.linked_document.number|default:finance_deal.linked_document.title }}</a>{% else %}—{% endif %}</span></div>
+          <div class="flex items-start justify-between gap-4"><span class="text-slate-500">Способ оплаты</span><span class="text-right text-white">{{ finance_deal.payment_method|default:"—" }}</span></div>
+          <div class="flex items-start justify-between gap-4"><span class="text-slate-500">Статус оплаты</span><span class="text-right text-white">{{ finance_deal.payment_state|default:"—" }}</span></div>
+          <div class="flex items-start justify-between gap-4"><span class="text-slate-500">Ожидаемая маржа</span><span class="text-right text-white">{{ finance_deal.expected_margin_snapshot }}</span></div>
+          <div class="flex items-start justify-between gap-4"><span class="text-slate-500">Позиций в snapshot</span><span class="text-right text-white">{{ finance_snapshot.items|length|default:"0" }}</span></div>
+        </div>
+        {% if finance_snapshot.expense_hints %}
+          <div class="mt-5 flex flex-wrap gap-2">
+            {% for hint in finance_snapshot.expense_hints %}
+              <span class="manager-pill">{{ hint }}</span>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </section>
+
+      <section class="manager-panel rounded-3xl p-6">
+        <h3 class="text-xl font-semibold text-white">Редактирование сделки</h3>
+        <form method="post" class="mt-5 grid gap-4">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="update_deal">
+          {% include "manager_portal/_form_fields.html" with form=finance_deal_form %}
+          <button type="submit" class="rounded-xl bg-cyan-400 px-4 py-3 text-sm font-semibold text-slate-950">Сохранить изменения</button>
+        </form>
+      </section>
+      <section class="manager-panel rounded-3xl p-6">
+        <h3 class="text-xl font-semibold text-white">Добавить расход по сделке</h3>
+        <form method="post" class="mt-5 grid gap-4">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="add_expense">
+          {% include "manager_portal/_form_fields.html" with form=finance_expense_form %}
+          <button type="submit" class="rounded-xl bg-cyan-400 px-4 py-3 text-sm font-semibold text-slate-950">Добавить расход</button>
+        </form>
+      </section>
+    </div>
+
+    <section class="manager-panel rounded-3xl p-6">
+      <h3 class="text-xl font-semibold text-white">Расходы по сделке</h3>
+      <div class="mt-5 overflow-x-auto">
+        <table class="min-w-full text-sm text-slate-300">
+          <thead class="text-left text-xs uppercase tracking-[0.18em] text-slate-500">
+            <tr>
+              <th class="pb-3 pr-4">Дата</th>
+              <th class="pb-3 pr-4">Сторона</th>
+              <th class="pb-3 pr-4">Категория</th>
+              <th class="pb-3 pr-4">Сумма</th>
+              <th class="pb-3 pr-4">Комментарий</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for expense in finance_deal_expenses %}
+              <tr class="border-t border-slate-800">
+                <td class="py-3 pr-4">{{ expense.date }}</td>
+                <td class="py-3 pr-4">{{ expense.get_expense_side_display }}</td>
+                <td class="py-3 pr-4">{{ expense.category.name }}</td>
+                <td class="py-3 pr-4">{{ expense.amount|rub }}</td>
+                <td class="py-3 pr-4">{{ expense.comment|default:"—" }}</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="5" class="py-4 text-slate-500">Расходов по сделке пока нет.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+{% endblock %}

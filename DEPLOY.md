@@ -1,74 +1,40 @@
 # Деплой на сервер
 
-Пошаговая подготовка и выкладка проекта на продакшен (Docker + Nginx).
+Пошаговая подготовка и выкладка проекта на продакшен через `venv`, Gunicorn, systemd и Nginx.
 
-**В документе явно указано, что делать локально (на своей машине) и что — на сервере.**
-
----
+Активный runtime в продакшене только один: Django BizonVR. Единственная рабочая БД проекта — PostgreSQL из `DATABASES["default"]`. Каталог `legacy` не деплоится как отдельный сервис и используется только как архив источников для импорт-команд.
 
 ## Требования на сервере
 
-- Docker и Docker Compose (v2)
-- Nginx (для HTTPS и раздачи статики/медиа)
-- Домен bizonvr.ru, направленный на IP сервера
+- Python 3.12+ и `python3-venv`
+- PostgreSQL
+- Nginx
+- Certbot
+- Домен `bizonvr.ru`, направленный на IP сервера
 
 ### Cloud-init при создании сервера
 
-Перед первым деплоем можно один раз подготовить сервер через **Cloud-init**: при создании VPS в панели облака (Hetzner, Yandex Cloud, DigitalOcean, Selectel и т.д.) в поле **User data** / **Cloud-init** / **Скрипт инициализации** вставьте содержимое файла **`deploy/cloud-init.yml`** из репозитория.
+Перед первым деплоем можно подготовить VPS через `deploy/cloud-init.yml`. Файл устанавливает Python, PostgreSQL, Nginx и Certbot, затем включает нужные сервисы.
 
-Это установит при первом запуске сервера:
+## Локально
 
-- обновление пакетов;
-- Docker и Docker Compose (официальный скрипт);
-- Nginx;
-- Certbot (Let's Encrypt);
-- таймзону Europe/Moscow.
-
-После загрузки сервера подключайтесь по SSH и выполняйте шаги из раздела «На сервере» ниже (клонирование репозитория, `.env`, `docker compose up`). Файл `deploy/cloud-init.yml` можно скопировать из репозитория или из этой папки после клонирования.
-
----
-
-# Локально (на своей машине)
-
-## 1. Подготовка репозитория
-
-Убедитесь, что код запушен в GitHub:
+Перед выкладкой убедитесь, что изменения запушены:
 
 ```bash
 git add .
-git commit -m "Prepare for deploy"
+git commit -m "Update deploy"
 git push origin main
 ```
 
-Репозиторий: https://github.com/yarrobong/BizonVR.git
-
-## 2. (Опционально) Сгенерировать SECRET_KEY для сервера
-
-Скопируйте вывод команды — вставите в `.env` на сервере:
+При необходимости сгенерируйте новый `SECRET_KEY`:
 
 ```bash
 python3 -c "import secrets; print(secrets.token_urlsafe(50))"
 ```
 
-## 3. При обновлении деплоя — только push
+## На сервере
 
-После изменений в коде:
-
-```bash
-git add .
-git commit -m "Update"
-git push origin main
-```
-
-Дальше на сервере выполните шаги из раздела «Обновление деплоя» ниже.
-
----
-
-# На сервере
-
-Подключитесь по SSH к серверу и выполняйте команды ниже там.
-
-## 1. Первый раз: клонирование и каталог
+### 1. Клонирование репозитория
 
 ```bash
 cd /opt
@@ -76,193 +42,186 @@ sudo git clone https://github.com/yarrobong/BizonVR.git
 cd BizonVR
 ```
 
-## 2. Создание .env (один раз, не коммитить)
+### 2. База данных PostgreSQL
+
+Если БД и пользователь ещё не созданы:
+
+```bash
+sudo -u postgres psql <<'SQL'
+CREATE USER bizon WITH PASSWORD 'change-me';
+CREATE DATABASE bizon OWNER bizon;
+SQL
+```
+
+### 3. `.env`
 
 ```bash
 cp .env.example .env
 nano .env
 ```
 
-**Обязательные переменные для продакшена:**
+Минимум для продакшена:
 
 ```env
-SECRET_KEY=0TN7p13vbV1M6rywLTNSbguOWrAN_Qpwcd61FVALevMdkwk4t9mSvWzVHr7OPKFmf5M
+SECRET_KEY=replace-me
 DEBUG=False
 ALLOWED_HOSTS=bizonvr.ru,www.bizonvr.ru
 CSRF_TRUSTED_ORIGINS=https://bizonvr.ru,https://www.bizonvr.ru
-USE_HTTPS=true
+USE_HTTPS=True
 SITE_URL=https://bizonvr.ru
 
-DB_ENGINE=django.db.backends.postgresql
 DB_NAME=bizon
-DB_USER=postgres
-DB_PASSWORD=надёжный-пароль-для-бд
-DB_HOST=db
+DB_USER=bizon
+DB_PASSWORD=change-me
+DB_HOST=127.0.0.1
 DB_PORT=5432
 
-GUNICORN_WORKERS=2
 PORT=8000
+GUNICORN_WORKERS=2
 ```
 
-По необходимости: `SMS_API_KEY`, `NOWPAYMENTS_API_KEY`, `NOWPAYMENTS_IPN_SECRET`.
+По необходимости заполните `EXOLVE_*`, `PAYMENT_GATEWAY_*`, `TURNSTILE_*`, `EMAIL_*`.
 
-Сгенерировать SECRET_KEY прямо на сервере (если не сделали локально):
+### 4. Виртуальное окружение и зависимости
 
 ```bash
-python3 -c "import secrets; print(secrets.token_urlsafe(50))"
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+npm install
+npm run build:css
 ```
 
-## 3. Запуск приложения (Docker)
-
-Сборка и запуск в режиме продакшена:
+### 5. Проверка single-db контракта
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml build --no-cache
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+make check-single-db
 ```
 
-Проверка:
+### 6. Миграции и статика
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
+.venv/bin/python manage.py migrate
+.venv/bin/python manage.py collectstatic --noinput
+```
+
+Создание суперпользователя:
+
+```bash
+.venv/bin/python manage.py createsuperuser
+```
+
+### 7. Gunicorn через systemd
+
+Создайте unit `/etc/systemd/system/bizonvr.service`:
+
+```ini
+[Unit]
+Description=BizonVR Gunicorn
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/BizonVR
+EnvironmentFile=/opt/BizonVR/.env
+ExecStart=/bin/sh -c '/opt/BizonVR/.venv/bin/gunicorn --workers ${GUNICORN_WORKERS:-2} --bind 127.0.0.1:${PORT:-8000} config.wsgi:application'
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Если сервис запускается от `www-data`, заранее выставьте права:
+
+```bash
+sudo chown -R www-data:www-data /opt/BizonVR
+```
+
+Запуск и проверка:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable bizonvr
+sudo systemctl start bizonvr
+sudo systemctl status bizonvr
 curl -I http://127.0.0.1:8000/
 ```
 
-Создание суперпользователя (один раз):
+### 8. Nginx
 
-```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml exec web python manage.py createsuperuser
-```
-
-Миграции выполняются автоматически при старте контейнера (entrypoint).
-
-## 4. Nginx
-
-Установка (если ещё нет):
-
-```bash
-sudo apt install nginx
-```
-
-Скопировать пример конфигурации (уже подставлен домен bizonvr.ru):
+Скопируйте пример конфига:
 
 ```bash
 sudo cp deploy/nginx.conf.example /etc/nginx/sites-available/bizonvr
-sudo ln -s /etc/nginx/sites-available/bizonvr /etc/nginx/sites-enabled/
+sudo ln -s /etc/nginx/sites-available/bizonvr /etc/nginx/sites-enabled/bizonvr
+sudo rm -f /etc/nginx/sites-enabled/default
 ```
 
-Если нужны правки (пути к сертификатам после certbot):
+Проверьте, что `proxy_pass` указывает на `127.0.0.1:8000`, а `alias` для `/static/` и `/media/` ссылаются на:
 
-- `ssl_certificate` / `ssl_certificate_key` — после certbot будут в `/etc/letsencrypt/live/bizonvr.ru/`
+- `/opt/BizonVR/staticfiles/`
+- `/opt/BizonVR/media/`
 
-Минимальный вариант Nginx (всё через Gunicorn, статика через WhiteNoise):
-
-```nginx
-server {
-    listen 80;
-    server_name bizonvr.ru www.bizonvr.ru;
-    return 301 https://$server_name$request_uri;
-}
-server {
-    listen 443 ssl http2;
-    server_name bizonvr.ru www.bizonvr.ru;
-    ssl_certificate     /etc/letsencrypt/live/bizonvr.ru/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/bizonvr.ru/privkey.pem;
-    client_max_body_size 20M;
-    location / {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-```
-
-Проверка и перезагрузка Nginx:
+Затем:
 
 ```bash
 sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-## 5. SSL (Let's Encrypt)
+### 9. HTTPS
 
 ```bash
-sudo apt install certbot python3-certbot-nginx
 sudo certbot --nginx -d bizonvr.ru -d www.bizonvr.ru
 ```
 
-Certbot сам подставит пути к сертификатам в Nginx.
+## Обновление деплоя
 
----
-
-## Обновление деплоя (на сервере)
-
-После того как вы сделали `git push` локально:
+После `git push` локально:
 
 ```bash
 cd /opt/BizonVR
-git pull
-docker compose -f docker-compose.yml -f docker-compose.prod.yml build --no-cache
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+sudo git pull
+.venv/bin/pip install -r requirements.txt
+npm install
+npm run build:css
+.venv/bin/python scripts/check_single_db_contract.py
+.venv/bin/python manage.py migrate
+.venv/bin/python manage.py collectstatic --noinput
+sudo systemctl restart bizonvr
+sudo systemctl reload nginx
 ```
 
-Миграции выполняются при старте контейнера.
+## Медиафайлы
 
----
+- `media/hero/` хранит фоновые изображения hero-блока и может лежать в git.
+- `media/products/` содержит пользовательские загрузки из админки и в git не хранится.
 
-## Медиафайлы (media/)
+Рекомендуемый бэкап:
 
-**Текущая схема:** `./media` монтируется с хоста (bind mount). В каталоге:
-- `media/hero/` — фоны hero-слайдов (в git)
-- `media/products/` — фото товаров (загрузки через админку, **не в git**)
-
-**Почему не Docker volume:** Раньше использовался named volume `media_volume`. При смене конфигурации (например, переход на bind mount) данные в volume оставались «заперты» — контейнер переставал их видеть. Hero-фото из git не попадали в пустой volume. Поэтому используем bind mount: всё лежит на хосте, `git pull` подтягивает hero, загрузки товаров сохраняются в том же каталоге.
-
-**Бэкап media (рекомендуется):**
 ```bash
 tar -czvf media-backup-$(date +%Y%m%d).tar.gz -C /opt/BizonVR media/
 ```
 
-**Миграция с volume на bind mount** (если когда-то вернёте volume и потом снова перейдёте):
-```bash
-cd /opt/BizonVR
-# Имя volume: docker volume ls | grep media
-docker run --rm -v ИМЯ_VOLUME:/from -v $(pwd)/media:/to alpine sh -c "cp -a /from/. /to/"
-```
-
----
-
 ## Частые проблемы
 
-**Cross-Origin-Opener-Policy (COOP) ignored** — предупреждение появляется при доступе по HTTP. Решение: использовать HTTPS (см. раздел про SSL). COOP работает только для надёжных origin (HTTPS, localhost).
+**Cross-Origin-Opener-Policy ignored**: предупреждение при HTTP. Для продакшена нужен HTTPS.
 
-**favicon.ico 404** — иконка доступна по `/favicon.ico` (редирект на SVG) и в шапке страницы. Убедитесь, что `collectstatic` выполнен и `STATIC_URL` настроен.
+**`favicon.ico` 404**: проверьте, что выполнен `collectstatic`.
 
-**500 на странице товара** — проверьте логи (`docker compose logs web`). Часто связано с отсутствующими файлами изображений в `media/` или устаревшей схемой БД (миграции).
+**500 на странице товара**: проверьте `sudo journalctl -u bizonvr -n 200` и наличие файлов в `media/`.
 
----
+## Чек-лист
 
-## Чек-лист (на сервере)
-
-- [ ] Репозиторий склонирован в `/opt/BizonVR`
-- [ ] `.env` создан, `SECRET_KEY` и `ALLOWED_HOSTS` заданы
-- [ ] `DEBUG=False`, `USE_HTTPS=true`, `CSRF_TRUSTED_ORIGINS` указаны
-- [ ] Контейнеры подняты, приложение отвечает на `http://127.0.0.1:8000`
-- [ ] Nginx проксирует на 127.0.0.1:8000, передаёт `X-Forwarded-Proto: https`
-- [ ] SSL включён (HTTPS открывается без ошибок)
-- [ ] Выполнено `createsuperuser`, вход в админку работает
-- [ ] Проверены: вход по телефону, каталог, корзина, оформление заказа
-
----
-
-## Без Docker (systemd + Gunicorn) — на сервере
-
-Если разворачиваете без Docker:
-
-1. Установите Python 3.12, PostgreSQL, создайте БД и пользователя.
-2. Создайте venv, установите зависимости из `requirements.txt`.
-3. Выполните миграции и `collectstatic`.
-4. Запустите Gunicorn через systemd (unit с `ExecStart=gunicorn --bind 127.0.0.1:8000 ... config.wsgi:application`).
-5. Nginx настроить так же, как выше, проксировать на `127.0.0.1:8000`.
+- [ ] Репозиторий расположен в `/opt/BizonVR`
+- [ ] `.env` заполнен и не закоммичен
+- [ ] PostgreSQL доступен по параметрам из `.env`
+- [ ] `make check-single-db` проходит без ошибок
+- [ ] Выполнены `migrate` и `collectstatic`
+- [ ] Gunicorn отвечает на `127.0.0.1:8000`
+- [ ] Nginx проксирует трафик на Gunicorn
+- [ ] HTTPS выпущен и работает
+- [ ] Админка, каталог, корзина и checkout открываются без ошибок
+- [ ] Никакие архивные директории из `legacy` не запускаются как отдельные сервисы

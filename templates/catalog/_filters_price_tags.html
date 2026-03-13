@@ -1,0 +1,140 @@
+{% load catalog_tags %}
+{% if filter_price_min is not None and filter_price_max is not None and filter_price_max > filter_price_min %}
+<div class="filter-block filter-block--price">
+  <div class="filter-block-title">Цена, ₽</div>
+  {% if defer_category_apply %}
+  <div class="filter-price-panel"
+       data-filters-price
+       data-min="{{ filter_price_min }}"
+       data-max="{{ filter_price_max }}"
+       x-init="$nextTick(() => syncPriceRange($el))">
+    <div class="filter-price-grid" data-filters-price-inputs>
+      <label class="filter-price-field">
+        <span class="filter-price-label">От</span>
+        <input type="number" name="price_min" value="{{ price_min_filter }}" placeholder="{{ filter_price_min }}" min="{{ filter_price_min }}" max="{{ filter_price_max }}"
+               inputmode="numeric"
+               @input="syncPriceRange($el.closest('[data-filters-price]'), 'min-input')"
+               class="filter-price-input">
+      </label>
+      <label class="filter-price-field">
+        <span class="filter-price-label">До</span>
+        <input type="number" name="price_max" value="{{ price_max_filter }}" placeholder="{{ filter_price_max }}" min="{{ filter_price_min }}" max="{{ filter_price_max }}"
+               inputmode="numeric"
+               @input="syncPriceRange($el.closest('[data-filters-price]'), 'max-input')"
+               class="filter-price-input">
+      </label>
+    </div>
+    <div class="filter-price-range">
+      <div class="filter-price-range-track"></div>
+      <div class="filter-price-range-active"></div>
+      <input type="range"
+             min="{{ filter_price_min }}"
+             max="{{ filter_price_max }}"
+             value="{{ price_min_filter|default:filter_price_min }}"
+             data-price-range="min"
+             @input="syncPriceRange($el.closest('[data-filters-price]'), 'min-range')">
+      <input type="range"
+             min="{{ filter_price_min }}"
+             max="{{ filter_price_max }}"
+             value="{{ price_max_filter|default:filter_price_max }}"
+             data-price-range="max"
+             @input="syncPriceRange($el.closest('[data-filters-price]'), 'max-range')">
+    </div>
+    <div class="filter-price-values">
+      <span data-price-current="min">{{ filter_price_min|rub }}</span>
+      <span data-price-current="max">{{ filter_price_max|rub }}</span>
+    </div>
+    <p class="filter-support-copy">Премиальный диапазон: точный ввод и быстрый слайдер в одном блоке.</p>
+  </div>
+  {% else %}
+  <form method="get" action="{% url 'catalog:product_list' %}" class="space-y-3" @submit="normalizePriceInputs($el)">
+    <input type="hidden" name="category" value="{{ current_category }}">
+    <input type="hidden" name="section" value="{{ current_section }}">
+    <input type="hidden" name="tag" value="{{ current_tag }}">
+    <input type="hidden" name="sort" value="{{ current_sort }}">
+    <input type="hidden" name="q" value="{{ search_query }}">
+    {% for k, v in char_filters.items %}
+    <input type="hidden" name="char_{{ k }}" value="{{ v }}">
+    {% endfor %}
+    <div class="filter-price-panel"
+         data-filters-price
+         data-min="{{ filter_price_min }}"
+         data-max="{{ filter_price_max }}"
+         x-init="$nextTick(() => syncPriceRange($el))">
+      <div class="filter-price-grid">
+        <label class="filter-price-field">
+          <span class="filter-price-label">От</span>
+          <input type="number" name="price_min" value="{{ price_min_filter }}" placeholder="{{ filter_price_min }}" min="{{ filter_price_min }}" max="{{ filter_price_max }}"
+                 inputmode="numeric"
+                 @input="syncPriceRange($el.closest('[data-filters-price]'), 'min-input')"
+                 class="filter-price-input">
+        </label>
+        <label class="filter-price-field">
+          <span class="filter-price-label">До</span>
+          <input type="number" name="price_max" value="{{ price_max_filter }}" placeholder="{{ filter_price_max }}" min="{{ filter_price_min }}" max="{{ filter_price_max }}"
+                 inputmode="numeric"
+                 @input="syncPriceRange($el.closest('[data-filters-price]'), 'max-input')"
+                 class="filter-price-input">
+        </label>
+      </div>
+      <div class="filter-price-range">
+        <div class="filter-price-range-track"></div>
+        <div class="filter-price-range-active"></div>
+        <input type="range"
+               min="{{ filter_price_min }}"
+               max="{{ filter_price_max }}"
+               value="{{ price_min_filter|default:filter_price_min }}"
+               data-price-range="min"
+               @input="syncPriceRange($el.closest('[data-filters-price]'), 'min-range')">
+        <input type="range"
+               min="{{ filter_price_min }}"
+               max="{{ filter_price_max }}"
+               value="{{ price_max_filter|default:filter_price_max }}"
+               data-price-range="max"
+               @input="syncPriceRange($el.closest('[data-filters-price]'), 'max-range')">
+      </div>
+      <div class="filter-price-values">
+        <span data-price-current="min">{{ filter_price_min|rub }}</span>
+        <span data-price-current="max">{{ filter_price_max|rub }}</span>
+      </div>
+    </div>
+    <button type="submit" class="filter-primary-button w-full">Применить</button>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if product_tags and product_tags|length > 1 %}
+<div class="filter-block filter-block--tags">
+  <div class="filter-block-title">Тег</div>
+  <div class="filter-chip-list">
+    {% if defer_category_apply %}
+    <button type="button"
+       @click="$dispatch('filters-url', '{% url 'catalog:product_list' %}{% filter_url tag=filter_clear category=current_category section=current_section sort=current_sort q=search_query price_min=price_min_filter price_max=price_max_filter %}'); $dispatch('filters-dirty')"
+       class="filter-chip {% if not current_tag %}filter-selected{% endif %}">Все</button>
+    {% for tag in product_tags %}
+    <button type="button"
+       @click="$dispatch('filters-url', '{% url 'catalog:product_list' %}?tag={{ tag.slug }}{% if current_category %}&category={{ current_category }}{% endif %}{% if current_section %}&section={{ current_section }}{% endif %}&sort={{ current_sort }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if price_min_filter %}&price_min={{ price_min_filter }}{% endif %}{% if price_max_filter %}&price_max={{ price_max_filter }}{% endif %}'); $dispatch('filters-dirty')"
+       class="filter-chip {% if current_tag == tag.slug %}filter-selected{% endif %}">
+      <span>{{ tag.name }}</span>
+      {% if tag.result_count %}
+      <span class="filter-chip-count">{{ tag.result_count }}</span>
+      {% endif %}
+    </button>
+    {% endfor %}
+    {% else %}
+    <a href="{% url 'catalog:product_list' %}{% filter_url tag=filter_clear category=current_category section=current_section sort=current_sort q=search_query price_min=price_min_filter price_max=price_max_filter %}"
+       class="filter-chip {% if not current_tag %}filter-selected{% endif %}">Все</a>
+    {% for tag in product_tags %}
+    <a href="{% url 'catalog:product_list' %}?tag={{ tag.slug }}{% if current_category %}&category={{ current_category }}{% endif %}{% if current_section %}&section={{ current_section }}{% endif %}&sort={{ current_sort }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if price_min_filter %}&price_min={{ price_min_filter }}{% endif %}{% if price_max_filter %}&price_max={{ price_max_filter }}{% endif %}"
+       class="filter-chip {% if current_tag == tag.slug %}filter-selected{% endif %}">
+      <span>{{ tag.name }}</span>
+      {% if tag.result_count %}
+      <span class="filter-chip-count">{{ tag.result_count }}</span>
+      {% endif %}
+    </a>
+    {% endfor %}
+    {% endif %}
+  </div>
+</div>
+{% endif %}

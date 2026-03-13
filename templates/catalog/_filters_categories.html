@@ -1,0 +1,243 @@
+{% load catalog_tags %}
+{% if defer_category_apply %}
+<div x-data="{ pendingSection: '{{ current_section_effective|default:''|escapejs }}', pendingCategory: '{{ current_category|default:''|escapejs }}', showAllSectionCategories: false }" class="filter-block filter-block--category">
+  <div class="filter-block-title">Категория</div>
+  {% if current_section_effective %}
+  <div class="filter-path-chip filter-path-chip--full">
+    <span>{{ section_name_map|get_item:current_section_effective }}</span>
+    {% if current_category %}
+    <span class="filter-path-separator">/</span>
+    <span>{{ category_name_map|get_item:current_category }}</span>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="space-y-2">
+    <button type="button"
+            @click="pendingSection = ''; pendingCategory = ''; showAllSectionCategories = false; $dispatch('filters-dirty')"
+            class="filter-option w-full text-left"
+            :class="pendingSection === '' && pendingCategory === '' ? 'filter-selected' : ''">
+      <span class="filter-option-main">Весь каталог</span>
+    </button>
+
+    <div class="space-y-1" x-show="pendingSection === ''">
+      {% for section in catalog_sections %}
+      {% if section.slug in section_slugs_to_show %}
+      <button type="button"
+              @click="pendingSection = '{{ section.slug|escapejs }}'; pendingCategory = ''; showAllSectionCategories = false; $dispatch('filters-dirty')"
+              class="filter-option w-full text-left">
+        <span class="filter-option-main">{{ section.name }}</span>
+        {% if section_result_counts|get_item:section.slug %}
+        <span class="filter-option-meta">{{ section_result_counts|get_item:section.slug }}</span>
+        {% endif %}
+      </button>
+      {% endif %}
+      {% endfor %}
+    </div>
+
+    <div class="space-y-2">
+      {% for section in catalog_sections %}
+      {% if section.slug in section_slugs_to_show %}
+      <template x-if="pendingSection === '{{ section.slug|escapejs }}'">
+        <div class="space-y-2">
+          <button type="button"
+                  @click="pendingCategory = ''; showAllSectionCategories = false; $dispatch('filters-dirty')"
+                  class="filter-option filter-selected w-full text-left">
+            <span class="filter-option-main">{{ section.name }}</span>
+            {% if section_result_counts|get_item:section.slug %}
+            <span class="filter-option-meta">{{ section_result_counts|get_item:section.slug }}</span>
+            {% endif %}
+          </button>
+
+          <div class="filter-branch">
+            {% for cat in section.categories.all %}
+            {% if cat.id in category_ids_to_show %}
+            <button type="button"
+                    x-show="pendingCategory === '{{ cat.slug|escapejs }}'"
+                    @click="pendingSection = '{{ section.slug|escapejs }}'; pendingCategory = '{{ cat.slug|escapejs }}'; showAllSectionCategories = false; $dispatch('filters-dirty')"
+                    class="filter-option filter-selected filter-option--step w-full text-left">
+              <span class="filter-option-main">{{ cat.name }}</span>
+              {% if category_result_counts|get_item:cat.id %}
+              <span class="filter-option-meta">{{ category_result_counts|get_item:cat.id }}</span>
+              {% endif %}
+            </button>
+            {% endif %}
+            {% endfor %}
+
+            {% for cat in section.categories.all %}
+            {% if cat.id in category_ids_to_show %}
+            {% if forloop.counter <= 3 %}
+            <button type="button"
+                    x-show="pendingCategory !== '{{ cat.slug|escapejs }}'"
+                    @click="pendingSection = '{{ section.slug|escapejs }}'; pendingCategory = '{{ cat.slug|escapejs }}'; showAllSectionCategories = false; $dispatch('filters-dirty')"
+                    class="filter-option filter-option--step w-full text-left"
+                    :class="pendingCategory === '{{ cat.slug|escapejs }}' ? 'filter-selected' : ''">
+              <span class="filter-option-main">{{ cat.name }}</span>
+              {% if category_result_counts|get_item:cat.id %}
+              <span class="filter-option-meta">{{ category_result_counts|get_item:cat.id }}</span>
+              {% endif %}
+            </button>
+            {% endif %}
+            {% endif %}
+            {% endfor %}
+          </div>
+
+          <div class="filter-branch-action" x-show="!showAllSectionCategories">
+            <button type="button"
+                    class="filter-inline-link"
+                    @click="showAllSectionCategories = true">
+              Все категории
+            </button>
+          </div>
+
+          <div class="filter-branch mt-1" x-show="showAllSectionCategories">
+            {% for cat in section.categories.all %}
+            {% if cat.id in category_ids_to_show %}
+            {% if forloop.counter > 3 %}
+            <button type="button"
+                    x-show="pendingCategory !== '{{ cat.slug|escapejs }}'"
+                    @click="pendingSection = '{{ section.slug|escapejs }}'; pendingCategory = '{{ cat.slug|escapejs }}'; $dispatch('filters-dirty')"
+                    class="filter-option filter-option--step w-full text-left"
+                    :class="pendingCategory === '{{ cat.slug|escapejs }}' ? 'filter-selected' : ''">
+              <span class="filter-option-main">{{ cat.name }}</span>
+              {% if category_result_counts|get_item:cat.id %}
+              <span class="filter-option-meta">{{ category_result_counts|get_item:cat.id }}</span>
+              {% endif %}
+            </button>
+            {% endif %}
+            {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+      </template>
+      {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+
+  <form id="{{ category_form_id|default:'mobile-category-filter-form' }}" method="get" action="{% url 'catalog:product_list' %}" class="hidden">
+    <input type="hidden" name="section" :value="pendingSection">
+    <input type="hidden" name="category" :value="pendingCategory">
+    {% if current_tag %}<input type="hidden" name="tag" value="{{ current_tag }}">{% endif %}
+    {% if current_sort %}<input type="hidden" name="sort" value="{{ current_sort }}">{% endif %}
+    {% if search_query %}<input type="hidden" name="q" value="{{ search_query }}">{% endif %}
+    {% if price_min_filter %}<input type="hidden" name="price_min" value="{{ price_min_filter }}">{% endif %}
+    {% if price_max_filter %}<input type="hidden" name="price_max" value="{{ price_max_filter }}">{% endif %}
+    {% for k, v in char_filters.items %}
+    <input type="hidden" name="char_{{ k }}" value="{{ v }}">
+    {% endfor %}
+  </form>
+</div>
+{% else %}
+<div x-data="{ showAllSectionCategories: false }" class="filter-block filter-block--category">
+  <div class="filter-block-title">Категория</div>
+  {% if current_section_effective %}
+  <div class="filter-path-chip filter-path-chip--full">
+    <span>{{ section_name_map|get_item:current_section_effective }}</span>
+    {% if current_category %}
+    <span class="filter-path-separator">/</span>
+    <span>{{ category_name_map|get_item:current_category }}</span>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <div class="space-y-2">
+    <a href="{% url 'catalog:product_list' %}{% filter_url section=filter_clear category=filter_clear %}"
+       class="filter-option w-full text-left {% if not current_section and not current_category %}filter-selected{% endif %}">
+      <span class="filter-option-main">Весь каталог</span>
+    </a>
+
+    {% if not current_section_effective %}
+    <div class="space-y-1">
+      {% for section in catalog_sections %}
+      {% if section.slug in section_slugs_to_show %}
+      <a href="{% url 'catalog:product_list' %}{% filter_url section=section.slug category=filter_clear %}"
+         class="filter-option w-full text-left">
+        <span class="filter-option-main">{{ section.name }}</span>
+        {% if section_result_counts|get_item:section.slug %}
+        <span class="filter-option-meta">{{ section_result_counts|get_item:section.slug }}</span>
+        {% endif %}
+      </a>
+      {% endif %}
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="space-y-2">
+      {% for section in catalog_sections %}
+      {% if section.slug in section_slugs_to_show %}
+      {% if section.slug == current_section_effective %}
+      <div class="space-y-2">
+        <a href="{% url 'catalog:product_list' %}{% filter_url section=section.slug category=filter_clear %}"
+           class="filter-option filter-selected w-full text-left">
+          <span class="filter-option-main">{{ section.name }}</span>
+          {% if section_result_counts|get_item:section.slug %}
+          <span class="filter-option-meta">{{ section_result_counts|get_item:section.slug }}</span>
+          {% endif %}
+        </a>
+
+        <div class="filter-branch">
+          {% for cat in section.categories.all %}
+          {% if cat.id in category_ids_to_show %}
+          {% if current_category == cat.slug %}
+          <a href="{% url 'catalog:product_list' %}{% filter_url section=section.slug category=cat.slug %}"
+             class="filter-option filter-selected filter-option--step">
+            <span class="filter-option-main">{{ cat.name }}</span>
+            {% if category_result_counts|get_item:cat.id %}
+            <span class="filter-option-meta">{{ category_result_counts|get_item:cat.id }}</span>
+            {% endif %}
+          </a>
+          {% endif %}
+          {% endif %}
+          {% endfor %}
+
+          {% for cat in section.categories.all %}
+          {% if cat.id in category_ids_to_show %}
+          {% if forloop.counter <= 3 %}
+          {% if current_category != cat.slug %}
+          <a href="{% url 'catalog:product_list' %}{% filter_url section=section.slug category=cat.slug %}"
+             class="filter-option filter-option--step">
+            <span class="filter-option-main">{{ cat.name }}</span>
+            {% if category_result_counts|get_item:cat.id %}
+            <span class="filter-option-meta">{{ category_result_counts|get_item:cat.id }}</span>
+            {% endif %}
+          </a>
+          {% endif %}
+          {% endif %}
+          {% endif %}
+          {% endfor %}
+        </div>
+
+        <div class="filter-branch-action" x-show="!showAllSectionCategories">
+          <button type="button"
+                  class="filter-inline-link"
+                  @click="showAllSectionCategories = true">
+            Все категории
+          </button>
+        </div>
+
+        <div class="filter-branch mt-1" x-show="showAllSectionCategories">
+          {% for cat in section.categories.all %}
+          {% if cat.id in category_ids_to_show %}
+          {% if forloop.counter > 3 %}
+          {% if current_category != cat.slug %}
+          <a href="{% url 'catalog:product_list' %}{% filter_url section=section.slug category=cat.slug %}"
+             class="filter-option filter-option--step">
+            <span class="filter-option-main">{{ cat.name }}</span>
+            {% if category_result_counts|get_item:cat.id %}
+            <span class="filter-option-meta">{{ category_result_counts|get_item:cat.id }}</span>
+            {% endif %}
+          </a>
+          {% endif %}
+          {% endif %}
+          {% endif %}
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+      {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}

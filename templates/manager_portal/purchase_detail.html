@@ -1,0 +1,66 @@
+{% extends "manager_portal/base.html" %}
+
+{% block title %}Закупка #{{ purchase.pk }}{% endblock %}
+
+{% block content %}
+  <div class="grid gap-6 xl:grid-cols-[1fr,24rem]">
+    <section class="space-y-6">
+      <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+        <h2 class="text-3xl font-semibold">Закупка #{{ purchase.pk }}</h2>
+        <p class="mt-2 text-slate-400">{{ purchase.supplier_name|default:"Поставщик не указан" }} · {{ purchase.date|date:"d.m.Y" }}</p>
+      </div>
+      <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+        <h3 class="text-xl font-semibold">Позиции закупки</h3>
+        <div class="mt-4 space-y-3">
+          {% for item in purchase.items.all %}
+            <div class="rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3">
+              <div class="flex items-center justify-between">
+                <p>{{ item.product.name }}{% if item.variant %} <span class="text-slate-500">/ {{ item.variant.name }}</span>{% endif %}</p>
+                <span>{{ item.quantity }} шт.</span>
+              </div>
+              <p class="mt-1 text-sm text-slate-400">{{ item.price|currency_amount:purchase.currency }} · получено {{ item.received_quantity }}</p>
+              <p class="mt-1 text-sm text-slate-500">
+                Заказ:
+                {% if item.order_item %}
+                  <a href="{% url 'manager_portal:order_detail' item.order_item.order_id %}" class="text-cyan-300 hover:text-cyan-200">#{{ item.order_item.order_id }}</a>
+                {% else %}
+                  —
+                {% endif %}
+              </p>
+            </div>
+          {% empty %}
+            <p class="text-slate-400">Позиции пока не добавлены.</p>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+        <h3 class="text-xl font-semibold">Добавить позицию</h3>
+        <form method="post" action="{% url 'manager_portal:purchase_add_item' purchase.pk %}" class="mt-4 space-y-4">
+          {% csrf_token %}
+          {% include "manager_portal/_form_fields.html" with form=item_form %}
+          <button class="rounded-xl bg-cyan-500 px-4 py-2 font-medium text-slate-950">Добавить позицию</button>
+        </form>
+      </div>
+      <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+        <h3 class="text-xl font-semibold">Связанные грузы</h3>
+        <div class="mt-4 space-y-3">
+          {% for cargo in purchase.cargos.all %}
+            <a href="{% url 'manager_portal:cargo_detail' cargo.pk %}" class="block rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 hover:border-cyan-400/30">
+              {{ cargo.cargo_number }} · {{ cargo.get_status_display }}
+            </a>
+          {% empty %}
+            <p class="text-slate-400">Грузы еще не привязаны.</p>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+    <section class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+      <h3 class="text-xl font-semibold">Редактировать закупку</h3>
+      <form method="post" class="mt-4 space-y-4">
+        {% csrf_token %}
+        {% include "manager_portal/_form_fields.html" with form=form %}
+        <button class="rounded-xl bg-cyan-500 px-4 py-2 font-medium text-slate-950">Сохранить</button>
+      </form>
+    </section>
+  </div>
+{% endblock %}

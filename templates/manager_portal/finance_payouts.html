@@ -1,0 +1,44 @@
+{% extends "manager_portal/base.html" %}
+
+{% block title %}Финансы: выплаты{% endblock %}
+
+{% block content %}
+  <div class="grid gap-8 xl:grid-cols-[24rem_1fr]">
+    <section class="manager-panel rounded-3xl p-6">
+      <p class="text-xs uppercase tracking-[0.22em] text-cyan-300">Payout</p>
+      <h2 class="mt-3 text-2xl font-semibold text-white">Новая выплата</h2>
+      <form method="post" class="mt-5 grid gap-4">
+        {% csrf_token %}
+        {% include "manager_portal/_form_fields.html" with form=finance_payout_form %}
+        <button type="submit" class="rounded-xl bg-cyan-400 px-4 py-3 text-sm font-semibold text-slate-950">Сохранить выплату</button>
+      </form>
+    </section>
+    <section class="manager-panel rounded-3xl p-6">
+      <h2 class="text-2xl font-semibold text-white">Журнал выплат</h2>
+      <div class="mt-5 overflow-x-auto">
+        <table class="min-w-full text-sm text-slate-300">
+          <thead class="text-left text-xs uppercase tracking-[0.18em] text-slate-500">
+            <tr>
+              <th class="pb-3 pr-4">Дата</th>
+              <th class="pb-3 pr-4">Сумма</th>
+              <th class="pb-3 pr-4">Комментарий</th>
+              <th class="pb-3 pr-4">Кто внес</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for payout in finance_payouts %}
+              <tr class="border-t border-slate-800">
+                <td class="py-3 pr-4">{{ payout.date }}</td>
+                <td class="py-3 pr-4">{{ payout.amount|rub }}</td>
+                <td class="py-3 pr-4">{{ payout.comment|default:"—" }}</td>
+                <td class="py-3 pr-4">{{ payout.created_by|default:"—" }}</td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="4" class="py-4 text-slate-500">Выплат пока нет.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+{% endblock %}

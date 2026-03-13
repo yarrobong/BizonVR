@@ -2,6 +2,7 @@
 import logging
 import random
 import string
+import uuid
 from datetime import timedelta
 
 import requests
@@ -21,7 +22,13 @@ from django.utils.http import urlsafe_base64_encode
 
 from decouple import config
 
-from .models import EmailVerificationCode, PhoneVerificationCode, Profile
+from .models import (
+    EmailLoginCode,
+    EmailVerificationCode,
+    NotificationPreference,
+    PhoneVerificationCode,
+    Profile,
+)
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -75,6 +82,44 @@ def normalize_email(raw: str) -> str:
     return (raw or '').strip().lower()
 
 
+def get_default_profile_phone(user) -> str | None:
+    username_phone = normalize_phone(getattr(user, 'username', ''))
+    return username_phone if len(username_phone) == 10 else None
+
+
+def get_user_phone(user, profile=None) -> str:
+    phone = normalize_phone(getattr(profile, 'phone', '') or '')
+    if len(phone) == 10:
+        return phone
+    return get_default_profile_phone(user) or ''
+
+
+def build_phone_display(phone: str) -> str:
+    digits = normalize_phone(phone or '')
+    if len(digits) == 10:
+        return f'+7 ({digits[:3]}) {digits[3:6]}-{digits[6:8]}-{digits[8:10]}'
+    return ''
+
+
+def ensure_profile(user):
+    profile, _ = Profile.objects.get_or_create(
+        user=user,
+        defaults={'phone': get_default_profile_phone(user)},
+    )
+    return profile
+
+
+def generate_email_username() -> str:
+    return f'user_{uuid.uuid4().hex[:24]}'
+
+
+def build_unique_email_username() -> str:
+    while True:
+        username = generate_email_username()
+        if not User.objects.filter(username=username).exists():
+            return username
+
+
 def get_user_by_phone(phone: str):
     phone = normalize_phone(phone)
     if len(phone) < 10:
@@ -100,6 +145,27 @@ def get_user_by_email(email: str):
     if queryset.count() != 1:
         return None
     return queryset.first()
+
+
+def get_or_create_notification_preferences(user):
+    return NotificationPreference.objects.get_or_create(user=user)[0]
+
+
+def auto_claim_guest_orders_for_user(user) -> int:
+    """Привязать guest-заказы по уже подтверждённым контактам пользователя."""
+    profile = ensure_profile(user)
+    verified_email = normalize_email(user.email) if profile.email_verified_at else ''
+    verified_phone = get_user_phone(user, profile) if profile.phone_verified_at else ''
+    if not verified_email and not verified_phone:
+        return 0
+
+    from orders.services import claim_guest_orders_for_user
+
+    return claim_guest_orders_for_user(
+        user,
+        verified_email=verified_email,
+        verified_phone=verified_phone,
+    )
 
 
 def authenticate_by_login_identifier(identifier: str, password: str, request=None) -> tuple[object | None, str]:
@@ -178,6 +244,53 @@ def send_email_verification(email: str, code: str) -> bool:
         message.send(fail_silently=False)
     except Exception:
         logger.exception('Email verification send failed for %s', email)
+        return False
+    return True
+
+
+def build_email_login_subject() -> str:
+    return 'Код входа в BizonVR'
+
+
+def build_email_login_plain_message(code: str) -> str:
+    ttl_minutes = getattr(settings, 'EMAIL_CODE_TTL_MINUTES', 15)
+    support_email = getattr(settings, 'SITE_CONTACT_EMAIL', '').strip()
+    lines = [
+        'Вход в BizonVR по коду',
+        '',
+        f'Ваш код: {code}',
+        f'Код действует {ttl_minutes} минут.',
+        '',
+        'Если вы не запрашивали вход, просто проигнорируйте это письмо.',
+    ]
+    if support_email:
+        lines.append(f'Поддержка: {support_email}')
+    return '\n'.join(lines)
+
+
+def send_email_login_code_message(email: str, code: str) -> bool:
+    context = {
+        'brand': getattr(settings, 'SITE_BRAND', 'BizonVR'),
+        'code': code,
+        'ttl_minutes': getattr(settings, 'EMAIL_CODE_TTL_MINUTES', 15),
+        'support_email': getattr(settings, 'SITE_CONTACT_EMAIL', '').strip(),
+        'support_phone': getattr(settings, 'SITE_CONTACT_PHONE', '').strip(),
+    }
+    subject = build_email_login_subject()
+    text_body = build_email_login_plain_message(code)
+    html_body = render_to_string('emails/email_login_code.html', context)
+
+    try:
+        message = EmailMultiAlternatives(
+            subject=subject,
+            body=text_body,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            to=[email],
+        )
+        message.attach_alternative(html_body, 'text/html')
+        message.send(fail_silently=False)
+    except Exception:
+        logger.exception('Email login code send failed for %s', email)
         return False
     return True
 
@@ -270,7 +383,29 @@ def send_sms(phone: str, code: str, *, client_ip: str = '') -> bool:
     return True
 
 
+def send_sms_message(phone: str, text: str, *, client_ip: str = '') -> bool:
+    if is_sms_debug_mode():
+        msg = f'SMS (dev): сообщение "{text}" для номера {phone}'
+        logger.warning(msg)
+        print(f'\n>>> {msg} <<<\n')
+        return True
+
+    provider = get_sms_provider()
+    if provider == 'exolve':
+        return _send_exolve_text(phone, text)
+    if provider == 'smsru':
+        api_key = config('SMS_API_KEY', default='')
+        return _send_smsru_text(phone, text, api_key, client_ip=client_ip)
+    logger.warning('Неизвестный SMS_PROVIDER=%s, сообщение залогировано', provider)
+    return True
+
+
 def _send_exolve(phone: str, code: str) -> bool:
+    """Отправка через MTS Exolve API."""
+    return _send_exolve_text(phone, build_sms_message(code))
+
+
+def _send_exolve_text(phone: str, text: str) -> bool:
     """Отправка через MTS Exolve API."""
     destination = normalize_phone(phone)
     if len(destination) == 10:
@@ -279,7 +414,7 @@ def _send_exolve(phone: str, code: str) -> bool:
     payload = {
         'number': settings.EXOLVE_SENDER,
         'destination': destination,
-        'text': build_sms_message(code),
+        'text': text,
     }
     headers = {
         'Authorization': f'Bearer {settings.EXOLVE_API_KEY}',
@@ -306,12 +441,17 @@ def _send_exolve(phone: str, code: str) -> bool:
 
 def _send_smsru(phone: str, code: str, api_key: str, *, client_ip: str = '') -> bool:
     """Отправка через SMS.ru API."""
+    return _send_smsru_text(phone, build_sms_message(code), api_key, client_ip=client_ip)
+
+
+def _send_smsru_text(phone: str, text: str, api_key: str, *, client_ip: str = '') -> bool:
+    """Отправка через SMS.ru API."""
     try:
         to = '7' + normalize_phone(phone) if len(normalize_phone(phone)) == 10 else phone
         params = {
             'api_id': api_key,
             'to': to,
-            'msg': build_sms_message(code),
+            'msg': text,
             'json': 1,
         }
         sender = config('SMS_SENDER_NAME', default='').strip()
@@ -376,13 +516,69 @@ def get_pending_email_verification(user):
     )
 
 
+def create_and_send_email_login_code(
+    email: str,
+    *,
+    purpose: str = EmailLoginCode.PURPOSE_LOGIN,
+    require_existing_user: bool = True,
+) -> tuple[bool, str]:
+    email = normalize_email(email)
+    if not email:
+        return False, 'Введите корректный email.'
+
+    existing_user = get_user_by_email(email)
+    if require_existing_user and existing_user is None:
+        return False, 'Аккаунт с таким подтверждённым email не найден.'
+
+    now = timezone.now()
+    cooldown = getattr(settings, 'EMAIL_CODE_COOLDOWN_SECONDS', 60)
+    since = now - timedelta(seconds=cooldown)
+    if EmailLoginCode.objects.filter(
+        email__iexact=email,
+        purpose=purpose,
+        used_at__isnull=True,
+        created_at__gt=since,
+    ).exists():
+        return False, f'Код уже отправлен. Повторите через {cooldown} сек.'
+
+    code = generate_code()
+    if not send_email_login_code_message(email, code):
+        return False, 'Не удалось отправить письмо. Проверьте настройки почты и попробуйте позже.'
+
+    EmailLoginCode.objects.filter(email__iexact=email, purpose=purpose, used_at__isnull=True).update(used_at=now)
+    EmailLoginCode.objects.create(email=email, code=code, purpose=purpose)
+    return True, ''
+
+
+def verify_email_login_code(email: str, code: str, *, purpose: str = EmailLoginCode.PURPOSE_LOGIN, consume: bool = False):
+    email = normalize_email(email)
+    if not email:
+        return False, 'Введите корректный email.'
+
+    ttl_minutes = getattr(settings, 'EMAIL_CODE_TTL_MINUTES', 15)
+    since = timezone.now() - timedelta(minutes=ttl_minutes)
+    latest_record = (
+        EmailLoginCode.objects
+        .filter(email__iexact=email, purpose=purpose, used_at__isnull=True, created_at__gt=since)
+        .order_by('-created_at')
+        .first()
+    )
+    if not latest_record or latest_record.code != code.strip():
+        return False, 'Неверный или устаревший код'
+
+    if consume:
+        latest_record.used_at = timezone.now()
+        latest_record.save(update_fields=['used_at'])
+    return True, ''
+
+
 def create_and_send_email_code(user, email: str) -> tuple[bool, str]:
     """
     Создать и отправить код подтверждения email.
     Подтверждение выполняется один раз: после успешной верификации email больше не меняется.
     """
     email = normalize_email(email)
-    profile, _ = Profile.objects.get_or_create(user=user, defaults={'phone': user.username})
+    profile = ensure_profile(user)
     if profile.email_verified_at:
         return False, 'Email уже подтверждён и больше не требует повторной верификации.'
     if not email:
@@ -429,7 +625,7 @@ def verify_email_code(user, email: str, code: str, *, consume: bool = False) -> 
 
 def confirm_email_verification(user, email: str, code: str) -> tuple[bool, str]:
     email = normalize_email(email)
-    profile, _ = Profile.objects.get_or_create(user=user, defaults={'phone': user.username})
+    profile = ensure_profile(user)
     if profile.email_verified_at:
         return False, 'Email уже подтверждён.'
     if User.objects.filter(email__iexact=email).exclude(pk=user.pk).exists():
@@ -451,6 +647,8 @@ def confirm_email_verification(user, email: str, code: str) -> tuple[bool, str]:
         profile.email_verified_at = timezone.now()
         profile.save(update_fields=['email_verified_at'])
 
+    user.refresh_from_db(fields=['email'])
+    auto_claim_guest_orders_for_user(user)
     return True, ''
 
 
@@ -500,8 +698,71 @@ def verify_code_and_login(phone: str, code: str, request) -> tuple[bool, str]:
     if created:
         user.set_unusable_password()
         user.save()
-    profile, profile_created = Profile.objects.get_or_create(user=user, defaults={'phone': phone})
-    Profile.objects.filter(user=user).update(phone=phone)
+    profile, profile_created = Profile.objects.get_or_create(
+        user=user,
+        defaults={'phone': phone, 'phone_verified_at': timezone.now()},
+    )
+    profile.phone = phone
+    if not profile.phone_verified_at:
+        profile.phone_verified_at = timezone.now()
+    profile.save(update_fields=['phone', 'phone_verified_at'])
 
     login(request, user, backend='django.contrib.auth.backends.ModelBackend')
+    get_or_create_notification_preferences(user)
+    auto_claim_guest_orders_for_user(user)
     return True, ''
+
+
+def login_with_email_code(email: str, code: str, request) -> tuple[bool, str, object | None]:
+    from django.contrib.auth import login
+
+    email = normalize_email(email)
+    ok, error = verify_email_login_code(email, code, purpose=EmailLoginCode.PURPOSE_LOGIN, consume=True)
+    if not ok:
+        return False, error, None
+
+    user = get_user_by_email(email)
+    if user is None:
+        return False, 'Аккаунт с таким подтверждённым email не найден.', None
+
+    login(request, user, backend='django.contrib.auth.backends.ModelBackend')
+    get_or_create_notification_preferences(user)
+    auto_claim_guest_orders_for_user(user)
+    return True, '', user
+
+
+def resolve_or_create_user_for_order_claim(email: str, phone: str):
+    email = normalize_email(email)
+    phone = normalize_phone(phone)
+
+    user = get_user_by_email(email) if email else None
+    if user is None and phone:
+        user = get_user_by_phone(phone)
+
+    if user is None:
+        user = User.objects.create_user(
+            username=phone or build_unique_email_username(),
+            email=email,
+            is_active=True,
+        )
+        user.set_unusable_password()
+        user.save(update_fields=['password'])
+
+    profile, _ = Profile.objects.get_or_create(user=user, defaults={'phone': phone or get_default_profile_phone(user)})
+    update_fields = []
+    if phone and profile.phone != phone:
+        profile.phone = phone
+        update_fields.append('phone')
+    if phone and not profile.phone_verified_at:
+        # Для claim по email номер не считаем подтверждённым автоматически.
+        pass
+    if email and user.email != email:
+        user.email = email
+        user.save(update_fields=['email'])
+    if email and not profile.email_verified_at:
+        profile.email_verified_at = timezone.now()
+        update_fields.append('email_verified_at')
+    if update_fields:
+        profile.save(update_fields=update_fields)
+    get_or_create_notification_preferences(user)
+    return user

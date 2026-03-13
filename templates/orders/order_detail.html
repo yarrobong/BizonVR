@@ -4,68 +4,292 @@
 {% block title %}Заказ #{{ order.pk }} — BizonVR{% endblock %}
 
 {% block content %}
-<div class="container mx-auto px-4 py-12 max-w-4xl">
-  <div class="mb-6">
-    {% if is_guest_order %}
-    <a href="{% url 'orders:order_guest_lookup' %}" class="text-accent hover:text-accent-hover text-sm">← Проверить другой заказ</a>
-    {% else %}
-    <a href="{% url 'orders:order_list' %}" class="text-accent hover:text-accent-hover text-sm">← Мои заказы</a>
-    {% endif %}
+{% if is_guest_order %}
+  <div class="container mx-auto max-w-5xl px-4 py-12">
+    <div class="mb-6">
+      <a href="{% url 'catalog:product_list' %}" class="text-sm text-accent hover:text-accent-hover">← Продолжить покупки</a>
+    </div>
+
+    <div class="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
+      <section class="rounded-3xl border border-white/10 bg-dark-800/90 p-6">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p class="text-xs uppercase tracking-[0.24em] text-accent/80">Гостевой заказ</p>
+            <h1 class="mt-2 text-3xl font-semibold text-white">Заказ #{{ order.pk }}</h1>
+            <p class="mt-2 text-sm text-gray-400">Создан {{ order.created_at|date:"d.m.Y H:i" }}</p>
+          </div>
+          <div class="flex flex-wrap gap-2 lg:max-w-[19rem] lg:justify-end">
+            <p class="inline-flex rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide {{ order_summary.status_badge_class }}">{{ order_summary.status_label }}</p>
+            <p class="inline-flex rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide {{ order_summary.payment_badge_class }}">{{ order_summary.payment_label }}</p>
+          </div>
+        </div>
+
+        <div class="mt-6 rounded-2xl border border-white/10 bg-white/5 p-5">
+          <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Статус заказа</p>
+          <p class="mt-3 text-lg font-semibold text-white">{{ order_summary.status_description }}</p>
+          <p class="mt-2 text-sm leading-6 text-gray-400">{{ order_summary.status_next_step }}</p>
+        </div>
+
+        <div class="mt-6 grid gap-6 md:grid-cols-2">
+          <div>
+            <h2 class="text-lg font-medium text-white">Контакты</h2>
+            <ul class="mt-3 space-y-2 text-sm text-gray-300">
+              <li>Покупатель: {{ order.first_name }} {{ order.last_name }}</li>
+              <li>Телефон: {{ order.phone }}</li>
+              <li>Email: {{ order.email }}</li>
+            </ul>
+          </div>
+          <div>
+            <h2 class="text-lg font-medium text-white">Получатель</h2>
+            <ul class="mt-3 space-y-2 text-sm text-gray-300">
+              <li>Получатель: {{ order.shipping_contact_name|default:"Совпадает с покупателем" }}</li>
+              <li>Телефон: {{ order.shipping_phone|default:order.phone }}</li>
+              <li>Совпадает с покупателем: {% if order.recipient_is_customer %}Да{% else %}Нет{% endif %}</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="mt-8">
+          <h2 class="text-lg font-medium text-white">Состав заказа</h2>
+          <ul class="mt-4 space-y-3">
+            {% for item in order.items.all %}
+              <li class="flex items-start justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm">
+                <div>
+                  <p class="text-white">{% if item.variant_name %}{{ item.product.name }} ({{ item.variant_name }}){% else %}{{ item.product.name }}{% endif %}</p>
+                  <p class="mt-1 text-gray-500">Количество: {{ item.quantity }}{% if item.is_on_request %} · под заказ{% endif %}</p>
+                </div>
+                <p class="whitespace-nowrap font-semibold text-white">{{ item.subtotal|price_format }} ₽</p>
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </section>
+
+      <aside class="space-y-6">
+        <section class="rounded-3xl border border-white/10 bg-dark-800/90 p-6">
+          <h2 class="text-lg font-medium text-white">Сумма</h2>
+          <div class="mt-4 space-y-2 text-sm">
+            <div class="flex items-center justify-between text-gray-300">
+              <span>Товары</span>
+              <span>{{ order.total|price_format }} ₽</span>
+            </div>
+            {% if order.promo_discount and order.promo_discount > 0 %}
+              <div class="flex items-center justify-between text-green-400">
+                <span>Скидка{% if order.promo_code %} ({{ order.promo_code.code }}){% endif %}</span>
+                <span>−{{ order.promo_discount|price_format }} ₽</span>
+              </div>
+            {% endif %}
+            <div class="flex items-center justify-between text-gray-300">
+              <span>Доставка при получении</span>
+              <span>{{ order.delivery_cost|price_format }} ₽</span>
+            </div>
+            <div class="flex items-center justify-between border-t border-white/10 pt-3 text-base font-semibold text-white">
+              <span>К оплате за товар</span>
+              <span>{{ order.total_to_pay|price_format }} ₽</span>
+            </div>
+          </div>
+          {% if not test_order_no_payment and order.status == 'new' and order.payment_status != 'paid' %}
+            <div class="mt-5">
+              <a href="{% url 'payments:create_payment' order.pk %}?access={{ guest_access_token }}" class="inline-flex w-full items-center justify-center rounded-full bg-accent px-4 py-3 text-sm font-bold text-dark-900 transition hover:bg-accent-hover">
+                Инструкции по оплате
+              </a>
+            </div>
+          {% endif %}
+        </section>
+
+        <section class="rounded-3xl border border-white/10 bg-dark-800/90 p-6">
+          <p class="text-xs uppercase tracking-[0.24em] text-accent/80">Аккаунт</p>
+          <h2 class="mt-2 text-lg font-medium text-white">Сохранить заказ в кабинете</h2>
+          <p class="mt-2 text-sm text-gray-400">
+            Если заказ ещё не появился в кабинете автоматически, подтвердите email из заказа и мы создадим аккаунт или привяжем заказ к существующему профилю.
+          </p>
+          {% if claim_error %}<p class="mt-3 rounded-2xl border border-red-400/20 bg-red-500/10 p-3 text-sm text-red-300">{{ claim_error }}</p>{% endif %}
+          {% if claim_email_sent %}<p class="mt-3 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-3 text-sm text-emerald-300">Код отправлен на {{ order.email }}.</p>{% endif %}
+
+          <form method="post" class="mt-4 space-y-3">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="send_claim_email_code">
+            <div>
+              <label for="{{ claim_request_form.email.id_for_label }}" class="mb-1.5 block text-sm font-medium text-gray-200">Email из заказа</label>
+              {{ claim_request_form.email }}
+              {% if claim_request_form.email.errors %}<p class="mt-1 text-sm text-red-400">{{ claim_request_form.email.errors.0 }}</p>{% endif %}
+            </div>
+            <button type="submit" class="w-full rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:border-white/20 hover:bg-white/10">
+              Отправить код
+            </button>
+          </form>
+
+          <form method="post" class="mt-4 space-y-3">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="verify_claim_email_code">
+            <div>
+              <label for="{{ claim_verify_form.email.id_for_label }}" class="mb-1.5 block text-sm font-medium text-gray-200">Email</label>
+              {{ claim_verify_form.email }}
+              {% if claim_verify_form.email.errors %}<p class="mt-1 text-sm text-red-400">{{ claim_verify_form.email.errors.0 }}</p>{% endif %}
+            </div>
+            <div>
+              <label for="{{ claim_verify_form.code.id_for_label }}" class="mb-1.5 block text-sm font-medium text-gray-200">Код из письма</label>
+              {{ claim_verify_form.code }}
+              {% if claim_verify_form.code.errors %}<p class="mt-1 text-sm text-red-400">{{ claim_verify_form.code.errors.0 }}</p>{% endif %}
+            </div>
+            <button type="submit" class="w-full rounded-full bg-accent px-4 py-3 text-sm font-bold text-dark-900 transition hover:bg-accent-hover">
+              Создать аккаунт и сохранить заказ
+            </button>
+          </form>
+        </section>
+      </aside>
+    </div>
   </div>
+{% else %}
+  <div class="relative overflow-hidden">
+    <div class="pointer-events-none absolute inset-x-0 top-0 h-[24rem] bg-[radial-gradient(circle_at_top_left,rgba(0,212,255,0.14),transparent_30%),linear-gradient(180deg,rgba(11,13,20,0.16),rgba(11,13,20,0))]"></div>
 
-  <div class="bg-dark-800 border border-dark-600 rounded-xl p-6 space-y-6">
-    <div class="flex flex-wrap justify-between items-start gap-2">
-      <h1 class="text-2xl font-light text-white">Заказ #{{ order.pk }}</h1>
-      <span class="px-2 py-1 rounded text-xs font-medium
-        {% if order.status == 'done' %}bg-green-900/40 text-green-400
-        {% elif order.status == 'cancelled' %}bg-gray-700 text-gray-400
-        {% elif order.status == 'paid' or order.status == 'shipping' %}bg-accent/20 text-accent
-        {% else %}bg-dark-600 text-gray-300{% endif %}">
-        {{ order.get_status_display }}
-      </span>
-    </div>
-    <p class="text-gray-400 text-sm">Дата: {{ order.created_at|date:"d.m.Y H:i" }}</p>
+    <div class="container relative mx-auto max-w-7xl px-4 py-8 md:py-10">
+      <div class="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
+        {% include "accounts/_account_sidebar.html" %}
 
-    <div>
-      <h2 class="text-lg font-medium text-white mb-3">Состав заказа</h2>
-      <ul class="space-y-2">
-        {% for item in order.items.all %}
-        <li class="flex justify-between text-sm">
-          <span class="text-gray-300">{% if item.variant_name %}{{ item.product.name }} ({{ item.variant_name }}){% else %}{{ item.product.name }}{% endif %} × {{ item.quantity }}{% if item.is_on_request %} <span class="text-accent text-xs">(под заказ)</span>{% endif %}</span>
-          <span class="text-white">{{ item.subtotal|price_format }} ₽</span>
-        </li>
-        {% endfor %}
-      </ul>
-      <p class="mt-3 pt-3 border-t border-dark-600 text-gray-400 text-sm">Сумма: {{ order.total|price_format }} ₽</p>
-      {% if order.promo_discount and order.promo_discount > 0 %}
-      <p class="text-green-400 text-sm">Скидка по промокоду{% if order.promo_code %} ({{ order.promo_code.code }}){% endif %}: −{{ order.promo_discount|price_format }} ₽</p>
-      {% endif %}
-      <p class="text-white font-medium">К оплате: {{ order.total_to_pay|price_format }} ₽</p>
-    </div>
+        <div class="space-y-6 min-w-0">
+          <section class="rounded-[2rem] border border-white/10 bg-dark-800/90 px-6 py-7 shadow-[0_24px_80px_rgba(0,0,0,0.35)] backdrop-blur md:px-8 md:py-8">
+            <div class="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p class="text-xs uppercase tracking-[0.24em] text-accent/80">Заказ в кабинете</p>
+                <h1 class="mt-2 text-3xl font-semibold text-white">Заказ #{{ order.pk }}</h1>
+                <p class="mt-2 text-sm text-gray-400">Создан {{ order.created_at|date:"d.m.Y H:i" }}</p>
+              </div>
+              <div class="flex flex-wrap gap-2 lg:max-w-[19rem] lg:justify-end">
+                <p class="inline-flex rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide {{ order_summary.status_badge_class }}">{{ order_summary.status_label }}</p>
+                <p class="inline-flex rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide {{ order_summary.payment_badge_class }}">{{ order_summary.payment_label }}</p>
+              </div>
+            </div>
 
-    {% if order.phone or order.first_name or order.address or order.delivery_type %}
-    <div>
-      <h2 class="text-lg font-medium text-white mb-3">Контакты и доставка</h2>
-      <ul class="text-gray-400 text-sm space-y-1">
-        {% if order.phone %}<li>Телефон: {{ order.phone }}</li>{% endif %}
-        {% if order.first_name or order.last_name %}<li>Имя: {{ order.first_name }} {{ order.last_name }}</li>{% endif %}
-        {% if order.delivery_type %}<li>Доставка: {{ order.get_delivery_type_display }}</li>{% endif %}
-        {% if order.address %}<li>Адрес: {{ order.address }}</li>{% endif %}
-      </ul>
-    </div>
-    {% endif %}
+            <div class="mt-6 rounded-2xl border border-white/10 bg-white/5 p-5">
+              <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Статус заказа</p>
+              <p class="mt-3 text-lg font-semibold text-white">{{ order_summary.status_description }}</p>
+              <p class="mt-2 text-sm leading-6 text-gray-400">{{ order_summary.status_next_step }}</p>
+              <div class="mt-4 grid gap-3 md:grid-cols-2">
+                <div class="rounded-2xl border border-white/10 bg-dark-900/40 p-4">
+                  <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Lifecycle</p>
+                  <p class="mt-2 text-white">{{ order_summary.status_label }}</p>
+                </div>
+                <div class="rounded-2xl border border-white/10 bg-dark-900/40 p-4">
+                  <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Оплата</p>
+                  <p class="mt-2 text-white">{{ order_summary.payment_label }}</p>
+                  <p class="mt-1 text-sm text-gray-400">{{ order_summary.payment_description }}</p>
+                </div>
+              </div>
+            </div>
+          </section>
 
-    {% if order.status == 'new' and not is_guest_order %}
-    <div class="pt-4 border-t border-dark-600">
-      {% if test_order_no_payment %}
-      <p class="text-gray-400 text-sm mb-2">Тестовый режим: оплата не требуется. Заказ считается оформленным.</p>
-      {% else %}
-      <a href="{% url 'payments:create_payment' order.pk %}" class="inline-block bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-6 rounded-full text-sm uppercase tracking-wide transition-colors">
-        Оплатить криптой
-      </a>
-      {% endif %}
+          <div class="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
+            <section class="rounded-[1.75rem] border border-white/10 bg-dark-800/90 p-6">
+              <div class="grid gap-6 md:grid-cols-2">
+                <div>
+                  <h2 class="text-lg font-medium text-white">Контакты</h2>
+                  <ul class="mt-3 space-y-2 text-sm text-gray-300">
+                    <li>Покупатель: {{ order.first_name }} {{ order.last_name }}</li>
+                    <li>Телефон: {{ order.phone }}</li>
+                    <li>Email: {{ order.email }}</li>
+                  </ul>
+                </div>
+                <div>
+                  <h2 class="text-lg font-medium text-white">Получатель</h2>
+                  <ul class="mt-3 space-y-2 text-sm text-gray-300">
+                    <li>Получатель: {{ order.shipping_contact_name|default:"Совпадает с покупателем" }}</li>
+                    <li>Телефон: {{ order.shipping_phone|default:order.phone }}</li>
+                    <li>Совпадает с покупателем: {% if order.recipient_is_customer %}Да{% else %}Нет{% endif %}</li>
+                  </ul>
+                </div>
+              </div>
+
+              <div class="mt-6 grid gap-6 md:grid-cols-2">
+                <div>
+                  <h2 class="text-lg font-medium text-white">Доставка</h2>
+                  <ul class="mt-3 space-y-2 text-sm text-gray-300">
+                    <li>Способ: {{ order.get_delivery_type_display }}</li>
+                    {% if order.country %}<li>Страна: {{ order.country }}</li>{% endif %}
+                    {% if order.city_text %}<li>Город: {{ order.city_text }}</li>{% endif %}
+                    {% if order.display_address %}<li>ПВЗ CDEK: {{ order.display_address }}</li>{% endif %}
+                    {% if order.cdek_fallback_to_nearest %}<li>Если ПВЗ недоступен, отправим в ближайший.</li>{% endif %}
+                    <li>Доставка оплачивается отдельно при получении: {{ order.delivery_cost|price_format }} ₽</li>
+                    {% if order.delivery_comment %}<li>Комментарий для доставки: {{ order.delivery_comment }}</li>{% endif %}
+                  </ul>
+                </div>
+                <div>
+                  <h2 class="text-lg font-medium text-white">Оплата</h2>
+                  <ul class="mt-3 space-y-2 text-sm text-gray-300">
+                    <li>Способ оплаты: {{ order.get_payment_method_display }}</li>
+                    <li>Статус оплаты: {{ order.get_payment_status_display }}</li>
+                    <li>Сумма к оплате за товар: {{ order.total_to_pay|price_format }} ₽</li>
+                    {% if order.comment %}<li>Комментарий к заказу: {{ order.comment }}</li>{% endif %}
+                  </ul>
+                </div>
+              </div>
+
+              <div class="mt-8">
+                <h2 class="text-lg font-medium text-white">Состав заказа</h2>
+                <ul class="mt-4 space-y-3">
+                  {% for item in order.items.all %}
+                    <li class="flex items-start justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm">
+                      <div>
+                        <p class="text-white">{% if item.variant_name %}{{ item.product.name }} ({{ item.variant_name }}){% else %}{{ item.product.name }}{% endif %}</p>
+                        <p class="mt-1 text-gray-500">Количество: {{ item.quantity }}{% if item.is_on_request %} · под заказ{% endif %}</p>
+                      </div>
+                      <p class="whitespace-nowrap font-semibold text-white">{{ item.subtotal|price_format }} ₽</p>
+                    </li>
+                  {% endfor %}
+                </ul>
+              </div>
+            </section>
+
+            <aside class="space-y-6">
+              <section class="rounded-[1.75rem] border border-white/10 bg-dark-800/90 p-6">
+                <h2 class="text-lg font-medium text-white">Сумма</h2>
+                <div class="mt-4 space-y-2 text-sm">
+                  <div class="flex items-center justify-between text-gray-300">
+                    <span>Товары</span>
+                    <span>{{ order.total|price_format }} ₽</span>
+                  </div>
+                  {% if order.promo_discount and order.promo_discount > 0 %}
+                    <div class="flex items-center justify-between text-green-400">
+                      <span>Скидка{% if order.promo_code %} ({{ order.promo_code.code }}){% endif %}</span>
+                      <span>−{{ order.promo_discount|price_format }} ₽</span>
+                    </div>
+                  {% endif %}
+                  <div class="flex items-center justify-between text-gray-300">
+                    <span>Доставка при получении</span>
+                    <span>{{ order.delivery_cost|price_format }} ₽</span>
+                  </div>
+                  <div class="flex items-center justify-between border-t border-white/10 pt-3 text-base font-semibold text-white">
+                    <span>К оплате за товар</span>
+                    <span>{{ order.total_to_pay|price_format }} ₽</span>
+                  </div>
+                </div>
+                {% if not test_order_no_payment and order.status == 'new' and order.payment_status != 'paid' %}
+                  <div class="mt-5">
+                    <a href="{% url 'payments:create_payment' order.pk %}" class="inline-flex w-full items-center justify-center rounded-full bg-accent px-4 py-3 text-sm font-bold text-dark-900 transition hover:bg-accent-hover">
+                      Инструкции по оплате
+                    </a>
+                  </div>
+                {% endif %}
+              </section>
+
+              <section class="rounded-[1.75rem] border border-white/10 bg-dark-800/90 p-6">
+                <h2 class="text-lg font-medium text-white">Следующие действия</h2>
+                <p class="mt-3 text-sm leading-6 text-gray-400">{{ order_summary.status_next_step }}</p>
+                <div class="mt-5 flex flex-wrap gap-3">
+                  <a href="{% url 'orders:order_list' %}" class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm text-white transition hover:border-white/20 hover:bg-white/10">
+                    Ко всем заказам
+                  </a>
+                  <a href="{% url 'contacts' %}" class="inline-flex items-center justify-center rounded-full bg-accent px-5 py-3 text-sm font-semibold text-dark-900 transition hover:bg-accent-hover">
+                    Связаться с менеджером
+                  </a>
+                </div>
+              </section>
+            </aside>
+          </div>
+        </div>
+      </div>
     </div>
-    {% endif %}
   </div>
-</div>
+{% endif %}
 {% endblock %}

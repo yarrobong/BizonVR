@@ -10,7 +10,15 @@ from .legal_pages import (
     service_request_terms_view,
     user_agreement_view,
 )
-from .static_pages import arenda_view, favicon_view, robots_txt_view, serve_media, uslugi_view
+from .static_pages import (
+    arenda_view,
+    favicon_view,
+    not_found_view,
+    permission_denied_view,
+    robots_txt_view,
+    serve_media,
+    uslugi_view,
+)
 
 __all__ = [
     'arenda_view',
@@ -19,7 +27,9 @@ __all__ = [
     'debug_cities_view',
     'favicon_view',
     'home_view',
+    'not_found_view',
     'oferta_view',
+    'permission_denied_view',
     'pd_consent_view',
     'privacy_view',
     'robots_txt_view',

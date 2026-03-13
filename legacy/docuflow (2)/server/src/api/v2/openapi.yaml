@@ -1,0 +1,67 @@
+openapi: 3.1.0
+info:
+  title: DocuFlow API v2
+  version: 0.1.0
+servers:
+  - url: /api/v2
+paths:
+  /contracts:
+    get:
+      summary: List contracts
+      responses:
+        '200':
+          description: Contracts list
+  /invoices:
+    get:
+      summary: List invoices
+      responses:
+        '200':
+          description: Invoices list
+  /counterparties:
+    get:
+      summary: List counterparties
+      responses:
+        '200':
+          description: Counterparties list
+  /templates:
+    get:
+      summary: List templates
+      responses:
+        '200':
+          description: Templates list
+  /settings:
+    get:
+      summary: Get settings
+      responses:
+        '200':
+          description: Settings
+  /dashboard/stats:
+    get:
+      summary: Get dashboard stats
+      responses:
+        '200':
+          description: Stats
+  /bootstrap-lite:
+    get:
+      summary: Get lightweight bootstrap metadata
+      responses:
+        '200':
+          description: Lightweight bootstrap
+  /documents/render/contract:
+    post:
+      summary: Render contract snapshot
+      responses:
+        '200':
+          description: Rendered HTML/CSS
+  /documents/export:
+    post:
+      summary: Export one document file
+      responses:
+        '200':
+          description: Binary file
+  /documents/package:
+    post:
+      summary: Export a zip package
+      responses:
+        '200':
+          description: Zip archive

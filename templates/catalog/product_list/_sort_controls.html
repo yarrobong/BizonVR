@@ -1,47 +1,45 @@
 {% if not is_catalog_root %}
-<!-- Мобильная панель: круглые иконки сортировки и фильтров + скруглённые чипы — уезжают при скролле -->
 <div x-show="!filtersModalOpen" class="lg:hidden relative">
-  <div class="flex flex-wrap items-center gap-2 mb-6">
+  <div class="filter-launcher-row mb-4">
     <div class="flex items-center gap-2 flex-shrink-0">
       <button type="button" @click="sortDropdownOpen = !sortDropdownOpen; filtersModalOpen = false"
-              class="w-10 h-10 rounded-full bg-dark-800 hover:bg-dark-700 text-gray-300 hover:text-white transition-colors flex items-center justify-center"
+              class="filter-circle-button"
               aria-label="Сортировка">
         <i data-lucide="arrow-up-down" class="w-5 h-5"></i>
       </button>
       <button type="button" @click="filtersModalOpen = true; sortDropdownOpen = false"
-              class="w-10 h-10 rounded-full bg-dark-800 hover:bg-dark-700 text-gray-300 hover:text-white transition-colors flex items-center justify-center"
+              class="filter-circle-button"
               aria-label="Фильтры">
         <i data-lucide="sliders-horizontal" class="w-5 h-5"></i>
       </button>
     </div>
     <div class="flex items-center gap-2 overflow-x-auto min-w-0 flex-1" style="scrollbar-width: none; -ms-overflow-style: none;">
       <button type="button" @click="filtersModalOpen = true"
-              class="flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors {% if current_category %}bg-accent text-dark-900{% else %}bg-dark-800 text-gray-300 hover:bg-dark-700 hover:text-white{% endif %}">
+              class="filter-launcher-chip {% if current_category %}is-active{% endif %}">
         Категория
       </button>
       {% if filter_price_min is not None and filter_price_max is not None and filter_price_max > filter_price_min %}
       <button type="button" @click="filtersModalOpen = true"
-              class="flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors {% if price_min_filter or price_max_filter %}bg-accent text-dark-900{% else %}bg-dark-800 text-gray-300 hover:bg-dark-700 hover:text-white{% endif %}">
+              class="filter-launcher-chip {% if price_min_filter or price_max_filter %}is-active{% endif %}">
         Цена
       </button>
       {% endif %}
       {% if product_tags and product_tags|length > 1 %}
       <button type="button" @click="filtersModalOpen = true"
-              class="flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors {% if current_tag %}bg-accent text-dark-900{% else %}bg-dark-800 text-gray-300 hover:bg-dark-700 hover:text-white{% endif %}">
+              class="filter-launcher-chip {% if current_tag %}is-active{% endif %}">
         Акция
       </button>
       {% endif %}
     </div>
   </div>
 
-  <!-- Выпадающий список сортировки (мобильный) -->
   <div x-show="sortDropdownOpen" x-cloak
        x-transition:enter="transition ease-out duration-150"
        x-transition:enter-start="opacity-0 -translate-y-1"
        x-transition:enter-end="opacity-100 translate-y-0"
        x-transition:leave="transition ease-in duration-100"
        @click.outside="sortDropdownOpen = false"
-       class="absolute left-0 right-0 top-full mt-2 z-50 py-2 bg-dark-800 rounded-xl border border-dark-600 shadow-xl">
+       class="filters-sort-dropdown absolute left-0 right-0 top-full mt-2 z-50 py-2">
     <a href="?sort=relevance{% if current_category %}&category={{ current_category }}{% endif %}{% if current_section %}&section={{ current_section }}{% endif %}{% if current_tag %}&tag={{ current_tag }}{% endif %}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if price_min_filter %}&price_min={{ price_min_filter }}{% endif %}{% if price_max_filter %}&price_max={{ price_max_filter }}{% endif %}"
        class="block px-4 py-2 text-sm {% if current_sort == 'relevance' %}text-accent font-medium{% else %}text-gray-300 hover:text-white{% endif %}">По релевантности</a>
     <a href="?sort=popularity{% if current_category %}&category={{ current_category }}{% endif %}{% if current_section %}&section={{ current_section }}{% endif %}{% if current_tag %}&tag={{ current_tag }}{% endif %}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if price_min_filter %}&price_min={{ price_min_filter }}{% endif %}{% if price_max_filter %}&price_max={{ price_max_filter }}{% endif %}"
@@ -58,10 +56,36 @@
 </div>
 {% endif %}
 
-<div class="{% if is_catalog_root %}hidden md:flex{% else %}flex{% endif %} flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 lg:mb-8">
-  <div class="flex flex-wrap gap-2 text-xs md:text-sm font-medium items-center order-2 md:order-1">
+<div class="{% if is_catalog_root %}hidden md:flex{% else %}flex{% endif %} catalog-control-bar">
+  <div class="catalog-control-bar-copy">
+    <div class="catalog-control-bar-head">
+      <h2 class="catalog-results-title">{{ catalog_heading }}</h2>
+      <p class="catalog-results-stat">
+        Найдено <strong>{{ results_count }}</strong>
+        {% if is_bundles_category %}
+        {{ results_count|ru_plural:"комплект,комплекта,комплектов" }}
+        {% else %}
+        {{ results_count|ru_plural:"товар,товара,товаров" }}
+        {% endif %}
+      </p>
+    </div>
+
+    {% if active_filter_chips %}
+    <div class="catalog-active-filters" aria-label="Активные фильтры">
+      {% for chip in active_filter_chips %}
+      <a href="{{ chip.remove_url }}" class="catalog-active-chip" aria-label="Убрать фильтр {{ chip.label }}">
+        <span>{{ chip.label }}</span>
+        <span class="catalog-active-chip-close" aria-hidden="true">×</span>
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  <label class="catalog-control-bar-sort">
+    <span class="catalog-sort-label">Сортировка</span>
     <select onchange="var u=new URL(location.href); u.searchParams.set('sort', this.value); u.searchParams.delete('page'); location.href=u.toString();"
-            class="bg-dark-700 text-white rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-accent">
+            class="catalog-sort-select">
       <option value="relevance" {% if current_sort == 'relevance' %}selected{% endif %}>По релевантности</option>
       <option value="popularity" {% if current_sort == 'popularity' %}selected{% endif %}>По популярности</option>
       <option value="newest" {% if current_sort == 'newest' %}selected{% endif %}>Сначала новые</option>
@@ -69,10 +93,5 @@
       <option value="price_desc" {% if current_sort == 'price_desc' %}selected{% endif %}>Цена: по убыванию</option>
       <option value="name" {% if current_sort == 'name' %}selected{% endif %}>По названию</option>
     </select>
-  </div>
-  {% if search_query %}
-  <h2 class="text-2xl md:text-3xl font-light text-white order-1 md:order-2 md:text-right">
-    Результаты поиска по запросу «{{ search_query }}»
-  </h2>
-  {% endif %}
+  </label>
 </div>

@@ -1,7 +1,10 @@
 """Шаблонные теги для каталога."""
 import json
+
 from django import template
 from django.utils.safestring import mark_safe
+
+from config.formatting import format_amount, format_currency_amount, format_decimal_amount
 
 from ..stock import public_stock_status
 
@@ -78,14 +81,26 @@ def filter_url_pagination(context, page):
 
 @register.filter
 def price_format(value):
-    """Форматирует число как цену: 100000 → «100 000» (пробел как разделитель тысяч)."""
-    if value is None:
-        return '0'
-    try:
-        num = int(round(float(value)))
-        return f'{num:,}'.replace(',', ' ')
-    except (TypeError, ValueError):
-        return str(value)
+    """Форматирует число как цену: 100000 -> 100 000, 100000.5 -> 100 000,50."""
+    return format_amount(value)
+
+
+@register.filter
+def rub(value):
+    """Форматирует сумму в рублях: 100000 -> 100 000 ₽."""
+    return format_currency_amount(value, 'RUB')
+
+
+@register.filter
+def currency_amount(value, currency='RUB'):
+    """Форматирует сумму с кодом валюты, для RUB использует символ ₽."""
+    return format_currency_amount(value, currency)
+
+
+@register.filter
+def decimal_format(value):
+    """Форматирует число с обязательными двумя знаками после запятой."""
+    return format_decimal_amount(value)
 
 
 @register.filter
@@ -129,6 +144,26 @@ def get_item(d, key):
 def get_dict_item(d, key):
     """Вернуть d.get(key) для словаря (None если ключа нет)."""
     return d.get(key) if isinstance(d, dict) else None
+
+
+@register.filter
+def ru_plural(value, forms):
+    """Русское склонение: 'товар,товара,товаров'."""
+    try:
+        number = abs(int(value))
+    except (TypeError, ValueError):
+        return ''
+    choices = [part.strip() for part in str(forms).split(',')]
+    if len(choices) != 3:
+        return ''
+    if 11 <= number % 100 <= 14:
+        return choices[2]
+    tail = number % 10
+    if tail == 1:
+        return choices[0]
+    if 2 <= tail <= 4:
+        return choices[1]
+    return choices[2]
 
 
 @register.filter

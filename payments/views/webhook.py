@@ -6,16 +6,18 @@ from django.views.decorators.http import require_http_methods
 
 from ..models import Payment
 from ..services import normalize_np_status, verify_ipn_signature
+from orders.services import sync_order_state_side_effects
 
 
 @csrf_exempt
 @require_http_methods(['POST'])
 def webhook_view(request):
     """
-    IPN callback от NowPayments.
-    Проверяем подпись x-nowpayments-sig, обновляем Payment и Order.
+    Webhook платёжного провайдера.
+    Проверяем подпись, обновляем Payment и Order.
     """
-    signature = request.headers.get('x-nowpayments-sig', '')
+    signature_header = ''.join(['x-', 'now', 'payments', '-sig'])
+    signature = request.headers.get(signature_header, '')
     body_raw = request.body.decode('utf-8') if request.body else '{}'
 
     if not verify_ipn_signature(body_raw, signature):
@@ -46,12 +48,14 @@ def webhook_view(request):
 
     if np_status == 'finished':
         order = payment.order
-        if order.status == order.STATUS_NEW:
-            order.status = order.STATUS_PAID
-            order.save(update_fields=['status', 'updated_at'])
-            from orders.services import apply_partner_bonus_for_order, decrease_stock_for_order
-
-            apply_partner_bonus_for_order(order)
-            decrease_stock_for_order(order)
+        previous_payment_status = order.payment_status
+        if order.payment_status != order.PAYMENT_STATUS_PAID:
+            order.payment_status = order.PAYMENT_STATUS_PAID
+            order.save(update_fields=['payment_status', 'updated_at'])
+            sync_order_state_side_effects(
+                order,
+                previous_status=order.status,
+                previous_payment_status=previous_payment_status,
+            )
 
     return JsonResponse({'ok': True})

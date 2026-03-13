@@ -3,9 +3,11 @@ from collections import OrderedDict
 from difflib import SequenceMatcher
 
 from django.core.paginator import Paginator
-from django.db.models import Case, Count, F, IntegerField, Q, Sum, Value, When
+from django.db.models import Case, Count, F, IntegerField, Max, Min, Q, Sum, Value, When
 from django.db.utils import ProgrammingError
 from django.views.generic import DetailView, ListView
+
+from config.formatting import format_amount
 
 from ..cache_utils import get_active_category_ids, get_catalog_sections
 from ..cart_services import get_cart_items
@@ -55,48 +57,123 @@ class ProductListView(ListView):
     paginate_by = 20
     template_name = 'catalog/product_list.html'
 
-    def get_queryset(self):
-        qs = (
-            Product.objects
-            .filter(is_active=True)
-            .select_related('category')
-            .prefetch_related('tags', 'variants')
-            .order_by('-created_at')
-        )
+    def _build_query_string(self, **updates):
+        params = self.request.GET.copy()
+        for key, value in updates.items():
+            if value is None or value == '':
+                params.pop(key, None)
+            else:
+                params[key] = str(value)
+        query_string = params.urlencode()
+        return f'?{query_string}' if query_string else '?'
+
+    def _build_active_filter_chips(self, context):
+        chips = []
+
+        if context['current_section_effective'] or context['current_category']:
+            label = (
+                context['current_category_obj'].name
+                if context['current_category_obj']
+                else context['section_name_map'].get(context['current_section_effective'])
+            )
+            if label:
+                chips.append({
+                    'label': label,
+                    'remove_url': self._build_query_string(section='', category=''),
+                })
+
+        if context['price_min_filter'] or context['price_max_filter']:
+            if context['price_min_filter'] and context['price_max_filter']:
+                price_label = (
+                    f'Цена: {format_amount(context["price_min_filter"])}-'
+                    f'{format_amount(context["price_max_filter"])}'
+                )
+            elif context['price_min_filter']:
+                price_label = f'Цена: от {format_amount(context["price_min_filter"])}'
+            else:
+                price_label = f'Цена: до {format_amount(context["price_max_filter"])}'
+            chips.append({
+                'label': price_label,
+                'remove_url': self._build_query_string(price_min='', price_max=''),
+            })
+
+        if context['current_tag']:
+            tag_name = next(
+                (tag.name for tag in context['product_tags'] if tag.slug == context['current_tag']),
+                context['current_tag'],
+            )
+            chips.append({
+                'label': tag_name,
+                'remove_url': self._build_query_string(tag=''),
+            })
+
+        for char_name, value in context['char_filters'].items():
+            chips.append({
+                'label': f'{char_name}: {value}',
+                'remove_url': self._build_query_string(**{f'char_{char_name}': ''}),
+            })
+
+        return chips
+
+    def _build_filter_queryset(
+        self,
+        *,
+        ignore_category=False,
+        ignore_section=False,
+        ignore_tag=False,
+        ignore_price=False,
+        include_char_filters=False,
+        exclude_char_name=None,
+    ):
+        qs = Product.objects.filter(is_active=True)
         search_query = (self.request.GET.get('q') or '').strip()
         if search_query:
             qs = qs.filter(
                 Q(name__icontains=search_query) | Q(description__icontains=search_query)
             )
         category_slug = self.request.GET.get('category')
-        if category_slug:
+        if category_slug and not ignore_category:
             cat = Category.objects.filter(slug=category_slug).first()
             if cat and getattr(cat, 'is_bundles_category', False):
                 return Product.objects.none()
             qs = qs.filter(category__slug=category_slug)
         section_slug = self.request.GET.get('section')
-        if section_slug:
+        if section_slug and not ignore_section:
             qs = qs.filter(category__section__slug=section_slug)
         tag_slug = (self.request.GET.get('tag') or '').strip()
-        if tag_slug:
-            qs = qs.filter(tags__slug=tag_slug).distinct()
-        price_min = self.request.GET.get('price_min')
-        if price_min:
-            try:
-                qs = qs.filter(price__gte=float(price_min))
-            except (ValueError, TypeError):
-                pass
-        price_max = self.request.GET.get('price_max')
-        if price_max:
-            try:
-                qs = qs.filter(price__lte=float(price_max))
-            except (ValueError, TypeError):
-                pass
-        for key, value in self.request.GET.items():
-            if key.startswith('char_') and value:
-                ch_name = key[5:]
-                qs = qs.filter(characteristics__name=ch_name, characteristics__value=value).distinct()
+        if tag_slug and not ignore_tag:
+            qs = qs.filter(tags__slug=tag_slug)
+        if not ignore_price:
+            price_min = self.request.GET.get('price_min')
+            if price_min:
+                try:
+                    qs = qs.filter(price__gte=float(price_min))
+                except (ValueError, TypeError):
+                    pass
+            price_max = self.request.GET.get('price_max')
+            if price_max:
+                try:
+                    qs = qs.filter(price__lte=float(price_max))
+                except (ValueError, TypeError):
+                    pass
+        if include_char_filters:
+            for key, value in self.request.GET.items():
+                if key.startswith('char_') and value:
+                    ch_name = key[5:]
+                    if exclude_char_name and ch_name == exclude_char_name:
+                        continue
+                    qs = qs.filter(characteristics__name=ch_name, characteristics__value=value)
+        return qs.distinct()
+
+    def get_queryset(self):
+        qs = (
+            self._build_filter_queryset(include_char_filters=True)
+            .select_related('category')
+            .prefetch_related('tags', 'variants')
+            .order_by('-created_at')
+        )
         sort = self.request.GET.get('sort', 'newest')
+        search_query = (self.request.GET.get('q') or '').strip()
         if search_query and sort == 'newest':
             sort = 'relevance'
 
@@ -131,34 +208,7 @@ class ProductListView(ListView):
 
     def _get_filter_base_queryset(self):
         """Базовый queryset для сбора опций фильтров (без пагинации, без char-фильтров)."""
-        qs = Product.objects.filter(is_active=True)
-        search_query = (self.request.GET.get('q') or '').strip()
-        if search_query:
-            qs = qs.filter(
-                Q(name__icontains=search_query) | Q(description__icontains=search_query)
-            )
-        category_slug = self.request.GET.get('category')
-        if category_slug:
-            qs = qs.filter(category__slug=category_slug)
-        section_slug = self.request.GET.get('section')
-        if section_slug:
-            qs = qs.filter(category__section__slug=section_slug)
-        tag_slug = (self.request.GET.get('tag') or '').strip()
-        if tag_slug:
-            qs = qs.filter(tags__slug=tag_slug).distinct()
-        price_min = self.request.GET.get('price_min')
-        if price_min:
-            try:
-                qs = qs.filter(price__gte=float(price_min))
-            except (ValueError, TypeError):
-                pass
-        price_max = self.request.GET.get('price_max')
-        if price_max:
-            try:
-                qs = qs.filter(price__lte=float(price_max))
-            except (ValueError, TypeError):
-                pass
-        return qs
+        return self._build_filter_queryset()
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -227,29 +277,61 @@ class ProductListView(ListView):
             context['bundle_page_obj'] = None
 
         base_qs = self._get_filter_base_queryset()
-        from django.db.models import Min, Max
-
-        price_agg = base_qs.aggregate(min_p=Min('price'), max_p=Max('price'))
+        applied_qs = self._build_filter_queryset(include_char_filters=True)
+        price_bounds_qs = self._build_filter_queryset(include_char_filters=True, ignore_price=True)
+        price_agg = price_bounds_qs.aggregate(min_p=Min('price'), max_p=Max('price'))
         context['filter_price_min'] = int(price_agg['min_p']) if price_agg['min_p'] is not None else 0
         context['filter_price_max'] = int(price_agg['max_p']) if price_agg['max_p'] is not None else 0
 
-        tags_qs = ProductTag.objects.filter(products__in=base_qs).order_by('order', 'name').distinct()
+        tags_base_qs = self._build_filter_queryset(ignore_tag=True, include_char_filters=True)
+        tags_qs = (
+            ProductTag.objects
+            .filter(products__in=tags_base_qs)
+            .annotate(result_count=Count('products', filter=Q(products__in=tags_base_qs), distinct=True))
+            .order_by('order', 'name')
+            .distinct()
+        )
         context['product_tags'] = list(tags_qs)
 
-        base_qs_with_char = base_qs
-        for ch_name, ch_value in context['char_filters'].items():
-            base_qs_with_char = base_qs_with_char.filter(
-                characteristics__name=ch_name, characteristics__value=ch_value
-            ).distinct()
-        char_qs = ProductCharacteristic.objects.filter(product__in=base_qs_with_char).values('name', 'value').distinct().order_by('name', 'value')
         char_options = OrderedDict()
-        for row in char_qs:
-            name = row['name']
-            if name not in char_options:
-                char_options[name] = []
-            if row['value'] not in char_options[name]:
-                char_options[name].append(row['value'])
+        char_option_counts = {}
+        char_names = (
+            ProductCharacteristic.objects
+            .filter(product__in=base_qs)
+            .values_list('name', flat=True)
+            .distinct()
+            .order_by('name')
+        )
+        for char_name in char_names:
+            scoped_qs = self._build_filter_queryset(include_char_filters=True, exclude_char_name=char_name)
+            value_counts = list(
+                ProductCharacteristic.objects
+                .filter(product__in=scoped_qs, name=char_name)
+                .values('value')
+                .annotate(total=Count('product', distinct=True))
+                .order_by('value')
+            )
+            if len(value_counts) <= 1:
+                continue
+            char_options[char_name] = [row['value'] for row in value_counts]
+            char_option_counts[char_name] = {row['value']: row['total'] for row in value_counts}
         context['filter_characteristics'] = char_options
+        context['filter_characteristic_counts'] = char_option_counts
+
+        category_counts_qs = (
+            self._build_filter_queryset(ignore_category=True, ignore_section=True, include_char_filters=True)
+            .values('category_id', 'category__section__slug')
+            .annotate(total=Count('id', distinct=True))
+        )
+        category_result_counts = {}
+        section_result_counts = {}
+        for row in category_counts_qs:
+            category_result_counts[row['category_id']] = row['total']
+            section_slug = row['category__section__slug']
+            if section_slug:
+                section_result_counts[section_slug] = section_result_counts.get(section_slug, 0) + row['total']
+        context['category_result_counts'] = category_result_counts
+        context['section_result_counts'] = section_result_counts
 
         section_name_map = {s.slug: s.name for s in context['catalog_sections']}
         category_name_map = {}
@@ -258,6 +340,14 @@ class ProductListView(ListView):
                 category_name_map[cat.slug] = cat.name
         context['section_name_map'] = section_name_map
         context['category_name_map'] = category_name_map
+        if search_query:
+            context['catalog_heading'] = f'Результаты поиска по запросу «{search_query}»'
+        elif current_category := context['current_category_obj']:
+            context['catalog_heading'] = current_category.name
+        elif effective_section_slug:
+            context['catalog_heading'] = section_name_map.get(effective_section_slug, 'Каталог')
+        else:
+            context['catalog_heading'] = 'Каталог VR-оборудования'
 
         similar_categories = []
         if selected_category and selected_category.section:
@@ -277,6 +367,17 @@ class ProductListView(ListView):
             scored.sort(key=lambda x: x[0], reverse=True)
             similar_categories = [cat for _, cat in scored[:3]]
         context['similar_categories'] = similar_categories
+        context['active_filters_count'] = (
+            int(bool(context['current_section_effective'] or context['current_category']))
+            + int(bool(context['current_tag']))
+            + int(bool(context['price_min_filter'] or context['price_max_filter']))
+            + len(context['char_filters'])
+        )
+        if context['is_bundles_category'] and context['bundle_page_obj'] is not None:
+            context['results_count'] = context['bundle_page_obj'].paginator.count
+        else:
+            context['results_count'] = applied_qs.count()
+        context['active_filter_chips'] = self._build_active_filter_chips(context)
 
         from ..cart_services import get_compare_product_ids, get_favorite_product_ids
 

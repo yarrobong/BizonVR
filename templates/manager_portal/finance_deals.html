@@ -1,0 +1,88 @@
+{% extends "manager_portal/base.html" %}
+
+{% block title %}Финансы: сделки{% endblock %}
+
+{% block content %}
+  <div class="grid gap-8 xl:grid-cols-[24rem_1fr]">
+    <section class="manager-panel rounded-3xl p-6">
+      <p class="text-xs uppercase tracking-[0.22em] text-cyan-300">Новый финкейс</p>
+      <h2 class="mt-3 text-2xl font-semibold text-white">Создать финансовый кейс</h2>
+      {% if finance_prefill_deal %}
+        <div class="mt-4 rounded-2xl border border-cyan-500/30 bg-cyan-500/10 p-4 text-sm text-cyan-100">
+          {{ finance_prefill_note }}
+        </div>
+        <div class="mt-4 flex flex-wrap gap-2">
+          <span class="manager-pill"><strong>Выручка</strong> {{ finance_deal_form.instance.revenue|rub }}</span>
+          <span class="manager-pill"><strong>Себестоимость</strong> {{ finance_deal_form.instance.cost_price|rub }}</span>
+          <span class="manager-pill"><strong>Документ</strong> {{ finance_deal_form.instance.linked_document|default:"не привязан" }}</span>
+        </div>
+        {% if finance_prefill_hints %}
+          <div class="mt-4 flex flex-wrap gap-2">
+            {% for hint in finance_prefill_hints %}
+              <span class="manager-pill">{{ hint }}</span>
+            {% endfor %}
+          </div>
+        {% endif %}
+        {% if finance_prefill_missing_fields %}
+          <div class="mt-4 flex flex-wrap gap-2">
+            {% for field in finance_prefill_missing_fields %}
+              <span class="manager-pill">{{ field }}</span>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endif %}
+      <form method="post" class="mt-5 grid gap-4">
+        {% csrf_token %}
+        {% if finance_prefill_deal %}
+          <input type="hidden" name="createFromDeal" value="{{ finance_prefill_deal.pk }}">
+        {% endif %}
+        {% include "manager_portal/_form_fields.html" with form=finance_deal_form %}
+        <button type="submit" class="rounded-xl bg-cyan-400 px-4 py-3 text-sm font-semibold text-slate-950">Сохранить кейс</button>
+      </form>
+    </section>
+    <section class="manager-panel rounded-3xl p-6">
+      <div class="flex items-center justify-between gap-4">
+        <div>
+          <p class="text-xs uppercase tracking-[0.22em] text-slate-500">Реестр</p>
+          <h2 class="mt-2 text-2xl font-semibold text-white">Финансовые кейсы</h2>
+        </div>
+        <a href="{% url 'manager_portal:finance_settings' %}" class="rounded-xl border border-slate-700 px-4 py-2 text-xs text-slate-300 hover:bg-slate-800">Настройки</a>
+      </div>
+      <div class="mt-5 overflow-x-auto">
+        <table class="min-w-full text-sm text-slate-300">
+          <thead class="text-left text-xs uppercase tracking-[0.18em] text-slate-500">
+            <tr>
+              <th class="pb-3 pr-4">Дата</th>
+              <th class="pb-3 pr-4">Клиент / договор</th>
+              <th class="pb-3 pr-4">Тип</th>
+              <th class="pb-3 pr-4">Выручка</th>
+              <th class="pb-3 pr-4">Маржа</th>
+              <th class="pb-3 pr-4">Партнер</th>
+              <th class="pb-3 pr-4"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for deal in finance_deals %}
+              <tr class="border-t border-slate-800">
+                <td class="py-3 pr-4">{{ deal.date }}</td>
+                <td class="py-3 pr-4">
+                  <div class="font-medium text-white">{{ deal.contract_number|default:"Без названия" }}</div>
+                  <div class="text-xs text-slate-500">{{ deal.comment|default:"Без комментария" }}</div>
+                </td>
+                <td class="py-3 pr-4">{{ deal.deal_type.name }}</td>
+                <td class="py-3 pr-4">{{ deal.revenue }}</td>
+                <td class="py-3 pr-4">{{ deal.margin }}</td>
+                <td class="py-3 pr-4">{{ deal.partner_share_amount|rub }}</td>
+                <td class="py-3 pr-4">
+                  <a href="{% url 'manager_portal:finance_deal_detail' deal.pk %}" class="rounded-xl border border-slate-700 px-3 py-2 text-xs text-slate-300 hover:bg-slate-800">Подробнее</a>
+                </td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="7" class="py-4 text-slate-500">Сделок пока нет.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+{% endblock %}

@@ -67,6 +67,28 @@ def serve_media(request, path):
     )
 
 
+def not_found_view(request, unmatched_path=''):
+    requested_path = request.path
+    if unmatched_path:
+        requested_path = '/' + unmatched_path.lstrip('/')
+    return render(
+        request,
+        '404.html',
+        {
+            'requested_path': requested_path,
+        },
+        status=404,
+    )
+
+
+def permission_denied_view(request, exception=None):
+    return render(
+        request,
+        '403.html',
+        status=403,
+    )
+
+
 def arenda_view(request):
     """Страница аренды VR-шлемов Meta Quest."""
     media_url = (settings.MEDIA_URL or '/media/').rstrip('/') + '/'

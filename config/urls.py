@@ -34,10 +34,13 @@ from config.views import (
     sales_terms_view,
     service_request_terms_view,
     serve_media,
+    not_found_view,
     user_agreement_view,
     uslugi_view,
 )
 from config.sitemaps import BundleSitemap, ProductSitemap, StaticViewSitemap
+
+handler403 = 'config.views.permission_denied_view'
 
 urlpatterns = [
     path('favicon.ico', favicon_view),
@@ -57,6 +60,7 @@ urlpatterns = [
     path('orders/', include('orders.urls')),
     path('payments/', include('payments.urls')),
     path('catalog/', include('catalog.urls')),
+    path('manager/', include('manager_portal.urls')),
     path('', home_view, name='home'),
     path(
         'sitemap.xml',
@@ -70,3 +74,4 @@ if settings.DEBUG:
 # Медиа: в DEBUG или SERVE_MEDIA=1 — раздаём через serve_media
 if settings.DEBUG or config_bool('SERVE_MEDIA', default=False):
     urlpatterns = [re_path(r'^media/(?P<path>.*)$', serve_media)] + urlpatterns
+urlpatterns.append(re_path(r'^(?P<unmatched_path>.*)$', not_found_view))

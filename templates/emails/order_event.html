@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>{{ event_title }}</title>
+</head>
+<body style="margin:0;background:#0f172a;color:#e5eefc;font-family:Arial,sans-serif;">
+  <div style="max-width:680px;margin:0 auto;padding:32px 20px;">
+    <div style="border:1px solid rgba(255,255,255,0.08);border-radius:24px;background:#111827;padding:32px;">
+      <p style="margin:0 0 12px;color:#67e8f9;font-size:12px;letter-spacing:0.24em;text-transform:uppercase;">{{ brand }}</p>
+      <h1 style="margin:0 0 12px;font-size:32px;line-height:1.15;color:#ffffff;">{{ event_title }} #{{ order.pk }}</h1>
+      <p style="margin:0 0 24px;font-size:15px;line-height:1.7;color:#cbd5e1;">{{ event_description }}</p>
+      <div style="border-radius:18px;background:#0f172a;border:1px solid rgba(255,255,255,0.08);padding:20px;">
+        {% for item in items %}
+        <div style="display:flex;justify-content:space-between;gap:16px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.06);">
+          <div style="color:#e5eefc;">{{ item.product.name }}{% if item.variant_name %} ({{ item.variant_name }}){% endif %} x {{ item.quantity }}</div>
+          <div style="color:#ffffff;white-space:nowrap;">{{ item.subtotal|rub }}</div>
+        </div>
+        {% endfor %}
+        <div style="display:flex;justify-content:space-between;gap:16px;padding-top:14px;font-weight:700;color:#ffffff;">
+          <div>К оплате</div>
+          <div>{{ order.total_to_pay|rub }}</div>
+        </div>
+      </div>
+      <div style="margin-top:20px;font-size:14px;line-height:1.7;color:#cbd5e1;">
+        <div>Доставка: {{ order.get_delivery_type_display }}</div>
+        <div>Оплата: {{ order.get_payment_method_display }}</div>
+        {% if order_url %}<div style="margin-top:10px;"><a href="{{ order_url }}" style="color:#67e8f9;text-decoration:none;">Открыть заказ</a></div>{% endif %}
+      </div>
+      {% if shop_email or shop_phone %}
+      <p style="margin:20px 0 0;font-size:13px;line-height:1.7;color:#94a3b8;">
+        {% if shop_email %}Поддержка: <a href="mailto:{{ shop_email }}" style="color:#67e8f9;text-decoration:none;">{{ shop_email }}</a>{% endif %}
+        {% if shop_phone %}{% if shop_email %}<br>{% endif %}Телефон: <span style="color:#e5eefc;">{{ shop_phone }}</span>{% endif %}
+      </p>
+      {% endif %}
+    </div>
+  </div>
+</body>
+</html>

@@ -3,7 +3,7 @@
 ## Назначение проекта
 - BizonVR — Django-магазин VR-оборудования и VR-аттракционов.
 - Основной стек: Django 6, PostgreSQL, Tailwind CSS, серверные Django templates, немного JS, WhiteNoise.
-- Основные бизнес-потоки: каталог -> корзина -> заказ -> крипто-платёж через NowPayments.
+- Основные бизнес-потоки: каталог -> корзина -> заказ -> оплата по СБП, банковской карте или через менеджера для юрлиц.
 - Вторичные потоки: вход по SMS-коду, избранное, сравнение, шаринг корзины, заявки с лендингов и страницы контактов.
 
 ## Быстрый старт для агента
@@ -16,8 +16,10 @@
 - [config/](/Users/Yaroslav/Documents/dev/BizonVR/config) — настройки проекта, корневые URL, статические и legal views.
 - [catalog/](/Users/Yaroslav/Documents/dev/BizonVR/catalog) — основной каталог, остатки, корзина, избранное, сравнение, рекомендации.
 - [orders/](/Users/Yaroslav/Documents/dev/BizonVR/orders) — checkout, заказы, промокоды, legacy purchase requests.
-- [payments/](/Users/Yaroslav/Documents/dev/BizonVR/payments) — создание платежей и webhook NowPayments.
+- [payments/](/Users/Yaroslav/Documents/dev/BizonVR/payments) — инструкции по оплате заказа, платёжные данные и webhook-процессинг.
 - [accounts/](/Users/Yaroslav/Documents/dev/BizonVR/accounts) — вход по SMS, профиль, баланс, сохранённые адреса.
+- [manager_portal/](/Users/Yaroslav/Documents/dev/BizonVR/manager_portal) — внутренний портал, финансы, логистика, договоры и import-команды для legacy-источников.
+- [legacy/](/Users/Yaroslav/Documents/dev/BizonVR/legacy) — архивные источники данных; не активный runtime и не source of truth.
 - [templates/](/Users/Yaroslav/Documents/dev/BizonVR/templates) — все серверные шаблоны.
 - [static/](/Users/Yaroslav/Documents/dev/BizonVR/static) — исходные статические файлы, которые редактируют вручную.
 - [staticfiles/](/Users/Yaroslav/Documents/dev/BizonVR/staticfiles) — результат `collectstatic`, generated output; руками не редактировать, если задача не про артефакт сборки.
@@ -46,7 +48,7 @@
 
 ### payments
 - Главная сущность: `Payment`.
-- Интеграция только с NowPayments.
+- Публичные способы оплаты: СБП, банковская карта, для юридических лиц — через менеджера.
 - Создание платежа: [payments/views/checkout.py](/Users/Yaroslav/Documents/dev/BizonVR/payments/views/checkout.py) + [payments/services.py](/Users/Yaroslav/Documents/dev/BizonVR/payments/services.py).
 - Вебхук: [payments/views/webhook.py](/Users/Yaroslav/Documents/dev/BizonVR/payments/views/webhook.py).
 - При `payment_status=finished` вебхук переводит заказ в `paid`, после чего запускает бонусы и списание остатков.
@@ -80,36 +82,36 @@
 ## Критичные соглашения
 - Не редактируй `staticfiles/`, если задача не требует именно пересобранных артефактов. Обычно правят `static/` и затем запускают `collectstatic`.
 - Не считай `tech.md` источником правды по текущей архитектуре: это старое ТЗ, часть структуры там уже не совпадает с репозиторием.
+- Активный runtime только один: Django BizonVR. Активная БД только одна: PostgreSQL из `DATABASES["default"]`.
 - Источник истины по данным каталога — PostgreSQL, а не локальные JSON/fixture-файлы.
+- `legacy/` не является source of truth. Данные оттуда можно только импортировать через `manager_portal` management commands, не подключая отдельные Django DB aliases.
+- Корневой `db.sqlite3` и любые новые persistent SQLite-файлы вне `legacy/` запрещены. Для проверки есть `make check-single-db`.
 - Города, точки выдачи и остатки подробно описаны в [docs/CITIES_AND_PRODUCTS.md](/Users/Yaroslav/Documents/dev/BizonVR/docs/CITIES_AND_PRODUCTS.md).
 - Во многих формах и сущностях обязательны поля legal consent. См. [config/legal_consent.py](/Users/Yaroslav/Documents/dev/BizonVR/config/legal_consent.py).
 - В проекте может быть грязное рабочее дерево. Не откатывай чужие изменения без явного запроса.
 
 ## Команды разработки
-- Локально без Docker:
+- Локально:
 ```bash
 make install-local
 make migrate-local
 make run-local
 ```
-- Docker dev:
-```bash
-make dev
-make migrate
-make load-data-clear
-```
 - Полезные команды:
 ```bash
+make migrate
+make load-data-clear
 make superuser-local
 make shell
 make collectstatic
+make check-single-db
 npm run build:css
 ```
 
 ## Деплой и окружение
-- Локальный запуск без Docker обычно использует PostgreSQL на `localhost`; docker-compose пробрасывает БД на порт `5434`.
-- Продакшен запускается через [docker-compose.prod.yml](/Users/Yaroslav/Documents/dev/BizonVR/docker-compose.prod.yml) и [entrypoint.sh](/Users/Yaroslav/Documents/dev/BizonVR/entrypoint.sh).
-- `entrypoint.sh` ждёт БД, применяет миграции, при необходимости собирает Tailwind, затем делает `collectstatic`.
+- Локальный запуск обычно использует PostgreSQL на `localhost:5432`.
+- Продакшен рассчитан на `venv` + Gunicorn + systemd + Nginx.
+- `legacy/` в продакшене не запускается как отдельный сервис и не добавляет новые БД в runtime.
 - Переменные окружения смотри в [.env.example](/Users/Yaroslav/Documents/dev/BizonVR/.env.example).
 - Документ по деплою: [DEPLOY.md](/Users/Yaroslav/Documents/dev/BizonVR/DEPLOY.md).
 
@@ -126,6 +128,12 @@ npm run build:css
 - Самое широкое покрытие сейчас в [catalog/tests.py](/Users/Yaroslav/Documents/dev/BizonVR/catalog/tests.py).
 - Перед серьёзными правками запускай хотя бы:
 ```bash
-.venv/bin/python manage.py test catalog orders accounts payments
+make test
+# или напрямую:
+DJANGO_SETTINGS_MODULE=config.settings_test .venv/bin/python manage.py test config catalog orders accounts payments manager_portal --keepdb --noinput
+```
+- Для быстрой проверки менеджерского контура используй:
+```bash
+make test-manager-smoke
 ```
 - Если тесты не проходят, сначала проверь `.env`, подключение к PostgreSQL и наличие миграций.

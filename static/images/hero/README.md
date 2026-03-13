@@ -27,4 +27,4 @@
 - `hero_3.jpg` — третий слайд  
 - `hero_4.jpg` — четвёртый слайд  
 
-После добавления файлов выполните: `python manage.py collectstatic` (или перезапустите Docker).
+После добавления файлов выполните: `python manage.py collectstatic`.

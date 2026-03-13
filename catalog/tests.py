@@ -333,6 +333,47 @@ class CatalogSectionFilterTest(TestCase):
         self.assertNotIn(self.tag_pc.slug, tag_slugs)
 
 
+class CatalogPriceBoundsTest(TestCase):
+    """Границы ценового фильтра не должны схлопываться до текущего price-фильтра."""
+
+    def setUp(self):
+        self.client = Client()
+        self.section = CatalogSection.objects.create(name='VR', slug='vr-price')
+        self.category = Category.objects.create(name='Шлемы', slug='price-headsets', section=self.section)
+        Product.objects.create(
+            category=self.category,
+            name='Базовый шлем',
+            slug='price-low',
+            price=100,
+            is_active=True,
+        )
+        Product.objects.create(
+            category=self.category,
+            name='Средний шлем',
+            slug='price-mid',
+            price=500,
+            is_active=True,
+        )
+        Product.objects.create(
+            category=self.category,
+            name='Топовый шлем',
+            slug='price-high',
+            price=900,
+            is_active=True,
+        )
+
+    def test_price_filter_keeps_full_category_bounds(self):
+        resp = self.client.get(
+            reverse('catalog:product_list'),
+            {'category': self.category.slug, 'price_min': '500', 'price_max': '700'},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.context['filter_price_min'], 100)
+        self.assertEqual(resp.context['filter_price_max'], 900)
+        self.assertEqual(resp.context['price_min_filter'], '500')
+        self.assertEqual(resp.context['price_max_filter'], '700')
+
+
 class HomeFeaturedProductsTest(TestCase):
     """Главная страница: только товары с промо-тегами."""
 

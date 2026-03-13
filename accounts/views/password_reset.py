@@ -18,6 +18,7 @@ from ..security import (
 )
 from ..services import (
     create_and_send_code,
+    ensure_profile,
     get_user_by_email,
     get_user_by_phone,
     is_sms_debug_mode,
@@ -64,7 +65,7 @@ def _get_password_reset_verified_user(request):
 
 
 def _complete_password_setup(request, user):
-    Profile.objects.get_or_create(user=user, defaults={'phone': user.username})
+    ensure_profile(user)
     login(request, user, backend='django.contrib.auth.backends.ModelBackend')
     _clear_password_reset_pending_phone(request)
     _clear_password_reset_verified_user(request)

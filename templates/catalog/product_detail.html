@@ -397,7 +397,7 @@
       navigator.share({
         title: document.title,
         url: window.location.href
-      }).catch(e => console.log(e));
+      }).catch(() => {});
     }
   }
 }">
@@ -456,7 +456,7 @@
 
       <!-- Mobile: minimal info from DB -->
       <div class="mobile-card mobile-only">
-        <div class="mobile-price" x-text="(selectedVariant ? selectedVariant.price : productPrice).toLocaleString('ru-RU') + ' ₽'"></div>
+        <div class="mobile-price" x-text="window.formatRub(selectedVariant ? selectedVariant.price : productPrice)"></div>
         <h1 class="mobile-product-title">{{ product.name }}</h1>
       </div>
 
@@ -538,7 +538,7 @@
       <div class="buy-box">
         <div class="price-block">
           <div class="price-row">
-            <span class="main-price" x-text="(selectedVariant ? selectedVariant.price : productPrice).toLocaleString('ru-RU') + ' ₽'"></span>
+            <span class="main-price" x-text="window.formatRub(selectedVariant ? selectedVariant.price : productPrice)"></span>
           </div>
         </div>
 
@@ -649,10 +649,10 @@
           <div class="rec-caption mb-3">
             {% if bundle.name %}
               <strong>{{ bundle.name }}</strong>
-              <span> — {{ bundle.total_price|floatformat:0 }} ₽</span>
+              <span> — {{ bundle.total_price|rub }}</span>
             {% else %}
               <strong>Состав комплекта</strong>
-              <span> — {{ bundle.total_price|floatformat:0 }} ₽</span>
+              <span> — {{ bundle.total_price|rub }}</span>
             {% endif %}
           </div>
           <div class="rec-grid mb-4">
@@ -669,7 +669,7 @@
             {% csrf_token %}
             <input type="hidden" name="bundle_id" value="{{ bundle.pk }}" />
             <input type="hidden" name="next" value="{{ request.get_full_path }}" />
-            <button type="submit" class="add-cart-btn" style="max-width: 320px;">Купить комплект — {{ bundle.total_price|floatformat:0 }} ₽</button>
+            <button type="submit" class="add-cart-btn" style="max-width: 320px;">Купить комплект — {{ bundle.total_price|rub }}</button>
           </form>
         </div>
       {% endfor %}

@@ -45,15 +45,15 @@
 
 В проекте используется **только PostgreSQL** (настройки в `config.settings`: движок не переключается на SQLite). Одна и та же БД для сайта и админки — либо через `DATABASE_URL`, либо через `DB_HOST`/`DB_PORT`/`DB_NAME`/`DB_USER`/`DB_PASSWORD`.
 
-- **Docker** (`docker compose up`): контейнер `web` подключается к контейнеру `db` (PostgreSQL). Сайт и админка на одном хосте используют эту БД.
-- **Локальный запуск** (`python manage.py runserver`): нужен доступ к той же БД — либо свой PostgreSQL с теми же `DB_*`, либо подключение к БД из Docker: `DB_HOST=localhost` и `DB_PORT=5434` (порт 5434 проброшен с контейнера `db`).
+- **Локальный запуск** (`python manage.py runserver`): обычно используется PostgreSQL на `localhost:5432`.
+- **Серверный запуск** (`gunicorn`, `systemd`): приложение и админка должны смотреть в тот же PostgreSQL-инстанс, что и локальная админка и shell.
 
 Если на сайте отображается другое число городов, чем в админке, значит запросы идут к разным инстансам БД (разные `.env`, разный хост/порт). Проверь, что и сайт, и админка запущены с одним и тем же `DATABASE_URL` или одними и теми же `DB_*`.
 
 **Проверка количества городов в текущей БД:**
 ```bash
-make shell-prod
+make shell
 >>> from catalog.models import City
 >>> list(City.objects.order_by('order', 'name').values_list('name', flat=True))
 ```
-Или: `make clear-cache-prod` — выведет «В БД сейчас городов: N» и список имён.
+Или: `make clear-cache` — выведет «В БД сейчас городов: N» и список имён.

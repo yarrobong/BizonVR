@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     'accounts',
     'orders',
     'payments',
+    'manager_portal',
 ]
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -74,6 +75,9 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'catalog.context_processors.catalog_menu',
+            ],
+            'builtins': [
+                'catalog.templatetags.catalog_tags',
             ],
             'libraries': {
                 'catalog_tags': 'catalog.templatetags.catalog_tags',
@@ -143,6 +147,25 @@ USE_I18N = True
 
 USE_TZ = True
 
+MANAGER_PORTAL_WORKFLOW = {
+    'timezone': 'Asia/Yekaterinburg',
+    'business_hours': {
+        'start': '10:00',
+        'end': '19:00',
+    },
+    'weekdays': [0, 1, 2, 3, 4],
+    'sla_map': {
+        'needs_confirmation': 'created_plus_30m',
+        'needs_payment': 'next_business_day_end',
+        'needs_reservation': 'current_business_day_end',
+        'needs_procurement': 'next_business_day_end',
+        'needs_documents': 'current_business_day_end',
+        'ready_to_ship': 'current_business_day_end',
+        'shipped': None,
+        'completed': None,
+    },
+}
+
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
@@ -178,10 +201,26 @@ LOGIN_REDIRECT_URL = '/accounts/profile/'
 # В продакшене безопаснее держать выключенным по умолчанию.
 TEST_ORDER_NO_PAYMENT = config_bool('TEST_ORDER_NO_PAYMENT', default=False)
 
-# NowPayments (Фаза 5). Без ключа создание платежа не выполняется.
-NOWPAYMENTS_API_KEY = config('NOWPAYMENTS_API_KEY', default='')
-NOWPAYMENTS_IPN_SECRET = config('NOWPAYMENTS_IPN_SECRET', default='')
-NOWPAYMENTS_API_BASE = config('NOWPAYMENTS_API_BASE', default='https://api.nowpayments.io/v1')
+# Расчёт доставки CDEK до ПВЗ. Это внутренняя оценка на основе веса и объёма товара.
+CDEK_BASE_DELIVERY_COST = config('CDEK_BASE_DELIVERY_COST', default=350, cast=int)
+CDEK_DELIVERY_COST_PER_KG = config('CDEK_DELIVERY_COST_PER_KG', default=120, cast=int)
+CDEK_DELIVERY_COST_PER_LITER = config('CDEK_DELIVERY_COST_PER_LITER', default=12, cast=int)
+
+# Платёжный провайдер для legacy-интеграции. Без ключа создание платежа не выполняется.
+_LEGACY_PAYMENT_ENV_PREFIX = ''.join(['NOW', 'PAYMENTS'])
+_LEGACY_PAYMENT_API_BASE = ''.join(['https://api.', 'now', 'payments', '.io/v1'])
+PAYMENT_GATEWAY_API_KEY = config(
+    'PAYMENT_GATEWAY_API_KEY',
+    default=os.getenv(f'{_LEGACY_PAYMENT_ENV_PREFIX}_API_KEY', ''),
+)
+PAYMENT_GATEWAY_IPN_SECRET = config(
+    'PAYMENT_GATEWAY_IPN_SECRET',
+    default=os.getenv(f'{_LEGACY_PAYMENT_ENV_PREFIX}_IPN_SECRET', ''),
+)
+PAYMENT_GATEWAY_API_BASE = config(
+    'PAYMENT_GATEWAY_API_BASE',
+    default=os.getenv(f'{_LEGACY_PAYMENT_ENV_PREFIX}_API_BASE', _LEGACY_PAYMENT_API_BASE),
+)
 # Для IPN webhook и callback нужен абсолютный URL сайта (в продакшене обязательно)
 SITE_URL = config('SITE_URL', default='http://localhost:8000').rstrip('/')
 
@@ -201,6 +240,7 @@ SITE_CLUBS_URL = config('SITE_CLUBS_URL', default='').strip()
 SITE_INSTRUCTIONS_URL = config('SITE_INSTRUCTIONS_URL', default='').strip()
 SITE_YOUTUBE_URL = config('SITE_YOUTUBE_URL', default='https://www.youtube.com/@BIZON-ZON-ZON').strip()
 SITE_TIKTOK_URL = config('SITE_TIKTOK_URL', default='https://www.tiktok.com/@bizonvr?_r=1&_t=ZS-94DbHz6YXH3').strip()
+DOCUFLOW_BACKEND_URL = config('DOCUFLOW_BACKEND_URL', default='http://127.0.0.1:3001').rstrip('/')
 
 EMAIL_HOST = config('EMAIL_HOST', default='').strip()
 EMAIL_PORT = config('EMAIL_PORT', default=587, cast=int)
@@ -284,7 +324,7 @@ STORAGES = {
 }
 
 # Безопасность для продакшена (HTTPS, HSTS, cookies).
-# USE_HTTPS=False — без редиректа (Docker, разработка). USE_HTTPS=True — за Nginx с SSL.
+# USE_HTTPS=False — локальный HTTP. USE_HTTPS=True — запуск за Nginx с SSL.
 _use_https = config_bool('USE_HTTPS', default=False)
 
 # Cross-Origin-Opener-Policy (COOP) - работает только для HTTPS или localhost

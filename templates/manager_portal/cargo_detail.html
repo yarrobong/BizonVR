@@ -1,0 +1,137 @@
+{% extends "manager_portal/base.html" %}
+
+{% block title %}Груз {{ cargo.cargo_number }}{% endblock %}
+
+{% block content %}
+  <div class="grid gap-6 xl:grid-cols-[1.2fr,0.8fr]">
+    <section class="space-y-6">
+      <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+        <h2 class="text-3xl font-semibold">{{ cargo.cargo_number }}</h2>
+        <p class="mt-2 text-slate-400">{{ cargo.destination_warehouse|default:"Без склада назначения" }} · {{ cargo.get_status_display }}</p>
+      </div>
+      <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+        <h3 class="text-xl font-semibold">Позиции груза</h3>
+        <div class="mt-4 space-y-4">
+          {% for item in cargo.items.all %}
+            <div class="rounded-2xl border border-slate-800 bg-slate-950 p-4">
+              <div class="flex items-center justify-between">
+                <p>{{ item.product.name }}{% if item.variant %} <span class="text-slate-500">/ {{ item.variant.name }}</span>{% endif %}</p>
+                <span>{{ item.received_quantity }}/{{ item.quantity }}</span>
+              </div>
+              <p class="mt-1 text-sm text-slate-500">
+                Закупка:
+                {% if item.purchase_item %}
+                  <a href="{% url 'manager_portal:purchase_detail' item.purchase_item.purchase_id %}" class="text-cyan-300 hover:text-cyan-200">#{{ item.purchase_item.purchase_id }}</a>
+                {% else %}
+                  —
+                {% endif %}
+                · Заказ:
+                {% if item.purchase_item and item.purchase_item.order_item %}
+                  <a href="{% url 'manager_portal:order_detail' item.purchase_item.order_item.order_id %}" class="text-cyan-300 hover:text-cyan-200">#{{ item.purchase_item.order_item.order_id }}</a>
+                {% else %}
+                  —
+                {% endif %}
+              </p>
+              <form method="post" action="{% url 'manager_portal:cargo_receive_item' cargo.pk item.pk %}" class="mt-4 flex flex-wrap items-end gap-3">
+                {% csrf_token %}
+                <div class="space-y-1">
+                  <label for="receive-{{ item.pk }}" class="block text-sm text-slate-300">Принять</label>
+                  <input
+                    id="receive-{{ item.pk }}"
+                    type="number"
+                    name="quantity"
+                    min="1"
+                    max="{{ item.remaining_quantity }}"
+                    value="{% if item.remaining_quantity > 0 %}{{ item.remaining_quantity }}{% else %}1{% endif %}"
+                    class="rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-white"
+                  >
+                </div>
+                <button class="rounded-xl bg-cyan-500 px-4 py-2 font-medium text-slate-950">Принять</button>
+              </form>
+            </div>
+          {% empty %}
+            <p class="text-slate-400">Позиции в грузе отсутствуют.</p>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+
+    <section class="space-y-6">
+      <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+        <h3 class="text-xl font-semibold">Редактировать груз</h3>
+        <form method="post" class="mt-4 space-y-4">
+          {% csrf_token %}
+          {% include "manager_portal/_form_fields.html" with form=form %}
+          <button class="rounded-xl bg-cyan-500 px-4 py-2 font-medium text-slate-950">Сохранить</button>
+        </form>
+      </div>
+      <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+        <h3 class="text-xl font-semibold">Добавить позицию</h3>
+        <form method="post" action="{% url 'manager_portal:cargo_add_item' cargo.pk %}" class="mt-4 space-y-4">
+          {% csrf_token %}
+          {% include "manager_portal/_form_fields.html" with form=item_form %}
+          <button class="rounded-xl bg-cyan-500 px-4 py-2 font-medium text-slate-950">Добавить позицию</button>
+        </form>
+      </div>
+      <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+        <h3 class="text-xl font-semibold">Фото груза</h3>
+        <form method="post" enctype="multipart/form-data" action="{% url 'manager_portal:cargo_add_photo' cargo.pk %}" hx-boost="false" class="mt-4 space-y-4">
+          {% csrf_token %}
+          {% include "manager_portal/_form_fields.html" with form=photo_form %}
+          <button class="rounded-xl bg-cyan-500 px-4 py-2 font-medium text-slate-950">Загрузить фото</button>
+        </form>
+        <div class="mt-4 space-y-3">
+          {% for photo in cargo.photos.all %}
+            <div class="rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3">
+              <p>{{ photo.caption|default:"Без подписи" }}</p>
+            </div>
+          {% empty %}
+            <p class="text-slate-400">Фото еще не загружены.</p>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+        <h3 class="text-xl font-semibold">Split груза</h3>
+        <form method="post" action="{% url 'manager_portal:cargo_split' cargo.pk %}" class="mt-4 space-y-4">
+          {% csrf_token %}
+          {% include "manager_portal/_form_fields.html" with form=split_form %}
+          <button class="rounded-xl bg-cyan-500 px-4 py-2 font-medium text-slate-950">Создать новый груз</button>
+        </form>
+      </div>
+      <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+        <h3 class="text-xl font-semibold">Этап перевозки</h3>
+        <form method="post" action="{% url 'manager_portal:cargo_add_leg' cargo.pk %}" class="mt-4 space-y-4">
+          {% csrf_token %}
+          {% include "manager_portal/_form_fields.html" with form=leg_form %}
+          <button class="rounded-xl bg-cyan-500 px-4 py-2 font-medium text-slate-950">Добавить этап</button>
+        </form>
+        <div class="mt-4 space-y-3">
+          {% for leg in cargo.legs.all %}
+            <div class="rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3">
+              {{ leg.from_location }} → {{ leg.to_warehouse }} · {{ leg.get_status_display }}
+            </div>
+          {% empty %}
+            <p class="text-slate-400">Этапов еще нет.</p>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+        <h3 class="text-xl font-semibold">Расход</h3>
+        <form method="post" action="{% url 'manager_portal:cargo_add_expense' cargo.pk %}" class="mt-4 space-y-4">
+          {% csrf_token %}
+          {% include "manager_portal/_form_fields.html" with form=expense_form %}
+          <button class="rounded-xl bg-cyan-500 px-4 py-2 font-medium text-slate-950">Добавить расход</button>
+        </form>
+        <div class="mt-4 space-y-3">
+          {% for expense in cargo.expenses.all %}
+            <div class="rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3">
+              {{ expense.name }} · {{ expense.amount|rub }}
+            </div>
+          {% empty %}
+            <p class="text-slate-400">Расходов пока нет.</p>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+  </div>
+{% endblock %}

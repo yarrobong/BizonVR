@@ -1,7 +1,7 @@
 # Пример конфигурации Nginx для продакшена.
 # Домен: bizonvr.ru. Замените пути к сертификатам/статике/медиа при необходимости.
 # Вариант 1: статику и медиа отдаёт Django (WhiteNoise) — тогда location /static/ и /media/ не нужны, всё идёт в proxy_pass.
-# Вариант 2: статику/медиа отдаёт Nginx — укажите alias на volume (см. Mountpoint: docker volume inspect ..._static_volume).
+# Вариант 2: статику/медиа отдаёт Nginx — укажите alias на директории проекта.
 
 upstream bizonvr_app {
     server 127.0.0.1:8000;

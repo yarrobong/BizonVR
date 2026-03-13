@@ -1,0 +1,72 @@
+{% extends "manager_portal/base.html" %}
+
+{% block title %}{{ client.name }}{% endblock %}
+
+{% block content %}
+  <div class="grid gap-6 xl:grid-cols-[1fr,24rem]">
+    <section class="space-y-6">
+      <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+        <h2 class="text-3xl font-semibold">{{ client.name }}</h2>
+        <div class="mt-4 grid gap-4 md:grid-cols-2">
+          <div class="rounded-2xl border border-slate-800 bg-slate-950 p-4">
+            <p class="text-sm text-slate-400">Телефон</p>
+            <p class="mt-1">{{ client.phone|default:"—" }}</p>
+          </div>
+          <div class="rounded-2xl border border-slate-800 bg-slate-950 p-4">
+            <p class="text-sm text-slate-400">Email</p>
+            <p class="mt-1">{{ client.email|default:"—" }}</p>
+          </div>
+          <div class="rounded-2xl border border-slate-800 bg-slate-950 p-4">
+            <p class="text-sm text-slate-400">Telegram</p>
+            <p class="mt-1">{{ client.telegram|default:"—" }}</p>
+          </div>
+          <div class="rounded-2xl border border-slate-800 bg-slate-950 p-4">
+            <p class="text-sm text-slate-400">Пользователь сайта</p>
+            <p class="mt-1">{{ client.user|default:"—" }}</p>
+          </div>
+        </div>
+        {% if client.address %}
+          <div class="mt-4 rounded-2xl border border-slate-800 bg-slate-950 p-4">
+            <p class="text-sm text-slate-400">Адрес</p>
+            <p class="mt-1">{{ client.address }}</p>
+          </div>
+        {% endif %}
+      </div>
+
+      <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+        <h3 class="text-xl font-semibold">Связанные заказы</h3>
+        <div class="mt-4 space-y-3">
+          {% for order in client.orders.all %}
+            <a href="{% url 'manager_portal:order_detail' order.pk %}" class="block rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 hover:border-cyan-400/30">
+              Заказ #{{ order.pk }} · {{ order.get_status_display }} · {{ order.total_to_pay|rub }}
+            </a>
+          {% empty %}
+            <p class="text-slate-400">Заказы сайта пока не привязаны.</p>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+        <h3 class="text-xl font-semibold">Бронирования</h3>
+        <div class="mt-4 space-y-3">
+          {% for reservation in client.reservations.all %}
+            <a href="{% url 'manager_portal:reservation_detail' reservation.pk %}" class="block rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 hover:border-cyan-400/30">
+              Бронь #{{ reservation.pk }} · {{ reservation.get_status_display }} · {{ reservation.items.count }} поз.
+            </a>
+          {% empty %}
+            <p class="text-slate-400">Активности по броням еще нет.</p>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+
+    <section id="client-comments" class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
+      <h3 class="text-xl font-semibold">Редактировать</h3>
+      <form method="post" class="mt-4 space-y-4">
+        {% csrf_token %}
+        {% include "manager_portal/_form_fields.html" with form=form %}
+        <button class="rounded-xl bg-cyan-500 px-4 py-2 font-medium text-slate-950">Сохранить</button>
+      </form>
+    </section>
+  </div>
+{% endblock %}

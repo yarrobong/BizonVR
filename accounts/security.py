@@ -38,9 +38,9 @@ def check_send_code_rate_limits(request, phone):
         ('cooldown', 'send-code', 'ip', get_client_ip(request), cooldown, f'Подождите {cooldown} сек. перед повторной отправкой.'),
         ('cooldown', 'send-code', 'phone', phone, cooldown, f'Код уже отправлен. Повторите через {cooldown} сек.'),
         ('cooldown', 'send-code', 'session', get_rate_limit_session_key(request), cooldown, f'Подождите {cooldown} сек. перед повторной отправкой.'),
-        ('window', 'send-code', 'ip', get_client_ip(request), 5, 15 * 60, 'Слишком много запросов на отправку кода. Попробуйте позже.'),
-        ('window', 'send-code', 'phone', phone, 3, 15 * 60, 'Слишком много запросов для этого номера. Попробуйте позже.'),
-        ('window', 'send-code', 'session', get_rate_limit_session_key(request), 5, 15 * 60, 'Слишком много запросов на отправку кода. Попробуйте позже.'),
+        ('window', 'send-code', 'ip', get_client_ip(request), 10, 15 * 60, 'Слишком много запросов на отправку кода. Попробуйте позже.'),
+        ('window', 'send-code', 'phone', phone, 6, 15 * 60, 'Слишком много запросов для этого номера. Попробуйте позже.'),
+        ('window', 'send-code', 'session', get_rate_limit_session_key(request), 10, 15 * 60, 'Слишком много запросов на отправку кода. Попробуйте позже.'),
     )
     return _run_rate_limit_checks(checks)
 
@@ -60,9 +60,9 @@ def check_send_email_rate_limits(request, email, *, endpoint='send-email-code'):
         ('cooldown', endpoint, 'ip', get_client_ip(request), cooldown, f'Подождите {cooldown} сек. перед повторной отправкой.'),
         ('cooldown', endpoint, 'email', email, cooldown, f'Письмо уже отправлено. Повторите через {cooldown} сек.'),
         ('cooldown', endpoint, 'session', get_rate_limit_session_key(request), cooldown, f'Подождите {cooldown} сек. перед повторной отправкой.'),
-        ('window', endpoint, 'ip', get_client_ip(request), 5, 15 * 60, 'Слишком много запросов на отправку писем. Попробуйте позже.'),
-        ('window', endpoint, 'email', email, 3, 15 * 60, 'Слишком много запросов для этого email. Попробуйте позже.'),
-        ('window', endpoint, 'session', get_rate_limit_session_key(request), 5, 15 * 60, 'Слишком много запросов на отправку писем. Попробуйте позже.'),
+        ('window', endpoint, 'ip', get_client_ip(request), 10, 15 * 60, 'Слишком много запросов на отправку писем. Попробуйте позже.'),
+        ('window', endpoint, 'email', email, 6, 15 * 60, 'Слишком много запросов для этого email. Попробуйте позже.'),
+        ('window', endpoint, 'session', get_rate_limit_session_key(request), 10, 15 * 60, 'Слишком много запросов на отправку писем. Попробуйте позже.'),
     )
     return _run_rate_limit_checks(checks)
 
@@ -78,9 +78,19 @@ def mark_send_email_success(request, email, *, endpoint='send-email-code'):
 def check_verify_code_rate_limits(request, phone, *, endpoint='verify-code'):
     phone = normalize_phone(phone)
     checks = (
-        ('window', endpoint, 'ip', get_client_ip(request), 5, 15 * 60, 'Слишком много попыток. Попробуйте через 15 минут.'),
-        ('window', endpoint, 'phone', phone, 5, 15 * 60, 'Для этого номера превышен лимит попыток. Попробуйте через 15 минут.'),
-        ('window', endpoint, 'session', get_rate_limit_session_key(request), 7, 15 * 60, 'Слишком много попыток в этой сессии. Попробуйте через 15 минут.'),
+        ('window', endpoint, 'ip', get_client_ip(request), 10, 15 * 60, 'Слишком много попыток. Попробуйте через 15 минут.'),
+        ('window', endpoint, 'phone', phone, 10, 15 * 60, 'Для этого номера превышен лимит попыток. Попробуйте через 15 минут.'),
+        ('window', endpoint, 'session', get_rate_limit_session_key(request), 14, 15 * 60, 'Слишком много попыток в этой сессии. Попробуйте через 15 минут.'),
+    )
+    return _run_rate_limit_checks(checks)
+
+
+def check_verify_email_code_rate_limits(request, email, *, endpoint='verify-email-code'):
+    email = normalize_email(email)
+    checks = (
+        ('window', endpoint, 'ip', get_client_ip(request), 10, 15 * 60, 'Слишком много попыток. Попробуйте через 15 минут.'),
+        ('window', endpoint, 'email', email, 10, 15 * 60, 'Для этого email превышен лимит попыток. Попробуйте через 15 минут.'),
+        ('window', endpoint, 'session', get_rate_limit_session_key(request), 14, 15 * 60, 'Слишком много попыток в этой сессии. Попробуйте через 15 минут.'),
     )
     return _run_rate_limit_checks(checks)
 

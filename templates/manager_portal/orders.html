@@ -1,0 +1,13 @@
+{% extends "manager_portal/base.html" %}
+
+{% block title %}Заказы{% endblock %}
+
+{% block content %}
+  <section class="manager-panel rounded-[1.75rem] p-6">
+    <h2 class="text-xl font-semibold text-white">Заказы</h2>
+    <p class="mt-2 text-sm text-slate-400">Этот экран заменен каноническим реестром сделок.</p>
+    <a href="{% url 'manager_portal:deal_list' %}" class="mt-4 inline-flex rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800">
+      Открыть сделки
+    </a>
+  </section>
+{% endblock %}

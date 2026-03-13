@@ -2,14 +2,20 @@
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.core import mail
 from django.test import Client, TestCase
 from django.urls import reverse
+from django.utils import timezone
+from unittest.mock import patch
 
+from accounts.models import NotificationPreference, Profile
 from catalog.models import CartItem, Category, Product
 from config.legal_docs import LEGAL_BUNDLE_VERSION
+from manager_portal.models import ManagerClient, ManagerDeal
 
 from .forms import CheckoutForm, PurchaseRequestForm
-from .models import Order, OrderItem, PromoCode, PurchaseRequest
+from .models import Order, OrderItem, OrderNotificationLog, PromoCode, PurchaseRequest
+from .services import send_order_event_notifications
 
 User = get_user_model()
 
@@ -30,6 +36,7 @@ class OrderViewsTest(TestCase):
         self.client.force_login(self.user)
         resp = self.client.get(reverse('orders:order_list'))
         self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Фильтр меняет только список заказов')
 
 
 class CheckoutTest(TestCase):
@@ -48,10 +55,27 @@ class CheckoutTest(TestCase):
         )
         self.promo = PromoCode.objects.create(code='BIZON500', discount_amount=Decimal('50.00'))
 
-    def test_checkout_requires_login(self):
+    def _checkout_payload(self, **overrides):
+        payload = {
+            'promo_code': '',
+            'full_name': 'Иванов Иван Иванович',
+            'phone': '+7 999 123 45 67',
+            'email': 'test@example.com',
+            'city_text': 'Москва',
+            'address_line': 'Москва, ПВЗ CDEK на Тестовой, 1',
+            'delivery_comment': 'Ближе к метро',
+            'payment_method': Order.PAYMENT_METHOD_BANK_CARD,
+            'comment': 'Позвонить за час',
+            'agree_personal_data': 'on',
+            'agree_offer': 'on',
+        }
+        payload.update(overrides)
+        return payload
+
+    def test_checkout_available_for_guest(self):
         resp = self.client.get(reverse('orders:checkout'))
-        self.assertEqual(resp.status_code, 302)
-        self.assertTrue(resp.url.startswith(reverse('accounts:login')))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Оформление заказа')
 
     def test_checkout_get_authenticated_returns_200(self):
         add_url = reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk})
@@ -66,33 +90,41 @@ class CheckoutTest(TestCase):
         self.client.force_login(self.user)
         self.client.post(add_url, {'quantity': 2})
         url = reverse('orders:checkout')
-        resp = self.client.post(url, {
-            'promo_code': 'BIZON500',
-            'phone': '+7 999 123 45 67',
-            'first_name': 'Иван',
-            'last_name': 'Иванов',
-            'email': 'test@example.com',
-            'address': 'Москва, ул. Тестовая, д. 1',
-            'delivery_type': 'courier',
-            'comment': 'Позвонить за час',
-            'agree_personal_data': 'on',
-            'agree_offer': 'on',
-        })
+        resp = self.client.post(url, self._checkout_payload(promo_code='BIZON500'))
         self.assertEqual(resp.status_code, 302)
 
         order = Order.objects.first()
         self.assertIsNotNone(order)
-        self.assertEqual(resp.url, reverse('orders:order_detail', kwargs={'pk': order.pk}))
+        self.assertEqual(resp.url, reverse('payments:create_payment', kwargs={'order_id': order.pk}))
         self.assertEqual(order.user, self.user)
         self.assertEqual(order.total, Decimal('200.00'))
         self.assertEqual(order.promo_discount, Decimal('50.00'))
+        self.assertEqual(order.total_to_pay, Decimal('150.00'))
         self.assertEqual(order.phone, '+7 999 123 45 67')
+        self.assertEqual(order.city_text, 'Москва')
+        self.assertEqual(order.address_line, 'Москва, ПВЗ CDEK на Тестовой, 1')
+        self.assertEqual(order.payment_method, Order.PAYMENT_METHOD_BANK_CARD)
+        self.assertEqual(order.delivery_type, Order.DELIVERY_CDEK_PVZ)
+        self.assertGreater(order.delivery_cost, Decimal('0.00'))
         self.assertEqual(order.legal_docs_version, LEGAL_BUNDLE_VERSION)
         self.assertIsNotNone(order.legal_accepted_at)
         self.assertEqual(order.items.count(), 1)
         self.assertEqual(order.items.first().quantity, 2)
         self.assertEqual(self.client.session.get('cart_items', []), [])
         self.assertEqual(PurchaseRequest.objects.count(), 0)
+
+    def test_guest_checkout_creates_guest_order_and_access_token(self):
+        add_url = reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk})
+        self.client.post(add_url, {'quantity': 1})
+
+        response = self.client.post(reverse('orders:checkout'), self._checkout_payload())
+
+        self.assertEqual(response.status_code, 302)
+        order = Order.objects.get()
+        self.assertIsNone(order.user)
+        self.assertTrue(order.guest_access_token)
+        self.assertIn('access=', response.url)
+        self.assertTrue(response.url.startswith(reverse('payments:create_payment', kwargs={'order_id': order.pk})))
 
     def test_add_to_cart_blocks_when_stock_missing_and_order_on_request_disabled(self):
         self.product.allow_order_on_request = False
@@ -106,18 +138,7 @@ class CheckoutTest(TestCase):
             msg='Недоступный без заказа под заказ товар не должен попадать в корзину.',
         )
 
-        checkout_resp = self.client.post(reverse('orders:checkout'), {
-            'promo_code': '',
-            'phone': '+7 999 123 45 67',
-            'first_name': 'Иван',
-            'last_name': '',
-            'email': '',
-            'address': 'Москва, ул. Тестовая, д. 1',
-            'delivery_type': 'courier',
-            'comment': '',
-            'agree_personal_data': 'on',
-            'agree_offer': 'on',
-        })
+        checkout_resp = self.client.post(reverse('orders:checkout'), self._checkout_payload())
         self.assertEqual(checkout_resp.status_code, 302)
         self.assertEqual(checkout_resp.url, reverse('orders:checkout'))
         self.assertEqual(Order.objects.count(), 0)
@@ -128,18 +149,7 @@ class CheckoutTest(TestCase):
         self.client.force_login(self.user)
         CartItem.objects.create(user=self.user, product=self.product, quantity=1)
 
-        resp = self.client.post(reverse('orders:checkout'), {
-            'promo_code': '',
-            'phone': '+7 999 123 45 67',
-            'first_name': 'Иван',
-            'last_name': '',
-            'email': '',
-            'address': 'Москва, ул. Тестовая, д. 1',
-            'delivery_type': 'courier',
-            'comment': '',
-            'agree_personal_data': 'on',
-            'agree_offer': 'on',
-        })
+        resp = self.client.post(reverse('orders:checkout'), self._checkout_payload())
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, 'Недостаточно товара')
         self.assertEqual(Order.objects.count(), 0)
@@ -148,40 +158,31 @@ class CheckoutTest(TestCase):
         self.client.force_login(self.user)
         self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
 
-        resp = self.client.post(reverse('orders:checkout'), {
-            'promo_code': '',
-            'phone': '+7 999 123 45 67',
-            'first_name': 'Иван',
-            'last_name': '',
-            'email': '',
-            'address': 'Москва, ул. Тестовая, д. 1',
-            'delivery_type': 'courier',
-            'comment': '',
-            'agree_personal_data': 'on',
-            'agree_offer': 'on',
-        })
+        resp = self.client.post(reverse('orders:checkout'), self._checkout_payload())
         self.assertEqual(resp.status_code, 302)
         order = Order.objects.get()
         self.assertTrue(order.items.get().is_on_request)
+
+    def test_checkout_creates_manager_portal_entities_for_website_order(self):
+        self.client.force_login(self.user)
+        self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
+
+        response = self.client.post(reverse('orders:checkout'), self._checkout_payload())
+
+        self.assertEqual(response.status_code, 302)
+        order = Order.objects.get()
+        self.assertTrue(ManagerClient.objects.filter(orders=order).exists())
+        self.assertTrue(hasattr(order, 'manager_deal'))
+        self.assertEqual(order.manager_deal.customer_source, ManagerDeal.SOURCE_WEBSITE)
+        self.assertEqual(order.manager_deal.deal_type, ManagerDeal.DEAL_SALE_ON_REQUEST)
 
     def test_checkout_test_mode_creates_paid_order(self):
         self.client.force_login(self.user)
         self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
         with self.settings(TEST_ORDER_NO_PAYMENT=True):
-            resp = self.client.post(reverse('orders:checkout'), {
-                'promo_code': '',
-                'phone': '+7 999 123 45 67',
-                'first_name': 'Иван',
-                'last_name': '',
-                'email': '',
-                'address': 'Москва, ул. Тестовая, д. 1',
-                'delivery_type': 'courier',
-                'comment': '',
-                'agree_personal_data': 'on',
-                'agree_offer': 'on',
-            })
+            resp = self.client.post(reverse('orders:checkout'), self._checkout_payload())
         self.assertEqual(resp.status_code, 302)
-        self.assertEqual(Order.objects.get().status, Order.STATUS_PAID)
+        self.assertEqual(Order.objects.get().payment_status, Order.PAYMENT_STATUS_PAID)
 
 
 class CheckoutFormsLegalValidationTest(TestCase):
@@ -196,11 +197,10 @@ class CheckoutFormsLegalValidationTest(TestCase):
     def test_checkout_form_requires_offer_and_personal_data_consents(self):
         form = CheckoutForm(data={
             'phone': '+7 999 111 22 33',
-            'first_name': 'Иван',
-            'last_name': 'Иванов',
-            'email': 'test@example.com',
-            'address': 'Москва, ул. Тестовая, д. 1',
-            'delivery_type': 'courier',
+            'full_name': 'Иванов Иван Иванович',
+            'city_text': 'Москва',
+            'address_line': 'Москва, ПВЗ CDEK на Тестовой, 1',
+            'payment_method': Order.PAYMENT_METHOD_BANK_CARD,
             'comment': '',
             'promo_code': '',
         })
@@ -210,7 +210,7 @@ class CheckoutFormsLegalValidationTest(TestCase):
 
 
 class GuestOrderTest(TestCase):
-    """Legacy guest URLs больше не открывают заказ без авторизации."""
+    """Guest order теперь открывается по токену, старые URL по id закрыты."""
 
     def setUp(self):
         self.client = Client()
@@ -232,6 +232,8 @@ class GuestOrderTest(TestCase):
             first_name='Гость',
             last_name='',
             address='Адрес',
+            guest_access_token='guest-token',
+            guest_access_expires_at=timezone.now() + timezone.timedelta(days=7),
         )
         OrderItem.objects.create(order=self.order, product=self.product, quantity=1, price=Decimal('100.00'))
 
@@ -262,6 +264,11 @@ class GuestOrderTest(TestCase):
         resp = self.client.get(reverse('orders:order_guest', kwargs={'order_id': self.order.pk}))
         self.assertEqual(resp.status_code, 302)
         self.assertEqual(resp.url, reverse('orders:order_list'))
+
+    def test_guest_order_detail_by_token_is_available_without_login(self):
+        response = self.client.get(reverse('orders:guest_order_detail', kwargs={'token': self.order.guest_access_token}))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, f'Заказ #{self.order.pk}')
 
 
 class OrderSecurityRegressionTest(TestCase):
@@ -339,3 +346,107 @@ class OrderSecurityRegressionTest(TestCase):
         response = self.client.get(reverse('orders:order_guest', kwargs={'order_id': self.user_order.pk}))
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.url, reverse('orders:order_detail', kwargs={'pk': self.user_order.pk}))
+
+
+class OrderNotificationPolicyTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(
+            username='9991234567',
+            password='testpass',
+            email='client@example.com',
+        )
+        Profile.objects.create(
+            user=self.user,
+            phone='9991234567',
+            email_verified_at=timezone.now(),
+            phone_verified_at=timezone.now(),
+        )
+
+    @patch('orders.services.send_sms_message')
+    def test_registered_user_sms_notifications_respect_preferences(self, mocked_sms):
+        NotificationPreference.objects.create(
+            user=self.user,
+            sms_order_updates_enabled=False,
+            marketing_email_enabled=False,
+            back_in_stock_enabled=False,
+        )
+        order = Order.objects.create(
+            user=self.user,
+            status=Order.STATUS_CONFIRMED,
+            payment_status=Order.PAYMENT_STATUS_UNPAID,
+            total=Decimal('100.00'),
+            phone='+7 999 123 45 67',
+            email='client@example.com',
+            first_name='Иван',
+        )
+
+        send_order_event_notifications(order, 'order_confirmed')
+
+        self.assertEqual(OrderNotificationLog.objects.filter(order=order, channel='email').count(), 1)
+        self.assertEqual(OrderNotificationLog.objects.filter(order=order, channel='sms').count(), 0)
+        self.assertEqual(len(mail.outbox), 1)
+        mocked_sms.assert_not_called()
+
+    @patch('orders.services.send_sms_message')
+    def test_guest_order_sms_notifications_allowed_by_default_and_idempotent(self, mocked_sms):
+        order = Order.objects.create(
+            user=None,
+            status=Order.STATUS_NEW,
+            payment_status=Order.PAYMENT_STATUS_UNPAID,
+            total=Decimal('100.00'),
+            phone='+7 999 123 45 67',
+            email='guest@example.com',
+            first_name='Гость',
+        )
+
+        send_order_event_notifications(order, 'order_created')
+        send_order_event_notifications(order, 'order_created')
+
+        self.assertEqual(OrderNotificationLog.objects.filter(order=order, channel='email').count(), 1)
+        self.assertEqual(OrderNotificationLog.objects.filter(order=order, channel='sms').count(), 1)
+        self.assertEqual(len(mail.outbox), 1)
+        mocked_sms.assert_called_once()
+
+
+class OrderLifecycleUiTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(username='9991234567', password='testpass')
+        Profile.objects.create(
+            user=self.user,
+            phone='9991234567',
+            phone_verified_at=timezone.now(),
+            contact_name='Иван Иванов',
+            privacy_agreed_at=timezone.now(),
+        )
+        self.order = Order.objects.create(
+            user=self.user,
+            status=Order.STATUS_READY_FOR_PICKUP,
+            payment_status=Order.PAYMENT_STATUS_PAID,
+            total=Decimal('100.00'),
+            phone='+7 999 123 45 67',
+            email='client@example.com',
+            first_name='Иван',
+        )
+
+    def test_order_list_shows_status_and_payment_badges_with_next_step(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('orders:order_list'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Готов к выдаче')
+        self.assertContains(response, 'Оплачено')
+        self.assertContains(response, 'можно приехать', html=False)
+
+    def test_order_detail_shows_consistent_status_summary(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('orders:order_detail', kwargs={'pk': self.order.pk}))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Статус заказа')
+        self.assertContains(response, 'Готов к выдаче')
+        self.assertContains(response, 'Оплачено')
+        self.assertContains(response, 'можно приехать', html=False)

@@ -1,0 +1,16 @@
+{{ event_title }} #{{ order.pk }}
+
+{{ event_description }}
+
+Состав заказа:
+{% for item in items %}- {{ item.product.name }}{% if item.variant_name %} ({{ item.variant_name }}){% endif %} x {{ item.quantity }} — {{ item.subtotal|rub }}
+{% endfor %}
+
+Сумма к оплате: {{ order.total_to_pay|rub }}
+Способ доставки: {{ order.get_delivery_type_display }}
+Способ оплаты: {{ order.get_payment_method_display }}
+{% if order_url %}
+Ссылка на заказ: {{ order_url }}
+{% endif %}
+{% if shop_email %}Поддержка: {{ shop_email }}{% endif %}
+{% if shop_phone %}Телефон: {{ shop_phone }}{% endif %}

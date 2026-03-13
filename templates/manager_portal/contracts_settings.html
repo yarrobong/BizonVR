@@ -1,0 +1,57 @@
+{% extends "manager_portal/base.html" %}
+
+{% block title %}Договоры: настройки{% endblock %}
+
+{% block content %}
+  <div class="grid gap-6 xl:grid-cols-[1fr_0.9fr]">
+    <section class="manager-panel rounded-[1.75rem] p-6">
+      <p class="text-xs uppercase tracking-[0.24em] text-cyan-300">Settings</p>
+      <h2 class="mt-2 text-3xl font-semibold text-white">Профиль компании</h2>
+      <p class="mt-2 text-sm leading-6 text-slate-400">Эти реквизиты используются внутренним кабинетом договоров при создании и рендере документов.</p>
+      <a href="/manager/contracts/app/settings/" class="mt-3 inline-flex text-sm text-cyan-300 hover:text-cyan-200">Внутренний route settings</a>
+      <form method="post" class="mt-6 grid gap-4">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="save_profile">
+        {% include "manager_portal/_form_fields.html" with form=contract_profile_form %}
+        <button type="submit" class="rounded-xl bg-cyan-400 px-4 py-3 text-sm font-semibold text-slate-950">Сохранить настройки</button>
+      </form>
+    </section>
+
+    <section class="manager-panel rounded-[1.75rem] p-6">
+      <p class="text-xs uppercase tracking-[0.22em] text-slate-500">Profiles</p>
+      <h3 class="mt-2 text-2xl font-semibold text-white">Доступные профили</h3>
+      <div class="mt-6 space-y-4">
+        {% for item in contract_profiles %}
+          <div class="rounded-[1.5rem] border border-slate-800 bg-slate-950/50 p-5">
+            <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <p class="text-lg font-semibold text-white">{{ item.name }}</p>
+                <p class="mt-1 text-sm text-slate-400">{{ item.company_name }}</p>
+                <p class="mt-2 text-xs text-slate-500">ИНН {{ item.inn|default:"—" }} · {{ item.get_legal_type_display }}</p>
+              </div>
+              <div class="flex items-center gap-2">
+                {% if item.is_active %}
+                  <span class="manager-pill">Активный</span>
+                {% else %}
+                  <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="set_active_profile">
+                    <input type="hidden" name="profile_id" value="{{ item.pk }}">
+                    <button type="submit" class="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-200 hover:bg-slate-800">Сделать активным</button>
+                  </form>
+                {% endif %}
+              </div>
+            </div>
+            <div class="mt-4 grid gap-2 text-sm text-slate-300">
+              <p><span class="text-slate-500">Email:</span> {{ item.email|default:"—" }}</p>
+              <p><span class="text-slate-500">Телефон:</span> {{ item.phone|default:"—" }}</p>
+              <p><span class="text-slate-500">Банк:</span> {{ item.bank_name|default:"—" }}</p>
+            </div>
+          </div>
+        {% empty %}
+          <p class="text-sm text-slate-500">Профили еще не сохранены. После первого сохранения здесь появится список.</p>
+        {% endfor %}
+      </div>
+    </section>
+  </div>
+{% endblock %}

@@ -1,9 +1,117 @@
-    // Инициализация Lucide иконок после загрузки HTMX контента
-    function initLucide() {
-      if (typeof lucide !== 'undefined') {
-        lucide.createIcons();
+    let lucideRetryTimer = null;
+    let lucideObserverStarted = false;
+
+    window.catalogProductList = window.catalogProductList || function catalogProductList() {
+      return {
+        filtersModalOpen: false,
+        sortDropdownOpen: false,
+        mobileFiltersDirty: false,
+        pendingFiltersUrl: '',
+
+        applyFilters(formId, scopeEl) {
+          const form = document.getElementById(formId);
+          if (!form) return;
+
+          const base = this.pendingFiltersUrl || window.location.href;
+          const url = new URL(base, window.location.origin);
+
+          // Never keep pagination when filters change
+          url.searchParams.delete('page');
+
+          // Category/section come from the hidden form (pending values in defer-mode)
+          const sectionVal = form.querySelector('input[name=section]')?.value ?? '';
+          const categoryVal = form.querySelector('input[name=category]')?.value ?? '';
+
+          if (sectionVal) url.searchParams.set('section', sectionVal);
+          else url.searchParams.delete('section');
+
+          if (categoryVal) url.searchParams.set('category', categoryVal);
+          else url.searchParams.delete('category');
+
+          // Price comes from visible inputs (if present in current filter UI)
+          const scope = scopeEl || document;
+          const minVal = scope.querySelector('input[type=number][name=price_min]')?.value ?? '';
+          const maxVal = scope.querySelector('input[type=number][name=price_max]')?.value ?? '';
+
+          if (minVal) url.searchParams.set('price_min', minVal);
+          else url.searchParams.delete('price_min');
+
+          if (maxVal) url.searchParams.set('price_max', maxVal);
+          else url.searchParams.delete('price_max');
+
+          window.location.href = url.toString();
+        },
+
+        syncBodyOverflow() {
+          const lock = this.filtersModalOpen && window.innerWidth < 1024;
+          document.documentElement.classList.toggle('overflow-hidden', lock);
+          document.body.classList.toggle('overflow-hidden', lock);
+          if (!this.filtersModalOpen) {
+            this.mobileFiltersDirty = false;
+          }
+        },
+      };
+    };
+
+    function scheduleLucideRetry(delay = 0) {
+      if (lucideRetryTimer) {
+        window.clearTimeout(lucideRetryTimer);
       }
+      lucideRetryTimer = window.setTimeout(() => {
+        lucideRetryTimer = null;
+        initLucide(true);
+      }, delay);
     }
+
+    function hasPendingLucideIcons(node) {
+      if (!(node instanceof Element)) {
+        return false;
+      }
+      return node.hasAttribute('data-lucide') || Boolean(node.querySelector('[data-lucide]'));
+    }
+
+    // Инициализация Lucide иконок после загрузки HTMX контента
+    function initLucide(fromRetry = false) {
+      if (typeof window === 'undefined') {
+        return false;
+      }
+
+      if (!window.lucide || typeof window.lucide.createIcons !== 'function') {
+        if (!fromRetry) {
+          scheduleLucideRetry(120);
+        }
+        return false;
+      }
+
+      window.lucide.createIcons();
+      return true;
+    }
+
+    function ensureLucideObserver() {
+      if (
+        lucideObserverStarted
+        || typeof window === 'undefined'
+        || typeof MutationObserver === 'undefined'
+        || !document.body
+      ) {
+        return;
+      }
+
+      const observer = new MutationObserver((mutations) => {
+        const shouldInit = mutations.some((mutation) =>
+          Array.from(mutation.addedNodes || []).some((node) => hasPendingLucideIcons(node))
+        );
+
+        if (shouldInit) {
+          scheduleLucideRetry(0);
+        }
+      });
+
+      observer.observe(document.body, { childList: true, subtree: true });
+      lucideObserverStarted = true;
+    }
+
+    window.initLucide = initLucide;
     
     function scrollToTop() {
       document.documentElement.scrollTop = 0;
@@ -191,6 +299,7 @@
     
     function initHtmxHandlers() {
       initLucide(); // иконки в шапке (каталог и др.) сразу при загрузке
+      ensureLucideObserver();
       initPhoneMasks(document);
       initCookieConsentBanner();
       // Проверяем, что body уже существует
@@ -211,7 +320,7 @@
         }
       });
       document.body.addEventListener('htmx:afterSettle', function(ev) {
-        initLucide();
+        scheduleLucideRetry(0);
         initPhoneMasks(document);
         // После полного обновления DOM
         if (ev.detail.target.id === 'main-content') {
@@ -229,7 +338,7 @@
           // НЕ скроллим вверх автоматически - позицию восстановит скрипт ниже
           // Alpine.js автоматически обнаружит новые элементы с x-data через MutationObserver
           // Поэтому initTree вызывать не обязательно и это может вызвать ошибки
-          initLucide();
+          scheduleLucideRetry(0);
           initPhoneMasks(document);
         }
       });
@@ -242,6 +351,9 @@
     } else {
       initHtmxHandlers();
     }
+    window.addEventListener('load', () => {
+      scheduleLucideRetry(0);
+    });
 
     // Сохраняем скролл только для сценария:
     // список каталога -> карточка товара -> возврат в тот же список.

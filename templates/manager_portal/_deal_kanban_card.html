@@ -1,0 +1,50 @@
+<article
+  class="manager-deal-card {% if deal.list_sla_is_overdue %}manager-deal-card-overdue{% endif %}"
+  draggable="true"
+  data-deal-card
+  data-deal-id="{{ deal.pk }}"
+  data-case-status="{{ deal.case_status }}"
+  data-move-url="{% url 'manager_portal:deal_move' deal.pk %}"
+>
+  <div class="flex items-start justify-between gap-2">
+    <div class="min-w-0">
+      <div class="flex items-center gap-2">
+        <span class="manager-deal-card-grip" aria-hidden="true">⋮⋮</span>
+        <a href="{% url 'manager_portal:deal_detail' deal.pk %}" class="truncate text-sm font-semibold text-cyan-300 hover:text-cyan-200">
+          {% firstof deal.code deal.order_id %}
+        </a>
+      </div>
+      <p class="mt-1 truncate text-sm font-medium text-white">{{ deal.customer_name|default:deal.order.first_name|default:deal.order.phone }}</p>
+      <p class="mt-1 text-xs uppercase tracking-[0.16em] text-slate-500">{{ deal.get_deal_type_display }}</p>
+    </div>
+    <div class="text-right">
+      <p class="text-sm font-semibold text-white">{{ deal.grand_total|rub }}</p>
+      <p class="mt-1 text-xs text-slate-500">{% firstof deal.customer_phone deal.order.phone "—" %}</p>
+    </div>
+  </div>
+
+  <div class="manager-deal-card-metric mt-2.5">
+    <span class="manager-deal-card-label">Следующий шаг</span>
+    <span class="manager-deal-card-value">{{ deal.next_step_label }}</span>
+  </div>
+
+  <div class="manager-deal-card-inline mt-2">
+    <span class="manager-deal-card-inline-item">{{ deal.responsible_manager|default:"Не назначен" }}</span>
+    <span class="manager-deal-card-inline-item {% if deal.list_sla_is_overdue %}manager-deal-card-inline-item-overdue{% endif %}">
+      {% if deal.sla_due_at %}{{ deal.sla_due_at|date:"d.m H:i" }}{% else %}SLA не задан{% endif %}
+    </span>
+  </div>
+
+  <div class="mt-2 flex flex-wrap gap-1.5">
+    {% for item in deal.list_readiness|slice:":1" %}
+      <span class="manager-pill">{{ item.label }}: {{ item.value }}</span>
+    {% endfor %}
+    {% for label in deal.list_problem_labels|slice:":1" %}
+      <span class="manager-pill">{{ label }}</span>
+    {% endfor %}
+  </div>
+
+  <div class="mt-2 flex items-center gap-2">
+    <a href="{% url 'manager_portal:deal_detail' deal.pk %}" class="rounded-xl border border-slate-700 px-2 py-1 text-xs text-slate-200 transition hover:bg-slate-800">Открыть</a>
+  </div>
+</article>

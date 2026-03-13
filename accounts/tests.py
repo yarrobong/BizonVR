@@ -18,7 +18,16 @@ from config.legal_docs import LEGAL_BUNDLE_VERSION
 from catalog.models import Category, City, PickupPoint, Product
 from orders.models import Order
 
-from .models import CommercialProposalContact, EmailVerificationCode, PhoneVerificationCode, Profile, SavedAddress
+from .models import (
+    CommercialProposalContact,
+    EmailLoginCode,
+    EmailVerificationCode,
+    NotificationPreference,
+    PhoneVerificationCode,
+    Profile,
+    SavedAddress,
+)
+from .views.profile import _build_profile_setup_checklist
 
 User = get_user_model()
 
@@ -40,7 +49,7 @@ class ConfigBoolParsingTest(SimpleTestCase):
 
 
 class LoginViewsTest(TestCase):
-    """Страница входа и ограничение частоты запросов."""
+    """Страница входа, регистрация и ограничение частоты запросов."""
     LOGIN_PENDING_PHONE_SESSION_KEY = 'accounts:login:pending_phone'
     LOGIN_PENDING_SENT_AT_SESSION_KEY = 'accounts:login:last_sent_at'
 
@@ -51,22 +60,91 @@ class LoginViewsTest(TestCase):
     def test_login_page_returns_200(self):
         resp = self.client.get(reverse('accounts:login'))
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, 'Вход по SMS-коду')
-        self.assertNotContains(resp, 'Вход только по коду из SMS')
-        self.assertNotContains(resp, 'Вход по паролю')
+        self.assertContains(resp, 'Вход по почте и паролю')
+        self.assertContains(resp, 'Регистрация')
+        self.assertContains(resp, 'Email')
+        self.assertContains(resp, 'Пароль')
 
-    @override_settings(TURNSTILE_SITE_KEY='site-key', TURNSTILE_SECRET_KEY='secret-key')
-    def test_login_page_renders_turnstile_when_configured(self):
+    def test_login_page_does_not_render_sms_turnstile(self):
         resp = self.client.get(reverse('accounts:login'))
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, 'cf-turnstile')
-        self.assertContains(resp, 'site-key')
+        self.assertNotContains(resp, 'cf-turnstile')
 
-    @override_settings(DEBUG=True, TURNSTILE_SITE_KEY='', TURNSTILE_SECRET_KEY='')
-    def test_login_page_shows_turnstile_disabled_note_in_debug_without_keys(self):
-        resp = self.client.get(reverse('accounts:login'))
+    def test_register_page_uses_same_template_with_register_panel(self):
+        resp = self.client.get(reverse('accounts:register'))
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, 'Капча отключена локально')
+        self.assertContains(resp, 'Создать аккаунт')
+        self.assertContains(resp, 'Этот email станет вашим логином.')
+
+    def test_register_creates_email_account_and_logs_user_in(self):
+        response = self.client.post(reverse('accounts:register'), {
+            'contact_name': 'Иван Иванов',
+            'email': 'client@example.com',
+            'password1': 'StrongPass123!',
+            'password2': 'StrongPass123!',
+            'agree_privacy': 'on',
+        })
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse('home'))
+
+        user = User.objects.get(email='client@example.com')
+        profile = Profile.objects.get(user=user)
+        self.assertTrue(user.check_password('StrongPass123!'))
+        self.assertNotEqual(user.username, 'client@example.com')
+        self.assertEqual(profile.contact_name, 'Иван Иванов')
+        self.assertIsNone(profile.phone)
+        self.assertIsNotNone(profile.email_verified_at)
+        self.assertIsNotNone(profile.privacy_agreed_at)
+        self.assertEqual(profile.privacy_policy_version, LEGAL_BUNDLE_VERSION)
+        self.assertEqual(self.client.session.get('_auth_user_id'), str(user.pk))
+
+    def test_register_rejects_duplicate_email(self):
+        existing = User.objects.create_user(
+            username='9991234567',
+            email='client@example.com',
+            password='OldPassword123!',
+        )
+        Profile.objects.create(
+            user=existing,
+            phone='9991234567',
+            email_verified_at=timezone.now(),
+        )
+
+        response = self.client.post(reverse('accounts:register'), {
+            'contact_name': 'Иван Иванов',
+            'email': 'client@example.com',
+            'password1': 'StrongPass123!',
+            'password2': 'StrongPass123!',
+            'agree_privacy': 'on',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Аккаунт с таким email уже существует.')
+        self.assertEqual(User.objects.filter(email='client@example.com').count(), 1)
+
+    def test_password_login_accepts_registered_email_without_phone(self):
+        user = User.objects.create_user(
+            username='user_test_login',
+            email='client@example.com',
+            password='StrongPass123!',
+        )
+        Profile.objects.create(
+            user=user,
+            phone=None,
+            contact_name='Иван Иванов',
+            email_verified_at=timezone.now(),
+            privacy_agreed_at=timezone.now(),
+        )
+
+        response = self.client.post(reverse('accounts:password_login'), {
+            'login': 'client@example.com',
+            'password': 'StrongPass123!',
+        })
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse('home'))
+        self.assertEqual(self.client.session.get('_auth_user_id'), str(user.pk))
 
     def test_authenticated_login_view_ignores_external_next(self):
         user = User.objects.create_user(username='9991234567', password='testpass')
@@ -139,7 +217,7 @@ class LoginViewsTest(TestCase):
     def test_verify_rate_limit_applies_per_phone_not_only_per_ip(self):
         PhoneVerificationCode.objects.create(phone='9991234567', code='123456')
 
-        for attempt in range(5):
+        for attempt in range(10):
             response = self.client.post(
                 reverse('accounts:verify_code'),
                 {'phone': '9991234567', 'code': '000000'},
@@ -218,6 +296,29 @@ class LoginViewsTest(TestCase):
         self.assertEqual(data.get('resend_available_in'), 60)
         mocked_create_and_send_code.assert_called_once()
         mocked_turnstile.assert_not_called()
+
+    def test_verify_code_redirects_new_user_to_profile_instead_of_separate_step(self):
+        PhoneVerificationCode.objects.create(phone='9991234567', code='123456')
+
+        response = self.client.post(reverse('accounts:verify_code'), {
+            'phone': '9991234567',
+            'code': '123456',
+        })
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, f"{reverse('accounts:profile_settings')}#profile")
+
+    def test_verify_code_keeps_next_redirect_for_incomplete_profile(self):
+        PhoneVerificationCode.objects.create(phone='9991234567', code='123456')
+
+        response = self.client.post(reverse('accounts:verify_code'), {
+            'phone': '9991234567',
+            'code': '123456',
+            'next': '/orders/checkout/',
+        })
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, '/orders/checkout/')
 
 
 class OtpLifecycleTest(TestCase):
@@ -603,7 +704,7 @@ class CompleteRegistrationLegalVersionTest(TestCase):
         )
 
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response.url, f"{reverse('accounts:profile')}#security")
+        self.assertEqual(response.url, f"{reverse('accounts:profile_settings')}#security")
         profile = Profile.objects.get(user=self.user)
         self.assertEqual(profile.contact_name, 'Иванов Иван Иванович')
         self.assertIsNotNone(profile.privacy_agreed_at)
@@ -630,6 +731,7 @@ class ProfileDashboardTest(TestCase):
             user=self.user,
             phone='9991234567',
             contact_name='Иван Иванов',
+            privacy_agreed_at=timezone.now(),
         )
         Order.objects.create(user=self.user, status=Order.STATUS_NEW, total=Decimal('1000.00'))
         Order.objects.create(user=self.user, status=Order.STATUS_PAID, total=Decimal('2500.00'))
@@ -645,8 +747,110 @@ class ProfileDashboardTest(TestCase):
         resp = self.client.get(reverse('accounts:profile'))
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, 'Личный кабинет')
-        self.assertNotContains(resp, '>Баланс<', html=False)
         self.assertContains(resp, 'Последние заказы')
+        self.assertContains(resp, 'Чек-лист быстрого оформления')
+        self.assertContains(resp, 'Профиль без пробелов')
+        self.assertContains(resp, 'Возвраты / обращения')
+        self.assertContains(resp, 'Нет сохранённого адреса')
+        self.assertContains(resp, '2 из 4 выполнено')
+
+    def test_profile_setup_checklist_prioritizes_incomplete_steps(self):
+        preferences = NotificationPreference.objects.create(
+            user=self.user,
+            sms_order_updates_enabled=True,
+            marketing_email_enabled=False,
+            back_in_stock_enabled=False,
+        )
+
+        checklist = _build_profile_setup_checklist(
+            profile=self.profile,
+            saved_addresses=[],
+            notification_preferences=preferences,
+            pending_phone_change='',
+        )
+
+        self.assertEqual(checklist['progress_label'], '2 из 4 выполнено')
+        self.assertEqual([step['title'] for step in checklist['pending_steps']], ['Сохранить адрес', 'Подтвердить email'])
+        self.assertEqual([step['title'] for step in checklist['completed_steps']], ['Добавить данные', 'Настроить уведомления'])
+        self.assertEqual([step['title'] for step in checklist['steps'][:2]], ['Сохранить адрес', 'Подтвердить email'])
+
+    def test_profile_dashboard_empty_order_state_uses_more_direct_copy(self):
+        Order.objects.filter(user=self.user).exclude(status=Order.STATUS_DONE).delete()
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('accounts:profile'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Заказов в работе нет')
+        self.assertContains(response, 'Активные этапы завершены.')
+        self.assertContains(response, 'История уже собрана. Сейчас главное действие')
+
+    def test_profile_settings_route_renders_edit_mode(self):
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse('accounts:profile_settings'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Профиль и настройки')
+        self.assertContains(resp, 'Данные получателя')
+        self.assertContains(resp, 'Навигация')
+        self.assertContains(resp, 'data-account-section-link="service"', html=False)
+        self.assertContains(resp, 'data-account-section-link="communication"', html=False)
+        self.assertContains(resp, 'data-account-section-link="notifications"', html=False)
+        self.assertContains(resp, '+7 (999) 123-45-67')
+        self.assertContains(resp, 'Email не указан')
+        self.assertContains(resp, 'Прогресс профиля')
+        self.assertContains(resp, 'Каналы связи')
+        self.assertContains(resp, 'Сервисные сообщения и подписки')
+        self.assertContains(resp, 'lg:hidden')
+        self.assertContains(resp, 'Основной адрес — не добавлен')
+        self.assertContains(resp, 'Email — не подтверждён')
+        self.assertContains(resp, 'Телефон — не подтверждён')
+        self.assertContains(resp, 'Пароль — установлен')
+        self.assertNotContains(resp, 'Секции настроек')
+        self.assertNotContains(resp, 'Доставка и связь')
+        self.assertNotContains(resp, 'id="profile-edit-form"', html=False)
+        self.assertNotContains(resp, 'id="address-edit-form"', html=False)
+        self.assertNotContains(resp, 'id="notification-form"', html=False)
+        self.assertContains(resp, 'Редактировать')
+
+    def test_profile_settings_opens_profile_form_only_by_explicit_action(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(f"{reverse('accounts:profile_settings')}?edit_profile=1")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="profile-edit-form"', html=False)
+        self.assertContains(response, 'Есть несохранённые изменения')
+
+    def test_profile_settings_opens_security_tools_only_by_explicit_action(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(f"{reverse('accounts:profile_settings')}?edit_security=1")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Инструменты доступа открыты')
+        self.assertContains(response, 'Подтверждение email')
+        self.assertContains(response, 'Смена номера входа')
+
+    def test_profile_settings_opens_notification_form_only_by_explicit_action(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(f"{reverse('accounts:profile_settings')}?edit_notifications=1")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="notification-form"', html=False)
+        self.assertContains(response, 'Есть несохранённые изменения')
+
+    def test_invalid_profile_save_keeps_profile_edit_mode_open(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(reverse('accounts:profile_settings'), {
+            'action': 'save_profile',
+            'contact_name': '',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="profile-edit-form"', html=False)
+        self.assertContains(response, 'Не удалось сохранить профиль. Проверьте поля формы.')
 
     def test_save_profile_action_updates_only_profile(self):
         CommercialProposalContact.objects.create(
@@ -667,6 +871,40 @@ class ProfileDashboardTest(TestCase):
         cp_contact = CommercialProposalContact.objects.get(user=self.user)
         self.assertEqual(cp_contact.phone, '+7 (900) 000-00-01')
         self.assertEqual(cp_contact.email, 'admin-only@example.com')
+
+    def test_save_profile_requires_privacy_consent_when_missing(self):
+        self.profile.privacy_agreed_at = None
+        self.profile.privacy_policy_version = ''
+        self.profile.save(update_fields=['privacy_agreed_at', 'privacy_policy_version'])
+        self.client.force_login(self.user)
+
+        response = self.client.post(reverse('accounts:profile'), {
+            'action': 'save_profile',
+            'contact_name': 'Петров Петр Петрович',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.profile.refresh_from_db()
+        self.assertIsNone(self.profile.privacy_agreed_at)
+        self.assertContains(response, 'Подтвердите согласие с юридическими документами.')
+
+    def test_save_profile_stores_privacy_metadata_when_consent_checked(self):
+        self.profile.privacy_agreed_at = None
+        self.profile.privacy_policy_version = ''
+        self.profile.save(update_fields=['privacy_agreed_at', 'privacy_policy_version'])
+        self.client.force_login(self.user)
+
+        response = self.client.post(reverse('accounts:profile'), {
+            'action': 'save_profile',
+            'contact_name': 'Петров Петр Петрович',
+            'agree_privacy': 'on',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.contact_name, 'Петров Петр Петрович')
+        self.assertIsNotNone(self.profile.privacy_agreed_at)
+        self.assertEqual(self.profile.privacy_policy_version, LEGAL_BUNDLE_VERSION)
 
     def test_send_phone_code_action_creates_pending_state_and_sms_code(self):
         self.client.force_login(self.user)
@@ -742,7 +980,7 @@ class ProfileDashboardTest(TestCase):
             EmailVerificationCode.objects.filter(user=self.user, email='client@example.com', used_at__isnull=True).exists()
         )
         self.assertEqual(len(mail.outbox), 1)
-        self.assertContains(resp, 'Письмо отправлено на:')
+        self.assertContains(resp, 'Код отправлен на')
 
     def test_confirm_email_code_updates_user_email_and_profile_status(self):
         self.client.force_login(self.user)
@@ -767,11 +1005,155 @@ class ProfileDashboardTest(TestCase):
         self.assertContains(second_resp, 'Email уже подтверждён')
         self.assertFalse(EmailVerificationCode.objects.filter(user=self.user, email='new@example.com').exists())
 
+    def test_save_notification_preferences_updates_persistent_settings(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(reverse('accounts:profile'), {
+            'action': 'save_notification_preferences',
+            'marketing_email_enabled': 'on',
+            'back_in_stock_enabled': 'on',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        preferences = NotificationPreference.objects.get(user=self.user)
+        self.assertFalse(preferences.sms_order_updates_enabled)
+        self.assertTrue(preferences.marketing_email_enabled)
+        self.assertTrue(preferences.back_in_stock_enabled)
+        self.assertContains(response, 'Настройки уведомлений сохранены.')
+
     def test_balance_history_route_still_available(self):
         self.client.force_login(self.user)
         resp = self.client.get(reverse('accounts:balance_history'))
         self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Редактировать профиль')
 
+
+class GuestOrderAutoClaimTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+
+    def test_sms_login_auto_claims_guest_orders_by_verified_phone(self):
+        guest_order = Order.objects.create(
+            user=None,
+            status=Order.STATUS_NEW,
+            total=Decimal('100.00'),
+            phone='+7 999 123 45 67',
+            email='guest-phone@example.com',
+            first_name='Гость',
+        )
+        PhoneVerificationCode.objects.create(phone='9991234567', code='123456')
+
+        response = self.client.post(reverse('accounts:verify_code'), {
+            'phone': '9991234567',
+            'code': '123456',
+        })
+
+        self.assertEqual(response.status_code, 302)
+        user = User.objects.get(username='9991234567')
+        guest_order.refresh_from_db()
+        profile = Profile.objects.get(user=user)
+        self.assertEqual(guest_order.user, user)
+        self.assertIsNotNone(profile.phone_verified_at)
+        self.assertTrue(NotificationPreference.objects.filter(user=user).exists())
+
+    def test_password_login_auto_claims_guest_orders_by_verified_email(self):
+        user = User.objects.create_user(
+            username='9991234567',
+            password='testpass123',
+            email='verified@example.com',
+        )
+        Profile.objects.create(
+            user=user,
+            phone='9991234567',
+            email_verified_at=timezone.now(),
+            phone_verified_at=timezone.now(),
+            contact_name='Иван Иванов',
+            privacy_agreed_at=timezone.now(),
+        )
+        guest_order = Order.objects.create(
+            user=None,
+            status=Order.STATUS_NEW,
+            total=Decimal('100.00'),
+            phone='+7 900 000 00 01',
+            email='verified@example.com',
+            first_name='Гость',
+        )
+
+        response = self.client.post(reverse('accounts:password_login'), {
+            'login': 'verified@example.com',
+            'password': 'testpass123',
+        })
+
+        self.assertEqual(response.status_code, 302)
+        guest_order.refresh_from_db()
+        self.assertEqual(guest_order.user, user)
+        self.assertTrue(NotificationPreference.objects.filter(user=user).exists())
+
+    def test_email_code_login_auto_claims_guest_orders_by_verified_email(self):
+        user = User.objects.create_user(
+            username='9991234567',
+            email='verified@example.com',
+        )
+        user.set_unusable_password()
+        user.save(update_fields=['password'])
+        Profile.objects.create(
+            user=user,
+            phone='9991234567',
+            email_verified_at=timezone.now(),
+            contact_name='Иван Иванов',
+            privacy_agreed_at=timezone.now(),
+        )
+        guest_order = Order.objects.create(
+            user=None,
+            status=Order.STATUS_NEW,
+            total=Decimal('100.00'),
+            phone='+7 900 000 00 02',
+            email='verified@example.com',
+            first_name='Гость',
+        )
+        EmailLoginCode.objects.create(
+            email='verified@example.com',
+            code='654321',
+            purpose=EmailLoginCode.PURPOSE_LOGIN,
+        )
+
+        response = self.client.post(reverse('accounts:verify_email_login'), {
+            'email': 'verified@example.com',
+            'code': '654321',
+        })
+
+        self.assertEqual(response.status_code, 302)
+        guest_order.refresh_from_db()
+        self.assertEqual(guest_order.user, user)
+
+    def test_confirm_email_verification_auto_claims_guest_orders(self):
+        user = User.objects.create_user(username='9991234567', password='testpass')
+        Profile.objects.create(
+            user=user,
+            phone='9991234567',
+            contact_name='Иван Иванов',
+            privacy_agreed_at=timezone.now(),
+        )
+        guest_order = Order.objects.create(
+            user=None,
+            status=Order.STATUS_NEW,
+            total=Decimal('100.00'),
+            phone='+7 900 000 00 03',
+            email='claim@example.com',
+            first_name='Гость',
+        )
+        EmailVerificationCode.objects.create(user=user, email='claim@example.com', code='123456')
+        self.client.force_login(user)
+
+        response = self.client.post(reverse('accounts:profile'), {
+            'action': 'confirm_email_code',
+            'email': 'claim@example.com',
+            'code': '123456',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        guest_order.refresh_from_db()
+        self.assertEqual(guest_order.user, user)
 
 class SavedAddressAndCheckoutTest(TestCase):
     def setUp(self):
@@ -804,9 +1186,9 @@ class SavedAddressAndCheckoutTest(TestCase):
             'recipient_name': 'Иван Иванов',
             'phone': '+7 (999) 123-45-67',
             'email': 'user@example.com',
-            'delivery_type': 'pickup',
-            'pickup_point': str(self.pickup_point.pk),
-            'address': '',
+            'city': 'Екатеринбург',
+            'delivery_type': 'cdek_pvz',
+            'address': 'ПВЗ CDEK, ул. Мира, 1',
             'comment': 'Позвонить заранее',
             'is_default': 'on',
         }
@@ -824,6 +1206,15 @@ class SavedAddressAndCheckoutTest(TestCase):
         self.assertContains(resp, 'Адрес сохранён.')
         self.assertContains(resp, 'Дом')
 
+    def test_profile_settings_opens_address_form_only_by_explicit_action(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(f"{reverse('accounts:profile_settings')}?add_address=1")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="address-edit-form"', html=False)
+        self.assertContains(response, 'Есть несохранённые изменения')
+
     def test_profile_can_edit_saved_address(self):
         address = SavedAddress.objects.create(
             user=self.user,
@@ -831,7 +1222,8 @@ class SavedAddressAndCheckoutTest(TestCase):
             recipient_name='Иван Иванов',
             phone='9991234567',
             email='old@example.com',
-            delivery_type='courier',
+            city='Екатеринбург',
+            delivery_type='cdek_pvz',
             address='Старый адрес',
             is_default=True,
         )
@@ -839,14 +1231,14 @@ class SavedAddressAndCheckoutTest(TestCase):
         resp = self.client.post(reverse('accounts:profile'), self._address_payload(
             address_id=str(address.pk),
             label='Офис',
-            delivery_type='courier',
-            pickup_point='',
+            city='Москва',
             address='Новый адрес',
             is_default='',
         ))
         self.assertEqual(resp.status_code, 200)
         address.refresh_from_db()
         self.assertEqual(address.label, 'Офис')
+        self.assertEqual(address.city, 'Москва')
         self.assertEqual(address.address, 'Новый адрес')
         self.assertTrue(address.is_default)
         self.assertContains(resp, 'Офис')
@@ -857,7 +1249,8 @@ class SavedAddressAndCheckoutTest(TestCase):
             label='Дом',
             recipient_name='Иван Иванов',
             phone='9991234567',
-            delivery_type='courier',
+            city='Екатеринбург',
+            delivery_type='cdek_pvz',
             address='Домашний адрес',
             is_default=True,
         )
@@ -866,7 +1259,8 @@ class SavedAddressAndCheckoutTest(TestCase):
             label='Офис',
             recipient_name='Иван Иванов',
             phone='9991234567',
-            delivery_type='courier',
+            city='Екатеринбург',
+            delivery_type='cdek_pvz',
             address='Офисный адрес',
             is_default=False,
         )
@@ -887,7 +1281,8 @@ class SavedAddressAndCheckoutTest(TestCase):
             label='Дом',
             recipient_name='Иван Иванов',
             phone='9991234567',
-            delivery_type='courier',
+            city='Екатеринбург',
+            delivery_type='cdek_pvz',
             address='Домашний адрес',
             is_default=True,
         )
@@ -896,7 +1291,8 @@ class SavedAddressAndCheckoutTest(TestCase):
             label='Офис',
             recipient_name='Иван Иванов',
             phone='9991234567',
-            delivery_type='courier',
+            city='Екатеринбург',
+            delivery_type='cdek_pvz',
             address='Офисный адрес',
             is_default=False,
         )
@@ -919,7 +1315,8 @@ class SavedAddressAndCheckoutTest(TestCase):
             label='Чужой адрес',
             recipient_name='Другой пользователь',
             phone='9990000000',
-            delivery_type='courier',
+            city='Екатеринбург',
+            delivery_type='cdek_pvz',
             address='Чужой адрес',
             is_default=True,
         )
@@ -948,8 +1345,9 @@ class SavedAddressAndCheckoutTest(TestCase):
             recipient_name='Петров Петр',
             phone='9991234567',
             email='delivery@example.com',
-            delivery_type='pickup',
-            pickup_point=self.pickup_point,
+            city='Екатеринбург',
+            delivery_type='cdek_pvz',
+            address='ПВЗ CDEK, ул. Мира, 1',
             comment='Комментарий к доставке',
             is_default=True,
         )
@@ -959,10 +1357,50 @@ class SavedAddressAndCheckoutTest(TestCase):
         resp = self.client.get(reverse('orders:checkout'))
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.context['selected_saved_address_id'], SavedAddress.objects.get(user=self.user).pk)
-        self.assertEqual(resp.context['form'].initial['delivery_type'], 'pickup')
-        self.assertEqual(resp.context['form'].initial['pickup_point'], self.pickup_point.pk)
+        self.assertEqual(resp.context['form'].initial['delivery_type'], 'cdek_pvz')
+        self.assertEqual(resp.context['form'].initial['full_name'], 'Петров Петр')
+        self.assertEqual(resp.context['form'].initial['city_text'], 'Екатеринбург')
+        self.assertEqual(resp.context['form'].initial['address_line'], 'ПВЗ CDEK, ул. Мира, 1')
         self.assertEqual(resp.context['form'].initial['email'], 'delivery@example.com')
         self.assertContains(resp, 'Комментарий к доставке')
+
+    def test_checkout_prefills_verified_account_email_when_no_saved_address(self):
+        self.user.email = 'client@example.com'
+        self.user.save(update_fields=['email'])
+        self.client.force_login(self.user)
+        self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
+
+        response = self.client.get(reverse('orders:checkout'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['form'].initial['email'], 'client@example.com')
+
+    def test_checkout_saves_contact_name_and_privacy_to_profile_for_next_orders(self):
+        self.profile.contact_name = ''
+        self.profile.privacy_agreed_at = None
+        self.profile.privacy_policy_version = ''
+        self.profile.save(update_fields=['contact_name', 'privacy_agreed_at', 'privacy_policy_version'])
+        self.client.force_login(self.user)
+        self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
+
+        response = self.client.post(reverse('orders:checkout'), {
+            'promo_code': '',
+            'full_name': 'Петров Петр',
+            'phone': '+7 999 123 45 67',
+            'email': 'client@example.com',
+            'city_text': 'Екатеринбург',
+            'address_line': 'ПВЗ CDEK, ул. Мира, 1',
+            'delivery_comment': '',
+            'comment': '',
+            'agree_personal_data': 'on',
+            'agree_offer': 'on',
+        })
+
+        self.assertEqual(response.status_code, 302)
+        self.profile.refresh_from_db()
+        self.assertEqual(self.profile.contact_name, 'Петров Петр')
+        self.assertIsNotNone(self.profile.privacy_agreed_at)
+        self.assertEqual(self.profile.privacy_policy_version, LEGAL_BUNDLE_VERSION)
 
 
 class VerifyCodeTemplateTest(TestCase):
@@ -996,7 +1434,7 @@ class VerifyCodeTemplateTest(TestCase):
 
         resp = self.client.get(reverse('accounts:verify_code'))
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, 'Подтвердить вход')
+        self.assertContains(resp, 'Введите код')
         self.assertContains(resp, 'Изменить номер')
         self.assertNotContains(resp, '6 цифр')
 
@@ -1006,6 +1444,6 @@ class VerifyCodeTemplateTest(TestCase):
             'next': '/orders/checkout/',
         })
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, 'Код отправлен на')
+        self.assertContains(resp, 'Мы отправили код на')
         self.assertContains(resp, f'href="{reverse("accounts:login")}?next=/orders/checkout/"')
         self.assertNotContains(resp, '6 цифр')

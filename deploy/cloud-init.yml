@@ -1,29 +1,27 @@
 #cloud-config
-# Cloud-init для подготовки сервера под BizonVR (Docker + Nginx + SSL).
+# Cloud-init для подготовки сервера под BizonVR (Python + PostgreSQL + Nginx + SSL).
 # В панели облака при создании сервера вставьте этот файл в поле «User data» / «Cloud-init» / «Скрипт инициализации».
 
 package_update: true
 package_upgrade: true
 
 packages:
-  - curl
   - git
   - nginx
   - certbot
   - python3-certbot-nginx
   - python3
+  - python3-venv
+  - python3-pip
+  - postgresql
+  - postgresql-contrib
+  - libpq-dev
 
 runcmd:
-  # Docker + Docker Compose (официальный скрипт, подходит для Ubuntu и Debian)
-  - curl -fsSL https://get.docker.com | sh
-  - systemctl enable docker
-  - systemctl start docker
-  # Добавляем пользователя по умолчанию в группу docker (имя зависит от облака)
-  - usermod -aG docker ubuntu 2>/dev/null || usermod -aG docker admin 2>/dev/null || usermod -aG docker root 2>/dev/null || true
-  # Nginx включаем и запускаем (уже установлен из packages)
+  - systemctl enable postgresql
+  - systemctl start postgresql
   - systemctl enable nginx
   - systemctl start nginx
-  # Таймзона (по желанию)
   - timedatectl set-timezone Europe/Moscow 2>/dev/null || true
 
-final_message: "BizonVR server ready. Docker, Nginx, Certbot installed. Next: SSH to server, clone repo, create .env, run docker compose (see DEPLOY.md)."
+final_message: "BizonVR server ready. Python, PostgreSQL, Nginx and Certbot installed. Next: SSH to server, clone repo, create .env and follow DEPLOY.md."

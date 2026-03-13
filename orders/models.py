@@ -2,11 +2,13 @@
 Модели заказа (Фаза 3–4). Order, OrderItem. Промокоды (скидка + бонус партнёру).
 Временно: PurchaseRequest — заявка на покупку (телефон + Telegram).
 """
+import secrets
 from decimal import Decimal
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 
-from catalog.models import Product
+from catalog.models import Product, ProductVariant
 
 
 class PurchaseRequest(models.Model):
@@ -91,15 +93,24 @@ class PromoCode(models.Model):
 
 class Order(models.Model):
     """Заказ: пользователь (или гость), статус, сумма, контакты, доставка."""
+
+    PAYMENT_METHOD_BANK_CARD = 'bank_card'
+    PAYMENT_METHOD_SBP = 'sbp'
+    PAYMENT_METHOD_MANAGER_PAYMENT = 'manager_payment'
+    PAYMENT_METHOD_ONLINE = 'online_payment'
+    PAYMENT_METHOD_CASH_ON_DELIVERY = 'cash_on_delivery'
     STATUS_NEW = 'new'
-    STATUS_PAID = 'paid'
+    STATUS_CONFIRMED = 'confirmed'
+    STATUS_PAID = STATUS_CONFIRMED
     STATUS_SHIPPING = 'shipping'
+    STATUS_READY_FOR_PICKUP = 'ready_for_pickup'
     STATUS_DONE = 'done'
     STATUS_CANCELLED = 'cancelled'
     STATUS_CHOICES = [
         (STATUS_NEW, 'Новый'),
-        (STATUS_PAID, 'Оплачен'),
+        (STATUS_CONFIRMED, 'Подтверждён'),
         (STATUS_SHIPPING, 'В доставке'),
+        (STATUS_READY_FOR_PICKUP, 'Готов к выдаче'),
         (STATUS_DONE, 'Выполнен'),
         (STATUS_CANCELLED, 'Отменён'),
     ]
@@ -146,19 +157,66 @@ class Order(models.Model):
         'Остаток списан',
         default=False,
     )
+    PAYMENT_METHOD_BANK_TRANSFER = 'bank_transfer'
+    PAYMENT_METHOD_INVOICE = 'invoice'
+    PUBLIC_PAYMENT_METHOD_CHOICES = [
+        (PAYMENT_METHOD_BANK_CARD, 'Банковская карта'),
+        (PAYMENT_METHOD_SBP, 'СБП'),
+        (PAYMENT_METHOD_MANAGER_PAYMENT, 'Для юридических лиц через менеджера'),
+    ]
+    LEGACY_PAYMENT_METHOD_CHOICES = [
+        (PAYMENT_METHOD_ONLINE, 'Банковская карта (архивный способ)'),
+        (PAYMENT_METHOD_CASH_ON_DELIVERY, 'Расчёт с менеджером (архивный способ)'),
+        (PAYMENT_METHOD_BANK_TRANSFER, 'Перевод по реквизитам (архивный способ)'),
+        (PAYMENT_METHOD_INVOICE, 'Через менеджера для юрлиц (архивный способ)'),
+    ]
+    PAYMENT_METHOD_CHOICES = PUBLIC_PAYMENT_METHOD_CHOICES + LEGACY_PAYMENT_METHOD_CHOICES
+    PAYMENT_STATUS_UNPAID = 'unpaid'
+    PAYMENT_STATUS_PENDING_CONFIRMATION = 'pending_confirmation'
+    PAYMENT_STATUS_PAID = 'paid'
+    PAYMENT_STATUS_REFUNDED = 'refunded'
+    PAYMENT_STATUS_CHOICES = [
+        (PAYMENT_STATUS_UNPAID, 'Не оплачено'),
+        (PAYMENT_STATUS_PENDING_CONFIRMATION, 'Ожидает подтверждения'),
+        (PAYMENT_STATUS_PAID, 'Оплачено'),
+        (PAYMENT_STATUS_REFUNDED, 'Возвращено'),
+    ]
     DELIVERY_COURIER = 'courier'
     DELIVERY_PICKUP = 'pickup'
     DELIVERY_POST = 'post'
+    DELIVERY_NEGOTIABLE = 'negotiable'
+    DELIVERY_CDEK_COURIER = 'cdek_courier'
+    DELIVERY_CITY = 'city_delivery'
+    DELIVERY_OTHER_TRANSPORT = 'other_transport'
+    DELIVERY_CDEK_PVZ = 'cdek_pvz'
     DELIVERY_CHOICES = [
+        (DELIVERY_CDEK_PVZ, 'CDEK до ПВЗ'),
+        (DELIVERY_CDEK_COURIER, 'CDEK курьер'),
         (DELIVERY_COURIER, 'Курьером'),
         (DELIVERY_PICKUP, 'Самовывоз'),
+        (DELIVERY_CITY, 'Доставка по городу'),
+        (DELIVERY_OTHER_TRANSPORT, 'Другая ТК'),
         (DELIVERY_POST, 'Почтой'),
+        (DELIVERY_NEGOTIABLE, 'По договорённости'),
     ]
+    payment_method = models.CharField(
+        'Способ оплаты',
+        max_length=32,
+        choices=PAYMENT_METHOD_CHOICES,
+        default=PAYMENT_METHOD_BANK_CARD,
+    )
+    payment_status = models.CharField(
+        'Статус оплаты',
+        max_length=32,
+        choices=PAYMENT_STATUS_CHOICES,
+        default=PAYMENT_STATUS_UNPAID,
+        db_index=True,
+    )
     delivery_type = models.CharField(
         'Способ доставки',
         max_length=20,
         choices=DELIVERY_CHOICES,
-        default=DELIVERY_COURIER,
+        default=DELIVERY_CDEK_PVZ,
         blank=True,
     )
     city = models.ForeignKey(
@@ -181,8 +239,38 @@ class Order(models.Model):
     email = models.EmailField('Email', blank=True)
     first_name = models.CharField('Имя', max_length=150, blank=True)
     last_name = models.CharField('Фамилия', max_length=150, blank=True)
+    recipient_name = models.CharField('Получатель', max_length=255, blank=True)
+    recipient_phone = models.CharField('Телефон получателя', max_length=20, blank=True)
+    recipient_is_customer = models.BooleanField('Получатель совпадает с покупателем', default=True)
+    country = models.CharField('Страна', max_length=120, blank=True)
+    city_text = models.CharField('Город', max_length=120, blank=True)
+    postal_code = models.CharField('Индекс', max_length=20, blank=True)
+    address_line = models.TextField('Адрес доставки (структурированный)', blank=True)
+    delivery_comment = models.TextField('Комментарий для доставки', blank=True)
     address = models.TextField('Адрес доставки', blank=True)
+    delivery_cost = models.DecimalField(
+        'Стоимость доставки',
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0'),
+    )
+    shipping_weight_kg = models.DecimalField(
+        'Вес отправки, кг',
+        max_digits=9,
+        decimal_places=3,
+        default=Decimal('0'),
+    )
+    shipping_volume_cm3 = models.PositiveIntegerField(
+        'Объём отправки, см3',
+        default=0,
+    )
+    cdek_fallback_to_nearest = models.BooleanField(
+        'Если ПВЗ не найден, отправить в ближайший',
+        default=True,
+    )
     comment = models.TextField('Комментарий', blank=True)
+    guest_access_token = models.CharField('Токен гостевого доступа', max_length=64, blank=True, db_index=True)
+    guest_access_expires_at = models.DateTimeField('Гостевой доступ действует до', null=True, blank=True)
     legal_accepted_at = models.DateTimeField('Согласие с юр. документами', null=True, blank=True)
     legal_docs_version = models.CharField('Версия юр. документов', max_length=32, blank=True)
     legal_acceptance_ip = models.GenericIPAddressField('IP при согласии', null=True, blank=True)
@@ -200,12 +288,101 @@ class Order(models.Model):
 
     @property
     def total_to_pay(self):
-        """Сумма к оплате с учётом промо-скидки."""
+        """Сумма к оплате за товар с учётом промо-скидки."""
         return self.total - self.promo_discount
+
+    @property
+    def total_with_delivery(self):
+        return self.total_to_pay + self.delivery_cost
+
+    @property
+    def is_guest_order(self):
+        return self.user_id is None
+
+    @property
+    def shipping_contact_name(self):
+        if self.recipient_name:
+            return self.recipient_name
+        return ' '.join(part for part in [self.first_name, self.last_name] if part).strip()
+
+    @property
+    def shipping_phone(self):
+        return self.recipient_phone or self.phone
+
+    @property
+    def display_address(self):
+        return self.address_line or self.address
+
+    def refresh_guest_access(self, *, ttl_days=30):
+        self.guest_access_token = secrets.token_urlsafe(24)
+        self.guest_access_expires_at = timezone.now() + timezone.timedelta(days=ttl_days)
+        return self.guest_access_token
+
+    def is_guest_access_valid(self, token):
+        if not self.is_guest_order:
+            return False
+        if not token or token != self.guest_access_token:
+            return False
+        if not self.guest_access_expires_at:
+            return False
+        return self.guest_access_expires_at >= timezone.now()
+
+
+class OrderNotificationLog(models.Model):
+    EVENT_ORDER_CREATED = 'order_created'
+    EVENT_ORDER_CONFIRMED = 'order_confirmed'
+    EVENT_PAYMENT_RECEIVED = 'payment_received'
+    EVENT_ORDER_SHIPPED = 'order_shipped'
+    EVENT_ORDER_READY = 'order_ready_for_pickup'
+    EVENT_ORDER_CANCELLED = 'order_cancelled'
+    EVENT_CHOICES = [
+        (EVENT_ORDER_CREATED, 'Заказ создан'),
+        (EVENT_ORDER_CONFIRMED, 'Заказ подтверждён'),
+        (EVENT_PAYMENT_RECEIVED, 'Оплата получена'),
+        (EVENT_ORDER_SHIPPED, 'Заказ отправлен'),
+        (EVENT_ORDER_READY, 'Заказ готов к выдаче'),
+        (EVENT_ORDER_CANCELLED, 'Заказ отменён'),
+    ]
+    CHANNEL_EMAIL = 'email'
+    CHANNEL_SMS = 'sms'
+    CHANNEL_CHOICES = [
+        (CHANNEL_EMAIL, 'Email'),
+        (CHANNEL_SMS, 'SMS'),
+    ]
+
+    order = models.ForeignKey(
+        Order,
+        on_delete=models.CASCADE,
+        related_name='notification_logs',
+        verbose_name='Заказ',
+    )
+    event = models.CharField('Событие', max_length=40, choices=EVENT_CHOICES)
+    channel = models.CharField('Канал', max_length=16, choices=CHANNEL_CHOICES)
+    created_at = models.DateTimeField('Создан', auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Лог уведомления заказа'
+        verbose_name_plural = 'Логи уведомлений заказа'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['order', 'event', 'channel'],
+                name='orders_notificationlog_unique_order_event_channel',
+            ),
+        ]
+        ordering = ['-created_at']
 
 
 class OrderItem(models.Model):
     """Позиция заказа: товар, количество, цена на момент заказа."""
+    CONDITION_NEW = 'new'
+    CONDITION_USED = 'used'
+    CONDITION_REFURBISHED = 'refurbished'
+    CONDITION_CHOICES = [
+        (CONDITION_NEW, 'Новый'),
+        (CONDITION_USED, 'Б/у'),
+        (CONDITION_REFURBISHED, 'Refurbished'),
+    ]
+
     order = models.ForeignKey(
         Order,
         on_delete=models.CASCADE,
@@ -217,6 +394,14 @@ class OrderItem(models.Model):
         on_delete=models.PROTECT,
         related_name='order_items',
         verbose_name='Товар',
+    )
+    variant = models.ForeignKey(
+        ProductVariant,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='order_items',
+        verbose_name='Вариант',
     )
     quantity = models.PositiveIntegerField('Количество', default=1)
     price = models.DecimalField(
@@ -235,15 +420,49 @@ class OrderItem(models.Model):
         blank=True,
         help_text='Цвет, размер и т.п. — для отображения в заказе',
     )
+    condition = models.CharField(
+        'Состояние',
+        max_length=20,
+        choices=CONDITION_CHOICES,
+        default=CONDITION_NEW,
+    )
+    purchase_price = models.DecimalField(
+        'Закупочная цена за единицу',
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0'),
+    )
+    discount_amount = models.DecimalField(
+        'Скидка за единицу',
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0'),
+    )
+    comment = models.TextField('Комментарий', blank=True)
 
     class Meta:
         verbose_name = 'Позиция заказа'
         verbose_name_plural = 'Позиции заказа'
 
     def __str__(self):
-        name = f'{self.product.name} ({self.variant_name})' if self.variant_name else self.product.name
+        variant_label = self.variant_name or (self.variant.name if self.variant_id else '')
+        name = f'{self.product.name} ({variant_label})' if variant_label else self.product.name
         return f'{name} x {self.quantity}'
+
+    def clean(self):
+        if self.variant_id and self.variant.product_id != self.product_id:
+            from django.core.exceptions import ValidationError
+
+            raise ValidationError({'variant': 'Вариант должен относиться к выбранному товару.'})
 
     @property
     def subtotal(self):
-        return self.price * self.quantity
+        return self.unit_price * self.quantity
+
+    @property
+    def unit_price(self):
+        return max(self.price - self.discount_amount, Decimal('0'))
+
+    @property
+    def discount_total(self):
+        return self.discount_amount * self.quantity
