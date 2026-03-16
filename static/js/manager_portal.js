@@ -53,6 +53,7 @@
   }
 
   function openGlobalSearch(state) {
+    globalSearchState = state;
     state.panel.classList.remove('hidden');
     state.input.setAttribute('aria-expanded', 'true');
     if (state.backdrop) {
@@ -77,6 +78,9 @@
     syncGlobalSearchActiveResult(state, -1);
     if (state.backdrop) {
       state.backdrop.classList.add('hidden');
+    }
+    if (globalSearchState === state) {
+      globalSearchState = null;
     }
   }
 
@@ -184,7 +188,7 @@
       return;
     }
     form.dataset.managerBound = '1';
-    globalSearchState = {
+    const state = {
       form,
       input,
       panel,
@@ -199,40 +203,44 @@
     };
 
     input.addEventListener('focus', () => {
-      requestGlobalSearch(globalSearchState, input.value.trim());
+      globalSearchState = state;
+      requestGlobalSearch(state, input.value.trim());
     });
 
     input.addEventListener('input', () => {
-      scheduleGlobalSearch(globalSearchState, input.value.trim());
+      globalSearchState = state;
+      scheduleGlobalSearch(state, input.value.trim());
     });
 
     input.addEventListener('keydown', (event) => {
-      const links = getSearchResultLinks(globalSearchState);
+      globalSearchState = state;
+      const links = getSearchResultLinks(state);
       if (event.key === 'ArrowDown' && links.length) {
         event.preventDefault();
-        syncGlobalSearchActiveResult(globalSearchState, globalSearchState.activeIndex + 1);
+        syncGlobalSearchActiveResult(state, state.activeIndex + 1);
         return;
       }
       if (event.key === 'ArrowUp' && links.length) {
         event.preventDefault();
-        syncGlobalSearchActiveResult(globalSearchState, globalSearchState.activeIndex - 1);
+        syncGlobalSearchActiveResult(state, state.activeIndex - 1);
         return;
       }
       if (event.key === 'Enter') {
         event.preventDefault();
-        submitGlobalSearch(globalSearchState);
+        submitGlobalSearch(state);
         return;
       }
       if (event.key === 'Escape') {
         event.preventDefault();
-        closeGlobalSearch(globalSearchState);
+        closeGlobalSearch(state);
         input.blur();
       }
     });
 
     form.addEventListener('submit', (event) => {
       event.preventDefault();
-      submitGlobalSearch(globalSearchState);
+      globalSearchState = state;
+      submitGlobalSearch(state);
     });
   }
 
@@ -505,16 +513,17 @@
     ],
     avito_sale: [
       ['new', 'Новая'],
-      ['correspondence', 'Переписка'],
-      ['booked', 'Бронь'],
-      ['awaiting_payment', 'Ожидает оплату'],
-      ['confirmed', 'Подтверждена'],
-      ['shipped', 'Отправлена'],
-      ['received_by_customer', 'Получена'],
-      ['completed', 'Завершена'],
-      ['cancelled', 'Отменена'],
+      ['shipped', 'Отправлено'],
+      ['received_by_customer', 'Чел забрал'],
+      ['returned', 'Возврат'],
     ],
   };
+
+  function isAvitoWorkflow(form) {
+    const dealType = form.querySelector('[name="deal_type"]')?.value;
+    const customerSource = form.querySelector('[name="customer_source"]')?.value;
+    return dealType === 'avito_sale' || customerSource === 'avito';
+  }
 
   function renumberItemRows(form) {
     const visibleRows = Array.from(form.querySelectorAll('[data-order-item-row]')).filter((row) => !row.hidden);
@@ -542,7 +551,9 @@
     if (!dealType || !statusField) {
       return;
     }
-    const allowed = DEAL_STATUS_OPTIONS[dealType] || [];
+    const allowed = isAvitoWorkflow(form)
+      ? DEAL_STATUS_OPTIONS.avito_sale
+      : (DEAL_STATUS_OPTIONS[dealType] || []);
     const current = statusField.value;
     statusField.innerHTML = '';
     allowed.forEach(([value, label], index) => {
@@ -563,12 +574,20 @@
     const dealType = form.querySelector('[name="deal_type"]')?.value;
     const buyerType = form.querySelector('[name="buyer_type"]')?.value;
     const deliveryMethod = form.querySelector('[name="delivery_method"]')?.value;
+    const avitoWorkflow = isAvitoWorkflow(form);
 
     form.querySelectorAll('[data-buyer-section]').forEach((section) => {
       section.hidden = section.dataset.buyerSection !== buyerType;
     });
     form.querySelectorAll('[data-deal-section]').forEach((section) => {
+      if (section.dataset.dealSection === 'avito_sale') {
+        section.hidden = !avitoWorkflow;
+        return;
+      }
       section.hidden = section.dataset.dealSection !== dealType;
+    });
+    form.querySelectorAll('[data-avito-hide]').forEach((section) => {
+      section.hidden = avitoWorkflow;
     });
     form.querySelectorAll('[data-delivery-group]').forEach((section) => {
       if (section.dataset.deliveryGroup === 'pickup') {
@@ -799,28 +818,49 @@
   }
 
   function wireExpandableRows(root) {
-    root.querySelectorAll('[data-row-toggle]').forEach((button) => {
-      if (button.dataset.managerBound === '1') {
+    function toggleRow(rowKey, button) {
+      const detailRow = root.querySelector(`[data-row-detail="${rowKey}"]`) || document.querySelector(`[data-row-detail="${rowKey}"]`);
+      if (!detailRow) {
         return;
       }
-      button.dataset.managerBound = '1';
-      button.addEventListener('click', () => {
-        const rowKey = button.dataset.rowToggle;
-        const detailRow = root.querySelector(`[data-row-detail="${rowKey}"]`) || document.querySelector(`[data-row-detail="${rowKey}"]`);
-        if (!detailRow) {
-          return;
-        }
-        const isHidden = detailRow.hasAttribute('hidden');
-        if (isHidden) {
-          detailRow.removeAttribute('hidden');
-        } else {
-          detailRow.setAttribute('hidden', 'hidden');
-        }
+      const isHidden = detailRow.hasAttribute('hidden');
+      if (isHidden) {
+        detailRow.removeAttribute('hidden');
+      } else {
+        detailRow.setAttribute('hidden', 'hidden');
+      }
+      if (button) {
         button.setAttribute('aria-expanded', isHidden ? 'true' : 'false');
         const icon = button.querySelector('[data-row-toggle-icon]');
         if (icon) {
           icon.textContent = isHidden ? '▾' : '▸';
         }
+      }
+    }
+
+    root.querySelectorAll('[data-row-toggle]').forEach((button) => {
+      if (button.dataset.managerBound === '1') {
+        return;
+      }
+      button.dataset.managerBound = '1';
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        toggleRow(button.dataset.rowToggle, button);
+      });
+    });
+
+    root.querySelectorAll('[data-row-toggle-row]').forEach((row) => {
+      if (row.dataset.managerBound === '1') {
+        return;
+      }
+      row.dataset.managerBound = '1';
+      row.addEventListener('click', (event) => {
+        if (event.target.closest('a, button, input, select, textarea, label')) {
+          return;
+        }
+        const rowKey = row.dataset.rowToggleRow;
+        const button = row.querySelector(`[data-row-toggle="${rowKey}"]`) || root.querySelector(`[data-row-toggle="${rowKey}"]`);
+        toggleRow(rowKey, button);
       });
     });
   }

@@ -67,24 +67,32 @@ def _get_checkout_initial(request, saved_address):
         'country': 'Россия',
         'delivery_type': Order.DELIVERY_CDEK_PVZ,
         'payment_method': Order.PAYMENT_METHOD_BANK_CARD,
+        'recipient_is_customer': True,
     }
     if not request.user.is_authenticated:
         return initial
 
     profile = ensure_profile(request.user)
-    initial['full_name'] = profile.contact_name
+    first_name, last_name = _split_contact_name(profile.contact_name)
+    initial['first_name'] = first_name
+    initial['last_name'] = last_name
     initial['phone'] = get_user_phone(request.user, profile)
     initial['email'] = (request.user.email or '').strip()
 
     if saved_address:
+        saved_first_name, saved_last_name = _split_contact_name(saved_address.recipient_name)
         initial.update({
-            'full_name': saved_address.recipient_name or initial.get('full_name', ''),
+            'first_name': saved_first_name or initial.get('first_name', ''),
+            'last_name': saved_last_name or initial.get('last_name', ''),
             'phone': saved_address.phone or initial.get('phone', ''),
             'email': saved_address.email or initial.get('email', ''),
             'delivery_type': saved_address.delivery_type,
             'address_line': saved_address.address,
             'city_text': saved_address.city,
             'comment': saved_address.comment,
+            'recipient_name': saved_address.recipient_name or '',
+            'recipient_phone': saved_address.phone or '',
+            'recipient_is_customer': True,
         })
 
     return initial
@@ -94,7 +102,7 @@ def _sync_profile_from_checkout(user, cleaned_data):
     profile = ensure_profile(user)
     update_fields = []
 
-    full_name = ' '.join(
+    contact_name = ' '.join(
         part for part in [
             (cleaned_data.get('first_name') or '').strip(),
             (cleaned_data.get('last_name') or '').strip(),
@@ -102,11 +110,11 @@ def _sync_profile_from_checkout(user, cleaned_data):
         if part
     ).strip()
     existing_name = ' '.join((profile.contact_name or '').split())
-    if full_name and (
+    if contact_name and (
         not existing_name
-        or len(full_name.split()) >= len(existing_name.split())
-    ) and full_name != existing_name:
-        profile.contact_name = full_name
+        or len(contact_name.split()) >= len(existing_name.split())
+    ) and contact_name != existing_name:
+        profile.contact_name = contact_name
         update_fields.append('contact_name')
 
     if not profile.privacy_agreed_at:
@@ -147,7 +155,26 @@ def _build_checkout_context(request, form, cart_items, saved_addresses, selected
         'selected_saved_address_id': selected_saved_address.pk if selected_saved_address else None,
         'selected_saved_address': selected_saved_address,
         'is_authenticated_checkout': request.user.is_authenticated,
+        'checkout_step': _get_checkout_step(form),
     }
+
+
+def _get_checkout_step(form):
+    if not getattr(form, 'errors', None):
+        return 1
+
+    step_fields = {
+        1: {'first_name', 'last_name', 'phone', 'email'},
+        2: {'city_text', 'address_line', 'delivery_comment'},
+        3: {'recipient_is_customer', 'recipient_name', 'recipient_phone'},
+        4: {'payment_method'},
+        5: {'promo_code', 'comment', 'agree_personal_data', 'agree_offer', '__all__'},
+    }
+    errored_fields = set(form.errors.keys())
+    for step, fields in step_fields.items():
+        if errored_fields & fields:
+            return step
+    return 1
 
 
 def _get_cart_catalog_objects(cart_items):

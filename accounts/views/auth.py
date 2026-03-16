@@ -111,17 +111,42 @@ def _redirect_after_successful_auth(request):
     return redirect('home')
 
 
+def _render_login_page(
+    request,
+    *,
+    next_url='',
+    password_form=None,
+    register_form=None,
+    email_code_form=None,
+    phone_form=None,
+    active_tab='email',
+    active_email_mode='code',
+    phone_error='',
+    phone_value='',
+    show_password_registration=False,
+):
+    return render(request, 'accounts/login.html', {
+        'password_form': password_form or PasswordLoginForm(),
+        'register_form': register_form or RegistrationForm(),
+        'email_code_form': email_code_form or EmailLoginRequestForm(),
+        'phone_form': phone_form or PhoneRequestForm(),
+        'next_url': next_url,
+        'active_tab': active_tab,
+        'active_email_mode': active_email_mode,
+        'phone_error': phone_error,
+        'phone_value': phone_value,
+        'show_password_registration': show_password_registration,
+        'turnstile_enabled': is_turnstile_enabled(),
+        'turnstile_site_key': settings.TURNSTILE_SITE_KEY,
+    })
+
+
 @require_http_methods(['GET'])
 def login_view(request):
     """Публичный экран входа: email + пароль и регистрация."""
     if request.user.is_authenticated:
         return redirect(_safe_redirect_url(request.GET.get('next'), 'accounts:profile'))
-    return render(request, 'accounts/login.html', {
-        'password_form': PasswordLoginForm(),
-        'register_form': RegistrationForm(),
-        'next_url': request.GET.get('next', ''),
-        'active_panel': 'login',
-    })
+    return _render_login_page(request, next_url=request.GET.get('next', ''))
 
 
 @require_POST
@@ -254,12 +279,13 @@ def password_login_view(request):
             return _redirect_after_successful_auth(request)
         form.add_error(None, error)
 
-    return render(request, 'accounts/login.html', {
-        'password_form': form,
-        'register_form': RegistrationForm(),
-        'next_url': request.POST.get('next', ''),
-        'active_panel': 'login',
-    })
+    return _render_login_page(
+        request,
+        next_url=request.POST.get('next', ''),
+        password_form=form,
+        active_tab='email',
+        active_email_mode='password',
+    )
 
 
 @require_POST
@@ -274,7 +300,7 @@ def send_email_login_code_view(request):
         if not ok_rate:
             form.add_error('email', rate_error)
         else:
-            ok, error = create_and_send_email_login_code(email)
+            ok, error = create_and_send_email_login_code(email, require_existing_user=False)
             if ok:
                 mark_send_email_success(request, email, endpoint='login-email-code')
                 next_url = request.POST.get('next', '')
@@ -284,12 +310,14 @@ def send_email_login_code_view(request):
                 return redirect(redirect_url)
             form.add_error('email', error)
 
-    return render(request, 'accounts/login.html', {
-        'password_form': PasswordLoginForm(initial={'login': request.POST.get('login', '')}),
-        'register_form': RegistrationForm(),
-        'next_url': request.POST.get('next', ''),
-        'active_panel': 'login',
-    })
+    return _render_login_page(
+        request,
+        next_url=request.POST.get('next', ''),
+        password_form=PasswordLoginForm(initial={'login': request.POST.get('email', '')}),
+        email_code_form=form,
+        active_tab='email',
+        active_email_mode='code',
+    )
 
 
 @require_http_methods(['GET', 'POST'])
@@ -368,9 +396,11 @@ def register_view(request):
     else:
         form = RegistrationForm()
 
-    return render(request, 'accounts/login.html', {
-        'password_form': PasswordLoginForm(),
-        'register_form': form,
-        'next_url': request.POST.get('next', '') if request.method == 'POST' else request.GET.get('next', ''),
-        'active_panel': 'register',
-    })
+    return _render_login_page(
+        request,
+        next_url=request.POST.get('next', '') if request.method == 'POST' else request.GET.get('next', ''),
+        register_form=form,
+        active_tab='email',
+        active_email_mode='code',
+        show_password_registration=True,
+    )

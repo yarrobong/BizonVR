@@ -166,10 +166,20 @@
     <main class="manager-main p-4 lg:px-8 lg:py-6">
       <div class="manager-topbar-shell {% if manager_topbar_compact %}manager-topbar-shell-compact{% endif %} mb-5 rounded-[1.75rem] border border-slate-800/80 bg-slate-950/80 px-4 py-4 lg:px-6">
         {% if manager_topbar_compact and manager_has_staff_access %}
-          <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-            <div class="flex items-center gap-3 xl:flex-1">
-              <button type="button" data-mobile-sidebar-open class="rounded-xl border border-slate-700 px-3 py-2 text-sm lg:hidden">Меню</button>
-              <div class="manager-global-search-shell relative min-w-0 xl:max-w-3xl xl:flex-1" data-manager-global-search-root>
+          <div class="space-y-4">
+            <div class="manager-mobile-topbar lg:hidden">
+              <div class="manager-mobile-topbar-row">
+                <button type="button" data-mobile-sidebar-open class="manager-mobile-icon-button">Меню</button>
+                <div class="min-w-0 flex-1">
+                  <p class="text-[0.68rem] uppercase tracking-[0.24em] text-slate-500">Операционный контур</p>
+                  <p class="manager-topbar-title truncate text-base">{{ manager_active_label }}</p>
+                </div>
+                <a href="{{ manager_topbar.problem_url }}" class="manager-mobile-signal-button">
+                  Сигналы
+                  <span class="manager-topbar-count">{{ manager_topbar.problem_count }}</span>
+                </a>
+              </div>
+              <div class="manager-global-search-shell relative min-w-0" data-manager-global-search-root>
                 <form
                   action="{% url 'manager_portal:deal_search' %}"
                   method="get"
@@ -178,7 +188,7 @@
                   data-manager-global-search
                   data-manager-global-search-url="{{ manager_global_search_url }}"
                 >
-                  <label for="manager-global-search-input" class="sr-only">Глобальный поиск</label>
+                  <label for="manager-global-search-input-mobile" class="sr-only">Глобальный поиск</label>
                   <span class="manager-global-search-icon" aria-hidden="true">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                       <circle cx="11" cy="11" r="7"></circle>
@@ -186,51 +196,111 @@
                     </svg>
                   </span>
                   <input
-                    id="manager-global-search-input"
+                    id="manager-global-search-input-mobile"
                     type="search"
                     name="q"
                     value=""
-                    placeholder="Заказ, клиент, телефон, email, договор, отгрузка, груз, SKU или товар"
+                    placeholder="Поиск: заказ, клиент, телефон, email, договор, отгрузка"
                     class="manager-global-search-input"
                     data-manager-global-search-input
                     aria-expanded="false"
-                    aria-controls="manager-global-search-results"
+                    aria-controls="manager-global-search-results-mobile"
                     spellcheck="false"
                   >
-                  <div class="manager-global-search-shortcuts hidden sm:flex" aria-hidden="true">
-                    <span class="manager-global-search-key">/</span>
-                    <span class="manager-global-search-key">Cmd K</span>
-                  </div>
                 </form>
                 <div
-                  id="manager-global-search-results"
+                  id="manager-global-search-results-mobile"
                   class="manager-global-search-panel hidden"
                   data-manager-global-search-panel
                 ></div>
               </div>
+              <div class="manager-mobile-topbar-row manager-mobile-topbar-row-actions">
+                <a
+                  href="{{ manager_topbar.quick_create_url }}"
+                  class="manager-create-action flex-1"
+                  data-drawer-target="#manager-remote-drawer"
+                  hx-get="{{ manager_topbar.quick_create_url }}"
+                  hx-select="#manager-main-content > *"
+                  hx-target="#manager-remote-drawer-content"
+                  hx-swap="innerHTML"
+                  hx-push-url="false"
+                >Новая сделка</a>
+                <span class="manager-topbar-meta-pill">
+                  SLA
+                  <strong>{{ manager_topbar.overdue_count }}</strong>
+                </span>
+              </div>
             </div>
-            <div class="flex flex-wrap items-center gap-2">
-              <a
-                href="{{ manager_topbar.quick_create_url }}"
-                class="manager-create-action"
-                data-drawer-target="#manager-remote-drawer"
-                hx-get="{{ manager_topbar.quick_create_url }}"
-                hx-select="#manager-main-content > *"
-                hx-target="#manager-remote-drawer-content"
-                hx-swap="innerHTML"
-                hx-push-url="false"
-              >Новый заказ</a>
-              <a href="{{ manager_topbar.problem_url }}" class="manager-topbar-action">
-                Сигналы
-                <span class="manager-topbar-count">{{ manager_topbar.problem_count }}</span>
-              </a>
-              <span class="manager-topbar-meta-pill">
-                Последняя синхронизация
-                <strong>{% if manager_topbar.latest_sync_at %}{{ manager_topbar.latest_sync_at|date:"d.m H:i" }}{% else %}—{% endif %}</strong>
-              </span>
-              <div class="manager-topbar-user">
-                <span class="text-sm font-medium text-white">{{ request.user.get_username }}</span>
-                <a href="{% url 'accounts:logout' %}" class="text-xs text-slate-400 hover:text-white">Выход</a>
+
+            <div class="hidden lg:flex lg:flex-col lg:gap-3 xl:flex-row xl:items-center xl:justify-between">
+              <div class="flex items-center gap-3 xl:flex-1">
+                <div>
+                  <p class="text-xs uppercase tracking-[0.22em] text-slate-500">Рабочий shell</p>
+                  <p class="manager-topbar-title text-lg">{{ manager_active_label }}</p>
+                </div>
+                <div class="manager-global-search-shell relative min-w-0 xl:max-w-3xl xl:flex-1" data-manager-global-search-root>
+                  <form
+                    action="{% url 'manager_portal:deal_search' %}"
+                    method="get"
+                    class="manager-global-search-form"
+                    autocomplete="off"
+                    data-manager-global-search
+                    data-manager-global-search-url="{{ manager_global_search_url }}"
+                  >
+                    <label for="manager-global-search-input-desktop" class="sr-only">Глобальный поиск</label>
+                    <span class="manager-global-search-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="7"></circle>
+                        <path d="m20 20-3.5-3.5"></path>
+                      </svg>
+                    </span>
+                    <input
+                      id="manager-global-search-input-desktop"
+                      type="search"
+                      name="q"
+                      value=""
+                      placeholder="Заказ, клиент, телефон, email, договор, отгрузка, груз, SKU или товар"
+                      class="manager-global-search-input"
+                      data-manager-global-search-input
+                      aria-expanded="false"
+                      aria-controls="manager-global-search-results-desktop"
+                      spellcheck="false"
+                    >
+                    <div class="manager-global-search-shortcuts hidden sm:flex" aria-hidden="true">
+                      <span class="manager-global-search-key">/</span>
+                      <span class="manager-global-search-key">Cmd K</span>
+                    </div>
+                  </form>
+                  <div
+                    id="manager-global-search-results-desktop"
+                    class="manager-global-search-panel hidden"
+                    data-manager-global-search-panel
+                  ></div>
+                </div>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <a
+                  href="{{ manager_topbar.quick_create_url }}"
+                  class="manager-create-action"
+                  data-drawer-target="#manager-remote-drawer"
+                  hx-get="{{ manager_topbar.quick_create_url }}"
+                  hx-select="#manager-main-content > *"
+                  hx-target="#manager-remote-drawer-content"
+                  hx-swap="innerHTML"
+                  hx-push-url="false"
+                >Новый заказ</a>
+                <a href="{{ manager_topbar.problem_url }}" class="manager-topbar-action">
+                  Сигналы
+                  <span class="manager-topbar-count">{{ manager_topbar.problem_count }}</span>
+                </a>
+                <span class="manager-topbar-meta-pill">
+                  Последняя синхронизация
+                  <strong>{% if manager_topbar.latest_sync_at %}{{ manager_topbar.latest_sync_at|date:"d.m H:i" }}{% else %}—{% endif %}</strong>
+                </span>
+                <div class="manager-topbar-user">
+                  <span class="text-sm font-medium text-white">{{ request.user.get_username }}</span>
+                  <a href="{% url 'accounts:logout' %}" class="text-xs text-slate-400 hover:text-white">Выход</a>
+                </div>
               </div>
             </div>
           </div>
@@ -361,6 +431,34 @@
         {% block content %}{% endblock %}
       </div>
     </main>
+    {% if manager_has_staff_access %}
+      <nav class="manager-mobile-bottom-nav lg:hidden" aria-label="Основные разделы менеджера">
+        <a href="{% url 'manager_portal:deal_list' %}" class="manager-mobile-bottom-link {% if manager_active_tab == 'deals' %}manager-mobile-bottom-link-active{% endif %}">
+          <span>Заказы</span>
+        </a>
+        <a href="{% url 'manager_portal:client_list' %}" class="manager-mobile-bottom-link {% if manager_active_tab == 'clients' %}manager-mobile-bottom-link-active{% endif %}">
+          <span>Клиенты</span>
+        </a>
+        <a href="{% url 'manager_portal:warehouse_list' %}" class="manager-mobile-bottom-link {% if manager_active_tab == 'warehouses' %}manager-mobile-bottom-link-active{% endif %}">
+          <span>Склады</span>
+        </a>
+        <a href="{% url 'manager_portal:inventory' %}" class="manager-mobile-bottom-link {% if manager_active_tab == 'inventory' %}manager-mobile-bottom-link-active{% endif %}">
+          <span>Остатки</span>
+        </a>
+        {% if manager_has_finance_access %}
+          <a
+            href="{% url 'manager_portal:finance' %}"
+            class="manager-mobile-bottom-link {% if manager_active_tab == 'finance_dashboard' or manager_active_tab == 'finance_deals' or manager_active_tab == 'finance_expenses' or manager_active_tab == 'finance_payouts' or manager_active_tab == 'finance_report' or manager_active_tab == 'finance_archive' or manager_active_tab == 'finance_settings' %}manager-mobile-bottom-link-active{% endif %}"
+          >
+            <span>Финансы</span>
+          </a>
+        {% else %}
+          <a href="{% url 'manager_portal:purchase_list' %}" class="manager-mobile-bottom-link {% if manager_active_tab == 'purchases' %}manager-mobile-bottom-link-active{% endif %}">
+            <span>Закупки</span>
+          </a>
+        {% endif %}
+      </nav>
+    {% endif %}
   </div>
 </body>
 </html>

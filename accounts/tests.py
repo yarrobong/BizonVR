@@ -60,10 +60,10 @@ class LoginViewsTest(TestCase):
     def test_login_page_returns_200(self):
         resp = self.client.get(reverse('accounts:login'))
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, 'Вход по почте и паролю')
-        self.assertContains(resp, 'Регистрация')
+        self.assertContains(resp, 'Вход без блокировки покупки')
         self.assertContains(resp, 'Email')
-        self.assertContains(resp, 'Пароль')
+        self.assertContains(resp, 'Телефон')
+        self.assertContains(resp, 'Получить код на email')
 
     def test_login_page_does_not_render_sms_turnstile(self):
         resp = self.client.get(reverse('accounts:login'))
@@ -73,8 +73,8 @@ class LoginViewsTest(TestCase):
     def test_register_page_uses_same_template_with_register_panel(self):
         resp = self.client.get(reverse('accounts:register'))
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, 'Создать аккаунт')
-        self.assertContains(resp, 'Этот email станет вашим логином.')
+        self.assertContains(resp, 'Создать аккаунт с паролем')
+        self.assertContains(resp, 'Этот email станет вашим логином и адресом сервисных писем.')
 
     def test_register_creates_email_account_and_logs_user_in(self):
         response = self.client.post(reverse('accounts:register'), {
@@ -145,6 +145,25 @@ class LoginViewsTest(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.url, reverse('home'))
         self.assertEqual(self.client.session.get('_auth_user_id'), str(user.pk))
+
+    def test_email_code_login_creates_account_for_new_email(self):
+        EmailLoginCode.objects.create(
+            email='new-client@example.com',
+            code='123456',
+            purpose=EmailLoginCode.PURPOSE_LOGIN,
+        )
+
+        response = self.client.post(reverse('accounts:verify_email_login'), {
+            'email': 'new-client@example.com',
+            'code': '123456',
+        })
+
+        self.assertEqual(response.status_code, 302)
+        user = User.objects.get(email='new-client@example.com')
+        profile = Profile.objects.get(user=user)
+        self.assertEqual(response.url, reverse('accounts:profile_settings') + '#profile')
+        self.assertIsNone(profile.phone)
+        self.assertIsNotNone(profile.email_verified_at)
 
     def test_authenticated_login_view_ignores_external_next(self):
         user = User.objects.create_user(username='9991234567', password='testpass')
@@ -1358,10 +1377,12 @@ class SavedAddressAndCheckoutTest(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.context['selected_saved_address_id'], SavedAddress.objects.get(user=self.user).pk)
         self.assertEqual(resp.context['form'].initial['delivery_type'], 'cdek_pvz')
-        self.assertEqual(resp.context['form'].initial['full_name'], 'Петров Петр')
+        self.assertEqual(resp.context['form'].initial['first_name'], 'Петров')
+        self.assertEqual(resp.context['form'].initial['last_name'], 'Петр')
         self.assertEqual(resp.context['form'].initial['city_text'], 'Екатеринбург')
         self.assertEqual(resp.context['form'].initial['address_line'], 'ПВЗ CDEK, ул. Мира, 1')
         self.assertEqual(resp.context['form'].initial['email'], 'delivery@example.com')
+        self.assertEqual(resp.context['form'].initial['recipient_name'], 'Петров Петр')
         self.assertContains(resp, 'Комментарий к доставке')
 
     def test_checkout_prefills_verified_account_email_when_no_saved_address(self):
@@ -1385,13 +1406,15 @@ class SavedAddressAndCheckoutTest(TestCase):
 
         response = self.client.post(reverse('orders:checkout'), {
             'promo_code': '',
-            'full_name': 'Петров Петр',
+            'first_name': 'Петров',
+            'last_name': 'Петр',
             'phone': '+7 999 123 45 67',
             'email': 'client@example.com',
             'city_text': 'Екатеринбург',
             'address_line': 'ПВЗ CDEK, ул. Мира, 1',
             'delivery_comment': '',
             'comment': '',
+            'recipient_is_customer': 'on',
             'agree_personal_data': 'on',
             'agree_offer': 'on',
         })

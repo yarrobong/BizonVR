@@ -668,8 +668,13 @@ class ManagerDeal(models.Model):
             self.short_label = self.generated_short_label()
 
     @classmethod
-    def allowed_status_choices(cls, deal_type):
-        allowed_codes = cls.DEAL_STATUS_CHOICES_BY_TYPE.get(deal_type, [])
+    def uses_avito_workflow(cls, deal_type, customer_source=''):
+        return deal_type == cls.DEAL_AVITO or customer_source == cls.SOURCE_AVITO
+
+    @classmethod
+    def allowed_status_choices(cls, deal_type, customer_source=''):
+        workflow_type = cls.DEAL_AVITO if cls.uses_avito_workflow(deal_type, customer_source) else deal_type
+        allowed_codes = cls.DEAL_STATUS_CHOICES_BY_TYPE.get(workflow_type, [])
         labels = dict(cls.DEAL_STATUS_CHOICES)
         return [(code, labels[code]) for code in allowed_codes if code in labels]
 
@@ -727,7 +732,7 @@ class ManagerDeal(models.Model):
 
     @property
     def is_avito(self):
-        return self.deal_type == self.DEAL_AVITO
+        return self.uses_avito_workflow(self.deal_type, self.customer_source)
 
     @property
     def requires_documents(self):
@@ -788,7 +793,10 @@ class ManagerDeal(models.Model):
         return Decimal('0')
 
     def clean(self):
-        if self.deal_status and self.deal_status not in self.DEAL_STATUS_CHOICES_BY_TYPE.get(self.deal_type, []):
+        allowed_statuses = {
+            code for code, _label in self.allowed_status_choices(self.deal_type, self.customer_source)
+        }
+        if self.deal_status and self.deal_status not in allowed_statuses:
             raise ValidationError({'deal_status': 'Статус не подходит для выбранного типа сделки.'})
         if self.deal_type == self.DEAL_SALE_FROM_STOCK and not self.stock_warehouse_id:
             raise ValidationError({'stock_warehouse': 'Для продажи из наличия выберите склад.'})
@@ -798,7 +806,7 @@ class ManagerDeal(models.Model):
         if self.deal_type == self.DEAL_SALE_ON_REQUEST and self.deal_status == self.DEAL_STATUS_READY_TO_SHIP:
             if self.shipment_status not in {self.SHIPMENT_PENDING, self.SHIPMENT_DRAFT} and not self.expected_arrival_date:
                 raise ValidationError({'deal_status': 'Товар должен быть получен до подготовки к отправке.'})
-        if self.deal_type == self.DEAL_AVITO and not self.avito_listing_url and self.customer_source == self.SOURCE_AVITO:
+        if self.deal_type == self.DEAL_AVITO and self.customer_source == self.SOURCE_AVITO and not self.avito_listing_url:
             raise ValidationError({'avito_listing_url': 'Для сделки Avito укажите ссылку на объявление.'})
 
     def save(self, *args, **kwargs):

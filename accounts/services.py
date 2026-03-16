@@ -723,7 +723,30 @@ def login_with_email_code(email: str, code: str, request) -> tuple[bool, str, ob
 
     user = get_user_by_email(email)
     if user is None:
-        return False, 'Аккаунт с таким подтверждённым email не найден.', None
+        user = User.objects.create_user(
+            username=build_unique_email_username(),
+            email=email,
+            is_active=True,
+        )
+        user.set_unusable_password()
+        user.save(update_fields=['password'])
+
+        Profile.objects.create(
+            user=user,
+            phone=get_default_profile_phone(user),
+            email_verified_at=timezone.now(),
+        )
+    else:
+        profile = ensure_profile(user)
+        update_fields = []
+        if user.email != email:
+            user.email = email
+            user.save(update_fields=['email'])
+        if not profile.email_verified_at:
+            profile.email_verified_at = timezone.now()
+            update_fields.append('email_verified_at')
+        if update_fields:
+            profile.save(update_fields=update_fields)
 
     login(request, user, backend='django.contrib.auth.backends.ModelBackend')
     get_or_create_notification_preferences(user)

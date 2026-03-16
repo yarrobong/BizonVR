@@ -537,6 +537,44 @@ def _deal_participant_summary(participants):
     }
 
 
+def _deal_participant_name(person_alias):
+    return person_alias.display_name if person_alias is not None else ''
+
+
+def _sync_deal_participants(*, deal, answered_person_alias=None, shipped_person_alias=None, actor=None):
+    role_map = {
+        ManagerDealParticipant.ROLE_ANSWERED: answered_person_alias,
+        ManagerDealParticipant.ROLE_SHIPPED: shipped_person_alias,
+    }
+    payload = {}
+    changed = False
+    for role, person_alias in role_map.items():
+        queryset = deal.participants.filter(role=role, order_item__isnull=True)
+        current_ids = list(queryset.values_list('person_alias_id', flat=True))
+        next_ids = [person_alias.pk] if person_alias is not None else []
+        if current_ids == next_ids:
+            payload[role] = _deal_participant_name(person_alias)
+            continue
+        queryset.delete()
+        if person_alias is not None:
+            ManagerDealParticipant.objects.create(
+                manager_deal=deal,
+                person_alias=person_alias,
+                role=role,
+            )
+        payload[role] = _deal_participant_name(person_alias)
+        changed = True
+    if changed:
+        record_deal_activity(
+            deal,
+            event_type='participants.updated',
+            source='user',
+            actor=actor,
+            payload=payload,
+        )
+    return changed
+
+
 def _deal_request_target(request, *, query_param='createFromDeal'):
     raw_value = (request.POST.get(query_param) or request.GET.get(query_param) or '').strip()
     if not raw_value.isdigit():
@@ -812,6 +850,21 @@ def _deal_list_channel_summary(deal):
     return ' · '.join(part for part in parts if part)
 
 
+def _deal_list_product_summary(deal):
+    order_items = list(deal.order.items.all())
+    if not order_items:
+        return deal.short_label or deal.get_deal_type_display()
+    primary_item = order_items[0]
+    parts = [primary_item.product.name if primary_item.product_id else 'Товар']
+    variant_label = primary_item.variant.name if primary_item.variant_id else (primary_item.variant_name or '')
+    if variant_label:
+        parts.append(variant_label)
+    summary = ' · '.join(part for part in parts if part)
+    if len(order_items) > 1:
+        summary = f'{summary} +{len(order_items) - 1}'
+    return summary
+
+
 def _decorate_deal_list_rows(deals, *, finance_map, current_user, return_query):
     for deal in deals:
         deal.work_queue_client = deal_manager_client(deal)
@@ -829,6 +882,7 @@ def _decorate_deal_list_rows(deals, *, finance_map, current_user, return_query):
         deal.list_readiness = _deal_list_readiness(deal)
         deal.list_problem_labels = list(deal.problem_flag_labels[:3])
         deal.list_row_key = f'deal-{deal.pk}'
+        deal.list_product_summary = _deal_list_product_summary(deal)
         deal.list_channel_summary = _deal_list_channel_summary(deal)
         deal.list_delivery_summary = _deal_list_delivery_summary(deal)
         deal.list_comments = _deal_list_commentaries(deal, deal_client=deal.work_queue_client)
@@ -844,6 +898,7 @@ def _decorate_deal_kanban_rows(deals):
     for deal in deals:
         deal.list_readiness = _deal_list_readiness(deal)
         deal.list_problem_labels = list(deal.problem_flag_labels[:3])
+        deal.list_product_summary = _deal_list_product_summary(deal)
         deal.list_delivery_summary = _deal_list_delivery_summary(deal)
         deal.list_sla_is_overdue = bool(
             deal.sla_due_at and (deal.sla_breached_at or deal.sla_due_at <= timezone.now())
@@ -2141,7 +2196,8 @@ def _manual_order_prefill_for_client(*, client, user):
         initial['shipment_status'] = latest_deal.shipment_status
         initial['planned_receipt_at'] = latest_deal.planned_receipt_at
         initial['stock_warehouse'] = latest_deal.stock_warehouse_id
-        initial['customer_deadline'] = latest_deal.customer_deadline
+        if not latest_deal.is_avito:
+            initial['customer_deadline'] = latest_deal.customer_deadline
         initial['prepayment_required_amount'] = latest_deal.prepayment_required_amount
         initial['prepayment_amount'] = latest_deal.prepayment_amount
         initial['customer_request'] = latest_deal.customer_request
@@ -2159,6 +2215,18 @@ def _manual_order_prefill_for_client(*, client, user):
         initial['avito_list_price'] = latest_deal.avito_list_price
         initial['avito_final_price'] = latest_deal.avito_final_price
         initial['avito_commission'] = latest_deal.avito_commission
+        answered_participant = latest_deal.participants.filter(
+            role=ManagerDealParticipant.ROLE_ANSWERED,
+            order_item__isnull=True,
+        ).first()
+        shipped_participant = latest_deal.participants.filter(
+            role=ManagerDealParticipant.ROLE_SHIPPED,
+            order_item__isnull=True,
+        ).first()
+        if answered_participant is not None:
+            initial['answered_person_alias'] = answered_participant.person_alias_id
+        if shipped_participant is not None:
+            initial['shipped_person_alias'] = shipped_participant.person_alias_id
         if latest_deal.responsible_manager_id:
             initial['responsible_manager'] = latest_deal.responsible_manager_id
     if initial['buyer_type'] == ManagerDeal.BUYER_BUSINESS:
@@ -2283,7 +2351,7 @@ def _validate_manager_deal_state_transition(deal, *, target_status, paid_amount,
     } and deal.delivery_method in {
         ManagerDeal.DELIVERY_CDEK_PVZ,
         ManagerDeal.DELIVERY_CDEK_COURIER,
-    } and deal.deal_type != ManagerDeal.DEAL_AVITO and not (tracking_number or deal.tracking_number):
+    } and not deal.is_avito and not (tracking_number or deal.tracking_number):
         raise ValueError('Для отправки через СДЭК укажите номер заказа / отправления.')
 
 
@@ -2373,7 +2441,15 @@ def order_create_view(request):
                         ]
                     )
                     deal_status = form.cleaned_data['deal_status']
-                    if form.cleaned_data['deal_type'] == ManagerDeal.DEAL_SALE_FROM_STOCK and deal_status == ManagerDeal.DEAL_STATUS_NEW:
+                    is_avito_workflow = ManagerDeal.uses_avito_workflow(
+                        form.cleaned_data['deal_type'],
+                        form.cleaned_data['customer_source'],
+                    )
+                    if (
+                        form.cleaned_data['deal_type'] == ManagerDeal.DEAL_SALE_FROM_STOCK
+                        and not is_avito_workflow
+                        and deal_status == ManagerDeal.DEAL_STATUS_NEW
+                    ):
                         deal_status = ManagerDeal.DEAL_STATUS_RESERVED
                         Order.objects.filter(pk=order.pk).update(status=ManagerDeal.order_status_for_deal_status(deal_status))
                         order.refresh_from_db()
@@ -2408,7 +2484,7 @@ def order_create_view(request):
                         business_delivery_address=(form.cleaned_data.get('business_delivery_address') or '').strip(),
                         business_comment=(form.cleaned_data.get('business_comment') or '').strip(),
                         customer_request=(form.cleaned_data.get('customer_request') or '').strip(),
-                        customer_deadline=form.cleaned_data.get('customer_deadline'),
+                        customer_deadline=None if is_avito_workflow else form.cleaned_data.get('customer_deadline'),
                         customer_request_comment=(form.cleaned_data.get('customer_request_comment') or '').strip(),
                         delivery_method=form.cleaned_data['delivery_method'],
                         delivery_from_city=(form.cleaned_data.get('delivery_from_city') or '').strip(),
@@ -2437,6 +2513,12 @@ def order_create_view(request):
                         avito_list_price=form.cleaned_data.get('avito_list_price') or Decimal('0'),
                         avito_final_price=form.cleaned_data.get('avito_final_price') or Decimal('0'),
                         avito_commission=form.cleaned_data.get('avito_commission') or Decimal('0'),
+                    )
+                    _sync_deal_participants(
+                        deal=deal,
+                        answered_person_alias=form.cleaned_data.get('answered_person_alias'),
+                        shipped_person_alias=form.cleaned_data.get('shipped_person_alias'),
+                        actor=request.user,
                     )
                     client_resolution = _get_or_create_manager_client_for_order(form.cleaned_data, order)
                     client = client_resolution['client']
@@ -2572,9 +2654,10 @@ def _active_deals(queryset):
 
 
 def _apply_deal_scope(queryset, scope):
+    avito_filter = Q(customer_source=ManagerDeal.SOURCE_AVITO) | Q(deal_type=ManagerDeal.DEAL_AVITO)
     if scope == DEAL_SCOPE_AVITO:
-        return queryset.filter(deal_type=ManagerDeal.DEAL_AVITO)
-    return queryset.exclude(deal_type=ManagerDeal.DEAL_AVITO)
+        return queryset.filter(avito_filter)
+    return queryset.exclude(avito_filter)
 
 
 def _today_action_cutoff():
@@ -2722,6 +2805,20 @@ def _apply_deal_filters(deals, form, *, user):
             deals = deals.filter(case_status=case_status)
     if form.cleaned_data.get('payment_state'):
         deals = deals.filter(payment_state=form.cleaned_data['payment_state'])
+    if form.cleaned_data.get('fulfillment_status'):
+        deals = deals.filter(fulfillment_status=form.cleaned_data['fulfillment_status'])
+    if form.cleaned_data.get('documents_status'):
+        deals = deals.filter(documents_status=form.cleaned_data['documents_status'])
+    if form.cleaned_data.get('deal_type'):
+        deals = deals.filter(deal_type=form.cleaned_data['deal_type'])
+    if form.cleaned_data.get('sla_status'):
+        sla_status = form.cleaned_data['sla_status']
+        if sla_status == 'today':
+            deals = _active_deals(deals).filter(sla_due_at__isnull=False, sla_due_at__lte=_today_action_cutoff())
+        elif sla_status == 'overdue':
+            deals = deals.filter(problem_flags__contains=[ManagerDeal.PROBLEM_FLAG_SLA_OVERDUE])
+        elif sla_status == 'missing':
+            deals = deals.filter(sla_due_at__isnull=True)
     if form.cleaned_data.get('responsible_manager'):
         deals = deals.filter(responsible_manager=form.cleaned_data['responsible_manager'])
     if form.cleaned_data.get('mine'):
@@ -2738,6 +2835,10 @@ def _apply_deal_filters(deals, form, *, user):
 def _deal_advanced_filter_state(form):
     advanced_fields = (
         'payment_state',
+        'fulfillment_status',
+        'documents_status',
+        'deal_type',
+        'sla_status',
         'overlay',
         'problem_view',
         'case_status',
@@ -2870,6 +2971,8 @@ def _deal_saved_views(user):
 
 
 def _deal_customer_label(deal):
+    if deal.is_avito:
+        return deal.avito_listing_title or deal.main_product_label() or deal.order.phone or f'Заказ #{deal.order_id}'
     return deal.customer_name or deal.order.shipping_contact_name or deal.order.phone or f'Заказ #{deal.order_id}'
 
 
@@ -2980,7 +3083,7 @@ def _deal_blockers(deal, *, documents, reservations, shipments, finance_deal, pu
             add(f'flag:{flag}', label)
     if deal.responsible_manager_id is None:
         add('manager', 'Не назначен ответственный менеджер.', action=assign_self_action)
-    if deal.customer_deadline and deal.customer_deadline < timezone.localdate():
+    if not deal.is_avito and deal.customer_deadline and deal.customer_deadline < timezone.localdate():
         add(
             'deadline',
             f'Дедлайн клиента истек {deal.customer_deadline:%d.%m.%Y}.',
@@ -4263,6 +4366,10 @@ def deal_list_view(request):
             'problem_view',
             'case_status',
             'payment_state',
+            'fulfillment_status',
+            'documents_status',
+            'deal_type',
+            'sla_status',
             'responsible_manager',
             'mine',
             'only_unassigned',
@@ -4428,7 +4535,7 @@ def deal_detail_view(request, pk):
                 previous_next_step_reason = deal.next_step_reason_snapshot or ''
                 next_case_status = management_form.cleaned_data['case_status']
                 next_responsible_manager = management_form.cleaned_data['responsible_manager']
-                next_deadline = management_form.cleaned_data['customer_deadline']
+                next_deadline = None if deal.is_avito else management_form.cleaned_data['customer_deadline']
                 if next_responsible_manager != previous_manager:
                     apply_deal_assignment(
                         deal,
@@ -4463,6 +4570,12 @@ def deal_detail_view(request, pk):
                         )
                 elif previous_next_step_source == ManagerDeal.NEXT_STEP_SOURCE_MANUAL:
                     clear_deal_next_step_override(deal, actor=request.user)
+                _sync_deal_participants(
+                    deal=deal,
+                    answered_person_alias=management_form.cleaned_data.get('answered_person_alias'),
+                    shipped_person_alias=management_form.cleaned_data.get('shipped_person_alias'),
+                    actor=request.user,
+                )
                 recompute_deal_workflow(deal, actor=request.user)
                 messages.success(request, 'Управление заказом сохранено.')
                 return redirect('manager_portal:deal_detail', pk=deal.pk)
@@ -4896,8 +5009,105 @@ def client_detail_view(request, pk):
 
 @staff_required
 def warehouse_list_view(request):
+    def build_warehouse_row(warehouse):
+        rows = inventory_snapshot_for_warehouse(warehouse)
+        inventory_problem_rows = sum(1 for row in rows if row['available'] < 0 or row['inbound_available'] < 0)
+        pickup_point_admin_url = (
+            reverse('admin:catalog_pickuppoint_change', args=[warehouse.pickup_point_id])
+            if warehouse.pickup_point_id
+            else None
+        )
+        signals = []
+        if inventory_problem_rows:
+            signals.append({'label': f'{inventory_problem_rows} строк с отрицательным остатком', 'tone': 'danger'})
+        if not warehouse.pickup_point_id:
+            signals.append({'label': 'Нет связи с сайтом', 'tone': 'danger'})
+        elif warehouse.public_stock_synced_at is None:
+            signals.append({'label': 'Остаток на сайте еще не синхронизирован', 'tone': 'warning'})
+        sync_status = {
+            'label': 'Без связи',
+            'class_name': 'manager-status-danger',
+        }
+        if warehouse.pickup_point_id:
+            if warehouse.public_stock_synced_at:
+                sync_status = {
+                    'label': 'Синхронизирован',
+                    'class_name': 'manager-status-positive',
+                }
+            else:
+                sync_status = {
+                    'label': 'Не синхронизирован',
+                    'class_name': 'manager-status-danger',
+                }
+        address_missing = not (warehouse.address or '').strip()
+        inbound = sum(row['inbound'] for row in rows)
+        detail_url = reverse('manager_portal:warehouse_detail', kwargs={'pk': warehouse.pk})
+        pickup_point_label = 'Нужно привязать склад к точке сайта'
+        if warehouse.pickup_point_id and warehouse.pickup_point:
+            pickup_point_label = warehouse.pickup_point.name
+            if warehouse.pickup_point.city:
+                pickup_point_label = f'{pickup_point_label} · {warehouse.pickup_point.city.name}'
+        return {
+            'instance': warehouse,
+            'detail_url': detail_url,
+            'on_hand': sum(row['on_hand'] for row in rows),
+            'reserved': sum(row['reserved_on_hand'] for row in rows),
+            'available': sum(row['available'] for row in rows),
+            'inbound': inbound,
+            'inventory_problem_rows': inventory_problem_rows,
+            'has_critical_signal': inventory_problem_rows > 0,
+            'signals': signals,
+            'has_signals': bool(signals),
+            'primary_signal': signals[0] if signals else None,
+            'status_label': 'Активен' if warehouse.is_active else 'Неактивен',
+            'status_class': 'manager-status-positive' if warehouse.is_active else '',
+            'is_unlinked': not warehouse.pickup_point_id,
+            'address_missing': address_missing,
+            'has_inbound': inbound > 0,
+            'site_connection_label': 'Есть' if warehouse.pickup_point_id else 'Нет',
+            'site_connection_value': pickup_point_label,
+            'sync_status': sync_status,
+            'pickup_point_admin_url': pickup_point_admin_url,
+            'inventory_url': f"{reverse('manager_portal:inventory')}?{urlencode({'warehouse': warehouse.pk})}",
+            'inventory_receipt_url': f"{reverse('manager_portal:inventory')}?{urlencode({'warehouse': warehouse.pk, 'open_receipt': 1})}",
+            'movements_url': f'{detail_url}#warehouse-movements',
+        }
+
+    def filter_row(row, *, only_problematic=False, only_unlinked=False, has_inbound=False, has_signals=False, only_active=False):
+        if only_problematic and not row['has_critical_signal']:
+            return False
+        if only_unlinked and not row['is_unlinked']:
+            return False
+        if has_inbound and not row['has_inbound']:
+            return False
+        if has_signals and not row['has_signals']:
+            return False
+        if only_active and not row['instance'].is_active:
+            return False
+        return True
+
+    def build_filter_url(**overrides):
+        params = request.GET.copy()
+        for key, value in overrides.items():
+            if value in (None, '', False):
+                params.pop(key, None)
+            elif value is True:
+                params[key] = '1'
+            else:
+                params[key] = str(value)
+        querystring = params.urlencode()
+        base_url = reverse('manager_portal:warehouse_list')
+        return f'{base_url}?{querystring}' if querystring else base_url
+
     warehouses = Warehouse.objects.select_related('pickup_point', 'pickup_point__city').order_by('name')
     filter_form = WarehouseFilterForm(request.GET or None)
+    quick_filter_values = {
+        'only_problematic': False,
+        'only_unlinked': False,
+        'has_inbound': False,
+        'has_signals': False,
+        'only_active': False,
+    }
     if filter_form.is_valid():
         q = (filter_form.cleaned_data.get('q') or '').strip()
         if q:
@@ -4912,6 +5122,7 @@ def warehouse_list_view(request):
             warehouses = warehouses.filter(pickup_point__isnull=False)
         elif public_link == 'unlinked':
             warehouses = warehouses.filter(pickup_point__isnull=True)
+        quick_filter_values = {key: bool(filter_form.cleaned_data.get(key)) for key in quick_filter_values}
     if request.method == 'POST':
         form = WarehouseForm(request.POST)
         if form.is_valid():
@@ -4920,68 +5131,68 @@ def warehouse_list_view(request):
             return redirect('manager_portal:warehouse_detail', pk=warehouse.pk)
     else:
         form = WarehouseForm()
-    warehouse_rows = []
-    for warehouse in warehouses:
-        rows = inventory_snapshot_for_warehouse(warehouse)
-        inventory_problem_rows = sum(1 for row in rows if row['available'] < 0 or row['inbound_available'] < 0)
-        signals = []
-        if inventory_problem_rows:
-            signals.append(f'{inventory_problem_rows} строк с отрицательным остатком')
-        if not warehouse.pickup_point_id:
-            signals.append('Нет связи с точкой сайта')
-        elif warehouse.public_stock_synced_at is None:
-            signals.append('Остаток на сайте еще не синхронизирован')
-        sync_status = {
-            'label': 'Без связи',
-            'class_name': '',
-        }
-        if warehouse.pickup_point_id:
-            if warehouse.public_stock_synced_at:
-                sync_status = {
-                    'label': 'Синхронизирован',
-                    'class_name': 'manager-status-positive',
-                }
-            else:
-                sync_status = {
-                    'label': 'Не синхронизирован',
-                    'class_name': 'manager-status-danger',
-                }
-        public_link = {
-            'label': 'Нет связи с сайтом',
-            'class_name': 'manager-status-danger' if warehouse.is_active else '',
-        }
-        pickup_point_admin_url = None
-        if warehouse.pickup_point_id:
-            public_link = {
-                'label': 'Связан с сайтом',
-                'class_name': 'manager-status-positive',
-            }
-            pickup_point_admin_url = reverse('admin:catalog_pickuppoint_change', args=[warehouse.pickup_point_id])
-        warehouse_rows.append(
-            {
-                'instance': warehouse,
-                'on_hand': sum(row['on_hand'] for row in rows),
-                'reserved': sum(row['reserved_on_hand'] for row in rows),
-                'available': sum(row['available'] for row in rows),
-                'inbound': sum(row['inbound'] for row in rows),
-                'problem_rows': inventory_problem_rows + len(signals) - (1 if inventory_problem_rows else 0),
-                'inventory_problem_rows': inventory_problem_rows,
-                'signals': signals,
-                'status_label': 'Активен' if warehouse.is_active else 'Неактивен',
-                'status_class': 'manager-status-positive' if warehouse.is_active else '',
-                'public_link': public_link,
-                'sync_status': sync_status,
-                'pickup_point_admin_url': pickup_point_admin_url,
-                'inventory_url': f"{reverse('manager_portal:inventory')}?{urlencode({'warehouse': warehouse.pk})}",
-                'inventory_receipt_url': f"{reverse('manager_portal:inventory')}?{urlencode({'warehouse': warehouse.pk, 'open_receipt': 1})}",
-                'movements_url': f"{reverse('manager_portal:warehouse_detail', kwargs={'pk': warehouse.pk})}#warehouse-movements",
-            }
-        )
+    warehouse_rows_all = [build_warehouse_row(warehouse) for warehouse in warehouses]
+    warehouse_rows = [
+        row
+        for row in warehouse_rows_all
+        if filter_row(row, **quick_filter_values)
+    ]
+    warehouse_summary = {
+        'total': len(warehouse_rows),
+        'unlinked_count': sum(1 for row in warehouse_rows if row['is_unlinked']),
+        'critical_signal_count': sum(1 for row in warehouse_rows if row['has_critical_signal']),
+        'missing_address_count': sum(1 for row in warehouse_rows if row['address_missing']),
+    }
+    quick_filters = [
+        {
+            'key': 'only_problematic',
+            'label': 'Проблемные',
+            'count': sum(1 for row in warehouse_rows_all if row['has_critical_signal']),
+            'active': quick_filter_values['only_problematic'],
+            'url': build_filter_url(only_problematic=not quick_filter_values['only_problematic']),
+            'tone': 'danger',
+        },
+        {
+            'key': 'only_unlinked',
+            'label': 'Без связи с сайтом',
+            'count': sum(1 for row in warehouse_rows_all if row['is_unlinked']),
+            'active': quick_filter_values['only_unlinked'],
+            'url': build_filter_url(only_unlinked=not quick_filter_values['only_unlinked']),
+            'tone': 'danger',
+        },
+        {
+            'key': 'has_signals',
+            'label': 'Есть сигналы',
+            'count': sum(1 for row in warehouse_rows_all if row['has_signals']),
+            'active': quick_filter_values['has_signals'],
+            'url': build_filter_url(has_signals=not quick_filter_values['has_signals']),
+            'tone': 'warning',
+        },
+        {
+            'key': 'only_active',
+            'label': 'Активные',
+            'count': sum(1 for row in warehouse_rows_all if row['instance'].is_active),
+            'active': quick_filter_values['only_active'],
+            'url': build_filter_url(only_active=not quick_filter_values['only_active']),
+            'tone': 'success',
+        },
+    ]
+    search_active = filter_form.is_valid() and bool(
+        (filter_form.cleaned_data.get('q') or '').strip()
+        or filter_form.cleaned_data.get('status')
+        or filter_form.cleaned_data.get('public_link')
+    )
+    filters_applied = bool(
+        search_active or any(quick_filter_values.values())
+    )
     return _render(
         request,
         'manager_portal/warehouses.html',
         active_tab='warehouses',
         warehouses=warehouse_rows,
+        warehouse_summary=warehouse_summary,
+        quick_filters=quick_filters,
+        filters_applied=filters_applied,
         form=form,
         filter_form=filter_form,
     )
@@ -5045,6 +5256,16 @@ def inventory_view(request):
     business_views = []
     base_query_params = request.GET.copy()
     base_query_params.pop('business_view', None)
+    business_views.append(
+        {
+            'code': '',
+            'label': 'Все',
+            'description': 'Полный реестр остатков и резервов по текущим фильтрам.',
+            'count': len(rows),
+            'query_string': base_query_params.urlencode(),
+            'active': not selected_business_view,
+        }
+    )
     for definition in INVENTORY_BUSINESS_VIEW_DEFINITIONS:
         count = sum(1 for row in rows if _inventory_row_matches_business_view(row, definition['code']))
         params = base_query_params.copy()
@@ -5078,6 +5299,7 @@ def inventory_view(request):
         for row in rows
         for linked in (row.get('linked_deals') or [])
     }
+    business_view_map = {item['code']: item for item in business_views if item['code']}
     receipt_form = InventoryReceiptForm(initial={'warehouse': warehouse} if warehouse else None)
     return _render(
         request,
@@ -5094,6 +5316,8 @@ def inventory_view(request):
         search=search,
         selected_business_view=selected_business_view,
         business_views=business_views,
+        deal_risk_view=business_view_map.get(INVENTORY_BUSINESS_VIEW_DEAL_RISK),
+        replenishment_view=business_view_map.get(INVENTORY_BUSINESS_VIEW_REPLENISHMENT),
         affected_deal_count=len(affected_deal_ids),
         open_receipt_drawer=request.GET.get('open_receipt') == '1',
     )

@@ -58,12 +58,14 @@ class CheckoutTest(TestCase):
     def _checkout_payload(self, **overrides):
         payload = {
             'promo_code': '',
-            'full_name': 'Иванов Иван Иванович',
+            'first_name': 'Иван',
+            'last_name': 'Иванов',
             'phone': '+7 999 123 45 67',
             'email': 'test@example.com',
             'city_text': 'Москва',
             'address_line': 'Москва, ПВЗ CDEK на Тестовой, 1',
             'delivery_comment': 'Ближе к метро',
+            'recipient_is_customer': 'on',
             'payment_method': Order.PAYMENT_METHOD_BANK_CARD,
             'comment': 'Позвонить за час',
             'agree_personal_data': 'on',
@@ -184,6 +186,29 @@ class CheckoutTest(TestCase):
         self.assertEqual(resp.status_code, 302)
         self.assertEqual(Order.objects.get().payment_status, Order.PAYMENT_STATUS_PAID)
 
+    def test_checkout_requires_email(self):
+        self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
+
+        response = self.client.post(reverse('orders:checkout'), self._checkout_payload(email=''))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Обязательное поле')
+        self.assertEqual(Order.objects.count(), 0)
+
+    def test_checkout_requires_recipient_fields_when_recipient_differs(self):
+        self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
+
+        response = self.client.post(reverse('orders:checkout'), self._checkout_payload(
+            recipient_is_customer='',
+            recipient_name='',
+            recipient_phone='',
+        ))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Укажите имя и фамилию получателя.')
+        self.assertContains(response, 'Укажите телефон получателя.')
+        self.assertEqual(Order.objects.count(), 0)
+
 
 class CheckoutFormsLegalValidationTest(TestCase):
     def test_purchase_request_form_requires_personal_data_consent(self):
@@ -197,7 +222,9 @@ class CheckoutFormsLegalValidationTest(TestCase):
     def test_checkout_form_requires_offer_and_personal_data_consents(self):
         form = CheckoutForm(data={
             'phone': '+7 999 111 22 33',
-            'full_name': 'Иванов Иван Иванович',
+            'first_name': 'Иван',
+            'last_name': 'Иванов',
+            'email': 'test@example.com',
             'city_text': 'Москва',
             'address_line': 'Москва, ПВЗ CDEK на Тестовой, 1',
             'payment_method': Order.PAYMENT_METHOD_BANK_CARD,

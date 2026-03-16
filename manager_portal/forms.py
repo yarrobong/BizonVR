@@ -23,6 +23,8 @@ from .models import (
     InventoryBalance,
     ManagerDeal,
     ManagerClient,
+    ManagerPersonAlias,
+    ManagerDealParticipant,
     Purchase,
     PurchaseItem,
     Reservation,
@@ -132,6 +134,31 @@ class DealFilterForm(StyledFormMixin, forms.Form):
         label='Оплата',
         choices=[('', 'Любая оплата')] + list(ManagerDeal.PAYMENT_STATE_CHOICES),
     )
+    fulfillment_status = forms.ChoiceField(
+        required=False,
+        label='Обеспечение',
+        choices=[('', 'Любое обеспечение')] + list(ManagerDeal.FULFILLMENT_STATUS_CHOICES),
+    )
+    documents_status = forms.ChoiceField(
+        required=False,
+        label='Документы',
+        choices=[('', 'Любые документы')] + list(ManagerDeal.DOCUMENTS_STATUS_CHOICES),
+    )
+    deal_type = forms.ChoiceField(
+        required=False,
+        label='Тип сделки',
+        choices=[('', 'Любой тип')] + list(ManagerDeal.DEAL_TYPE_CHOICES),
+    )
+    sla_status = forms.ChoiceField(
+        required=False,
+        label='SLA',
+        choices=[
+            ('', 'Любой SLA'),
+            ('today', 'Требуют действия сегодня'),
+            ('overdue', 'Просрочен'),
+            ('missing', 'Не задан'),
+        ],
+    )
     responsible_manager = forms.ModelChoiceField(
         required=False,
         queryset=get_user_model().objects.filter(is_staff=True).order_by('username'),
@@ -218,6 +245,18 @@ class DealManagementForm(StyledFormMixin, forms.Form):
         label='Дедлайн',
         widget=forms.DateInput(attrs={'type': 'date'}),
     )
+    answered_person_alias = forms.ModelChoiceField(
+        queryset=ManagerPersonAlias.objects.filter(is_active=True).order_by('display_name'),
+        required=False,
+        label='Кто общался',
+        empty_label='Не выбрано',
+    )
+    shipped_person_alias = forms.ModelChoiceField(
+        queryset=ManagerPersonAlias.objects.filter(is_active=True).order_by('display_name'),
+        required=False,
+        label='Кто выдал / отнес',
+        empty_label='Не выбрано',
+    )
     next_step_code = forms.ChoiceField(
         required=False,
         label='Ручной следующий шаг',
@@ -240,6 +279,18 @@ class DealManagementForm(StyledFormMixin, forms.Form):
             self.fields['case_status'].initial = deal.case_status
             self.fields['responsible_manager'].initial = deal.responsible_manager
             self.fields['customer_deadline'].initial = deal.customer_deadline
+            answered = (
+                deal.participants.select_related('person_alias')
+                .filter(role=ManagerDealParticipant.ROLE_ANSWERED, order_item__isnull=True)
+                .first()
+            )
+            shipped = (
+                deal.participants.select_related('person_alias')
+                .filter(role=ManagerDealParticipant.ROLE_SHIPPED, order_item__isnull=True)
+                .first()
+            )
+            self.fields['answered_person_alias'].initial = answered.person_alias if answered else None
+            self.fields['shipped_person_alias'].initial = shipped.person_alias if shipped else None
             if deal.next_step_source == ManagerDeal.NEXT_STEP_SOURCE_MANUAL:
                 self.fields['next_step_code'].initial = deal.next_step_code
                 self.fields['manager_comment'].initial = deal.next_step_reason_snapshot
@@ -473,7 +524,11 @@ class ClientFilterForm(StyledFormMixin, forms.Form):
 
 
 class WarehouseFilterForm(StyledFormMixin, forms.Form):
-    q = forms.CharField(required=False, label='Поиск')
+    q = forms.CharField(
+        required=False,
+        label='Поиск',
+        widget=forms.TextInput(attrs={'placeholder': 'Название склада или адрес'}),
+    )
     status = forms.ChoiceField(
         required=False,
         choices=[('', 'Любой статус'), ('active', 'Активные'), ('inactive', 'Неактивные')],
@@ -482,6 +537,11 @@ class WarehouseFilterForm(StyledFormMixin, forms.Form):
         required=False,
         choices=[('', 'Связь с сайтом: любая'), ('linked', 'Есть PickupPoint'), ('unlinked', 'Без связи')],
     )
+    only_problematic = forms.BooleanField(required=False, label='Только проблемные')
+    only_unlinked = forms.BooleanField(required=False, label='Без связи с сайтом')
+    has_inbound = forms.BooleanField(required=False, label='Есть приход в пути')
+    has_signals = forms.BooleanField(required=False, label='Есть сигналы')
+    only_active = forms.BooleanField(required=False, label='Активные')
 
 
 class OrderStateForm(StyledFormMixin, forms.Form):
@@ -503,6 +563,18 @@ class ManualOrderForm(StyledFormMixin, forms.Form):
     )
     customer_source = forms.ChoiceField(label='Источник клиента', choices=ManagerDeal.CUSTOMER_SOURCE_CHOICES)
     deal_comment = forms.CharField(label='Комментарий по заказу', required=False, widget=forms.Textarea())
+    answered_person_alias = forms.ModelChoiceField(
+        queryset=ManagerPersonAlias.objects.filter(is_active=True).order_by('display_name'),
+        required=False,
+        label='Кто общался',
+        empty_label='Не выбрано',
+    )
+    shipped_person_alias = forms.ModelChoiceField(
+        queryset=ManagerPersonAlias.objects.filter(is_active=True).order_by('display_name'),
+        required=False,
+        label='Кто выдал / отнес',
+        empty_label='Не выбрано',
+    )
 
     individual_full_name = forms.CharField(label='ФИО', required=False)
     individual_phone = forms.CharField(label='Номер телефона', required=False)
@@ -566,16 +638,19 @@ class ManualOrderForm(StyledFormMixin, forms.Form):
         if not self.is_bound and not self.initial.get('deal_created_at'):
             self.initial['deal_created_at'] = timezone.localtime().replace(second=0, microsecond=0).strftime('%Y-%m-%dT%H:%M')
         deal_type = self.data.get('deal_type') or self.initial.get('deal_type') or ManagerDeal.DEAL_SALE_FROM_STOCK
-        self.fields['deal_status'].choices = ManagerDeal.allowed_status_choices(deal_type)
+        customer_source = self.data.get('customer_source') or self.initial.get('customer_source') or ''
+        self.fields['deal_status'].choices = ManagerDeal.allowed_status_choices(deal_type, customer_source)
 
     def clean(self):
         cleaned = super().clean()
         deal_type = cleaned.get('deal_type')
+        customer_source = cleaned.get('customer_source') or ''
         buyer_type = cleaned.get('buyer_type')
         delivery_method = cleaned.get('delivery_method')
+        is_avito_workflow = ManagerDeal.uses_avito_workflow(deal_type, customer_source)
 
         if buyer_type == ManagerDeal.BUYER_INDIVIDUAL:
-            if not (cleaned.get('individual_full_name') or '').strip():
+            if not is_avito_workflow and not (cleaned.get('individual_full_name') or '').strip():
                 self.add_error('individual_full_name', 'Укажите ФИО клиента.')
             if not (cleaned.get('individual_phone') or '').strip():
                 self.add_error('individual_phone', 'Укажите номер телефона клиента.')
@@ -595,7 +670,7 @@ class ManualOrderForm(StyledFormMixin, forms.Form):
             if not (cleaned.get('business_city') or '').strip():
                 self.add_error('business_city', 'Укажите город.')
 
-        if deal_type and cleaned.get('deal_status') and cleaned['deal_status'] not in dict(ManagerDeal.allowed_status_choices(deal_type)):
+        if deal_type and cleaned.get('deal_status') and cleaned['deal_status'] not in dict(ManagerDeal.allowed_status_choices(deal_type, customer_source)):
             self.add_error('deal_status', 'Статус не подходит для выбранного сценария.')
 
         if delivery_method == ManagerDeal.DELIVERY_CDEK_PVZ and not (cleaned.get('delivery_pickup_address') or '').strip():
@@ -615,11 +690,13 @@ class ManualOrderForm(StyledFormMixin, forms.Form):
                 self.add_error('supplier_agent', 'Укажите поставщика или агента.')
         if deal_type == ManagerDeal.DEAL_SALE_FROM_STOCK and not cleaned.get('stock_warehouse'):
             self.add_error('stock_warehouse', 'Для продажи из наличия выберите склад.')
-        if deal_type == ManagerDeal.DEAL_AVITO:
-            if not (cleaned.get('avito_listing_url') or '').strip():
-                self.add_error('avito_listing_url', 'Укажите ссылку на объявление.')
-            if not (cleaned.get('avito_listing_title') or '').strip():
-                self.add_error('avito_listing_title', 'Укажите название объявления.')
+        if is_avito_workflow:
+            cleaned['customer_deadline'] = None
+            if deal_type == ManagerDeal.DEAL_AVITO:
+                if not (cleaned.get('avito_listing_url') or '').strip():
+                    self.add_error('avito_listing_url', 'Укажите ссылку на объявление.')
+                if not (cleaned.get('avito_listing_title') or '').strip():
+                    self.add_error('avito_listing_title', 'Укажите название объявления.')
         if deal_type == ManagerDeal.DEAL_SALE_ON_REQUEST and cleaned.get('deal_status') == ManagerDeal.DEAL_STATUS_SUPPLIER_ORDERED:
             required = cleaned.get('prepayment_required_amount') or 0
             paid = cleaned.get('prepayment_amount') or 0
@@ -756,7 +833,7 @@ class ManagerDealStateForm(StyledFormMixin, forms.Form):
         super().__init__(*args, **kwargs)
         self.deal = deal
         if deal is not None:
-            self.fields['deal_status'].choices = ManagerDeal.allowed_status_choices(deal.deal_type)
+            self.fields['deal_status'].choices = ManagerDeal.allowed_status_choices(deal.deal_type, deal.customer_source)
 
 
 class ManagerClientForm(StyledFormMixin, forms.ModelForm):

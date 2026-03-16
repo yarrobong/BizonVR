@@ -67,7 +67,7 @@ def serve_media(request, path):
     )
 
 
-def not_found_view(request, unmatched_path=''):
+def not_found_view(request, exception=None, unmatched_path=''):
     requested_path = request.path
     if unmatched_path:
         requested_path = '/' + unmatched_path.lstrip('/')

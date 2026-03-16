@@ -55,14 +55,24 @@ class PurchaseRequestForm(forms.Form):
 class CheckoutForm(forms.Form):
     """Форма контактов и доставки при оформлении заказа."""
 
-    full_name = forms.CharField(
-        label='ФИО',
-        max_length=255,
+    first_name = forms.CharField(
+        label='Имя',
+        max_length=150,
         required=True,
         widget=forms.TextInput(attrs={
             'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
-            'placeholder': 'Иванов Иван Иванович',
-            'autocomplete': 'name',
+            'placeholder': 'Иван',
+            'autocomplete': 'given-name',
+        }),
+    )
+    last_name = forms.CharField(
+        label='Фамилия',
+        max_length=150,
+        required=False,
+        widget=forms.TextInput(attrs={
+            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
+            'placeholder': 'Иванов',
+            'autocomplete': 'family-name',
         }),
     )
     phone = forms.CharField(
@@ -78,10 +88,11 @@ class CheckoutForm(forms.Form):
     )
     email = forms.EmailField(
         label='Email',
-        required=False,
+        required=True,
         widget=forms.EmailInput(attrs={
             'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
-            'placeholder': 'Необязательно',
+            'placeholder': 'email@example.com',
+            'autocomplete': 'email',
         }),
     )
     city_text = forms.CharField(
@@ -91,6 +102,33 @@ class CheckoutForm(forms.Form):
         widget=forms.TextInput(attrs={
             'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
             'placeholder': 'Екатеринбург',
+        }),
+    )
+    recipient_is_customer = forms.BooleanField(
+        label='Получатель совпадает с покупателем',
+        required=False,
+        initial=True,
+        widget=forms.CheckboxInput(),
+    )
+    recipient_name = forms.CharField(
+        label='Имя и фамилия получателя',
+        max_length=255,
+        required=False,
+        widget=forms.TextInput(attrs={
+            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
+            'placeholder': 'Иванов Иван',
+            'autocomplete': 'name',
+        }),
+    )
+    recipient_phone = forms.CharField(
+        label='Телефон получателя',
+        max_length=20,
+        required=False,
+        widget=forms.TextInput(attrs={
+            'class': 'js-phone-mask w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
+            'placeholder': '+7 (999) 999-99-99',
+            'inputmode': 'tel',
+            'autocomplete': 'tel',
         }),
     )
     address_line = forms.CharField(
@@ -159,11 +197,14 @@ class CheckoutForm(forms.Form):
             raise forms.ValidationError('Введите корректный номер телефона.')
         return value
 
-    def clean_full_name(self):
-        value = ' '.join((self.cleaned_data.get('full_name') or '').split())
-        if len(value.split()) < 2:
-            raise forms.ValidationError('Укажите ФИО полностью.')
+    def clean_first_name(self):
+        value = ' '.join((self.cleaned_data.get('first_name') or '').split())
+        if not value:
+            raise forms.ValidationError('Укажите имя.')
         return value
+
+    def clean_last_name(self):
+        return ' '.join((self.cleaned_data.get('last_name') or '').split())
 
     def clean_promo_code(self):
         value = (self.cleaned_data.get('promo_code') or '').strip()
@@ -181,6 +222,18 @@ class CheckoutForm(forms.Form):
     def clean_city_text(self):
         return (self.cleaned_data.get('city_text') or '').strip()
 
+    def clean_recipient_name(self):
+        return ' '.join((self.cleaned_data.get('recipient_name') or '').split())
+
+    def clean_recipient_phone(self):
+        value = (self.cleaned_data.get('recipient_phone') or '').strip()
+        if not value:
+            return value
+        digits = re.sub(r'\D', '', value)
+        if len(digits) < 10:
+            raise forms.ValidationError('Введите корректный номер телефона получателя.')
+        return value
+
     def clean_address_line(self):
         return (self.cleaned_data.get('address_line') or '').strip()
 
@@ -191,20 +244,27 @@ class CheckoutForm(forms.Form):
         cleaned_data = super().clean()
         address_line = (cleaned_data.get('address_line') or '').strip()
         city_text = (cleaned_data.get('city_text') or '').strip()
-        full_name = (cleaned_data.get('full_name') or '').strip()
+        first_name = (cleaned_data.get('first_name') or '').strip()
+        last_name = (cleaned_data.get('last_name') or '').strip()
         phone = (cleaned_data.get('phone') or '').strip()
+        recipient_is_customer = bool(cleaned_data.get('recipient_is_customer'))
+        recipient_name = (cleaned_data.get('recipient_name') or '').strip()
+        recipient_phone = (cleaned_data.get('recipient_phone') or '').strip()
 
         if not city_text:
             self.add_error('city_text', 'Укажите город доставки.')
         if not address_line:
             self.add_error('address_line', 'Укажите адрес ПВЗ CDEK.')
 
-        name_parts = full_name.split()
-        cleaned_data['first_name'] = name_parts[0] if name_parts else ''
-        cleaned_data['last_name'] = ' '.join(name_parts[1:]) if len(name_parts) > 1 else ''
-        cleaned_data['recipient_name'] = full_name
-        cleaned_data['recipient_phone'] = phone
-        cleaned_data['recipient_is_customer'] = True
+        if recipient_is_customer:
+            cleaned_data['recipient_name'] = ' '.join(part for part in [first_name, last_name] if part).strip()
+            cleaned_data['recipient_phone'] = phone
+        else:
+            if not recipient_name:
+                self.add_error('recipient_name', 'Укажите имя и фамилию получателя.')
+            if not recipient_phone:
+                self.add_error('recipient_phone', 'Укажите телефон получателя.')
+
         cleaned_data['delivery_type'] = Order.DELIVERY_CDEK_PVZ
         cleaned_data['payment_method'] = (
             cleaned_data.get('payment_method')

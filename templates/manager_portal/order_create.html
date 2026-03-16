@@ -63,7 +63,7 @@
             <div>{{ form.responsible_manager.label_tag }}{{ form.responsible_manager }}{% if form.responsible_manager.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.responsible_manager.errors|join:', ' }}</p>{% endif %}</div>
             <div>{{ form.deal_created_at.label_tag }}{{ form.deal_created_at }}{% if form.deal_created_at.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.deal_created_at.errors|join:', ' }}</p>{% endif %}</div>
             <div>{{ form.customer_source.label_tag }}{{ form.customer_source }}{% if form.customer_source.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.customer_source.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ form.customer_deadline.label_tag }}{{ form.customer_deadline }}{% if form.customer_deadline.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.customer_deadline.errors|join:', ' }}</p>{% endif %}</div>
+            <div data-avito-hide="customer_deadline">{{ form.customer_deadline.label_tag }}{{ form.customer_deadline }}{% if form.customer_deadline.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.customer_deadline.errors|join:', ' }}</p>{% endif %}</div>
             <div class="md:col-span-2">{{ form.deal_comment.label_tag }}{{ form.deal_comment }}{% if form.deal_comment.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.deal_comment.errors|join:', ' }}</p>{% endif %}</div>
           </div>
         </section>
@@ -74,7 +74,7 @@
             <h3 class="mt-2 text-2xl font-semibold">Физ. лицо</h3>
           </div>
           <div class="grid gap-4 md:grid-cols-2">
-            <div>{{ form.individual_full_name.label_tag }}{{ form.individual_full_name }}{% if form.individual_full_name.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.individual_full_name.errors|join:', ' }}</p>{% endif %}</div>
+            <div data-avito-hide="individual_full_name">{{ form.individual_full_name.label_tag }}{{ form.individual_full_name }}{% if form.individual_full_name.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.individual_full_name.errors|join:', ' }}</p>{% endif %}</div>
             <div>{{ form.individual_phone.label_tag }}{{ form.individual_phone }}{% if form.individual_phone.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.individual_phone.errors|join:', ' }}</p>{% endif %}</div>
             <div>{{ form.individual_additional_phone.label_tag }}{{ form.individual_additional_phone }}{% if form.individual_additional_phone.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.individual_additional_phone.errors|join:', ' }}</p>{% endif %}</div>
             <div>{{ form.individual_city.label_tag }}{{ form.individual_city }}{% if form.individual_city.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.individual_city.errors|join:', ' }}</p>{% endif %}</div>
@@ -205,6 +205,9 @@
             <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Сценарий №4</p>
             <h3 class="mt-2 text-2xl font-semibold">Продажа Avito</h3>
           </div>
+          <div class="mb-6 rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-300">
+            Для Avito этапы упрощены: новая, отправлено, чел забрал, возврат. Дедлайн и имя клиента здесь не обязательны.
+          </div>
           <div class="grid gap-4 md:grid-cols-2">
             <div class="md:col-span-2">{{ form.avito_listing_url.label_tag }}{{ form.avito_listing_url }}{% if form.avito_listing_url.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.avito_listing_url.errors|join:', ' }}</p>{% endif %}</div>
             <div>{{ form.avito_listing_id.label_tag }}{{ form.avito_listing_id }}{% if form.avito_listing_id.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.avito_listing_id.errors|join:', ' }}</p>{% endif %}</div>
@@ -213,6 +216,8 @@
             <div>{{ form.avito_list_price.label_tag }}{{ form.avito_list_price }}{% if form.avito_list_price.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.avito_list_price.errors|join:', ' }}</p>{% endif %}</div>
             <div>{{ form.avito_final_price.label_tag }}{{ form.avito_final_price }}{% if form.avito_final_price.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.avito_final_price.errors|join:', ' }}</p>{% endif %}</div>
             <div>{{ form.avito_commission.label_tag }}{{ form.avito_commission }}{% if form.avito_commission.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.avito_commission.errors|join:', ' }}</p>{% endif %}</div>
+            <div>{{ form.answered_person_alias.label_tag }}{{ form.answered_person_alias }}{% if form.answered_person_alias.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.answered_person_alias.errors|join:', ' }}</p>{% endif %}</div>
+            <div>{{ form.shipped_person_alias.label_tag }}{{ form.shipped_person_alias }}{% if form.shipped_person_alias.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.shipped_person_alias.errors|join:', ' }}</p>{% endif %}</div>
             <div class="md:col-span-2">{{ form.shipping_comment.label_tag }}{{ form.shipping_comment }}{% if form.shipping_comment.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.shipping_comment.errors|join:', ' }}</p>{% endif %}</div>
           </div>
         </section>

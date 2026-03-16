@@ -3,40 +3,84 @@
 {% block title %}Склады{% endblock %}
 
 {% block content %}
-  <div class="space-y-6">
-    <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+  <div class="space-y-4">
+    <div class="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
       <div>
-        <h2 class="text-4xl font-semibold">Склады</h2>
-        <p class="mt-2 text-slate-400">Компактный реестр по статусу склада, связи с сайтом, остаткам и проблемным сигналам.</p>
+        <p class="text-sm uppercase tracking-[0.24em] text-cyan-300">Склады</p>
+        <h2 class="mt-1 text-3xl font-semibold">Операционный реестр</h2>
       </div>
-      <button type="button" data-drawer-target="#warehouse-create-drawer" class="manager-create-action">Добавить склад</button>
+      <div class="flex flex-wrap items-center gap-2">
+        <span class="manager-pill"><strong>{{ warehouse_summary.total }}</strong> в выдаче</span>
+        <span class="manager-pill {% if warehouse_summary.unlinked_count %}manager-status-danger{% endif %}"><strong>{{ warehouse_summary.unlinked_count }}</strong> без связи</span>
+        <span class="manager-pill {% if warehouse_summary.critical_signal_count %}manager-status-danger{% endif %}"><strong>{{ warehouse_summary.critical_signal_count }}</strong> проблемных</span>
+        <span class="manager-pill {% if warehouse_summary.missing_address_count %}text-amber-200{% endif %}"><strong>{{ warehouse_summary.missing_address_count }}</strong> без адреса</span>
+        <button type="button" data-drawer-target="#warehouse-create-drawer" class="manager-create-action">Добавить склад</button>
+      </div>
     </div>
 
-    <section class="manager-panel rounded-[1.75rem] p-6">
-      <form method="get" data-manager-filter-form class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {% include "manager_portal/_form_fields.html" with form=filter_form %}
-        <div class="xl:col-span-3 flex flex-wrap gap-3">
-          <a href="{% url 'manager_portal:warehouse_list' %}" class="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800">Сбросить</a>
+    <section class="manager-panel rounded-[1.25rem] px-3 py-3">
+      <form method="get" data-manager-filter-form class="space-y-2">
+        {% if filter_form.status.value %}
+          <input type="hidden" name="status" value="{{ filter_form.status.value }}">
+        {% endif %}
+        {% if filter_form.public_link.value %}
+          <input type="hidden" name="public_link" value="{{ filter_form.public_link.value }}">
+        {% endif %}
+        {% if filter_form.only_problematic.value %}
+          <input type="hidden" name="only_problematic" value="1">
+        {% endif %}
+        {% if filter_form.only_unlinked.value %}
+          <input type="hidden" name="only_unlinked" value="1">
+        {% endif %}
+        {% if filter_form.has_inbound.value %}
+          <input type="hidden" name="has_inbound" value="1">
+        {% endif %}
+        {% if filter_form.has_signals.value %}
+          <input type="hidden" name="has_signals" value="1">
+        {% endif %}
+        {% if filter_form.only_active.value %}
+          <input type="hidden" name="only_active" value="1">
+        {% endif %}
+        <div class="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+          <div class="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center">
+            <div class="min-w-0 flex-1">
+              <label for="{{ filter_form.q.id_for_label }}" class="sr-only">{{ filter_form.q.label }}</label>
+              {{ filter_form.q }}
+            </div>
+            <button type="submit" class="manager-inline-action justify-center sm:flex-none">Найти</button>
+            {% if filters_applied %}
+              <a href="{% url 'manager_portal:warehouse_list' %}" class="manager-inline-action justify-center sm:flex-none">Сбросить</a>
+            {% endif %}
+          </div>
+          <div class="manager-chip-scroll manager-chip-scroll-compact">
+            {% for chip in quick_filters %}
+              <a href="{{ chip.url }}" class="manager-queue-chip manager-queue-chip-compact {% if chip.active %}manager-queue-chip-active{% endif %}">
+                <span class="manager-queue-chip-label">{{ chip.label }}</span>
+                <span class="manager-queue-chip-count {% if chip.active %}manager-queue-chip-count-active{% elif chip.tone == 'danger' %}manager-queue-chip-count-danger{% elif chip.tone == 'warning' %}manager-queue-chip-count-warning{% else %}manager-queue-chip-count-success{% endif %}">{{ chip.count }}</span>
+              </a>
+            {% endfor %}
+          </div>
         </div>
       </form>
     </section>
 
     <section class="manager-panel rounded-[1.75rem] p-2 overflow-hidden">
       <div class="overflow-x-auto">
-        <table class="manager-table w-full min-w-[72rem] text-sm">
+        <table class="manager-table w-full min-w-[84rem] text-sm">
           <thead class="text-left text-slate-400">
             <tr>
-              <th class="px-4 py-4 font-medium">Склад</th>
-              <th class="px-4 py-4 font-medium">Доступно</th>
-              <th class="px-4 py-4 font-medium">В пути</th>
-              <th class="px-4 py-4 font-medium">Сигналы</th>
-              <th class="px-4 py-4 font-medium">Действия</th>
+              <th class="px-4 py-3 font-medium">Склад</th>
+              <th class="px-4 py-3 font-medium">Связь с сайтом</th>
+              <th class="px-4 py-3 font-medium">Доступно</th>
+              <th class="px-4 py-3 font-medium">В пути</th>
+              <th class="px-4 py-3 font-medium">Сигнал</th>
+              <th class="px-4 py-3 font-medium">Действия</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-800">
             {% for warehouse in warehouses %}
               <tr>
-                <td class="px-4 py-4 align-top">
+                <td class="px-4 py-3 align-top">
                   <div class="flex items-start gap-3">
                     <button
                       type="button"
@@ -46,96 +90,113 @@
                     >
                       <span data-row-toggle-icon>+</span>
                     </button>
-                    <div>
-                      <a href="{% url 'manager_portal:warehouse_detail' warehouse.instance.pk %}" class="font-medium text-white hover:text-cyan-200">{{ warehouse.instance.name }}</a>
-                      <p class="mt-1 text-sm text-slate-400">{{ warehouse.instance.address|default:"Адрес не заполнен" }}</p>
-                      <div class="mt-2 flex flex-wrap gap-2">
+                    <div class="min-w-0">
+                      <div class="flex flex-wrap items-center gap-2 text-sm">
+                        <a href="{{ warehouse.detail_url }}" class="text-[15px] font-semibold text-white hover:text-cyan-200">{{ warehouse.instance.name }}</a>
                         <span class="manager-pill {{ warehouse.status_class }}">{{ warehouse.status_label }}</span>
-                        <span class="manager-pill {{ warehouse.public_link.class_name }}">{{ warehouse.public_link.label }}</span>
                       </div>
+                      {% if warehouse.instance.address %}
+                        <p class="mt-1 truncate text-xs text-slate-500">{{ warehouse.instance.address }}</p>
+                      {% endif %}
                     </div>
                   </div>
                 </td>
-                <td class="px-4 py-4 align-top {% if warehouse.available < 0 %}manager-status-danger{% else %}manager-status-positive{% endif %}">{{ warehouse.available }}</td>
-                <td class="px-4 py-4 align-top">{{ warehouse.inbound }}</td>
-                <td class="px-4 py-4 align-top">
-                  <span class="manager-pill {% if warehouse.problem_rows %}manager-status-danger{% endif %}">
-                    {% if warehouse.problem_rows %}{{ warehouse.problem_rows }}{% else %}0{% endif %}
-                  </span>
-                  {% if warehouse.signals %}
-                    <div class="mt-2 space-y-1 text-xs text-slate-400">
-                      {% for signal in warehouse.signals %}
-                        <p>{{ signal }}</p>
-                      {% endfor %}
+                <td class="px-4 py-3 align-top">
+                  <div class="space-y-1.5">
+                    <span class="manager-pill {% if warehouse.is_unlinked %}manager-status-danger{% else %}manager-status-positive{% endif %}">
+                      {% if warehouse.is_unlinked %}Нет связи{% else %}Связан с сайтом{% endif %}
+                    </span>
+                    <div class="text-sm">
+                      <p class="font-medium text-white">{{ warehouse.site_connection_value }}</p>
+                      <p class="mt-0.5 text-xs {% if warehouse.sync_status.class_name %}{{ warehouse.sync_status.class_name }}{% else %}text-slate-500{% endif %}">
+                        {{ warehouse.sync_status.label }}
+                        {% if warehouse.instance.public_stock_synced_at %}
+                          · {{ warehouse.instance.public_stock_synced_at|date:"d.m.Y H:i" }}
+                        {% endif %}
+                      </p>
+                    </div>
+                    {% if warehouse.is_unlinked %}
+                      <p class="text-xs text-rose-200">Публичный остаток не синхронизируется.</p>
+                      <a href="{{ warehouse.detail_url }}" class="inline-flex text-xs font-medium text-rose-100 underline underline-offset-4 hover:text-white">Связать со складом сайта</a>
+                    {% endif %}
+                  </div>
+                </td>
+                <td class="px-4 py-3 align-top">
+                  <p class="text-2xl font-semibold {% if warehouse.available < 0 %}text-rose-300{% else %}text-emerald-300{% endif %}">{{ warehouse.available }}</p>
+                </td>
+                <td class="px-4 py-3 align-top">
+                  <p class="text-2xl font-semibold {% if warehouse.has_inbound %}text-white{% else %}text-slate-500{% endif %}">{{ warehouse.inbound }}</p>
+                </td>
+                <td class="px-4 py-3 align-top">
+                  {% if warehouse.primary_signal %}
+                    <div class="inline-flex max-w-xs items-center gap-2 rounded-full px-3 py-1.5 text-xs {% if warehouse.primary_signal.tone == 'danger' %}bg-rose-500/12 text-rose-100{% else %}bg-amber-400/12 text-amber-100{% endif %}">
+                      <span class="font-medium">{{ warehouse.primary_signal.label }}</span>
+                      {% if warehouse.signals|length > 1 %}
+                        <span class="opacity-70">+{{ warehouse.signals|length|add:"-1" }}</span>
+                      {% endif %}
                     </div>
                   {% else %}
-                    <p class="mt-2 text-xs text-slate-500">Критичных сигналов нет</p>
+                    <p class="text-xs text-slate-500">Без сигналов</p>
                   {% endif %}
                 </td>
-                <td class="px-4 py-4 align-top">
+                <td class="px-4 py-3 align-top">
                   <div class="flex flex-wrap gap-2">
-                    <a href="{{ warehouse.inventory_url }}" class="manager-inline-action rounded-full border border-slate-700 hover:bg-slate-800">Остатки</a>
                     <a href="{{ warehouse.inventory_receipt_url }}" class="manager-inline-action manager-inline-action-primary rounded-full border">Принять приход</a>
+                    <a href="{{ warehouse.inventory_url }}" class="manager-inline-action rounded-full border border-slate-700 hover:bg-slate-800">Остатки</a>
                     <a href="{{ warehouse.movements_url }}" class="manager-inline-action rounded-full border border-slate-700 hover:bg-slate-800">Движения</a>
-                    {% if warehouse.pickup_point_admin_url %}
-                      <a href="{{ warehouse.pickup_point_admin_url }}" class="manager-inline-action rounded-full border border-slate-700 hover:bg-slate-800">Точка сайта</a>
-                    {% endif %}
+                    <details class="manager-inline-dropdown">
+                      <summary class="manager-inline-action rounded-full border border-slate-700 hover:bg-slate-800">Еще</summary>
+                      <div class="manager-inline-dropdown-menu manager-inline-dropdown-menu-right grid gap-2">
+                        <a href="{{ warehouse.detail_url }}" class="rounded-xl border border-slate-700 px-4 py-2.5 text-sm text-slate-200 hover:bg-slate-800">Карточка склада</a>
+                        {% if warehouse.is_unlinked %}
+                          <a href="{{ warehouse.detail_url }}" class="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-2.5 text-sm text-rose-100 hover:bg-rose-500/20">Связать со складом сайта</a>
+                        {% endif %}
+                        {% if warehouse.pickup_point_admin_url %}
+                          <a href="{{ warehouse.pickup_point_admin_url }}" class="rounded-xl border border-slate-700 px-4 py-2.5 text-sm text-slate-200 hover:bg-slate-800">Точка сайта</a>
+                        {% endif %}
+                      </div>
+                    </details>
                   </div>
                 </td>
               </tr>
               <tr data-row-detail="warehouse-{{ warehouse.instance.pk }}" hidden>
-                <td colspan="5" class="border-t border-slate-800/70 bg-slate-950/70 px-5 py-5">
-                  <div class="grid gap-4 xl:grid-cols-3">
-                    <section class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-                      <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Операционный срез</p>
-                      <div class="mt-3 space-y-3 text-sm text-slate-300">
-                        <div>
-                          <p class="text-xs text-slate-500">На складе</p>
-                          <p class="mt-1 text-white">{{ warehouse.on_hand }}</p>
-                        </div>
-                        <div>
-                          <p class="text-xs text-slate-500">В резерве</p>
-                          <p class="mt-1 text-white">{{ warehouse.reserved }}</p>
-                        </div>
-                        <div>
-                          <p class="text-xs text-slate-500">Доступно / inbound</p>
-                          <p class="mt-1 text-white">{{ warehouse.available }} / {{ warehouse.inbound }}</p>
-                        </div>
+                <td colspan="6" class="border-t border-slate-800/70 bg-slate-950/60 px-4 py-4">
+                  <div class="grid gap-4 xl:grid-cols-[minmax(0,1.8fr)_minmax(18rem,1fr)]">
+                    <section class="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
+                      <div>
+                        <p class="text-[11px] uppercase tracking-[0.16em] text-slate-500">На складе</p>
+                        <p class="mt-1 text-lg font-semibold text-white">{{ warehouse.on_hand }}</p>
+                      </div>
+                      <div>
+                        <p class="text-[11px] uppercase tracking-[0.16em] text-slate-500">В резерве</p>
+                        <p class="mt-1 text-lg font-semibold text-white">{{ warehouse.reserved }}</p>
+                      </div>
+                      <div>
+                        <p class="text-[11px] uppercase tracking-[0.16em] text-slate-500">Связь</p>
+                        <p class="mt-1 text-sm font-medium text-white">{{ warehouse.site_connection_value }}</p>
+                        <p class="mt-0.5 text-xs {% if warehouse.sync_status.class_name %}{{ warehouse.sync_status.class_name }}{% else %}text-slate-500{% endif %}">{{ warehouse.sync_status.label }}</p>
+                      </div>
+                      <div>
+                        <p class="text-[11px] uppercase tracking-[0.16em] text-slate-500">Адрес</p>
+                        <p class="mt-1 text-sm {% if warehouse.address_missing %}text-amber-200{% else %}text-slate-300{% endif %}">
+                          {% if warehouse.instance.address %}{{ warehouse.instance.address }}{% else %}Не заполнен{% endif %}
+                        </p>
                       </div>
                     </section>
 
-                    <section class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-                      <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Связь с сайтом</p>
-                      <div class="mt-3 space-y-3 text-sm text-slate-300">
-                        <div>
-                          <p class="text-xs text-slate-500">PickupPoint</p>
-                          <p class="mt-1 text-white">
-                            {% if warehouse.instance.pickup_point and warehouse.instance.pickup_point.city %}
-                              {{ warehouse.instance.pickup_point.name }} · {{ warehouse.instance.pickup_point.city.name }}
-                            {% else %}
-                              Не привязан
-                            {% endif %}
-                          </p>
-                        </div>
-                        <div>
-                          <p class="text-xs text-slate-500">Синхронизация</p>
-                          <p class="mt-1 text-white">{{ warehouse.sync_status.label }}</p>
-                          <p class="mt-1 text-xs text-slate-500">
-                            {% if warehouse.instance.public_stock_synced_at %}
-                              {{ warehouse.instance.public_stock_synced_at|date:"d.m.Y H:i" }}
-                            {% else %}
-                              Синхронизации еще не было
-                            {% endif %}
-                          </p>
-                        </div>
-                      </div>
-                    </section>
+                    <section class="rounded-xl px-4 py-3 {% if warehouse.primary_signal and warehouse.primary_signal.tone == 'danger' %}bg-rose-500/10 text-rose-100{% elif warehouse.primary_signal %}bg-amber-400/10 text-amber-100{% else %}bg-slate-900/70 text-slate-300{% endif %}">
+                      {% if warehouse.primary_signal %}
+                        <p class="text-sm font-medium">{{ warehouse.primary_signal.label }}</p>
+                        {% if warehouse.is_unlinked %}
+                          <a href="{{ warehouse.detail_url }}" class="mt-2 inline-flex text-xs font-medium underline underline-offset-4 hover:text-white">Связать со складом сайта</a>
+                        {% endif %}
+                      {% else %}
+                        <p class="text-sm">Сигналов нет.</p>
+                      {% endif %}
 
-                    <section class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-                      <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Переходы</p>
                       <div class="mt-3 flex flex-wrap gap-2">
-                        <a href="{{ warehouse.inventory_url }}" class="manager-inline-action">Остатки</a>
                         <a href="{{ warehouse.inventory_receipt_url }}" class="manager-inline-action manager-inline-action-primary">Принять приход</a>
+                        <a href="{{ warehouse.inventory_url }}" class="manager-inline-action">Остатки</a>
                         <a href="{{ warehouse.movements_url }}" class="manager-inline-action">Движения</a>
                         {% if warehouse.pickup_point_admin_url %}
                           <a href="{{ warehouse.pickup_point_admin_url }}" class="manager-inline-action">Точка сайта</a>
@@ -146,7 +207,7 @@
                 </td>
               </tr>
             {% empty %}
-              <tr><td colspan="5" class="px-4 py-10 text-center text-slate-400">Склады еще не созданы.</td></tr>
+              <tr><td colspan="6" class="px-4 py-10 text-center text-slate-400">Склады еще не созданы.</td></tr>
             {% endfor %}
           </tbody>
         </table>

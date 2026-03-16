@@ -41,6 +41,7 @@ from config.views import (
 from config.sitemaps import BundleSitemap, ProductSitemap, StaticViewSitemap
 
 handler403 = 'config.views.permission_denied_view'
+handler404 = 'config.views.not_found_view'
 
 urlpatterns = [
     path('favicon.ico', favicon_view),
@@ -74,4 +75,3 @@ if settings.DEBUG:
 # Медиа: в DEBUG или SERVE_MEDIA=1 — раздаём через serve_media
 if settings.DEBUG or config_bool('SERVE_MEDIA', default=False):
     urlpatterns = [re_path(r'^media/(?P<path>.*)$', serve_media)] + urlpatterns
-urlpatterns.append(re_path(r'^(?P<unmatched_path>.*)$', not_found_view))

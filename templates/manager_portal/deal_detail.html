@@ -855,11 +855,11 @@
               </div>
               <div class="mt-4 grid gap-3 md:grid-cols-2">
                 <div class="deal-inline-card rounded-2xl border border-slate-800 bg-slate-900/80 px-4 py-4">
-                  <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Ответил</p>
+                  <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Кто общался</p>
                   <p class="mt-2 text-sm font-medium text-white">{% if deal_participants_summary.answered %}{{ deal_participants_summary.answered|join:", " }}{% else %}—{% endif %}</p>
                 </div>
                 <div class="deal-inline-card rounded-2xl border border-slate-800 bg-slate-900/80 px-4 py-4">
-                  <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Отправил</p>
+                  <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Кто выдал / отнес</p>
                   <p class="mt-2 text-sm font-medium text-white">{% if deal_participants_summary.shipped %}{{ deal_participants_summary.shipped|join:", " }}{% else %}—{% endif %}</p>
                 </div>
               </div>
@@ -1060,11 +1060,27 @@
               <p class="text-xs text-rose-300">{{ management_form.responsible_manager.errors|join:', ' }}</p>
             {% endif %}
           </div>
+          {% if not deal.is_avito %}
+            <div class="manager-form-field space-y-1">
+              <label for="{{ management_form.customer_deadline.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ management_form.customer_deadline.label }}</label>
+              {{ management_form.customer_deadline }}
+              {% if management_form.customer_deadline.errors %}
+                <p class="text-xs text-rose-300">{{ management_form.customer_deadline.errors|join:', ' }}</p>
+              {% endif %}
+            </div>
+          {% endif %}
           <div class="manager-form-field space-y-1">
-            <label for="{{ management_form.customer_deadline.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ management_form.customer_deadline.label }}</label>
-            {{ management_form.customer_deadline }}
-            {% if management_form.customer_deadline.errors %}
-              <p class="text-xs text-rose-300">{{ management_form.customer_deadline.errors|join:', ' }}</p>
+            <label for="{{ management_form.answered_person_alias.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ management_form.answered_person_alias.label }}</label>
+            {{ management_form.answered_person_alias }}
+            {% if management_form.answered_person_alias.errors %}
+              <p class="text-xs text-rose-300">{{ management_form.answered_person_alias.errors|join:', ' }}</p>
+            {% endif %}
+          </div>
+          <div class="manager-form-field space-y-1">
+            <label for="{{ management_form.shipped_person_alias.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ management_form.shipped_person_alias.label }}</label>
+            {{ management_form.shipped_person_alias }}
+            {% if management_form.shipped_person_alias.errors %}
+              <p class="text-xs text-rose-300">{{ management_form.shipped_person_alias.errors|join:', ' }}</p>
             {% endif %}
           </div>
           <div class="manager-form-field space-y-1">

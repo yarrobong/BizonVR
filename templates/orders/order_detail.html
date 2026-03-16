@@ -100,42 +100,51 @@
         <section class="rounded-3xl border border-white/10 bg-dark-800/90 p-6">
           <p class="text-xs uppercase tracking-[0.24em] text-accent/80">Аккаунт</p>
           <h2 class="mt-2 text-lg font-medium text-white">Сохранить заказ в кабинете</h2>
-          <p class="mt-2 text-sm text-gray-400">
-            Если заказ ещё не появился в кабинете автоматически, подтвердите email из заказа и мы создадим аккаунт или привяжем заказ к существующему профилю.
-          </p>
-          {% if claim_error %}<p class="mt-3 rounded-2xl border border-red-400/20 bg-red-500/10 p-3 text-sm text-red-300">{{ claim_error }}</p>{% endif %}
-          {% if claim_email_sent %}<p class="mt-3 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-3 text-sm text-emerald-300">Код отправлен на {{ order.email }}.</p>{% endif %}
+          {% if order.email %}
+            <p class="mt-2 text-sm text-gray-400">
+              Если заказ ещё не появился в кабинете автоматически, подтвердите email из заказа и мы создадим аккаунт или привяжем заказ к существующему профилю.
+            </p>
+            {% if claim_error %}<p class="mt-3 rounded-2xl border border-red-400/20 bg-red-500/10 p-3 text-sm text-red-300">{{ claim_error }}</p>{% endif %}
+            {% if claim_email_sent %}<p class="mt-3 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-3 text-sm text-emerald-300">Код отправлен на {{ order.email }}.</p>{% endif %}
 
-          <form method="post" class="mt-4 space-y-3">
-            {% csrf_token %}
-            <input type="hidden" name="action" value="send_claim_email_code">
-            <div>
-              <label for="{{ claim_request_form.email.id_for_label }}" class="mb-1.5 block text-sm font-medium text-gray-200">Email из заказа</label>
-              {{ claim_request_form.email }}
-              {% if claim_request_form.email.errors %}<p class="mt-1 text-sm text-red-400">{{ claim_request_form.email.errors.0 }}</p>{% endif %}
-            </div>
-            <button type="submit" class="w-full rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:border-white/20 hover:bg-white/10">
-              Отправить код
-            </button>
-          </form>
+            <form method="post" class="mt-4 space-y-3">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="send_claim_email_code">
+              <div>
+                <label for="{{ claim_request_form.email.id_for_label }}" class="mb-1.5 block text-sm font-medium text-gray-200">Email из заказа</label>
+                {{ claim_request_form.email }}
+                {% if claim_request_form.email.errors %}<p class="mt-1 text-sm text-red-400">{{ claim_request_form.email.errors.0 }}</p>{% endif %}
+              </div>
+              <button type="submit" class="w-full rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:border-white/20 hover:bg-white/10">
+                Отправить код
+              </button>
+            </form>
 
-          <form method="post" class="mt-4 space-y-3">
-            {% csrf_token %}
-            <input type="hidden" name="action" value="verify_claim_email_code">
-            <div>
-              <label for="{{ claim_verify_form.email.id_for_label }}" class="mb-1.5 block text-sm font-medium text-gray-200">Email</label>
-              {{ claim_verify_form.email }}
-              {% if claim_verify_form.email.errors %}<p class="mt-1 text-sm text-red-400">{{ claim_verify_form.email.errors.0 }}</p>{% endif %}
-            </div>
-            <div>
-              <label for="{{ claim_verify_form.code.id_for_label }}" class="mb-1.5 block text-sm font-medium text-gray-200">Код из письма</label>
-              {{ claim_verify_form.code }}
-              {% if claim_verify_form.code.errors %}<p class="mt-1 text-sm text-red-400">{{ claim_verify_form.code.errors.0 }}</p>{% endif %}
-            </div>
-            <button type="submit" class="w-full rounded-full bg-accent px-4 py-3 text-sm font-bold text-dark-900 transition hover:bg-accent-hover">
-              Создать аккаунт и сохранить заказ
-            </button>
-          </form>
+            <form method="post" class="mt-4 space-y-3">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="verify_claim_email_code">
+              <div>
+                <label for="{{ claim_verify_form.email.id_for_label }}" class="mb-1.5 block text-sm font-medium text-gray-200">Email</label>
+                {{ claim_verify_form.email }}
+                {% if claim_verify_form.email.errors %}<p class="mt-1 text-sm text-red-400">{{ claim_verify_form.email.errors.0 }}</p>{% endif %}
+              </div>
+              <div>
+                <label for="{{ claim_verify_form.code.id_for_label }}" class="mb-1.5 block text-sm font-medium text-gray-200">Код из письма</label>
+                {{ claim_verify_form.code }}
+                {% if claim_verify_form.code.errors %}<p class="mt-1 text-sm text-red-400">{{ claim_verify_form.code.errors.0 }}</p>{% endif %}
+              </div>
+              <button type="submit" class="w-full rounded-full bg-accent px-4 py-3 text-sm font-bold text-dark-900 transition hover:bg-accent-hover">
+                Сохранить заказ в кабинете
+              </button>
+            </form>
+          {% else %}
+            <p class="mt-2 text-sm text-gray-400">
+              Для этого заказа email не был сохранён. Чтобы связать покупку с кабинетом, войдите в существующий аккаунт или оформите следующий заказ уже с email.
+            </p>
+            <a href="{% url 'accounts:login' %}" class="mt-4 inline-flex w-full items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:border-white/20 hover:bg-white/10">
+              Войти в кабинет
+            </a>
+          {% endif %}
         </section>
       </aside>
     </div>

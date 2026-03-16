@@ -4,19 +4,29 @@
 {% block title %}Оформление заказа — BizonVR{% endblock %}
 
 {% block content %}
-<div class="container mx-auto max-w-6xl px-4 py-8">
+<div
+  class="container mx-auto max-w-6xl px-4 py-8"
+  x-data="{
+    step: {{ checkout_step|default:1 }},
+    maxStep: 5,
+    recipientSame: {% if form.recipient_is_customer.value or not form.is_bound %}true{% else %}false{% endif %},
+    scrollTop() { window.scrollTo({ top: 0, behavior: 'smooth' }); },
+    nextStep() { if (this.step < this.maxStep) { this.step += 1; this.scrollTop(); } },
+    prevStep() { if (this.step > 1) { this.step -= 1; this.scrollTop(); } }
+  }"
+>
   <nav class="mb-6">
-    <a href="{% url 'catalog:cart' %}" class="text-gray-400 hover:text-accent text-sm flex items-center gap-1">
-      <i data-lucide="arrow-left" class="w-4 h-4 inline-block"></i>
+    <a href="{% url 'catalog:cart' %}" class="flex items-center gap-1 text-sm text-gray-400 hover:text-accent">
+      <i data-lucide="arrow-left" class="inline-block h-4 w-4"></i>
       В корзину
     </a>
   </nav>
 
   <div class="mb-8">
-    <p class="text-xs uppercase tracking-[0.24em] text-accent/80">Оформление</p>
+    <p class="text-xs uppercase tracking-[0.24em] text-accent/80">Checkout</p>
     <h1 class="mt-2 text-3xl font-semibold text-white">Оформление заказа</h1>
     <p class="mt-2 max-w-3xl text-sm text-gray-400">
-      Доставка выполняется только через CDEK до ПВЗ. Оплатить заказ можно по СБП, банковской картой или через менеджера для юридических лиц. Стоимость доставки оплачивается отдельно при получении.
+      Заказ можно оформить без регистрации. Для статусов и сервисных писем используем email из заказа, а телефон нужен для связи и важных обновлений.
     </p>
   </div>
 
@@ -25,10 +35,33 @@
       <p class="mb-4">Корзина пуста. Добавьте товары, чтобы перейти к оформлению заказа.</p>
       <a href="{% url 'catalog:product_list' %}" class="inline-flex items-center gap-2 rounded-full bg-accent px-6 py-3 text-sm font-bold uppercase tracking-wide text-dark-900 transition hover:bg-accent-hover">
         Перейти в каталог
-        <i data-lucide="arrow-right" class="w-4 h-4 inline-block"></i>
+        <i data-lucide="arrow-right" class="inline-block h-4 w-4"></i>
       </a>
     </div>
   {% else %}
+    <div class="mb-6 grid gap-3 md:grid-cols-5">
+      <button type="button" @click="step = 1; scrollTop()" :class="step === 1 ? 'border-accent bg-accent/10 text-white' : 'border-white/10 bg-dark-800/70 text-gray-400'" class="rounded-2xl border px-4 py-3 text-left transition">
+        <span class="block text-xs uppercase tracking-[0.2em]">Шаг 1</span>
+        <span class="mt-1 block text-sm font-semibold">Контакты</span>
+      </button>
+      <button type="button" @click="step = 2; scrollTop()" :class="step === 2 ? 'border-accent bg-accent/10 text-white' : 'border-white/10 bg-dark-800/70 text-gray-400'" class="rounded-2xl border px-4 py-3 text-left transition">
+        <span class="block text-xs uppercase tracking-[0.2em]">Шаг 2</span>
+        <span class="mt-1 block text-sm font-semibold">Доставка</span>
+      </button>
+      <button type="button" @click="step = 3; scrollTop()" :class="step === 3 ? 'border-accent bg-accent/10 text-white' : 'border-white/10 bg-dark-800/70 text-gray-400'" class="rounded-2xl border px-4 py-3 text-left transition">
+        <span class="block text-xs uppercase tracking-[0.2em]">Шаг 3</span>
+        <span class="mt-1 block text-sm font-semibold">Получатель</span>
+      </button>
+      <button type="button" @click="step = 4; scrollTop()" :class="step === 4 ? 'border-accent bg-accent/10 text-white' : 'border-white/10 bg-dark-800/70 text-gray-400'" class="rounded-2xl border px-4 py-3 text-left transition">
+        <span class="block text-xs uppercase tracking-[0.2em]">Шаг 4</span>
+        <span class="mt-1 block text-sm font-semibold">Оплата</span>
+      </button>
+      <button type="button" @click="step = 5; scrollTop()" :class="step === 5 ? 'border-accent bg-accent/10 text-white' : 'border-white/10 bg-dark-800/70 text-gray-400'" class="rounded-2xl border px-4 py-3 text-left transition">
+        <span class="block text-xs uppercase tracking-[0.2em]">Шаг 5</span>
+        <span class="mt-1 block text-sm font-semibold">Проверка</span>
+      </button>
+    </div>
+
     <div class="grid grid-cols-1 gap-8 lg:grid-cols-[1.15fr_0.85fr]">
       <form method="post" action="{{ request.get_full_path }}" class="space-y-6">
         {% csrf_token %}
@@ -36,53 +69,54 @@
           <div class="rounded-2xl border border-red-400/20 bg-red-500/10 p-4 text-sm text-red-300">{{ form.non_field_errors.0 }}</div>
         {% endif %}
 
-        <section class="rounded-3xl border border-white/10 bg-dark-800/90 p-6">
+        <section x-show="step === 1" x-cloak class="rounded-3xl border border-white/10 bg-dark-800/90 p-6">
           <div class="mb-4 flex items-center justify-between gap-4">
             <div>
               <p class="text-xs uppercase tracking-[0.24em] text-accent/80">Шаг 1</p>
-              <h2 class="mt-1 text-xl font-semibold text-white">Контакты</h2>
+              <h2 class="mt-1 text-xl font-semibold text-white">Контакты покупателя</h2>
             </div>
             {% if not is_authenticated_checkout %}
-              <a href="{% url 'accounts:login' %}?next={% url 'orders:checkout' %}" class="text-sm text-accent hover:text-accent-hover">Уже есть аккаунт?</a>
+              <a href="{% url 'accounts:login' %}?next={% url 'orders:checkout' %}" class="text-sm text-accent hover:text-accent-hover">Войти в кабинет</a>
             {% endif %}
           </div>
           <div class="grid gap-4 md:grid-cols-2">
-            <div class="md:col-span-2">
-              <label for="{{ form.full_name.id_for_label }}" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.full_name.label }} *</label>
-              {{ form.full_name }}
-              {% if form.full_name.errors %}<p class="mt-1 text-sm text-red-400">{{ form.full_name.errors.0 }}</p>{% endif %}
+            <div>
+              <label for="{{ form.first_name.id_for_label }}" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.first_name.label }} *</label>
+              {{ form.first_name }}
+              {% if form.first_name.errors %}<p class="mt-1 text-sm text-red-400">{{ form.first_name.errors.0 }}</p>{% endif %}
             </div>
-            <div class="md:col-span-2">
+            <div>
+              <label for="{{ form.last_name.id_for_label }}" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.last_name.label }}</label>
+              {{ form.last_name }}
+              {% if form.last_name.errors %}<p class="mt-1 text-sm text-red-400">{{ form.last_name.errors.0 }}</p>{% endif %}
+            </div>
+            <div>
               <label for="id_phone" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.phone.label }} *</label>
-              <div class="phone-input-wrapper flex items-center w-full rounded-lg bg-dark-700 overflow-hidden focus-within:ring-1 focus-within:ring-accent pl-5">
-                <span class="phone-prefix text-white font-medium py-2.5 flex-shrink-0 select-none">+7</span>
-                <span class="phone-prefix-bracket text-white font-medium py-2.5 flex-shrink-0 select-none" style="display: none;">&nbsp;(</span>
-                <input type="tel" name="phone" id="id_phone" required value="{{ form.phone.value|default:'' }}" placeholder="999 123-45-67" class="js-phone-mask flex-1 min-w-0 bg-transparent text-white py-2.5 pl-1 pr-4 focus:outline-none focus:ring-0 border-0" autocomplete="tel" inputmode="tel">
+              <div class="phone-input-wrapper flex w-full items-center overflow-hidden rounded-lg bg-dark-700 pl-5 focus-within:ring-1 focus-within:ring-accent">
+                <span class="phone-prefix select-none py-2.5 font-medium text-white">+7</span>
+                <span class="phone-prefix-bracket hidden select-none py-2.5 font-medium text-white">&nbsp;(</span>
+                <input type="tel" name="phone" id="id_phone" required value="{{ form.phone.value|default:'' }}" placeholder="999 123-45-67" class="js-phone-mask min-w-0 flex-1 border-0 bg-transparent py-2.5 pl-1 pr-4 text-white focus:outline-none focus:ring-0" autocomplete="tel" inputmode="tel">
               </div>
               {% if form.phone.errors %}<p class="mt-1 text-sm text-red-400">{{ form.phone.errors.0 }}</p>{% endif %}
             </div>
             <div>
-              <label for="id_email" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.email.label }}</label>
+              <label for="{{ form.email.id_for_label }}" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.email.label }} *</label>
               {{ form.email }}
               {% if form.email.errors %}<p class="mt-1 text-sm text-red-400">{{ form.email.errors.0 }}</p>{% endif %}
-            </div>
-            <div>
-              <label for="id_city_text" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.city_text.label }} *</label>
-              {{ form.city_text }}
-              {% if form.city_text.errors %}<p class="mt-1 text-sm text-red-400">{{ form.city_text.errors.0 }}</p>{% endif %}
+              <p class="mt-2 text-xs text-gray-500">На этот адрес отправим письмо о заказе и ссылку для сохранения заказа в кабинете.</p>
             </div>
           </div>
         </section>
 
-        <section class="rounded-3xl border border-white/10 bg-dark-800/90 p-6">
+        <section x-show="step === 2" x-cloak class="rounded-3xl border border-white/10 bg-dark-800/90 p-6">
           <div class="mb-4">
             <p class="text-xs uppercase tracking-[0.24em] text-accent/80">Шаг 2</p>
-            <h2 class="mt-1 text-xl font-semibold text-white">Доставка CDEK</h2>
+            <h2 class="mt-1 text-xl font-semibold text-white">Доставка CDEK до ПВЗ</h2>
           </div>
           {% if saved_addresses %}
             <div class="mb-5 rounded-2xl border border-white/10 bg-white/5 p-4">
               <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <p class="text-sm text-gray-300">Сохранённые адреса можно использовать для быстрого предзаполнения оформления заказа.</p>
+                <p class="text-sm text-gray-300">Можно подставить сохранённый адрес, а затем при необходимости уточнить данные перед оформлением заказа.</p>
                 <a href="{% url 'accounts:profile_settings' %}#delivery" class="text-sm text-accent hover:text-accent-hover">Управлять адресами</a>
               </div>
               <div class="mt-4 grid gap-3">
@@ -96,24 +130,61 @@
               </div>
             </div>
           {% endif %}
-          <div class="mt-4">
-            <label for="id_address_line" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.address_line.label }} *</label>
-            {{ form.address_line }}
-            {% if form.address_line.errors %}<p class="mt-1 text-sm text-red-400">{{ form.address_line.errors.0 }}</p>{% endif %}
-          </div>
-          <div class="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-gray-300">
-            Если указанный ПВЗ не будет найден у CDEK, заказ отправим в ближайший к нему доступный пункт выдачи.
-          </div>
-          <div class="mt-4">
-            <label for="id_delivery_comment" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.delivery_comment.label }}</label>
-            {{ form.delivery_comment }}
-            {% if form.delivery_comment.errors %}<p class="mt-1 text-sm text-red-400">{{ form.delivery_comment.errors.0 }}</p>{% endif %}
+          <div class="grid gap-4">
+            <div>
+              <label for="{{ form.city_text.id_for_label }}" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.city_text.label }} *</label>
+              {{ form.city_text }}
+              {% if form.city_text.errors %}<p class="mt-1 text-sm text-red-400">{{ form.city_text.errors.0 }}</p>{% endif %}
+            </div>
+            <div>
+              <label for="{{ form.address_line.id_for_label }}" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.address_line.label }} *</label>
+              {{ form.address_line }}
+              {% if form.address_line.errors %}<p class="mt-1 text-sm text-red-400">{{ form.address_line.errors.0 }}</p>{% endif %}
+            </div>
+            <div class="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-gray-300">
+              Если указанный ПВЗ не будет найден у CDEK, отправим заказ в ближайший доступный пункт выдачи.
+            </div>
+            <div>
+              <label for="{{ form.delivery_comment.id_for_label }}" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.delivery_comment.label }}</label>
+              {{ form.delivery_comment }}
+              {% if form.delivery_comment.errors %}<p class="mt-1 text-sm text-red-400">{{ form.delivery_comment.errors.0 }}</p>{% endif %}
+            </div>
           </div>
         </section>
 
-        <section class="rounded-3xl border border-white/10 bg-dark-800/90 p-6">
+        <section x-show="step === 3" x-cloak class="rounded-3xl border border-white/10 bg-dark-800/90 p-6">
           <div class="mb-4">
             <p class="text-xs uppercase tracking-[0.24em] text-accent/80">Шаг 3</p>
+            <h2 class="mt-1 text-xl font-semibold text-white">Получатель</h2>
+          </div>
+          <label for="{{ form.recipient_is_customer.id_for_label }}" class="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-gray-300">
+            <input type="checkbox" name="recipient_is_customer" id="{{ form.recipient_is_customer.id_for_label }}" value="on" {% if form.recipient_is_customer.value %}checked{% endif %} @change="recipientSame = $event.target.checked" class="mt-1 h-4 w-4 rounded border-gray-600 bg-dark-700 text-accent focus:ring-accent focus:ring-offset-0">
+            <span>
+              <span class="block font-medium text-white">{{ form.recipient_is_customer.label }}</span>
+              <span class="mt-1 block text-gray-400">Если заказ получает другой человек, снимите галочку и укажите его контакты.</span>
+            </span>
+          </label>
+
+          <div x-show="!recipientSame" x-cloak class="mt-5 grid gap-4 md:grid-cols-2">
+            <div>
+              <label for="{{ form.recipient_name.id_for_label }}" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.recipient_name.label }} *</label>
+              {{ form.recipient_name }}
+              {% if form.recipient_name.errors %}<p class="mt-1 text-sm text-red-400">{{ form.recipient_name.errors.0 }}</p>{% endif %}
+            </div>
+            <div>
+              <label for="{{ form.recipient_phone.id_for_label }}" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.recipient_phone.label }} *</label>
+              {{ form.recipient_phone }}
+              {% if form.recipient_phone.errors %}<p class="mt-1 text-sm text-red-400">{{ form.recipient_phone.errors.0 }}</p>{% endif %}
+            </div>
+          </div>
+          <div x-show="recipientSame" x-cloak class="mt-5 rounded-2xl border border-white/10 bg-dark-900/60 p-4 text-sm text-gray-300">
+            Используем контакты покупателя как контакты получателя.
+          </div>
+        </section>
+
+        <section x-show="step === 4" x-cloak class="rounded-3xl border border-white/10 bg-dark-800/90 p-6">
+          <div class="mb-4">
+            <p class="text-xs uppercase tracking-[0.24em] text-accent/80">Шаг 4</p>
             <h2 class="mt-1 text-xl font-semibold text-white">Оплата</h2>
           </div>
           {% with selected_payment=form.payment_method.value|default:form.payment_method.field.initial %}
@@ -125,11 +196,11 @@
                     <span class="block text-sm font-semibold text-white">{{ label }}</span>
                     <span class="mt-1 block text-sm text-gray-400">
                       {% if value == 'bank_card' %}
-                        Перевод на банковскую карту по реквизитам, которые будут показаны после оформления заказа.
+                        После оформления покажем реквизиты карты для оплаты заказа.
                       {% elif value == 'sbp' %}
-                        Перевод по СБП на номер, который будет показан после оформления заказа.
+                        После оформления покажем номер для перевода по СБП.
                       {% else %}
-                        Для оплаты от юридического лица менеджер свяжется с вами и согласует закрывающие документы и порядок расчёта.
+                        Для оплаты от юридического лица менеджер свяжется с вами, согласует документы и порядок расчёта.
                       {% endif %}
                     </span>
                   </span>
@@ -140,21 +211,48 @@
           {% if form.payment_method.errors %}<p class="mt-3 text-sm text-red-400">{{ form.payment_method.errors.0 }}</p>{% endif %}
         </section>
 
-        <section class="rounded-3xl border border-white/10 bg-dark-800/90 p-6">
+        <section x-show="step === 5" x-cloak class="rounded-3xl border border-white/10 bg-dark-800/90 p-6">
           <div class="mb-4">
-            <p class="text-xs uppercase tracking-[0.24em] text-accent/80">Шаг 4</p>
-            <h2 class="mt-1 text-xl font-semibold text-white">Проверка и подтверждение</h2>
+            <p class="text-xs uppercase tracking-[0.24em] text-accent/80">Шаг 5</p>
+            <h2 class="mt-1 text-xl font-semibold text-white">Проверка заказа</h2>
           </div>
-          <div class="grid gap-4 md:grid-cols-2">
-            <div>
-              <label for="id_promo_code" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.promo_code.label }}</label>
-              {{ form.promo_code }}
-              {% if form.promo_code.errors %}<p class="mt-1 text-sm text-red-400">{{ form.promo_code.errors.0 }}</p>{% endif %}
+          <div class="grid gap-6 md:grid-cols-2">
+            <div class="rounded-2xl border border-white/10 bg-dark-900/40 p-4 text-sm text-gray-300">
+              <p class="text-xs uppercase tracking-[0.2em] text-gray-500">Контакты</p>
+              <p class="mt-3 text-white"><span x-text="document.getElementById('{{ form.first_name.id_for_label }}').value || 'Имя не указано'"></span> <span x-text="document.getElementById('{{ form.last_name.id_for_label }}').value"></span></p>
+              <p class="mt-1" x-text="document.getElementById('id_phone').value || 'Телефон не указан'"></p>
+              <p class="mt-1" x-text="document.getElementById('{{ form.email.id_for_label }}').value || 'Email не указан'"></p>
             </div>
-            <div>
-              <label for="id_comment" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.comment.label }}</label>
-              {{ form.comment }}
-              {% if form.comment.errors %}<p class="mt-1 text-sm text-red-400">{{ form.comment.errors.0 }}</p>{% endif %}
+            <div class="rounded-2xl border border-white/10 bg-dark-900/40 p-4 text-sm text-gray-300">
+              <p class="text-xs uppercase tracking-[0.2em] text-gray-500">Получение</p>
+              <p class="mt-3 text-white">CDEK до ПВЗ</p>
+              <p class="mt-1" x-text="document.getElementById('{{ form.city_text.id_for_label }}').value || 'Город не указан'"></p>
+              <p class="mt-1 whitespace-pre-line" x-text="document.getElementById('{{ form.address_line.id_for_label }}').value || 'ПВЗ не указан'"></p>
+            </div>
+            <div class="rounded-2xl border border-white/10 bg-dark-900/40 p-4 text-sm text-gray-300">
+              <p class="text-xs uppercase tracking-[0.2em] text-gray-500">Получатель</p>
+              <template x-if="recipientSame">
+                <p class="mt-3 text-white">Получатель совпадает с покупателем.</p>
+              </template>
+              <template x-if="!recipientSame">
+                <div class="mt-3">
+                  <p class="text-white" x-text="document.getElementById('{{ form.recipient_name.id_for_label }}').value || 'Получатель не указан'"></p>
+                  <p class="mt-1" x-text="document.getElementById('{{ form.recipient_phone.id_for_label }}').value || 'Телефон получателя не указан'"></p>
+                </div>
+              </template>
+            </div>
+            <div class="rounded-2xl border border-white/10 bg-dark-900/40 p-4 text-sm text-gray-300">
+              <p class="text-xs uppercase tracking-[0.2em] text-gray-500">Комментарий и промокод</p>
+              <div class="mt-3">
+                <label for="{{ form.promo_code.id_for_label }}" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.promo_code.label }}</label>
+                {{ form.promo_code }}
+                {% if form.promo_code.errors %}<p class="mt-1 text-sm text-red-400">{{ form.promo_code.errors.0 }}</p>{% endif %}
+              </div>
+              <div class="mt-4">
+                <label for="{{ form.comment.id_for_label }}" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.comment.label }}</label>
+                {{ form.comment }}
+                {% if form.comment.errors %}<p class="mt-1 text-sm text-red-400">{{ form.comment.errors.0 }}</p>{% endif %}
+              </div>
             </div>
           </div>
           <div class="mt-5 space-y-3 rounded-2xl border border-white/10 bg-dark-900/60 p-4">
@@ -179,15 +277,38 @@
           </div>
         </section>
 
-        <button type="submit" class="w-full rounded-full bg-accent px-6 py-4 text-sm font-bold uppercase tracking-wide text-dark-900 transition hover:bg-accent-hover">
-          Оформить заказ
-        </button>
+        <div class="hidden items-center justify-between gap-3 rounded-3xl border border-white/10 bg-dark-800/90 p-4 sm:flex">
+          <button type="button" @click="prevStep()" x-show="step > 1" x-cloak class="rounded-full border border-white/10 bg-white/5 px-5 py-3 text-sm font-semibold text-white transition hover:border-white/20 hover:bg-white/10">
+            Назад
+          </button>
+          <span x-show="step === 1" x-cloak></span>
+          <button type="button" @click="nextStep()" x-show="step < maxStep" x-cloak class="rounded-full bg-accent px-6 py-3 text-sm font-bold uppercase tracking-wide text-dark-900 transition hover:bg-accent-hover">
+            Продолжить
+          </button>
+          <button type="submit" x-show="step === maxStep" x-cloak class="rounded-full bg-accent px-6 py-3 text-sm font-bold uppercase tracking-wide text-dark-900 transition hover:bg-accent-hover">
+            Оформить заказ
+          </button>
+        </div>
+
+        <div class="fixed inset-x-0 bottom-0 z-30 border-t border-white/10 bg-dark-900/95 px-4 py-3 backdrop-blur sm:hidden">
+          <div class="mx-auto flex max-w-6xl items-center gap-3">
+            <button type="button" @click="prevStep()" x-show="step > 1" x-cloak class="rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:border-white/20 hover:bg-white/10">
+              Назад
+            </button>
+            <button type="button" @click="nextStep()" x-show="step < maxStep" x-cloak class="flex-1 rounded-full bg-accent px-5 py-3 text-sm font-bold uppercase tracking-wide text-dark-900 transition hover:bg-accent-hover">
+              Далее
+            </button>
+            <button type="submit" x-show="step === maxStep" x-cloak class="flex-1 rounded-full bg-accent px-5 py-3 text-sm font-bold uppercase tracking-wide text-dark-900 transition hover:bg-accent-hover">
+              Оформить заказ
+            </button>
+          </div>
+        </div>
       </form>
 
-      <aside class="space-y-6">
+      <aside class="space-y-6 lg:sticky lg:top-24 lg:self-start">
         <section class="rounded-3xl border border-white/10 bg-dark-800/90 p-6">
           <p class="text-xs uppercase tracking-[0.24em] text-accent/80">Ваш заказ</p>
-          <h2 class="mt-1 text-xl font-semibold text-white">Проверка состава</h2>
+          <h2 class="mt-1 text-xl font-semibold text-white">Состав и сумма</h2>
           <ul class="mt-5 space-y-4">
             {% for item in cart_items %}
               <li class="flex items-start justify-between gap-3 text-sm">
@@ -228,11 +349,9 @@
           {% if not is_authenticated_checkout %}
             <div class="mt-4 flex flex-col gap-3">
               <a href="{% url 'accounts:login' %}?next={% url 'orders:checkout' %}" class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm text-white transition hover:border-white/20 hover:bg-white/10">
-                Войти в аккаунт
+                Войти в кабинет
               </a>
-              <a href="{% url 'accounts:login' %}?next={% url 'orders:checkout' %}" class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm text-white transition hover:border-white/20 hover:bg-white/10">
-                Создать аккаунт
-              </a>
+              <p class="text-center text-xs text-gray-500">Покупка доступна и без регистрации.</p>
             </div>
           {% endif %}
         </section>

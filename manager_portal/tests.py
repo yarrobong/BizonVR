@@ -1645,7 +1645,7 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         self.assertEqual(deal.responsible_manager, self.staff_user)
         self.assertEqual(deal.customer_source, ManagerDeal.SOURCE_AVITO)
         self.assertEqual(deal.business_company_name, 'ООО Вижн')
-        self.assertEqual(deal.deal_status, ManagerDeal.DEAL_STATUS_RESERVED)
+        self.assertEqual(deal.deal_status, ManagerDeal.DEAL_STATUS_NEW)
         self.assertEqual(deal.prepayment_amount, Decimal('30000.00'))
         self.assertEqual(deal.stock_warehouse, self.warehouse)
         self.assertIsNotNone(deal.reservation)
@@ -2169,6 +2169,75 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
             ],
         )
 
+    def test_avito_source_uses_avito_status_choices_even_for_stock_deal(self):
+        self.assertEqual(
+            [code for code, _label in ManagerDeal.allowed_status_choices(ManagerDeal.DEAL_SALE_FROM_STOCK, ManagerDeal.SOURCE_AVITO)],
+            [
+                ManagerDeal.DEAL_STATUS_NEW,
+                ManagerDeal.DEAL_STATUS_SHIPPED,
+                ManagerDeal.DEAL_STATUS_RECEIVED_BY_CUSTOMER,
+                ManagerDeal.DEAL_STATUS_RETURNED,
+            ],
+        )
+
+    def test_staff_can_create_avito_source_order_without_customer_name_and_with_participants(self):
+        self.login_staff()
+        InventoryBalance.objects.create(warehouse=self.warehouse, product=self.product, quantity=5)
+        answered_alias = ManagerPersonAlias.objects.create(display_name='Эрика', slug='erika')
+        shipped_alias = ManagerPersonAlias.objects.create(display_name='Ярослав Е', slug='yaroslav-e')
+        payload = self.manual_business_order_payload()
+        payload.update(
+            {
+                'buyer_type': ManagerDeal.BUYER_INDIVIDUAL,
+                'individual_full_name': '',
+                'individual_phone': '+7 912 000 10 10',
+                'individual_additional_phone': '',
+                'individual_city': 'Екатеринбург',
+                'individual_pickup_address': 'ПВЗ СДЭК, Малышева, 10',
+                'individual_delivery_address': 'Тюмень, Республики, 5',
+                'individual_messenger': '@avito',
+                'individual_comment': '',
+                'business_company_name': '',
+                'business_inn': '',
+                'business_kpp': '',
+                'business_ogrn': '',
+                'business_legal_address': '',
+                'business_contact_person': '',
+                'business_phone': '',
+                'business_email': '',
+                'business_city': '',
+                'business_delivery_address': '',
+                'business_comment': '',
+                'answered_person_alias': answered_alias.pk,
+                'shipped_person_alias': shipped_alias.pk,
+            }
+        )
+
+        response = self.client.post(reverse('manager_portal:order_create'), payload)
+
+        manual_order = Order.objects.exclude(pk__in=[self.order.pk, self.order_two.pk]).latest('pk')
+        deal = manual_order.manager_deal
+        self.assertRedirects(response, reverse('manager_portal:deal_detail', kwargs={'pk': deal.pk}))
+        self.assertEqual(deal.customer_source, ManagerDeal.SOURCE_AVITO)
+        self.assertEqual(deal.individual_full_name, '')
+        self.assertEqual(deal.deal_status, ManagerDeal.DEAL_STATUS_NEW)
+        self.assertTrue(
+            ManagerDealParticipant.objects.filter(
+                manager_deal=deal,
+                role=ManagerDealParticipant.ROLE_ANSWERED,
+                person_alias=answered_alias,
+                order_item__isnull=True,
+            ).exists()
+        )
+        self.assertTrue(
+            ManagerDealParticipant.objects.filter(
+                manager_deal=deal,
+                role=ManagerDealParticipant.ROLE_SHIPPED,
+                person_alias=shipped_alias,
+                order_item__isnull=True,
+            ).exists()
+        )
+
     def test_order_state_update_allows_avito_shipped_without_tracking_number(self):
         self.login_staff()
         self.order.payment_method = Order.PAYMENT_METHOD_MANAGER_PAYMENT
@@ -2520,6 +2589,31 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual([card['instance'] for card in response.context['warehouses']], [self.unlinked_warehouse])
 
+    def test_warehouse_list_applies_quick_filters_and_builds_summary(self):
+        self.login_staff()
+        self.warehouse.address = 'Екатеринбург, ул. Ленина, 1'
+        self.other_warehouse.address = 'Тюмень, ул. Республики, 10'
+        self.warehouse.save(update_fields=['address'])
+        self.other_warehouse.save(update_fields=['address'])
+        receipt_inventory(warehouse=self.warehouse, product=self.product, quantity=1, author=self.staff_user)
+        reservation = self.create_reservation(source_warehouse=self.warehouse)
+        ReservationItem.objects.create(reservation=reservation, product=self.product, quantity=2)
+
+        response = self.client.get(reverse('manager_portal:warehouse_list'), {'only_unlinked': '1'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([card['instance'] for card in response.context['warehouses']], [self.unlinked_warehouse])
+        self.assertEqual(response.context['warehouse_summary']['total'], 1)
+        self.assertEqual(response.context['warehouse_summary']['unlinked_count'], 1)
+        self.assertEqual(response.context['warehouse_summary']['missing_address_count'], 1)
+
+        response = self.client.get(reverse('manager_portal:warehouse_list'), {'only_problematic': '1'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([card['instance'] for card in response.context['warehouses']], [self.warehouse])
+        self.assertEqual(response.context['warehouse_summary']['critical_signal_count'], 1)
+        self.assertTrue(next(chip['active'] for chip in response.context['quick_filters'] if chip['key'] == 'only_problematic'))
+
     def test_warehouse_detail_post_updates_and_syncs_public_stock(self):
         self.login_staff()
 
@@ -2597,8 +2691,10 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         self.assertEqual(response.context['inventory_rows'][0]['warehouse_id'], self.warehouse.pk)
         self.assertEqual(response.context['selected_problem_filters'], ['below_min_stock'])
         self.assertEqual(response.context['inventory_summary']['problem_sku_count'], 1)
+        self.assertEqual(response.context['inventory_summary']['sellable_sku_count'], 1)
         self.assertEqual(response.context['inventory_summary']['below_min_stock_count'], 1)
         self.assertEqual(response.context['inventory_summary']['negative_available_count'], 0)
+        self.assertEqual(response.context['inventory_summary']['public_mismatch_count'], 1)
 
     def test_inventory_view_rows_include_operational_details(self):
         self.login_staff()
@@ -2640,6 +2736,9 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         self.assertEqual(len(row['incoming_cargos']), 1)
         self.assertGreaterEqual(len(row['linked_deals']), 1)
         self.assertEqual(row['last_change']['author_name'], self.staff_user.username)
+        self.assertEqual(row['row_status']['code'], 'site_mismatch')
+        self.assertEqual(row['promise_capacity'], 7)
+        self.assertGreaterEqual(len(row['detail_reasons']), 3)
 
     def test_inventory_receipt_view_creates_balance_and_movement(self):
         self.login_staff()

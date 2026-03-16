@@ -3,61 +3,63 @@
 {% block title %}Остатки{% endblock %}
 
 {% block content %}
-  <div class="space-y-6">
+  <div class="space-y-3">
     {% if open_receipt_drawer %}
       <div data-open-drawer-on-load="#inventory-receipt-drawer" hidden></div>
     {% endif %}
-    <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-      <div>
-        <h2 class="text-4xl font-semibold">Остатки и резервы</h2>
-        <p class="mt-2 max-w-4xl text-slate-400">Экран перестроен под менеджера: в первом слое только понятные метрики, бизнес-срезы и явная связь SKU с проблемными сделками. Технические детали остаются в раскрытии строки.</p>
+    <div class="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-center gap-2">
+          <h2 class="text-2xl font-semibold">Остатки</h2>
+          {% if inventory_summary.problem_sku_count %}
+            <span class="rounded-full bg-rose-500/12 px-2.5 py-1 text-[0.72rem] font-medium text-rose-100 ring-1 ring-inset ring-rose-400/25">{{ inventory_summary.problem_sku_count }} в проблеме</span>
+          {% endif %}
+        </div>
       </div>
-      <div class="flex items-center gap-3">
-        <a href="{% url 'manager_portal:inventory' %}" class="rounded-xl border border-slate-700 px-4 py-3 text-sm text-slate-200 hover:bg-slate-900">Сбросить</a>
+      <div class="flex items-center gap-2">
+        <a href="{% url 'manager_portal:inventory' %}" class="rounded-xl bg-slate-950/65 px-3 py-2 text-sm text-slate-300 ring-1 ring-inset ring-slate-800 transition hover:bg-slate-900 hover:text-white">Сбросить</a>
         <button type="button" data-drawer-target="#inventory-receipt-drawer" class="manager-create-action">Ручной приход</button>
       </div>
     </div>
 
-    <section class="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-      <article class="manager-panel manager-kpi rounded-[1.5rem] px-4 py-4">
-        <p class="text-[0.72rem] uppercase tracking-[0.2em] text-slate-500">SKU в проблеме</p>
-        <p class="mt-3 text-3xl font-semibold text-white">{{ inventory_summary.problem_sku_count }}</p>
-      </article>
-      <article class="manager-panel manager-kpi rounded-[1.5rem] px-4 py-4">
-        <p class="text-[0.72rem] uppercase tracking-[0.2em] text-slate-500">Обещано больше, чем есть</p>
-        <p class="mt-3 text-3xl font-semibold {% if inventory_summary.negative_available_count %}text-rose-300{% else %}text-white{% endif %}">{{ inventory_summary.negative_available_count }}</p>
-      </article>
-      <article class="manager-panel manager-kpi rounded-[1.5rem] px-4 py-4">
-        <p class="text-[0.72rem] uppercase tracking-[0.2em] text-slate-500">Нужно пополнить</p>
-        <p class="mt-3 text-3xl font-semibold {% if inventory_summary.below_min_stock_count %}text-amber-300{% else %}text-white{% endif %}">{{ inventory_summary.below_min_stock_count }}</p>
-      </article>
-      <article class="manager-panel manager-kpi rounded-[1.5rem] px-4 py-4">
-        <p class="text-[0.72rem] uppercase tracking-[0.2em] text-slate-500">Можно обещать сейчас</p>
-        <p class="mt-3 text-3xl font-semibold {% if inventory_summary.total_available < 0 %}text-rose-300{% else %}text-emerald-300{% endif %}">{{ inventory_summary.total_available }}</p>
-      </article>
-      <article class="manager-panel manager-kpi rounded-[1.5rem] px-4 py-4">
-        <p class="text-[0.72rem] uppercase tracking-[0.2em] text-slate-500">Приход в пути</p>
-        <p class="mt-3 text-3xl font-semibold text-white">{{ inventory_summary.total_inbound }}</p>
-      </article>
-      <article class="manager-panel manager-kpi rounded-[1.5rem] px-4 py-4">
-        <p class="text-[0.72rem] uppercase tracking-[0.2em] text-slate-500">Сделок под риском</p>
-        <p class="mt-3 text-3xl font-semibold {% if affected_deal_count %}text-amber-300{% else %}text-white{% endif %}">{{ affected_deal_count }}</p>
-      </article>
+    <section>
+      <div class="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+        <div class="flex items-baseline justify-between gap-3 rounded-xl bg-emerald-500/[0.07] px-3 py-2 ring-1 ring-inset ring-emerald-400/15">
+          <span class="text-[0.82rem] text-slate-300">Можно продавать</span>
+          <strong class="text-lg font-semibold text-white">{{ inventory_summary.sellable_sku_count }}</strong>
+        </div>
+        <div class="flex items-baseline justify-between gap-3 rounded-xl {% if inventory_summary.below_min_stock_count %}bg-amber-500/[0.09] ring-1 ring-inset ring-amber-400/25{% else %}bg-slate-950/45 ring-1 ring-inset ring-slate-800{% endif %} px-3 py-2">
+          <span class="text-[0.82rem] text-slate-300">Нужно пополнить</span>
+          <strong class="text-lg font-semibold {% if inventory_summary.below_min_stock_count %}text-amber-100{% else %}text-white{% endif %}">{{ inventory_summary.below_min_stock_count }}</strong>
+        </div>
+        <div class="flex items-baseline justify-between gap-3 rounded-xl {% if affected_deal_count %}bg-rose-500/[0.09] ring-1 ring-inset ring-rose-400/25{% else %}bg-slate-950/45 ring-1 ring-inset ring-slate-800{% endif %} px-3 py-2">
+          <span class="text-[0.82rem] text-slate-300">Риск обещания</span>
+          <strong class="text-lg font-semibold {% if affected_deal_count %}text-rose-100{% else %}text-white{% endif %}">{{ affected_deal_count }}</strong>
+        </div>
+        <div class="flex items-baseline justify-between gap-3 rounded-xl {% if inventory_summary.public_mismatch_count %}bg-amber-500/[0.07] ring-1 ring-inset ring-amber-400/20{% else %}bg-slate-950/45 ring-1 ring-inset ring-slate-800{% endif %} px-3 py-2">
+          <span class="text-[0.82rem] text-slate-300">Сайт расходится</span>
+          <strong class="text-lg font-semibold {% if inventory_summary.public_mismatch_count %}text-amber-100{% else %}text-white{% endif %}">{{ inventory_summary.public_mismatch_count }}</strong>
+        </div>
+        <div class="flex items-baseline justify-between gap-3 rounded-xl {% if inventory_summary.waiting_inbound_count %}bg-sky-500/[0.09] ring-1 ring-inset ring-sky-400/25{% else %}bg-slate-950/45 ring-1 ring-inset ring-slate-800{% endif %} px-3 py-2">
+          <span class="text-[0.82rem] text-slate-300">Ждут приход</span>
+          <strong class="text-lg font-semibold {% if inventory_summary.waiting_inbound_count %}text-sky-100{% else %}text-white{% endif %}">{{ inventory_summary.waiting_inbound_count }}</strong>
+        </div>
+      </div>
     </section>
 
-    <section class="manager-panel rounded-[1.75rem] p-5">
-      <form method="get" data-manager-filter-form class="space-y-4">
+    <section class="rounded-[1.1rem] bg-slate-950/30 px-3 py-3 ring-1 ring-inset ring-slate-800/70">
+      <form method="get" data-manager-filter-form class="space-y-2.5">
         {% if selected_business_view %}
           <input type="hidden" name="business_view" value="{{ selected_business_view }}">
         {% endif %}
-        <div class="grid gap-3 lg:grid-cols-[minmax(0,1.2fr),14rem,auto]">
+        <div class="grid gap-3 lg:grid-cols-[minmax(0,1.3fr),14rem,auto]">
           <div class="space-y-1">
-            <label class="block text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Поиск</label>
-            <input type="text" name="q" value="{{ search }}" placeholder="SKU, товар, вариант или склад" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-2.5 text-sm text-white">
+            <label class="block text-[0.68rem] font-medium uppercase tracking-[0.18em] text-slate-500">Поиск</label>
+            <input type="text" name="q" value="{{ search }}" placeholder="SKU, товар, вариант или склад" class="w-full rounded-xl bg-slate-950/85 px-4 py-2.5 text-sm text-white ring-1 ring-inset ring-slate-700">
           </div>
           <div class="space-y-1">
-            <label class="block text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Склад</label>
-            <select name="warehouse" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-2.5 text-sm text-white">
+            <label class="block text-[0.68rem] font-medium uppercase tracking-[0.18em] text-slate-500">Склад</label>
+            <select name="warehouse" class="w-full rounded-xl bg-slate-950/85 px-4 py-2.5 text-sm text-white ring-1 ring-inset ring-slate-700">
               <option value="">Все склады</option>
               {% for warehouse in warehouse_options %}
                 <option value="{{ warehouse.pk }}" {% if selected_warehouse and selected_warehouse.pk == warehouse.pk %}selected{% endif %}>{{ warehouse.name }}</option>
@@ -65,149 +67,184 @@
             </select>
           </div>
           <div class="flex items-end">
-            <label class="inline-flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2.5 text-sm text-slate-300">
+            <label class="inline-flex items-center gap-2 rounded-xl bg-slate-950/85 px-3 py-2.5 text-sm text-slate-300 ring-1 ring-inset ring-slate-700">
               <input type="checkbox" name="problematic" value="1" {% if only_problematic and not selected_problem_filters %}checked{% endif %} class="h-4 w-4">
-              Любая проблема
+              Только проблемные
             </label>
           </div>
         </div>
-        <div class="space-y-2">
-          <p class="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Проблемные фильтры</p>
-          <div class="flex flex-wrap gap-2">
+        <details class="rounded-xl bg-slate-950/45 px-3 py-2.5 ring-1 ring-inset ring-slate-800/80" {% if selected_problem_filters %}open{% endif %}>
+          <summary class="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium text-slate-300">
+            <span>Расширенные фильтры</span>
+            <span class="rounded-full bg-slate-900/90 px-2.5 py-1 text-[0.7rem] text-slate-500 ring-1 ring-inset ring-slate-700">
+              {% if selected_problem_filters %}{{ selected_problem_filters|length }} выбрано{% else %}точные типы проблем{% endif %}
+            </span>
+          </summary>
+          <div class="mt-2.5 flex flex-wrap gap-2">
             {% for problem_filter in problem_filters %}
-              <label class="inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm {% if problem_filter.param in selected_problem_filters %}border-cyan-400/40 bg-cyan-500/10 text-cyan-100{% else %}border-slate-800 bg-slate-950 text-slate-300{% endif %}">
+              <label class="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm ring-1 ring-inset {% if problem_filter.param in selected_problem_filters %}bg-cyan-500/10 text-cyan-100 ring-cyan-400/35{% else %}bg-slate-950/85 text-slate-300 ring-slate-800{% endif %}">
                 <input type="checkbox" name="{{ problem_filter.param }}" value="1" {% if problem_filter.param in selected_problem_filters %}checked{% endif %} class="h-4 w-4">
                 {{ problem_filter.label }}
               </label>
             {% endfor %}
           </div>
-        </div>
-        <div class="space-y-2">
-          <p class="text-xs font-medium uppercase tracking-[0.18em] text-slate-500">Сохранённые бизнес-срезы</p>
-          <div class="flex flex-wrap gap-2">
-            {% for view in business_views %}
-              <a
-                href="{% url 'manager_portal:inventory' %}?{{ view.query_string }}"
-                class="inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm {% if view.active %}border-cyan-400/40 bg-cyan-500/10 text-cyan-100{% else %}border-slate-800 bg-slate-950 text-slate-300{% endif %}"
-                title="{{ view.description }}"
-              >
-                <span>{{ view.label }}</span>
-                <span class="manager-pill">{{ view.count }}</span>
-              </a>
-            {% endfor %}
-          </div>
-        </div>
+        </details>
       </form>
     </section>
 
-    <section class="manager-panel overflow-hidden rounded-[1.75rem] border border-slate-800/80">
+    <section class="overflow-x-auto">
+      <div class="inline-flex min-w-full items-center gap-1 rounded-[1rem] bg-slate-950/55 p-1 ring-1 ring-inset ring-slate-800" role="tablist" aria-label="Бизнес-срезы инвентаря">
+        {% for view in business_views %}
+          <a
+            href="{% url 'manager_portal:inventory' %}?{{ view.query_string }}"
+            class="inline-flex items-center gap-2 whitespace-nowrap rounded-[0.85rem] px-3 py-1.5 text-sm transition {% if view.active %}bg-cyan-500/12 text-cyan-100 shadow-[inset_0_0_0_1px_rgba(34,211,238,0.24)]{% else %}text-slate-400 hover:bg-slate-900 hover:text-white{% endif %}"
+            title="{{ view.description }}"
+          >
+            <span class="font-medium">{{ view.label }}</span>
+            <span class="rounded-full border border-current/15 bg-black/10 px-2 py-0.5 text-[0.7rem]">{{ view.count }}</span>
+          </a>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="overflow-hidden rounded-[1.25rem] bg-slate-950/70 ring-1 ring-inset ring-slate-800/90">
       <div class="overflow-x-auto">
-        <table class="manager-table w-full min-w-[90rem] text-sm">
+        <table class="manager-table w-full min-w-[78rem] text-sm">
           <thead class="bg-slate-950/70 text-left text-[0.72rem] uppercase tracking-[0.16em] text-slate-500">
             <tr>
-              <th class="px-4 py-3 font-medium">Склад</th>
               <th class="px-4 py-3 font-medium">Товар</th>
+              <th class="px-4 py-3 font-medium">Статус</th>
+              <th class="px-4 py-3 font-medium">Свободно</th>
+              <th class="px-4 py-3 font-medium">В пути</th>
               <th class="px-4 py-3 font-medium">Можно обещать</th>
-              <th class="px-4 py-3 font-medium">Что в пути</th>
-              <th class="px-4 py-3 font-medium">Риск для менеджера</th>
-              <th class="px-4 py-3 font-medium">Какие сделки страдают</th>
+              <th class="px-4 py-3 font-medium">Проблема</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-800/80">
             {% for row in inventory_rows %}
-              <tr class="{% if row.has_problem %}bg-rose-500/[0.04]{% else %}bg-transparent{% endif %} transition hover:bg-slate-950/70">
-                <td class="px-4 py-4 align-top">
-                  <div class="flex items-start gap-3">
+              <tr
+                data-row-toggle-row="{{ row.row_key }}"
+                title="Показать детали"
+                class="cursor-pointer border-l-2 {% if row.has_problem %}border-rose-400/55 bg-rose-500/[0.04]{% else %}border-transparent bg-transparent{% endif %} transition hover:bg-slate-950/70"
+              >
+                <td class="px-4 py-3 align-top">
+                  <div class="flex items-start gap-2.5">
                     <button
                       type="button"
                       data-row-toggle="{{ row.row_key }}"
                       aria-expanded="false"
-                      class="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-700 bg-slate-950 text-slate-300 transition hover:border-cyan-400/40 hover:text-cyan-200"
+                      class="mt-0.5 inline-flex h-7 w-7 items-center justify-center rounded-full bg-slate-950 text-slate-400 ring-1 ring-inset ring-slate-700 transition hover:text-cyan-200 hover:ring-cyan-400/30"
                     >
-                      <span data-row-toggle-icon>+</span>
+                      <span data-row-toggle-icon>▸</span>
                     </button>
-                    <div>
-                      <a href="{% url 'manager_portal:warehouse_detail' row.warehouse_id %}" class="font-medium text-cyan-300 hover:text-cyan-200">{{ row.warehouse_name }}</a>
-                      <p class="mt-1 text-xs text-slate-500">{% if row.public_sync_status_code == 'unlinked' %}Нет связи с сайтом{% else %}На сайте должно быть {{ row.public_expected_qty }}{% endif %}</p>
+                    <div class="max-w-[28rem] min-w-0">
+                      <p class="font-medium text-white">{{ row.product_name }}{% if row.variant_name %} <span class="text-slate-500">/ {{ row.variant_name }}</span>{% endif %}</p>
+                      <p class="mt-0.5 text-xs text-slate-500">
+                        <span>SKU {{ row.sku|default:"—" }}</span>
+                        <span class="mx-1">·</span>
+                        <a href="{% url 'manager_portal:warehouse_detail' row.warehouse_id %}" class="text-cyan-300 hover:text-cyan-200">{{ row.warehouse_name }}</a>
+                      </p>
                     </div>
                   </div>
                 </td>
-                <td class="px-4 py-4 align-top">
-                  <div class="max-w-[24rem]">
-                    <p class="font-medium text-white">{{ row.product_name }}{% if row.variant_name %} <span class="text-slate-500">/ {{ row.variant_name }}</span>{% endif %}</p>
-                    <p class="mt-1 text-xs text-slate-500">SKU {{ row.sku|default:"—" }}</p>
-                    <p class="mt-2 text-xs text-slate-400">{{ row.active_reservations|length }} броней · {{ row.incoming_cargos|length }} входящих грузов</p>
+                <td class="px-4 py-3 align-top">
+                  <div class="space-y-1">
+                    <span class="inline-flex rounded-full border px-3 py-1 text-xs {% if row.row_status.tone == 'rose' %}border-rose-400/25 bg-rose-500/10 text-rose-100{% elif row.row_status.tone == 'amber' %}border-amber-400/25 bg-amber-500/10 text-amber-100{% elif row.row_status.tone == 'sky' %}border-sky-400/25 bg-sky-500/10 text-sky-100{% else %}border-emerald-400/25 bg-emerald-500/10 text-emerald-100{% endif %}">
+                      {{ row.row_status.label }}
+                    </span>
+                    {% if row.public_sync_status_code == 'unlinked' %}
+                      <p class="text-xs text-slate-500">Нет связи с сайтом</p>
+                    {% elif row.public_sync_status_code == 'mismatch' %}
+                      <p class="text-xs text-slate-500">Сайт: {{ row.public_published_qty|default:"—" }} / {{ row.public_expected_qty }}</p>
+                    {% endif %}
                   </div>
                 </td>
-                <td class="px-4 py-4 align-top text-base font-semibold {% if row.available < 0 %}text-rose-300{% elif row.min_stock and row.available < row.min_stock %}text-amber-300{% else %}text-emerald-300{% endif %}">{{ row.available }}</td>
-                <td class="px-4 py-4 align-top">
+                <td class="px-4 py-3 align-top text-base font-semibold {% if row.available < 0 %}text-rose-300{% elif row.min_stock and row.available < row.min_stock %}text-amber-300{% else %}text-emerald-300{% endif %}">{{ row.available }}</td>
+                <td class="px-4 py-3 align-top">
                   <p class="text-base font-semibold text-white">{{ row.inbound }}</p>
-                  <p class="mt-1 text-xs text-slate-500">Свободно после резервов: {{ row.inbound_available }}</p>
-                </td>
-                <td class="px-4 py-4 align-top">
-                  {% if row.problem_types %}
-                    <div class="flex max-w-[17rem] flex-wrap gap-2">
-                      {% for problem in row.problem_types %}
-                        <span class="inline-flex rounded-full border px-3 py-1 text-xs {% if problem.code == 'public_mismatch' or problem.code == 'below_min_stock' or problem.code == 'inbound_fully_allocated' %}border-amber-400/20 bg-amber-500/10 text-amber-100{% else %}border-rose-400/20 bg-rose-500/10 text-rose-100{% endif %}">
-                          {{ problem.label }}
-                        </span>
-                      {% endfor %}
-                    </div>
-                  {% else %}
-                    <span class="text-slate-500">—</span>
+                  {% if row.inbound %}
+                    <p class="mt-0.5 text-xs text-slate-500">Свободно {{ row.inbound_available }}</p>
                   {% endif %}
                 </td>
-                <td class="px-4 py-4 align-top">
-                  <div class="space-y-2">
-                    {% for item in row.linked_deals|slice:":3" %}
-                      <a href="{% url 'manager_portal:deal_detail' item.deal.pk %}" class="block rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-3 hover:border-cyan-400/30">
-                        <div class="flex items-start justify-between gap-3">
-                          <div>
-                            <p class="font-medium text-cyan-300">Заказ #{{ item.deal.order_id }}</p>
-                            <p class="mt-1 text-xs text-slate-400">{{ item.source_label }} · {{ item.deal.customer_name|default:item.deal.order.first_name|default:item.deal.order.phone }}</p>
-                          </div>
-                          <span class="rounded-full border border-slate-700 px-2 py-1 text-[0.7rem] text-slate-300">{{ item.deal.next_step_label }}</span>
-                        </div>
-                      </a>
-                    {% empty %}
-                      <p class="text-sm text-slate-500">Связанных сделок не найдено.</p>
-                    {% endfor %}
-                    {% if row.linked_deals|length > 3 %}
-                      <p class="text-xs text-slate-500">Ещё {{ row.linked_deals|length|add:"-3" }} сделок в раскрытии строки.</p>
+                <td class="px-4 py-3 align-top text-base font-semibold {% if row.promise_capacity > 0 %}text-cyan-200{% else %}text-slate-400{% endif %}">{{ row.promise_capacity }}</td>
+                <td class="px-4 py-3 align-top">
+                  <div class="max-w-[18rem] space-y-1.5">
+                    {% if row.problem_types %}
+                      <div class="flex flex-wrap gap-2">
+                        {% for problem in row.problem_types|slice:":2" %}
+                          <span class="inline-flex rounded-full border px-3 py-1 text-xs {% if problem.code == 'public_mismatch' or problem.code == 'below_min_stock' or problem.code == 'inbound_fully_allocated' %}border-amber-400/20 bg-amber-500/10 text-amber-100{% else %}border-rose-400/20 bg-rose-500/10 text-rose-100{% endif %}">
+                            {{ problem.label }}
+                          </span>
+                        {% endfor %}
+                        {% if row.problem_types|length > 2 %}
+                          <span class="inline-flex rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-300">+{{ row.problem_types|length|add:"-2" }}</span>
+                        {% endif %}
+                      </div>
+                    {% else %}
+                      <p class="text-sm text-slate-500">Без сигнала</p>
+                    {% endif %}
+                    {% if row.linked_deals %}
+                      <p class="text-[0.78rem] text-slate-500">
+                        {% for item in row.linked_deals|slice:":2" %}
+                          <a href="{% url 'manager_portal:deal_detail' item.deal.pk %}" class="text-cyan-300 hover:text-cyan-200">#{{ item.deal.order_id }}</a>{% if not forloop.last %}, {% endif %}
+                        {% endfor %}
+                        {% if row.linked_deals|length > 2 %}и ещё {{ row.linked_deals|length|add:"-2" }}{% endif %}
+                      </p>
                     {% endif %}
                   </div>
                 </td>
               </tr>
               <tr id="inventory-row-detail-{{ row.row_key }}" data-row-detail="{{ row.row_key }}" hidden>
-                <td colspan="6" class="border-t border-slate-800/70 bg-slate-950/70 px-5 py-5">
-                  <div class="mb-4 grid gap-4 xl:grid-cols-5">
-                    <section class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-                      <p class="text-xs uppercase tracking-[0.18em] text-slate-500">On-hand</p>
-                      <p class="mt-2 text-2xl font-semibold text-white">{{ row.on_hand }}</p>
+                <td colspan="6" class="border-t border-slate-800/70 bg-slate-950/70 px-4 py-4">
+                  <div class="mb-3 grid gap-3 xl:grid-cols-[minmax(0,1.6fr),minmax(0,1fr)]">
+                    <section class="rounded-2xl bg-slate-950/65 p-4 ring-1 ring-inset ring-slate-800">
+                      <div class="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Бизнес-объяснение</p>
+                          <p class="mt-2 text-lg font-semibold text-white">{{ row.row_status.label }}</p>
+                          <p class="mt-1.5 max-w-3xl text-sm text-slate-300">{{ row.row_status.detail }}</p>
+                        </div>
+                        <span class="rounded-full border px-3 py-1 text-xs {% if row.row_status.tone == 'rose' %}border-rose-400/25 bg-rose-500/10 text-rose-100{% elif row.row_status.tone == 'amber' %}border-amber-400/25 bg-amber-500/10 text-amber-100{% elif row.row_status.tone == 'sky' %}border-sky-400/25 bg-sky-500/10 text-sky-100{% else %}border-emerald-400/25 bg-emerald-500/10 text-emerald-100{% endif %}">
+                          Показаны причины
+                        </span>
+                      </div>
+                      <div class="mt-3 grid gap-2 lg:grid-cols-2">
+                        {% for reason in row.detail_reasons %}
+                          <div class="rounded-xl bg-slate-900/70 px-3 py-2.5 text-sm text-slate-200 ring-1 ring-inset ring-slate-800">{{ reason }}</div>
+                        {% empty %}
+                          <div class="rounded-xl px-3 py-3 text-sm text-slate-500 ring-1 ring-inset ring-slate-800">Дополнительных причин не найдено.</div>
+                        {% endfor %}
+                      </div>
                     </section>
-                    <section class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-                      <p class="text-xs uppercase tracking-[0.18em] text-slate-500">В резерве</p>
-                      <p class="mt-2 text-2xl font-semibold text-white">{{ row.reserved_on_hand }}</p>
-                    </section>
-                    <section class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-                      <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Мин. остаток</p>
-                      <p class="mt-2 text-2xl font-semibold text-white">{{ row.min_stock }}</p>
-                    </section>
-                    <section class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-                      <p class="text-xs uppercase tracking-[0.18em] text-slate-500">На сайте</p>
-                      <p class="mt-2 text-2xl font-semibold text-white">{% if row.public_published_qty == None %}—{% else %}{{ row.public_published_qty }}{% endif %}</p>
-                      <p class="mt-1 text-xs text-slate-500">Ожидается {{ row.public_expected_qty }}</p>
-                    </section>
-                    <section class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-                      <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Сайт / синхронизация</p>
-                      <p class="mt-2 text-sm font-semibold text-white">{{ row.public_sync_status_label }}</p>
-                      {% if row.public_sync_status_code == 'mismatch' %}
-                        <p class="mt-1 text-xs text-slate-500">Публичный остаток расходится</p>
-                      {% endif %}
+                    <section class="rounded-2xl bg-slate-950/65 p-4 ring-1 ring-inset ring-slate-800">
+                      <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Связка чисел</p>
+                      <div class="mt-3 grid gap-2 sm:grid-cols-2">
+                        <div class="rounded-xl bg-slate-900/70 px-3 py-2.5 ring-1 ring-inset ring-slate-800">
+                          <p class="text-xs uppercase tracking-[0.14em] text-slate-500">Факт</p>
+                          <p class="mt-2 text-2xl font-semibold text-white">{{ row.on_hand }}</p>
+                        </div>
+                        <div class="rounded-xl bg-slate-900/70 px-3 py-2.5 ring-1 ring-inset ring-slate-800">
+                          <p class="text-xs uppercase tracking-[0.14em] text-slate-500">В резерве</p>
+                          <p class="mt-2 text-2xl font-semibold text-white">{{ row.reserved_on_hand }}</p>
+                        </div>
+                        <div class="rounded-xl bg-slate-900/70 px-3 py-2.5 ring-1 ring-inset ring-slate-800">
+                          <p class="text-xs uppercase tracking-[0.14em] text-slate-500">Свободно</p>
+                          <p class="mt-2 text-2xl font-semibold {% if row.available < 0 %}text-rose-300{% elif row.min_stock and row.available < row.min_stock %}text-amber-300{% else %}text-emerald-300{% endif %}">{{ row.available }}</p>
+                        </div>
+                        <div class="rounded-xl bg-slate-900/70 px-3 py-2.5 ring-1 ring-inset ring-slate-800">
+                          <p class="text-xs uppercase tracking-[0.14em] text-slate-500">Можно обещать</p>
+                          <p class="mt-2 text-2xl font-semibold text-cyan-200">{{ row.promise_capacity }}</p>
+                        </div>
+                      </div>
+                      <div class="mt-2.5 rounded-xl bg-slate-900/70 px-3 py-2.5 ring-1 ring-inset ring-slate-800">
+                        <p class="text-xs uppercase tracking-[0.14em] text-slate-500">Сайт</p>
+                        <p class="mt-2 text-sm font-semibold text-white">{{ row.public_sync_status_label }}</p>
+                        <p class="mt-1 text-xs text-slate-500">Опубликовано {% if row.public_published_qty == None %}—{% else %}{{ row.public_published_qty }}{% endif %}, ожидается {{ row.public_expected_qty }}</p>
+                      </div>
                     </section>
                   </div>
-                  <div class="grid gap-4 xl:grid-cols-[1.3fr,1.3fr,1.2fr,1.2fr,0.9fr]">
-                    <section class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                  <div class="grid gap-3 xl:grid-cols-[1.2fr,1.2fr,1.2fr,1fr]">
+                    <section class="rounded-2xl bg-slate-950/65 p-4 ring-1 ring-inset ring-slate-800">
                       <div class="flex items-center justify-between gap-3">
                         <h3 class="text-sm font-semibold text-white">Активные брони</h3>
                         <span class="text-xs text-slate-500">{{ row.active_reservations|length }}</span>
@@ -229,7 +266,7 @@
                       </div>
                     </section>
 
-                    <section class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                    <section class="rounded-2xl bg-slate-950/65 p-4 ring-1 ring-inset ring-slate-800">
                       <div class="flex items-center justify-between gap-3">
                         <h3 class="text-sm font-semibold text-white">Последние движения</h3>
                         <span class="text-xs text-slate-500">{{ row.recent_movements|length }}</span>
@@ -257,7 +294,7 @@
                       </div>
                     </section>
 
-                    <section class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                    <section class="rounded-2xl bg-slate-950/65 p-4 ring-1 ring-inset ring-slate-800">
                       <div class="flex items-center justify-between gap-3">
                         <h3 class="text-sm font-semibold text-white">Входящие грузы</h3>
                         <span class="text-xs text-slate-500">{{ row.incoming_cargos|length }}</span>
@@ -285,9 +322,9 @@
                       </div>
                     </section>
 
-                    <section class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                    <section class="rounded-2xl bg-slate-950/65 p-4 ring-1 ring-inset ring-slate-800">
                       <div class="flex items-center justify-between gap-3">
-                        <h3 class="text-sm font-semibold text-white">Связанные заказы</h3>
+                        <h3 class="text-sm font-semibold text-white">Связанные сделки</h3>
                         <span class="text-xs text-slate-500">{{ row.linked_deals|length }}</span>
                       </div>
                       <div class="mt-3 space-y-3">
@@ -302,13 +339,13 @@
                             </div>
                           </a>
                         {% empty %}
-                          <p class="rounded-xl border border-dashed border-slate-800 px-3 py-4 text-sm text-slate-500">Связанные заказы не найдены.</p>
+                          <p class="rounded-xl border border-dashed border-slate-800 px-3 py-4 text-sm text-slate-500">Связанные сделки не найдены.</p>
                         {% endfor %}
                       </div>
                     </section>
 
                     <section class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-                      <h3 class="text-sm font-semibold text-white">Кто последний менял</h3>
+                      <h3 class="text-sm font-semibold text-white">Последнее изменение</h3>
                       {% if row.last_change %}
                         <div class="mt-3 rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-3">
                           <p class="font-medium text-white">{{ row.last_change.author_name }}</p>

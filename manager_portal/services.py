@@ -69,6 +69,33 @@ INVENTORY_PROBLEM_LABELS = {
     'inbound_fully_allocated': 'Весь входящий остаток уже распределен',
     'public_mismatch': 'Остаток на сайте не совпадает',
 }
+INVENTORY_ROW_STATUS_NORMAL = 'normal'
+INVENTORY_ROW_STATUS_LOW_STOCK = 'low_stock'
+INVENTORY_ROW_STATUS_PROMISE_RISK = 'promise_risk'
+INVENTORY_ROW_STATUS_SITE_MISMATCH = 'site_mismatch'
+INVENTORY_ROW_STATUS_WAITING_INBOUND = 'waiting_inbound'
+INVENTORY_ROW_STATUS_META = {
+    INVENTORY_ROW_STATUS_NORMAL: {
+        'label': 'Норма',
+        'tone': 'emerald',
+    },
+    INVENTORY_ROW_STATUS_LOW_STOCK: {
+        'label': 'Мало остатков',
+        'tone': 'amber',
+    },
+    INVENTORY_ROW_STATUS_PROMISE_RISK: {
+        'label': 'Риск обещания',
+        'tone': 'rose',
+    },
+    INVENTORY_ROW_STATUS_SITE_MISMATCH: {
+        'label': 'Сайт не совпадает',
+        'tone': 'amber',
+    },
+    INVENTORY_ROW_STATUS_WAITING_INBOUND: {
+        'label': 'Ждем приход',
+        'tone': 'sky',
+    },
+}
 INVENTORY_PROBLEM_PRIORITY = (
     'reserved_gt_on_hand',
     'negative_available',
@@ -915,7 +942,11 @@ def recompute_deal_workflow(deal, *, actor=None):
         if current_value != new_value:
             setattr(deal, field_name, new_value)
             update_fields.append(field_name)
-    legacy_status = _website_deal_status_for_order(deal.order, deal_type=deal.deal_type)
+    legacy_status = _website_deal_status_for_order(
+        deal.order,
+        deal_type=deal.deal_type,
+        customer_source=deal.customer_source,
+    )
     if deal.deal_status != legacy_status:
         deal.deal_status = legacy_status
         update_fields.append('deal_status')
@@ -1144,7 +1175,7 @@ def ensure_shipment_for_manager_deal(deal, *, actor=None):
 
 
 def restore_avito_return_to_stock(deal, *, actor=None):
-    if deal is None or deal.deal_type != ManagerDeal.DEAL_AVITO:
+    if deal is None or not deal.is_avito:
         raise ValueError('Возврат на склад доступен только для сделок Avito.')
     if deal.deal_status != ManagerDeal.DEAL_STATUS_RETURNED:
         raise ValueError('Вернуть товар на склад можно только после перевода сделки в этап "Возврат".')
@@ -1651,12 +1682,98 @@ def inventory_summary(rows):
     problem_sku_keys = {row['sku_key'] for row in rows if row.get('has_problem')}
     return {
         'problem_sku_count': len(problem_sku_keys),
+        'sellable_sku_count': sum(1 for row in rows if int(row.get('available') or 0) > 0),
         'negative_available_count': sum(1 for row in rows if 'negative_available' in row.get('problem_codes', [])),
         'below_min_stock_count': sum(1 for row in rows if 'below_min_stock' in row.get('problem_codes', [])),
+        'public_mismatch_count': sum(1 for row in rows if 'public_mismatch' in row.get('problem_codes', [])),
+        'waiting_inbound_count': sum(
+            1
+            for row in rows
+            if int(row.get('available') or 0) <= 0 and int(row.get('inbound_available') or 0) > 0
+        ),
         'total_available': sum(int(row['available'] or 0) for row in rows),
         'total_inbound': sum(int(row['inbound'] or 0) for row in rows),
         'total_inbound_reserved': sum(int(row['inbound_reserved'] or 0) for row in rows),
     }
+
+
+def _inventory_build_row_status(row):
+    problem_codes = set(row.get('problem_codes') or [])
+    available = int(row.get('available') or 0)
+    inbound_available = int(row.get('inbound_available') or 0)
+    reserved_on_hand = int(row.get('reserved_on_hand') or 0)
+    on_hand = int(row.get('on_hand') or 0)
+    public_published_qty = row.get('public_published_qty')
+    public_expected_qty = int(row.get('public_expected_qty') or 0)
+    linked_deals = row.get('linked_deals') or []
+
+    if {'reserved_gt_on_hand', 'negative_available'} & problem_codes:
+        detail = f'Свободный остаток ушел в минус: {available} шт.'
+        if linked_deals:
+            detail = f'{detail} Под риском {len(linked_deals)} сделок.'
+        status_code = INVENTORY_ROW_STATUS_PROMISE_RISK
+    elif 'public_mismatch' in problem_codes:
+        published = '—' if public_published_qty is None else public_published_qty
+        detail = f'На сайте {published}, менеджеру нужно обещать {max(available, 0)} шт.'
+        if public_expected_qty != max(available, 0):
+            detail = f'На сайте {published}, ожидается {public_expected_qty} шт.'
+        status_code = INVENTORY_ROW_STATUS_SITE_MISMATCH
+    elif 'below_min_stock' in problem_codes:
+        detail = f'Свободно {available} шт. при минимуме {int(row.get("min_stock") or 0)} шт.'
+        status_code = INVENTORY_ROW_STATUS_LOW_STOCK
+    elif available <= 0 and inbound_available > 0:
+        eta = _inventory_earliest_incoming_eta(row)
+        detail = f'Сейчас свободного остатка нет, в пути {inbound_available} шт.'
+        if eta:
+            detail = f'{detail} ETA {eta:%d.%m.%Y}.'
+        status_code = INVENTORY_ROW_STATUS_WAITING_INBOUND
+    else:
+        detail = f'На руках {on_hand} шт., в резерве {reserved_on_hand} шт., свободно {available} шт.'
+        status_code = INVENTORY_ROW_STATUS_NORMAL
+
+    meta = INVENTORY_ROW_STATUS_META[status_code]
+    return {
+        'code': status_code,
+        'label': meta['label'],
+        'tone': meta['tone'],
+        'detail': detail,
+    }
+
+
+def _inventory_earliest_incoming_eta(row):
+    incoming_cargos = row.get('incoming_cargos') or []
+    eta_values = [item['cargo'].eta for item in incoming_cargos if item['cargo'].eta]
+    return min(eta_values) if eta_values else None
+
+
+def _inventory_build_detail_reasons(row):
+    reasons = []
+    available = int(row.get('available') or 0)
+    reserved_on_hand = int(row.get('reserved_on_hand') or 0)
+    on_hand = int(row.get('on_hand') or 0)
+    inbound_available = int(row.get('inbound_available') or 0)
+    linked_deals = row.get('linked_deals') or []
+    active_reservations = row.get('active_reservations') or []
+    incoming_cargos = row.get('incoming_cargos') or []
+
+    if reserved_on_hand:
+        reasons.append(f'В резерве {reserved_on_hand} из {on_hand} шт.; свободно сейчас {available} шт.')
+    else:
+        reasons.append(f'На складе {on_hand} шт. без активного резерва; свободно {available} шт.')
+    if linked_deals:
+        reasons.append(f'С позицией связаны сделки: {len(linked_deals)}.')
+    if active_reservations:
+        reasons.append(f'Активных броней по позиции: {len(active_reservations)}.')
+    if incoming_cargos:
+        eta = _inventory_earliest_incoming_eta(row)
+        if eta:
+            reasons.append(f'Свободный приход {max(inbound_available, 0)} шт. ожидается к {eta:%d.%m.%Y}.')
+        else:
+            reasons.append(f'В пути остается {max(inbound_available, 0)} шт., дата прихода пока не указана.')
+    if row.get('public_sync_status_code') == INVENTORY_PUBLIC_SYNC_STATUS_MISMATCH:
+        published = '—' if row.get('public_published_qty') is None else row.get('public_published_qty')
+        reasons.append(f'На сайте опубликовано {published} шт., ожидается {row.get("public_expected_qty")}.')
+    return reasons[:4]
 
 
 def enrich_inventory_rows(rows):
@@ -1808,6 +1925,9 @@ def enrich_inventory_rows(rows):
             key=lambda item: item['deal'].order.created_at,
             reverse=True,
         )[:5]
+        row['promise_capacity'] = max(int(row.get('available') or 0), 0) + max(int(row.get('inbound_available') or 0), 0)
+        row['row_status'] = _inventory_build_row_status(row)
+        row['detail_reasons'] = _inventory_build_detail_reasons(row)
         row['has_detail_data'] = bool(
             row['active_reservations']
             or row['recent_movements']
@@ -2124,11 +2244,12 @@ def _website_deal_type_for_order(order):
     return ManagerDeal.DEAL_SALE_FROM_STOCK
 
 
-def _website_deal_status_for_order(order, *, deal_type):
+def _website_deal_status_for_order(order, *, deal_type, customer_source=''):
+    is_avito_workflow = ManagerDeal.uses_avito_workflow(deal_type, customer_source)
     if order.status == Order.STATUS_CANCELLED:
-        return ManagerDeal.DEAL_STATUS_RETURNED if deal_type == ManagerDeal.DEAL_AVITO else ManagerDeal.DEAL_STATUS_CANCELLED
+        return ManagerDeal.DEAL_STATUS_RETURNED if is_avito_workflow else ManagerDeal.DEAL_STATUS_CANCELLED
     if order.status == Order.STATUS_DONE:
-        return ManagerDeal.DEAL_STATUS_RECEIVED_BY_CUSTOMER if deal_type == ManagerDeal.DEAL_AVITO else ManagerDeal.DEAL_STATUS_COMPLETED
+        return ManagerDeal.DEAL_STATUS_RECEIVED_BY_CUSTOMER if is_avito_workflow else ManagerDeal.DEAL_STATUS_COMPLETED
     if order.status == Order.STATUS_SHIPPING:
         return ManagerDeal.DEAL_STATUS_SHIPPED
 
@@ -2142,7 +2263,7 @@ def _website_deal_status_for_order(order, *, deal_type):
             return ManagerDeal.DEAL_STATUS_PREPAYMENT_RECEIVED
         return ManagerDeal.DEAL_STATUS_NEW_REQUEST
 
-    if deal_type == ManagerDeal.DEAL_AVITO:
+    if is_avito_workflow:
         return ManagerDeal.DEAL_STATUS_NEW
 
     if order.payment_status == Order.PAYMENT_STATUS_PAID:
@@ -2154,7 +2275,7 @@ def _website_deal_status_for_order(order, *, deal_type):
 
 def ensure_manager_deal_for_order(order, *, customer_source=ManagerDeal.SOURCE_WEBSITE, responsible_manager=None):
     deal_type = _website_deal_type_for_order(order)
-    deal_status = _website_deal_status_for_order(order, deal_type=deal_type)
+    deal_status = _website_deal_status_for_order(order, deal_type=deal_type, customer_source=customer_source)
     defaults = {
         'responsible_manager': responsible_manager,
         'assigned_at': timezone.now() if responsible_manager else None,
