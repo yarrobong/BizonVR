@@ -33,12 +33,12 @@
 
   <div class="manager-deal-card-statuses">
     <div class="manager-status-line">
-      <span class="manager-status-line-label">Primary status</span>
+      <span class="manager-status-line-label">Основной статус</span>
       <span class="{{ deal.primary_status|manager_semantic_badge_classes }}">{{ deal.primary_status.label }}</span>
       <span class="manager-status-line-detail">{{ deal.primary_status.detail }}</span>
     </div>
     <div class="manager-status-line">
-      <span class="manager-status-line-label">Secondary status</span>
+      <span class="manager-status-line-label">Вторичный статус</span>
       <span class="{{ deal.secondary_status|manager_semantic_badge_classes }}">{{ deal.secondary_status.label }}</span>
       <span class="manager-status-line-detail">{{ deal.secondary_status.detail }}</span>
     </div>
