@@ -2991,6 +2991,134 @@ html:has(.manager-shell) {
   }
 }
 
+/* ===== KANBAN NAV BAR ===== */
+
+.manager-kanban-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.manager-kanban-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid rgba(51, 65, 85, 0.78);
+  border-radius: 9999px;
+  background: rgba(2, 6, 23, 0.62);
+  color: rgb(226 232 240);
+  font-size: 0.82rem;
+  line-height: 1;
+  padding: 0.52rem 0.85rem;
+  cursor: pointer;
+  transition: border-color 180ms ease, background 180ms ease, transform 180ms ease;
+  white-space: nowrap;
+  min-width: 7rem;
+}
+
+.manager-kanban-nav-btn-prev {
+  justify-content: flex-end;
+}
+
+.manager-kanban-nav-btn-next {
+  justify-content: flex-start;
+}
+
+.manager-kanban-nav-btn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(34, 211, 238, 0.42);
+  background: rgba(15, 23, 42, 0.92);
+}
+
+.manager-kanban-nav-btn:disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.manager-kanban-nav-arrow {
+  font-size: 1rem;
+  line-height: 1;
+  color: rgba(34, 211, 238, 0.85);
+  flex-shrink: 0;
+}
+
+.manager-kanban-nav-label {
+  color: rgb(148 163 184);
+  font-size: 0.78rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 8rem;
+}
+
+.manager-kanban-nav-indicator {
+  flex: 1;
+  text-align: center;
+  font-size: 0.78rem;
+  color: rgb(100 116 139);
+  white-space: nowrap;
+}
+
+/* ===== KANBAN BOARD SCROLLER (fade-right overlay) ===== */
+
+.manager-deal-board-scroller {
+  position: relative;
+  overflow: hidden;
+}
+
+.manager-deal-board-fade-right {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 3.5rem;
+  height: 100%;
+  background: linear-gradient(to right, transparent, rgba(2, 6, 23, 0.82));
+  pointer-events: none;
+  border-radius: 0 1.5rem 1.5rem 0;
+  transition: opacity 200ms ease;
+}
+
+.manager-deal-board-scroller.is-at-end .manager-deal-board-fade-right {
+  opacity: 0;
+}
+
+/* ===== DEAL CARD EXPAND / COLLAPSE ===== */
+
+.manager-deal-card-expand-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border: 1px solid rgba(51, 65, 85, 0.78);
+  border-radius: 9999px;
+  background: rgba(2, 6, 23, 0.5);
+  color: rgb(148 163 184);
+  font-size: 0.78rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color 150ms ease, background 150ms ease, transform 200ms ease;
+  flex-shrink: 0;
+}
+
+.manager-deal-card-expand-btn:hover {
+  border-color: rgba(34, 211, 238, 0.38);
+  background: rgba(15, 23, 42, 0.9);
+  color: rgb(226 232 240);
+}
+
+.manager-deal-card-expand-btn[aria-expanded="true"] [data-card-expand-icon] {
+  display: inline-block;
+  transform: rotate(180deg);
+}
+
+.manager-deal-card-details {
+  overflow: hidden;
+}
+
+.manager-deal-card-details[hidden] {
+  display: none;
+}
+
 /* ===== NEW ICON SIDEBAR DESIGN ===== */
 
 /* Shell layout: content wrapper takes the remaining column */

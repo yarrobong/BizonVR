@@ -2384,7 +2384,54 @@
       return;
     }
     const viewport = board.querySelector('[data-board-viewport]');
+    const scroller = board.querySelector('[data-board-scroller]');
     const controlsScope = root.matches?.('[data-manager-deal-board]') ? document : root;
+    const navEl = controlsScope.querySelector('[data-kanban-nav]');
+    const indicatorEl = navEl?.querySelector('[data-nav-indicator]');
+    const prevLabelEl = navEl?.querySelector('[data-nav-prev-label]');
+    const nextLabelEl = navEl?.querySelector('[data-nav-next-label]');
+    const prevBtn = controlsScope.querySelector('[data-board-scroll="prev"]');
+    const nextBtn = controlsScope.querySelector('[data-board-scroll="next"]');
+
+    const allColumns = board ? Array.from(board.querySelectorAll('[data-kanban-column]')) : [];
+    const totalColumns = allColumns.length;
+
+    const updateNavState = () => {
+      if (!viewport || !totalColumns) return;
+      // Find the first column whose left edge is at or past the viewport's left edge
+      const viewportLeft = viewport.scrollLeft;
+      const viewportRight = viewportLeft + viewport.clientWidth;
+      let firstVisible = 0;
+      for (let i = 0; i < allColumns.length; i++) {
+        if (allColumns[i].offsetLeft + allColumns[i].offsetWidth / 2 >= viewportLeft) {
+          firstVisible = i;
+          break;
+        }
+      }
+      const displayIndex = firstVisible + 1;
+      if (indicatorEl) {
+        indicatorEl.textContent = `Этап ${displayIndex} из ${totalColumns}`;
+      }
+      if (prevLabelEl) {
+        prevLabelEl.textContent = firstVisible > 0 ? allColumns[firstVisible - 1].dataset.columnLabel || '' : '';
+      }
+      if (nextLabelEl) {
+        const nextIdx = firstVisible + 1;
+        nextLabelEl.textContent = nextIdx < totalColumns ? allColumns[nextIdx].dataset.columnLabel || '' : '';
+      }
+      if (prevBtn) prevBtn.disabled = viewportLeft <= 0;
+      if (nextBtn) nextBtn.disabled = viewportRight >= viewport.scrollWidth - 2;
+      // Fade: hide right fade when scrolled to end
+      if (scroller) {
+        scroller.classList.toggle('is-at-end', viewportRight >= viewport.scrollWidth - 8);
+      }
+    };
+
+    if (viewport) {
+      viewport.addEventListener('scroll', updateNavState, {passive: true});
+      updateNavState();
+    }
+
     controlsScope.querySelectorAll('[data-board-scroll]').forEach((button) => {
       if (button.dataset.managerBound === '1') {
         return;
@@ -2395,10 +2442,40 @@
           return;
         }
         const direction = button.dataset.boardScroll === 'prev' ? -1 : 1;
-        const step = Math.max(Math.round(viewport.clientWidth * 0.92), 280);
-        viewport.scrollBy({left: direction * step, behavior: 'smooth'});
+        // Scroll by exactly one column width
+        const firstCol = allColumns[0];
+        const colWidth = firstCol ? firstCol.offsetWidth + 11 : Math.max(Math.round(viewport.clientWidth * 0.92), 280);
+        viewport.scrollBy({left: direction * colWidth, behavior: 'smooth'});
       });
     });
+
+    // Drag-scroll with mouse on desktop
+    if (viewport && !viewport.dataset.dragScrollBound) {
+      viewport.dataset.dragScrollBound = '1';
+      let isDragging = false;
+      let startX = 0;
+      let startScrollLeft = 0;
+      viewport.addEventListener('mousedown', (e) => {
+        // Only initiate drag if not clicking a card link or button
+        if (e.target.closest('a, button, [draggable="true"]')) return;
+        isDragging = true;
+        startX = e.clientX;
+        startScrollLeft = viewport.scrollLeft;
+        viewport.style.cursor = 'grabbing';
+        viewport.style.userSelect = 'none';
+      });
+      document.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        const dx = e.clientX - startX;
+        viewport.scrollLeft = startScrollLeft - dx;
+      });
+      document.addEventListener('mouseup', () => {
+        if (!isDragging) return;
+        isDragging = false;
+        viewport.style.cursor = '';
+        viewport.style.userSelect = '';
+      });
+    }
 
     let draggingCard = null;
     const csrfToken = getCookie('csrftoken');
@@ -2496,6 +2573,18 @@
           column.classList.remove('is-drop-target');
         });
       });
+
+      // Progressive disclosure: expand/collapse card details
+      const expandBtn = card.querySelector('[data-card-expand]');
+      const detailsEl = card.querySelector('[data-card-details]');
+      if (expandBtn && detailsEl) {
+        expandBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const expanded = expandBtn.getAttribute('aria-expanded') === 'true';
+          expandBtn.setAttribute('aria-expanded', String(!expanded));
+          detailsEl.hidden = expanded;
+        });
+      }
     });
 
     board.querySelectorAll('[data-kanban-column]').forEach((column) => {

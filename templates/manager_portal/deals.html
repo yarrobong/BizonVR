@@ -223,12 +223,17 @@
     <section class="manager-panel manager-deals-content-panel rounded-[1.75rem] p-4 lg:p-5">
       {% if current_view_mode == 'kanban' %}
       <div class="manager-deals-surface-head">
-        {% if current_view_mode == 'kanban' %}
-          <div class="flex flex-wrap items-center gap-2">
-            <button type="button" class="manager-inline-action" data-board-scroll="prev">← Этап назад</button>
-            <button type="button" class="manager-inline-action" data-board-scroll="next">Этап вперед →</button>
-          </div>
-        {% endif %}
+        <nav class="manager-kanban-nav" data-kanban-nav aria-label="Навигация по этапам канбана">
+          <button type="button" class="manager-kanban-nav-btn manager-kanban-nav-btn-prev" data-board-scroll="prev" aria-label="Предыдущий этап">
+            <span class="manager-kanban-nav-arrow" aria-hidden="true">←</span>
+            <span class="manager-kanban-nav-label" data-nav-prev-label></span>
+          </button>
+          <span class="manager-kanban-nav-indicator" data-nav-indicator aria-live="polite">Этап 1 из {{ deal_kanban_columns|length }}</span>
+          <button type="button" class="manager-kanban-nav-btn manager-kanban-nav-btn-next" data-board-scroll="next" aria-label="Следующий этап">
+            <span class="manager-kanban-nav-label" data-nav-next-label></span>
+            <span class="manager-kanban-nav-arrow" aria-hidden="true">→</span>
+          </button>
+        </nav>
       </div>
       {% endif %}
 
@@ -269,28 +274,31 @@
             data-manager-deal-board
             data-return-query="{{ current_query_string }}"
           >
-            <div class="manager-deal-board-viewport" data-board-viewport>
-              <div class="manager-deal-board-track">
-                {% for column in deal_kanban_columns %}
-                  <section class="manager-deal-column" data-kanban-column data-case-status="{{ column.key }}">
-                    <div class="manager-deal-column-header">
-                      <div>
-                        <p class="manager-deal-column-title">{{ column.label }}</p>
-                        <p class="manager-deal-column-subtitle">Перетащите карточку для смены этапа.</p>
+            <div class="manager-deal-board-scroller" data-board-scroller>
+              <div class="manager-deal-board-viewport" data-board-viewport>
+                <div class="manager-deal-board-track">
+                  {% for column in deal_kanban_columns %}
+                    <section class="manager-deal-column" data-kanban-column data-case-status="{{ column.key }}" data-column-index="{{ forloop.counter0 }}" data-column-label="{{ column.label }}">
+                      <div class="manager-deal-column-header">
+                        <div>
+                          <p class="manager-deal-column-title">{{ column.label }}</p>
+                          <p class="manager-deal-column-subtitle">Перетащите карточку для смены этапа.</p>
+                        </div>
+                        <span class="manager-queue-chip-count manager-deal-column-count" data-kanban-count>{{ column.count }}</span>
                       </div>
-                      <span class="manager-queue-chip-count manager-deal-column-count" data-kanban-count>{{ column.count }}</span>
-                    </div>
-                    <div class="manager-deal-column-body" data-kanban-column-body>
-                      {% for deal in column.deals %}
-                        {% include "manager_portal/_deal_kanban_card.html" with deal=deal current_query_string=current_query_string %}
-                      {% endfor %}
-                      <div class="manager-deal-column-empty {% if column.deals %}hidden{% endif %}" data-kanban-empty {% if column.deals %}hidden{% endif %}>
-                        Здесь пока нет сделок.
+                      <div class="manager-deal-column-body" data-kanban-column-body>
+                        {% for deal in column.deals %}
+                          {% include "manager_portal/_deal_kanban_card.html" with deal=deal current_query_string=current_query_string %}
+                        {% endfor %}
+                        <div class="manager-deal-column-empty {% if column.deals %}hidden{% endif %}" data-kanban-empty {% if column.deals %}hidden{% endif %}>
+                          Здесь пока нет сделок.
+                        </div>
                       </div>
-                    </div>
-                  </section>
-                {% endfor %}
+                    </section>
+                  {% endfor %}
+                </div>
               </div>
+              <div class="manager-deal-board-fade-right" aria-hidden="true"></div>
             </div>
           </div>
         {% else %}
