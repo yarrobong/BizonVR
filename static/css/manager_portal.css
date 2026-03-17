@@ -3002,7 +3002,7 @@ html:has(.manager-shell) {
   overflow: hidden;
 }
 
-/* Desktop sidebar base */
+/* Desktop sidebar base — overrides the generic .manager-sidebar above */
 .manager-sidebar {
   position: sticky;
   top: 0;
@@ -3014,13 +3014,16 @@ html:has(.manager-shell) {
   transition: width 0.22s ease;
 }
 
-.manager-sidebar-inner {
-  display: flex;
-  flex-direction: column;
+/* Desktop sidebar inner — scoped so the mobile .manager-sidebar-inner keeps its padding/gap */
+.manager-sidebar .manager-sidebar-inner {
+  position: static;
+  min-height: unset;
   height: 100%;
   overflow: hidden;
   width: 15rem;
   min-width: 0;
+  gap: 0;
+  padding: 0;
 }
 
 /* Sidebar header */
