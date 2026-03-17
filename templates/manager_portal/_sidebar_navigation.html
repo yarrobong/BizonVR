@@ -1,0 +1,38 @@
+<nav class="manager-sidebar-nav" aria-label="Навигация менеджера">
+  {% for group in manager_sidebar_groups %}
+    <section class="manager-sidebar-group" aria-labelledby="manager-sidebar-group-{{ group.key }}">
+      <div class="manager-sidebar-group-header">
+        <p id="manager-sidebar-group-{{ group.key }}" class="manager-sidebar-group-title">{{ group.label }}</p>
+      </div>
+      <div class="manager-sidebar-group-items">
+        {% for item in group.items %}
+          {% if item.enabled %}
+            <a
+              href="{% url item.url_name %}"
+              class="manager-sidebar-link {% if item.active %}manager-sidebar-link-active{% endif %}"
+              title="{{ item.label }}"
+              aria-label="{{ item.label }}"
+              {% if item.active %}aria-current="page"{% endif %}
+            >
+              <span class="manager-sidebar-link-icon" aria-hidden="true">
+                {% include "manager_portal/_sidebar_icon.html" with icon=item.icon only %}
+              </span>
+              <span class="manager-sidebar-link-copy">
+                <span class="manager-sidebar-link-label">{{ item.label }}</span>
+              </span>
+            </a>
+          {% else %}
+            <span class="manager-sidebar-link manager-sidebar-link-disabled" aria-disabled="true" title="{{ item.label }}">
+              <span class="manager-sidebar-link-icon" aria-hidden="true">
+                {% include "manager_portal/_sidebar_icon.html" with icon=item.icon only %}
+              </span>
+              <span class="manager-sidebar-link-copy">
+                <span class="manager-sidebar-link-label">{{ item.label }}</span>
+              </span>
+            </span>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </section>
+  {% endfor %}
+</nav>

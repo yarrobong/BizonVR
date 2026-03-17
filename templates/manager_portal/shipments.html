@@ -3,99 +3,242 @@
 {% block title %}Отгрузки{% endblock %}
 
 {% block content %}
+  {% url 'manager_portal:reservation_list' as reservation_registry_url %}
   <div class="space-y-6">
     <div>
-      <h2 class="text-4xl font-semibold">Что отправить</h2>
-      <p class="mt-2 text-slate-400">Реестр документов отгрузки и очередь по активным броням, которые еще не были доведены до shipment-документа.</p>
+      <h2 class="text-2xl md:text-4xl font-semibold">Что отправить</h2>
     </div>
 
-    <section class="manager-panel rounded-[1.75rem] p-6">
-      <form method="get" data-manager-filter-form class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {% include "manager_portal/_form_fields.html" with form=filter_form %}
-        <div class="xl:col-span-4 flex flex-wrap gap-3">
-          <a href="{% url 'manager_portal:shipments' %}" class="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800">Сбросить</a>
-        </div>
-      </form>
-    </section>
+    {% if show_empty_state_only %}
+      {% include "manager_portal/_empty_state.html" with empty_state_title="Отгрузок пока нет" empty_state_description="Когда появятся активные брони или созданные shipment-документы, они отобразятся здесь." empty_state_action_label="Открыть бронирования" empty_state_action_url=reservation_registry_url %}
+    {% else %}
+      {% if show_filter_panel %}
+        {% include "manager_portal/_list_filters.html" with form=filter_form grid_classes="grid gap-4 md:grid-cols-2 xl:grid-cols-4" %}
+      {% endif %}
 
-    <section class="grid gap-4">
-      {% for shipment in shipments %}
-        <a href="{% url 'manager_portal:shipment_detail' shipment.pk %}" class="manager-panel rounded-[1.75rem] p-5 hover:border-cyan-400/30">
-          <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <h3 class="text-lg font-semibold">{% firstof shipment.code shipment.pk %}</h3>
-              <p class="mt-1 text-sm text-slate-300">{% firstof shipment.short_label shipment.title shipment.client.name %}</p>
-              <p class="mt-1 text-sm text-slate-500">{% if shipment.order %}Заказ #{{ shipment.order.pk }} · {% endif %}{{ shipment.get_status_display }}</p>
-            </div>
-            <div class="flex flex-wrap gap-2">
-              <span class="manager-pill">Источник: {{ shipment.source_warehouse|default:"—" }}</span>
-              <span class="manager-pill">Назначение: {{ shipment.target_warehouse|default:"—" }}</span>
-              {% if shipment.tracking_number %}<span class="manager-pill">Трек: {{ shipment.tracking_number }}</span>{% endif %}
-            </div>
-          </div>
-        </a>
-      {% empty %}
-        <div class="manager-empty rounded-[1.75rem] p-8 text-slate-400">Документов отгрузки пока нет.</div>
-      {% endfor %}
-    </section>
-
-    {% if view_mode == 'items' %}
-      <section class="manager-panel rounded-[1.75rem] overflow-hidden">
-        <div class="overflow-x-auto">
-          <table class="manager-table w-full min-w-[72rem] text-sm">
+      <section class="space-y-4">
+        {% manager_table table_class="hidden w-full min-w-[78rem] text-sm md:table" %}
             <thead class="text-left text-slate-400">
               <tr>
+                <th class="px-4 py-4 font-medium">Отгрузка</th>
                 <th class="px-4 py-4 font-medium">Клиент</th>
-                <th class="px-4 py-4 font-medium">Товар</th>
-                <th class="px-4 py-4 font-medium">Количество</th>
+                <th class="px-4 py-4 font-medium">Статус</th>
+                <th class="px-4 py-4 font-medium">Заказ</th>
                 <th class="px-4 py-4 font-medium">Источник</th>
                 <th class="px-4 py-4 font-medium">Назначение</th>
-                <th class="px-4 py-4 font-medium">Бронь</th>
+                <th class="px-4 py-4 text-right font-medium">Действия</th>
               </tr>
             </thead>
-            <tbody class="divide-y divide-slate-800">
-              {% for row in rows %}
-                <tr>
-                  <td class="px-4 py-4">{{ row.client.name }}</td>
-                  <td class="px-4 py-4">{{ row.product.name }}{% if row.variant %} <span class="text-slate-500">/ {{ row.variant.name }}</span>{% endif %}</td>
-                  <td class="px-4 py-4">{{ row.quantity }}</td>
-                  <td class="px-4 py-4">{{ row.source_label }}</td>
-                  <td class="px-4 py-4">{{ row.target_warehouse|default:"—" }}</td>
-                  <td class="px-4 py-4"><a href="{% url 'manager_portal:reservation_detail' row.reservation.pk %}" class="text-cyan-300 hover:text-cyan-200">{% firstof row.reservation.code row.reservation.pk %}</a></td>
+            <tbody>
+              {% for shipment in shipments %}
+                <tr class="transition hover:bg-slate-900/60">
+                  <td class="px-4 py-4 align-top">
+                    <p class="font-semibold text-white">{% firstof shipment.code shipment.pk %}</p>
+                    <p class="mt-1 text-xs text-slate-500">{% if shipment.tracking_number %}Трек {{ shipment.tracking_number }}{% else %}Трек не указан{% endif %}</p>
+                  </td>
+                  <td class="px-4 py-4 align-top">
+                    <p class="font-medium text-white">{{ shipment.client.name }}</p>
+                    <p class="mt-1 text-xs text-slate-500">{% firstof shipment.short_label shipment.title shipment.delivery_provider_name "Без подписи" %}</p>
+                  </td>
+                  <td class="px-4 py-4 align-top">{% manager_semantic_status shipment as shipment_status %}<span class="{{ shipment_status|manager_semantic_badge_classes }}"><span class="sr-only">Статус:</span> {{ shipment.get_status_display }}</span></td>
+                  <td class="px-4 py-4 align-top text-slate-300">{% if shipment.order %}#{{ shipment.order.pk }}{% else %}—{% endif %}</td>
+                  <td class="px-4 py-4 align-top text-slate-300">{{ shipment.source_warehouse|default:"—" }}</td>
+                  <td class="px-4 py-4 align-top text-slate-300">{{ shipment.target_warehouse|default:"—" }}</td>
+                  <td class="px-4 py-4 align-top">
+                    <div class="flex justify-end">
+                      <a href="{% url 'manager_portal:shipment_detail' shipment.pk %}" class="rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-100 transition hover:border-cyan-400/30 hover:bg-slate-800">Открыть</a>
+                    </div>
+                  </td>
                 </tr>
               {% empty %}
-                <tr><td colspan="6" class="px-4 py-10 text-center text-slate-400">Нет активных броней для отгрузки.</td></tr>
+                {% include "manager_portal/_empty_state.html" with colspan=7 empty_state_title="Документы отгрузки не найдены" empty_state_description="Попробуйте изменить условия поиска или проверьте связанные брони." %}
               {% endfor %}
             </tbody>
-          </table>
+        {% endmanager_table %}
+
+        <div class="block md:hidden">
+          {% for shipment in shipments %}
+            <article class="manager-responsive-card mb-3 rounded-lg border border-slate-700 bg-slate-800 p-4">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <p class="text-lg font-semibold text-white">{% firstof shipment.code shipment.pk %}</p>
+                  <p class="mt-1 text-sm text-slate-300">{{ shipment.client.name }}</p>
+                </div>
+                {% manager_semantic_status shipment as shipment_status %}<span class="{{ shipment_status|manager_semantic_badge_classes }} shrink-0">{{ shipment.get_status_display }}</span>
+              </div>
+              <div class="mt-4 grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Заказ</p>
+                  <p class="mt-1 text-slate-100">{% if shipment.order %}#{{ shipment.order.pk }}{% else %}—{% endif %}</p>
+                </div>
+                <div>
+                  <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Трек</p>
+                  <p class="mt-1 text-slate-100">{{ shipment.tracking_number|default:"—" }}</p>
+                </div>
+                <div>
+                  <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Источник</p>
+                  <p class="mt-1 text-slate-100">{{ shipment.source_warehouse|default:"—" }}</p>
+                </div>
+                <div>
+                  <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Назначение</p>
+                  <p class="mt-1 text-slate-100">{{ shipment.target_warehouse|default:"—" }}</p>
+                </div>
+              </div>
+              <div class="mt-4">
+                <a href="{% url 'manager_portal:shipment_detail' shipment.pk %}" class="inline-flex w-full items-center justify-center rounded-lg border border-slate-600 px-3 py-2 text-sm font-medium text-slate-100 transition hover:border-cyan-400/30 hover:bg-slate-700/70">Открыть</a>
+              </div>
+            </article>
+          {% empty %}
+            {% include "manager_portal/_empty_state.html" with empty_state_title="Документы отгрузки не найдены" empty_state_description="Попробуйте изменить условия поиска или проверьте связанные брони." %}
+          {% endfor %}
         </div>
       </section>
-    {% else %}
-      <section class="grid gap-4">
-        {% for group in grouped_rows %}
-          <div class="manager-panel rounded-[1.75rem] p-5">
-            <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-              <div>
-                <h3 class="text-lg font-semibold">{{ group.client.name }}</h3>
-                <p class="mt-1 text-sm text-slate-400">{% firstof group.reservation.code group.reservation.pk %} · {{ group.source_label }} · {{ group.items_total }} шт.</p>
-              </div>
-              <div class="flex flex-wrap gap-2">
-                <span class="manager-pill">Назначение: {{ group.target_warehouse|default:"—" }}</span>
-                <a href="{% url 'manager_portal:reservation_detail' group.reservation.pk %}" class="rounded-xl border border-slate-700 px-3 py-2 text-xs hover:bg-slate-800">Открыть бронь</a>
-              </div>
-            </div>
-            <div class="mt-5 grid gap-3 md:grid-cols-2">
-              {% for item in group.items %}
-                <div class="rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3">
-                  {{ item.product.name }}{% if item.variant %} <span class="text-slate-500">/ {{ item.variant.name }}</span>{% endif %} · {{ item.quantity }} шт.
+
+      {% if view_mode == 'items' %}
+        <section class="manager-panel rounded-[1.75rem] overflow-hidden">
+          {% manager_table table_class="hidden w-full min-w-[80rem] text-sm md:table" %}
+              <thead class="text-left text-slate-400">
+                <tr>
+                  <th class="px-4 py-4 font-medium">Клиент</th>
+                  <th class="px-4 py-4 font-medium">Товар</th>
+                  <th class="px-4 py-4 font-medium">Статус</th>
+                  <th class="px-4 py-4 font-medium">Количество</th>
+                  <th class="px-4 py-4 font-medium">Источник</th>
+                  <th class="px-4 py-4 font-medium">Назначение</th>
+                  <th class="px-4 py-4 text-right font-medium">Действия</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in rows %}
+                  <tr class="transition hover:bg-slate-900/60">
+                    <td class="px-4 py-4">{{ row.client.name }}</td>
+                    <td class="px-4 py-4">{{ row.product.name }}{% if row.variant %} <span class="text-slate-500">/ {{ row.variant.name }}</span>{% endif %}</td>
+                    <td class="px-4 py-4"><span class="manager-semantic-badge manager-semantic-badge-active">Ждет отгрузки</span></td>
+                    <td class="px-4 py-4">{{ row.quantity }}</td>
+                    <td class="px-4 py-4">{{ row.source_label }}</td>
+                    <td class="px-4 py-4">{{ row.target_warehouse|default:"—" }}</td>
+                    <td class="px-4 py-4">
+                      <div class="flex justify-end">
+                        <a href="{% url 'manager_portal:reservation_detail' row.reservation.pk %}" class="rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-100 transition hover:border-cyan-400/30 hover:bg-slate-800">Открыть</a>
+                      </div>
+                    </td>
+                  </tr>
+                {% empty %}
+                  {% include "manager_portal/_empty_state.html" with colspan=7 reset_query_string="view_mode=items" empty_state_title="Нет активных броней для отгрузки" empty_state_description="Попробуйте изменить фильтры или переключиться на другой режим." %}
+                {% endfor %}
+              </tbody>
+          {% endmanager_table %}
+
+          <div class="block md:hidden p-4">
+            {% for row in rows %}
+              <article class="manager-responsive-card mb-3 rounded-lg border border-slate-700 bg-slate-800 p-4">
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <p class="text-lg font-semibold text-white">{{ row.client.name }}</p>
+                    <p class="mt-1 text-sm text-slate-300">{{ row.product.name }}{% if row.variant %} <span class="text-slate-500">/ {{ row.variant.name }}</span>{% endif %}</p>
+                  </div>
+                  <span class="manager-semantic-badge manager-semantic-badge-active shrink-0">Ждет отгрузки</span>
                 </div>
-              {% endfor %}
-            </div>
+                <div class="mt-4 grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Количество</p>
+                    <p class="mt-1 text-slate-100">{{ row.quantity }}</p>
+                  </div>
+                  <div>
+                    <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Бронь</p>
+                    <p class="mt-1 text-slate-100">{% firstof row.reservation.code row.reservation.pk %}</p>
+                  </div>
+                  <div>
+                    <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Источник</p>
+                    <p class="mt-1 text-slate-100">{{ row.source_label }}</p>
+                  </div>
+                  <div>
+                    <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Назначение</p>
+                    <p class="mt-1 text-slate-100">{{ row.target_warehouse|default:"—" }}</p>
+                  </div>
+                </div>
+                <div class="mt-4">
+                  <a href="{% url 'manager_portal:reservation_detail' row.reservation.pk %}" class="inline-flex w-full items-center justify-center rounded-lg border border-slate-600 px-3 py-2 text-sm font-medium text-slate-100 transition hover:border-cyan-400/30 hover:bg-slate-700/70">Открыть</a>
+                </div>
+              </article>
+            {% empty %}
+              {% include "manager_portal/_empty_state.html" with reset_query_string="view_mode=items" empty_state_title="Нет активных броней для отгрузки" empty_state_description="Попробуйте изменить фильтры или переключиться на другой режим." %}
+            {% endfor %}
           </div>
-        {% empty %}
-          <div class="manager-empty rounded-[1.75rem] p-8 text-slate-400">Нет активных броней для отгрузки.</div>
-        {% endfor %}
-      </section>
+        </section>
+      {% else %}
+        <section class="manager-panel rounded-[1.75rem] overflow-hidden">
+          {% manager_table table_class="hidden w-full min-w-[78rem] text-sm md:table" %}
+              <thead class="text-left text-slate-400">
+                <tr>
+                  <th class="px-4 py-4 font-medium">Клиент</th>
+                  <th class="px-4 py-4 font-medium">Бронь</th>
+                  <th class="px-4 py-4 font-medium">Статус</th>
+                  <th class="px-4 py-4 font-medium">Источник</th>
+                  <th class="px-4 py-4 font-medium">Назначение</th>
+                  <th class="px-4 py-4 font-medium">Позиции</th>
+                  <th class="px-4 py-4 text-right font-medium">Действия</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for group in grouped_rows %}
+                  <tr class="transition hover:bg-slate-900/60">
+                    <td class="px-4 py-4 align-top text-white">{{ group.client.name }}</td>
+                    <td class="px-4 py-4 align-top text-slate-300">{% firstof group.reservation.code group.reservation.pk %}</td>
+                    <td class="px-4 py-4 align-top"><span class="manager-semantic-badge manager-semantic-badge-active">Ждет отгрузки</span></td>
+                    <td class="px-4 py-4 align-top text-slate-300">{{ group.source_label }}</td>
+                    <td class="px-4 py-4 align-top text-slate-300">{{ group.target_warehouse|default:"—" }}</td>
+                    <td class="px-4 py-4 align-top text-slate-300">{{ group.items_total }}</td>
+                    <td class="px-4 py-4 align-top">
+                      <div class="flex justify-end">
+                        <a href="{% url 'manager_portal:reservation_detail' group.reservation.pk %}" class="rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-100 transition hover:border-cyan-400/30 hover:bg-slate-800">Открыть</a>
+                      </div>
+                    </td>
+                  </tr>
+                {% empty %}
+                  {% include "manager_portal/_empty_state.html" with colspan=7 reset_query_string="view_mode=reservation" empty_state_title="Нет активных броней для отгрузки" empty_state_description="В этом режиме появятся сгруппированные к отгрузке резервы." %}
+                {% endfor %}
+              </tbody>
+          {% endmanager_table %}
+
+          <div class="block md:hidden p-4">
+            {% for group in grouped_rows %}
+              <article class="manager-responsive-card mb-3 rounded-lg border border-slate-700 bg-slate-800 p-4">
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <p class="text-lg font-semibold text-white">{{ group.client.name }}</p>
+                    <p class="mt-1 text-sm text-slate-300">{% firstof group.reservation.code group.reservation.pk %}</p>
+                  </div>
+                  <span class="manager-semantic-badge manager-semantic-badge-active shrink-0">Ждет отгрузки</span>
+                </div>
+                <div class="mt-4 grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Источник</p>
+                    <p class="mt-1 text-slate-100">{{ group.source_label }}</p>
+                  </div>
+                  <div>
+                    <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Назначение</p>
+                    <p class="mt-1 text-slate-100">{{ group.target_warehouse|default:"—" }}</p>
+                  </div>
+                  <div>
+                    <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Позиции</p>
+                    <p class="mt-1 text-slate-100">{{ group.items_total }}</p>
+                  </div>
+                  <div>
+                    <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Товаров</p>
+                    <p class="mt-1 text-slate-100">{{ group.items|length }}</p>
+                  </div>
+                </div>
+                <div class="mt-4">
+                  <a href="{% url 'manager_portal:reservation_detail' group.reservation.pk %}" class="inline-flex w-full items-center justify-center rounded-lg border border-slate-600 px-3 py-2 text-sm font-medium text-slate-100 transition hover:border-cyan-400/30 hover:bg-slate-700/70">Открыть</a>
+                </div>
+              </article>
+            {% empty %}
+              {% include "manager_portal/_empty_state.html" with reset_query_string="view_mode=reservation" empty_state_title="Нет активных броней для отгрузки" empty_state_description="В этом режиме появятся сгруппированные к отгрузке резервы." %}
+            {% endfor %}
+          </div>
+        </section>
+      {% endif %}
     {% endif %}
   </div>
 {% endblock %}

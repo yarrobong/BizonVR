@@ -17,6 +17,14 @@ from accounts.services import normalize_email, normalize_phone
 from catalog.models import Product, ProductStock, ProductVariant
 from orders.models import Order
 from orders.services import sync_order_state_side_effects
+from .status_system import (
+    SEMANTIC_TONE_ACTIVE,
+    SEMANTIC_TONE_ATTENTION,
+    SEMANTIC_TONE_COMPLETE,
+    SEMANTIC_TONE_CRITICAL,
+    SEMANTIC_TONE_UNKNOWN,
+    build_semantic_status,
+)
 
 from .models import (
     Cargo,
@@ -77,23 +85,23 @@ INVENTORY_ROW_STATUS_WAITING_INBOUND = 'waiting_inbound'
 INVENTORY_ROW_STATUS_META = {
     INVENTORY_ROW_STATUS_NORMAL: {
         'label': 'Норма',
-        'tone': 'emerald',
+        'tone': SEMANTIC_TONE_COMPLETE,
     },
     INVENTORY_ROW_STATUS_LOW_STOCK: {
         'label': 'Мало остатков',
-        'tone': 'amber',
+        'tone': SEMANTIC_TONE_ATTENTION,
     },
     INVENTORY_ROW_STATUS_PROMISE_RISK: {
         'label': 'Риск обещания',
-        'tone': 'rose',
+        'tone': SEMANTIC_TONE_CRITICAL,
     },
     INVENTORY_ROW_STATUS_SITE_MISMATCH: {
         'label': 'Сайт не совпадает',
-        'tone': 'amber',
+        'tone': SEMANTIC_TONE_ATTENTION,
     },
     INVENTORY_ROW_STATUS_WAITING_INBOUND: {
         'label': 'Ждем приход',
-        'tone': 'sky',
+        'tone': SEMANTIC_TONE_ACTIVE,
     },
 }
 INVENTORY_PROBLEM_PRIORITY = (
@@ -455,16 +463,13 @@ def resolve_manager_client(
 def order_items_snapshot(order):
     snapshot = []
     for item in order.items.select_related('product', 'variant').all():
-        item_name = item.product.name
-        if item.variant_id:
-            item_name = f'{item_name} ({item.variant.name})'
         snapshot.append(
             {
                 'order_item_id': item.id,
                 'product_id': item.product_id,
                 'variant_id': item.variant_id,
-                'sku': ((item.variant.sku if item.variant_id else '') or item.product.sku or '').strip(),
-                'name': item_name,
+                'sku': item.sku,
+                'name': item.display_name,
                 'quantity': int(item.quantity or 0),
                 'unit': 'шт.',
                 'price': str(item.unit_price),
@@ -491,12 +496,12 @@ def reservation_coverage_snapshot(order):
         lines.append(
             {
                 'order_item_id': item.id,
-                'product_name': item.product.name,
-                'variant_name': item.variant.name if item.variant_id else '',
+                'product_name': item.resolved_product_name,
+                'variant_name': item.resolved_variant_name,
                 'ordered_quantity': item.quantity,
                 'reserved_quantity': reserved_quantity,
                 'missing_quantity': missing_quantity,
-                'is_fully_reserved': missing_quantity == 0 or item.is_on_request,
+                'is_fully_reserved': missing_quantity == 0 or item.is_on_request or not item.product_id,
             }
         )
     return {
@@ -624,6 +629,8 @@ def reservation_prefill_lines_for_deal(deal, *, exclude_reservation=None):
 
     lines = []
     for order_item in deal.order.items.select_related('product', 'variant').all():
+        if not order_item.product_id:
+            continue
         reserved_quantity = existing_reserved.get(order_item.id, 0)
         missing_quantity = max(int(order_item.quantity or 0) - reserved_quantity, 0)
         if missing_quantity <= 0:
@@ -633,8 +640,8 @@ def reservation_prefill_lines_for_deal(deal, *, exclude_reservation=None):
                 'order_item': order_item,
                 'product': order_item.product,
                 'variant': order_item.variant,
-                'product_name': order_item.product.name,
-                'variant_name': order_item.variant_name or (order_item.variant.name if order_item.variant_id else ''),
+                'product_name': order_item.resolved_product_name,
+                'variant_name': order_item.resolved_variant_name,
                 'ordered_quantity': int(order_item.quantity or 0),
                 'reserved_quantity': reserved_quantity,
                 'missing_quantity': missing_quantity,
@@ -801,6 +808,8 @@ def _deal_stock_conflict(deal):
         return False
     inventory_totals = _inventory_totals_map()
     for item in deal.order.items.select_related('product', 'variant'):
+        if not item.product_id:
+            continue
         available = inventory_totals.get((item.product_id, item.variant_id or 0), 0)
         if available < item.quantity:
             return True
@@ -1238,6 +1247,8 @@ def restore_avito_return_to_stock(deal, *, actor=None):
             if warehouse is None:
                 raise ValueError('Для возврата без резерва сначала укажите склад в сделке.')
             for order_item in deal.order.items.select_related('product', 'variant'):
+                if not order_item.product_id:
+                    continue
                 receipt_inventory(
                     warehouse=warehouse,
                     product=order_item.product,
@@ -1293,11 +1304,17 @@ def _document_counterparty_snapshot(*, deal, client):
             'name': deal.business_company_name or (client.name if client else '') or deal.customer_name,
             'email': deal.business_email or (client.email if client else ''),
             'phone': deal.business_phone or (client.phone if client else ''),
+            'telegram': deal.business_telegram or (client.telegram if client else ''),
+            'whatsapp': deal.business_whatsapp,
             'inn': deal.business_inn,
             'kpp': deal.business_kpp,
             'ogrn': deal.business_ogrn,
             'ogrnip': '',
             'address': deal.business_legal_address or deal.business_delivery_address or (client.address if client else ''),
+            'checking_account': deal.business_checking_account,
+            'bank_name': deal.business_bank_name,
+            'bik': deal.business_bik,
+            'correspondent_account': deal.business_correspondent_account,
         }
     return {
         'name': (client.name if client else '') or deal.customer_name,
@@ -1740,6 +1757,57 @@ def _inventory_build_row_status(row):
     }
 
 
+def _inventory_problem_tone(problem_code):
+    if problem_code in {'negative_available', 'reserved_gt_on_hand'}:
+        return SEMANTIC_TONE_CRITICAL
+    if problem_code in {'below_min_stock', 'inbound_fully_allocated', 'public_mismatch'}:
+        return SEMANTIC_TONE_ATTENTION
+    return SEMANTIC_TONE_UNKNOWN
+
+
+def _inventory_build_sync_status(row):
+    status_code = row.get('public_sync_status_code')
+    tone_map = {
+        INVENTORY_PUBLIC_SYNC_STATUS_SYNCED: SEMANTIC_TONE_COMPLETE,
+        INVENTORY_PUBLIC_SYNC_STATUS_MISMATCH: SEMANTIC_TONE_ATTENTION,
+        INVENTORY_PUBLIC_SYNC_STATUS_UNLINKED: SEMANTIC_TONE_UNKNOWN,
+    }
+    detail = ''
+    if status_code == INVENTORY_PUBLIC_SYNC_STATUS_MISMATCH:
+        published = '—' if row.get('public_published_qty') is None else row.get('public_published_qty')
+        detail = f'На сайте {published}, ожидается {row.get("public_expected_qty")}.'
+    elif status_code == INVENTORY_PUBLIC_SYNC_STATUS_UNLINKED:
+        detail = 'Позиция не связана с публичным остатком.'
+    return build_semantic_status(
+        row.get('public_sync_status_label') or 'Нет данных',
+        tone=tone_map.get(status_code, SEMANTIC_TONE_UNKNOWN),
+        detail=detail,
+    )
+
+
+def _inventory_build_risk_summary(row):
+    problems = row.get('problem_types') or []
+    if problems:
+        primary = problems[0]
+        tone = _inventory_problem_tone(primary.get('code'))
+        detail_parts = []
+        if len(problems) > 1:
+            detail_parts.append(f'Еще {len(problems) - 1}.')
+        linked_deals = row.get('linked_deals') or []
+        if linked_deals:
+            detail_parts.append(f'Связано сделок: {len(linked_deals)}.')
+        return build_semantic_status(
+            primary.get('label') or 'Нужна проверка',
+            tone=tone,
+            detail=' '.join(detail_parts).strip(),
+        )
+
+    if row.get('linked_deals'):
+        return build_semantic_status('Рисков нет', tone=SEMANTIC_TONE_COMPLETE, detail='Есть связанные сделки.')
+
+    return build_semantic_status('Рисков нет', tone=SEMANTIC_TONE_COMPLETE, detail='Критичных сигналов нет.')
+
+
 def _inventory_earliest_incoming_eta(row):
     incoming_cargos = row.get('incoming_cargos') or []
     eta_values = [item['cargo'].eta for item in incoming_cargos if item['cargo'].eta]
@@ -1925,8 +1993,14 @@ def enrich_inventory_rows(rows):
             key=lambda item: item['deal'].order.created_at,
             reverse=True,
         )[:5]
+        row['is_low_stock'] = (
+            int(row.get('min_stock') or 0) > 0
+            and int(row.get('available') or 0) < int(row.get('min_stock') or 0)
+        )
         row['promise_capacity'] = max(int(row.get('available') or 0), 0) + max(int(row.get('inbound_available') or 0), 0)
         row['row_status'] = _inventory_build_row_status(row)
+        row['public_sync_status'] = _inventory_build_sync_status(row)
+        row['risk_summary'] = _inventory_build_risk_summary(row)
         row['detail_reasons'] = _inventory_build_detail_reasons(row)
         row['has_detail_data'] = bool(
             row['active_reservations']
@@ -2228,12 +2302,15 @@ def reservation_effective_warehouse(reservation):
 
 
 def ensure_manager_client_for_order(order):
+    business_name = (order.business_company_name or '').strip()
+    business_phone = (order.business_phone or '').strip()
     return resolve_manager_client(
         user=order.user,
-        name=order.shipping_contact_name or f'Клиент по заказу #{order.pk}',
-        phone=order.shipping_phone or order.phone,
+        name=business_name or order.shipping_contact_name or f'Клиент по заказу #{order.pk}',
+        phone=business_phone or order.shipping_phone or order.phone,
         email=order.email,
         address=order.display_address,
+        telegram=(order.business_telegram or '').strip(),
         order=order,
     )
 
@@ -2273,9 +2350,30 @@ def _website_deal_status_for_order(order, *, deal_type, customer_source=''):
     return ManagerDeal.DEAL_STATUS_AWAITING_PAYMENT
 
 
+def _order_business_deal_defaults(order):
+    return {
+        'buyer_type': ManagerDeal.BUYER_BUSINESS,
+        'business_company_name': (order.business_company_name or '').strip(),
+        'business_inn': (order.business_inn or '').strip(),
+        'business_kpp': (order.business_kpp or '').strip(),
+        'business_contact_person': order.shipping_contact_name,
+        'business_phone': (order.business_phone or order.shipping_phone or order.phone or '').strip(),
+        'business_telegram': (order.business_telegram or '').strip(),
+        'business_whatsapp': (order.business_whatsapp or '').strip(),
+        'business_email': (order.email or '').strip(),
+        'business_city': (order.city_text or '').strip(),
+        'business_delivery_address': (order.display_address or '').strip(),
+        'business_checking_account': (order.business_checking_account or '').strip(),
+        'business_bank_name': (order.business_bank_name or '').strip(),
+        'business_bik': (order.business_bik or '').strip(),
+        'business_correspondent_account': (order.business_correspondent_account or '').strip(),
+    }
+
+
 def ensure_manager_deal_for_order(order, *, customer_source=ManagerDeal.SOURCE_WEBSITE, responsible_manager=None):
     deal_type = _website_deal_type_for_order(order)
     deal_status = _website_deal_status_for_order(order, deal_type=deal_type, customer_source=customer_source)
+    initial_paid_amount = order.total_with_delivery if order.payment_status == Order.PAYMENT_STATUS_PAID else Decimal('0')
     defaults = {
         'responsible_manager': responsible_manager,
         'assigned_at': timezone.now() if responsible_manager else None,
@@ -2291,16 +2389,19 @@ def ensure_manager_deal_for_order(order, *, customer_source=ManagerDeal.SOURCE_W
         'individual_city': order.city_text,
         'individual_delivery_address': order.display_address,
         'customer_request': ', '.join(
-            item.product.name for item in order.items.select_related('product').all()
+            item.display_name for item in order.items.select_related('product', 'variant').all()
         ),
         'delivery_method': _manager_delivery_method_for_order(order),
         'delivery_to_city': order.city_text,
         'delivery_full_address': order.display_address,
         'tracking_number': '',
         'shipment_status': ManagerDeal.SHIPMENT_DRAFT,
-        'prepayment_amount': order.total_with_delivery if order.payment_status == Order.PAYMENT_STATUS_PAID else Decimal('0'),
+        'prepayment_amount': initial_paid_amount,
+        'last_payment_at': order.updated_at if initial_paid_amount > MONEY_ZERO else None,
         'last_activity_at': order.created_at or timezone.now(),
     }
+    if order.payment_method == Order.PAYMENT_METHOD_MANAGER_PAYMENT:
+        defaults.update(_order_business_deal_defaults(order))
     deal, created = ManagerDeal.objects.get_or_create(order=order, defaults=defaults)
     if created:
         ensure_initial_deal_activity(deal)
@@ -2324,17 +2425,29 @@ def ensure_manager_deal_for_order(order, *, customer_source=ManagerDeal.SOURCE_W
             if getattr(deal, field) != value:
                 setattr(deal, field, value)
                 update_fields.append(field)
-        paid_amount = order.total_with_delivery if order.payment_status == Order.PAYMENT_STATUS_PAID else Decimal('0')
-        if deal.prepayment_amount != paid_amount:
-            deal.prepayment_amount = paid_amount
-            update_fields.append('prepayment_amount')
         if responsible_manager is not None and deal.responsible_manager_id is None:
             deal.responsible_manager = responsible_manager
             deal.assigned_at = timezone.now()
             update_fields.extend(['responsible_manager', 'assigned_at'])
+    else:
+        business_defaults = _order_business_deal_defaults(order)
+        if deal.buyer_type != ManagerDeal.BUYER_BUSINESS:
+            deal.buyer_type = ManagerDeal.BUYER_BUSINESS
+            update_fields.append('buyer_type')
+        for field, value in business_defaults.items():
+            if field == 'buyer_type' or not value:
+                continue
+            if getattr(deal, field) != value and not getattr(deal, field):
+                setattr(deal, field, value)
+                update_fields.append(field)
     if update_fields:
         update_fields.append('updated_at')
         deal.save(update_fields=update_fields)
+    set_manager_deal_paid_amount(
+        deal,
+        paid_amount=initial_paid_amount,
+        changed_at=order.updated_at,
+    )
     ensure_initial_deal_activity(deal)
     recompute_deal_workflow(deal)
     return deal
@@ -2396,7 +2509,7 @@ def ensure_order_reservations(order, client, *, warehouse=None, author=None, str
         if created:
             created_reservations.append(reservation)
         for order_item in order_items:
-            if order_item.is_on_request:
+            if order_item.is_on_request or not order_item.product_id:
                 continue
             remaining = max(order_item.quantity - existing_reserved[order_item.id], 0)
             if remaining <= 0:
@@ -2405,7 +2518,7 @@ def ensure_order_reservations(order, client, *, warehouse=None, author=None, str
             quantity_to_reserve = remaining if strict else min(remaining, max(available, 0))
             if strict and quantity_to_reserve < remaining:
                 raise ValueError(
-                    f'Недостаточно остатка на складе "{warehouse.name}" для "{order_item.product.name}".'
+                    f'Недостаточно остатка на складе "{warehouse.name}" для "{order_item.display_name}".'
                 )
             if quantity_to_reserve <= 0:
                 continue
@@ -2438,7 +2551,7 @@ def ensure_order_reservations(order, client, *, warehouse=None, author=None, str
         candidates.sort(key=lambda value: (-value['available'], value['warehouse_name']))
 
     for order_item in order_items:
-        if order_item.is_on_request:
+        if order_item.is_on_request or not order_item.product_id:
             continue
         remaining = max(order_item.quantity - existing_reserved[order_item.id], 0)
         if remaining <= 0:
@@ -2446,7 +2559,7 @@ def ensure_order_reservations(order, client, *, warehouse=None, author=None, str
         candidates = rows_by_item.get((order_item.product_id, order_item.variant_id or 0), [])
         total_available = sum(int(candidate['available']) for candidate in candidates)
         if strict and total_available < remaining:
-            raise ValueError(f'Недостаточно доступного остатка для "{order_item.product.name}".')
+            raise ValueError(f'Недостаточно доступного остатка для "{order_item.display_name}".')
         for candidate in candidates:
             if remaining <= 0:
                 break
@@ -2680,6 +2793,8 @@ def create_or_update_shipment_for_order(order, *, author=None, reservation=None,
             )
     else:
         for order_item in order.items.select_related('product', 'variant'):
+            if not order_item.product_id:
+                continue
             ShipmentItem.objects.create(
                 shipment=shipment,
                 order_item=order_item,
@@ -2859,6 +2974,31 @@ def _quantize_money(value):
     return Decimal(value or 0).quantize(MONEY_QUANT)
 
 
+def set_manager_deal_paid_amount(deal, *, paid_amount, changed_at=None, save=True):
+    normalized_amount = _quantize_money(paid_amount)
+    current_amount = _quantize_money(deal.prepayment_amount)
+    amount_changed = current_amount != normalized_amount
+    update_fields = []
+
+    if amount_changed:
+        deal.prepayment_amount = normalized_amount
+        update_fields.append('prepayment_amount')
+
+    if normalized_amount > MONEY_ZERO:
+        if amount_changed or deal.last_payment_at is None:
+            payment_time = changed_at or timezone.now()
+            if deal.last_payment_at != payment_time:
+                deal.last_payment_at = payment_time
+                update_fields.append('last_payment_at')
+    elif deal.last_payment_at is not None:
+        deal.last_payment_at = None
+        update_fields.append('last_payment_at')
+
+    if save and update_fields:
+        deal.save(update_fields=[*update_fields, 'updated_at'])
+    return bool(update_fields)
+
+
 def _quantize_percent(value):
     return Decimal(value or 0).quantize(PERCENT_QUANT)
 
@@ -2877,14 +3017,71 @@ def finance_period_bounds(*, year, month):
 def finance_month_label(*, year, month):
     year = int(year)
     month = int(month)
+    month_names = (
+        'январь',
+        'февраль',
+        'март',
+        'апрель',
+        'май',
+        'июнь',
+        'июль',
+        'август',
+        'сентябрь',
+        'октябрь',
+        'ноябрь',
+        'декабрь',
+    )
     if month == 0:
-        return str(year)
-    return f'{year}-{month:02d}'
+        return f'{year} год'
+    return f'{month_names[month - 1]} {year}'
+
+
+def _normalize_finance_payment_state(value):
+    return str(value or '').strip().lower()
+
+
+def _finance_cash_metrics_for_deal(deal):
+    revenue = Decimal(deal.revenue or 0)
+    paid_amount = MONEY_ZERO
+    debt_amount = MONEY_ZERO
+    overdue_amount = MONEY_ZERO
+
+    if deal.manager_deal_id:
+        paid_amount = Decimal(deal.manager_deal.prepayment_amount or 0)
+        debt_amount = revenue - paid_amount
+        if debt_amount < 0:
+            debt_amount = MONEY_ZERO
+        problem_flags = set(deal.manager_deal.problem_flags or [])
+        is_payment_open = deal.manager_deal.payment_state in {
+            ManagerDeal.PAYMENT_STATE_UNPAID,
+            ManagerDeal.PAYMENT_STATE_PARTIAL,
+        }
+        if (
+            debt_amount > 0
+            and ManagerDeal.PROBLEM_FLAG_SLA_OVERDUE in problem_flags
+            and (
+                deal.manager_deal.next_step_code == ManagerDeal.NEXT_STEP_NEEDS_PAYMENT
+                or is_payment_open
+            )
+        ):
+            overdue_amount = debt_amount
+        return paid_amount, debt_amount, overdue_amount
+
+    payment_state = _normalize_finance_payment_state(deal.payment_state)
+    if payment_state in {Order.PAYMENT_STATUS_PAID, 'finished'}:
+        paid_amount = revenue
+    elif payment_state not in {Order.PAYMENT_STATUS_REFUNDED, 'refunded'}:
+        debt_amount = revenue
+    return paid_amount, debt_amount, overdue_amount
 
 
 def finance_dashboard_data(*, year, month):
     start, end = finance_period_bounds(year=year, month=month)
-    deals = FinanceDeal.objects.filter(date__gte=start, date__lt=end).select_related('deal_type', 'created_by')
+    deals = FinanceDeal.objects.filter(date__gte=start, date__lt=end).select_related(
+        'deal_type',
+        'created_by',
+        'manager_deal',
+    )
     expenses = FinanceExpense.objects.filter(date__gte=start, date__lt=end).select_related('category', 'deal', 'created_by')
     payouts = FinancePayout.objects.filter(date__gte=start, date__lt=end).select_related('created_by')
 
@@ -2908,13 +3105,53 @@ def finance_dashboard_data(*, year, month):
 
     income_map = defaultdict(lambda: MONEY_ZERO)
     expense_map = defaultdict(lambda: MONEY_ZERO)
+    cash_income_map = defaultdict(lambda: MONEY_ZERO)
+    operating_expense_map = defaultdict(lambda: MONEY_ZERO)
+    payout_map = defaultdict(lambda: MONEY_ZERO)
+    paid_total = MONEY_ZERO
+    receivables_total = MONEY_ZERO
+    overdue_total = MONEY_ZERO
+    paid_case_count = 0
+    receivables_case_count = 0
+    overdue_case_count = 0
     for deal in deals:
         income_map[deal.date] += deal.revenue
+        paid_amount, debt_amount, overdue_amount = _finance_cash_metrics_for_deal(deal)
+        cash_income_map[deal.date] += paid_amount
+        paid_total += paid_amount
+        receivables_total += debt_amount
+        overdue_total += overdue_amount
+        if paid_amount > 0:
+            paid_case_count += 1
+        if debt_amount > 0:
+            receivables_case_count += 1
+        if overdue_amount > 0:
+            overdue_case_count += 1
     for expense in expenses:
         expense_map[expense.date] += expense.amount
+        if expense.expense_side == FinanceExpense.SIDE_OURS:
+            operating_expense_map[expense.date] += expense.amount
+    for payout in payouts:
+        payout_map[payout.date] += payout.amount
+
     daily_rows = []
+    cashflow_rows = []
+    cashflow_chart = {
+        'labels': [],
+        'income': [],
+        'operating_expense': [],
+        'payout': [],
+        'balance': [],
+    }
+    running_balance = MONEY_ZERO
     current = start
     while current < end:
+        income = _quantize_money(cash_income_map[current])
+        operating_expense = _quantize_money(operating_expense_map[current])
+        payout = _quantize_money(payout_map[current])
+        outflow = operating_expense + payout
+        net = income - outflow
+        running_balance = _quantize_money(running_balance + net)
         daily_rows.append(
             {
                 'date': current,
@@ -2922,7 +3159,30 @@ def finance_dashboard_data(*, year, month):
                 'expense': _quantize_money(expense_map[current]),
             }
         )
+        cashflow_rows.append(
+            {
+                'date': current,
+                'income': income,
+                'operating_expense': operating_expense,
+                'payout': payout,
+                'outflow': _quantize_money(outflow),
+                'net': _quantize_money(net),
+                'balance': running_balance,
+            }
+        )
+        cashflow_chart['labels'].append(current.strftime('%d.%m'))
+        cashflow_chart['income'].append(str(income))
+        cashflow_chart['operating_expense'].append(str(operating_expense))
+        cashflow_chart['payout'].append(str(payout))
+        cashflow_chart['balance'].append(str(running_balance))
         current += timedelta(days=1)
+
+    cash_outflow_total = total_opex_display + already_paid
+    cash_balance = paid_total - cash_outflow_total
+    cashflow_activity_rows = [
+        row for row in cashflow_rows
+        if row['income'] or row['operating_expense'] or row['payout'] or row['net']
+    ]
 
     return {
         'year': int(year),
@@ -2944,8 +3204,20 @@ def finance_dashboard_data(*, year, month):
         'partner_profit': _quantize_money(partner_profit),
         'already_paid': _quantize_money(already_paid),
         'final_payout': _quantize_money(final_payout),
+        'cash_balance': _quantize_money(cash_balance),
+        'cash_outflow_total': _quantize_money(cash_outflow_total),
+        'paid_total': _quantize_money(paid_total),
+        'receivables_total': _quantize_money(receivables_total),
+        'overdue_total': _quantize_money(overdue_total),
+        'paid_case_count': int(paid_case_count),
+        'receivables_case_count': int(receivables_case_count),
+        'overdue_case_count': int(overdue_case_count),
         'partner_rows': partner_rows,
         'daily_rows': daily_rows,
+        'cashflow_rows': cashflow_rows,
+        'cashflow_activity_rows': cashflow_activity_rows,
+        'cashflow_chart': cashflow_chart,
+        'has_cashflow_activity': bool(cashflow_activity_rows),
     }
 
 
@@ -3027,6 +3299,10 @@ def build_finance_report_zip(*, year, month):
                     {'metric': 'cost_of_goods', 'value': data['cost_of_goods']},
                     {'metric': 'company_profit', 'value': data['company_profit']},
                     {'metric': 'net_profit', 'value': data['net_profit']},
+                    {'metric': 'cash_balance', 'value': data['cash_balance']},
+                    {'metric': 'receivables_total', 'value': data['receivables_total']},
+                    {'metric': 'paid_total', 'value': data['paid_total']},
+                    {'metric': 'overdue_total', 'value': data['overdue_total']},
                     {'metric': 'our_opex', 'value': data['total_opex']},
                     {'metric': 'partner_opex', 'value': data['partner_paid_physically']},
                     {'metric': 'partner_profit', 'value': data['partner_profit']},

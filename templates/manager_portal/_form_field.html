@@ -1,0 +1,63 @@
+{% if field.field.widget.input_type == 'hidden' %}
+  {{ field }}
+{% elif field.field.widget.input_type == 'checkbox' %}
+  <div class="manager-form-field manager-form-field-checkbox space-y-2{% if field.errors %} is-invalid{% endif %}">
+    <div class="flex items-start justify-between gap-3">
+      <label for="{{ field.id_for_label }}" class="manager-checkbox-field">
+        {{ field }}
+        <span class="text-sm font-medium text-slate-200">{{ field.label }}</span>
+      </label>
+      {% if not compact %}
+        <span class="manager-field-badge manager-field-badge-{{ field.field.manager_status_tone }}">{{ field.field.manager_status_label }}</span>
+      {% endif %}
+    </div>
+    {% if field.field.manager_helper_text and not compact %}
+      <p class="manager-field-helper">{{ field.field.manager_helper_text }}</p>
+    {% endif %}
+    {% if field.field.manager_autofill_note and not compact %}
+      <p class="manager-field-note">{{ field.field.manager_autofill_note }}</p>
+    {% endif %}
+    {% if field.errors %}
+      <p class="manager-field-error">{{ field.errors|join:', ' }}</p>
+    {% endif %}
+  </div>
+{% else %}
+  <div class="manager-form-field space-y-2{% if field.errors %} is-invalid{% endif %}">
+    <div class="manager-field-header">
+      <label for="{{ field.id_for_label }}" class="manager-field-label">{{ field.label }}</label>
+      {% if not compact %}
+        <span class="manager-field-badge manager-field-badge-{{ field.field.manager_status_tone }}">{{ field.field.manager_status_label }}</span>
+      {% endif %}
+    </div>
+    {% with field_classes=field.field.widget.attrs.class|default:'' %}
+      {% if 'manager-date-picker-input' in field_classes %}
+        <div class="manager-date-picker-shell manager-field-control">
+          {{ field }}
+          <button
+            type="button"
+            class="manager-date-picker-trigger"
+            data-manager-date-picker-trigger
+            aria-label="Открыть календарь"
+          >
+            <svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 2.75v2.5M14 2.75v2.5M3.75 7.25h12.5M5.5 5h9A1.75 1.75 0 0 1 16.25 6.75v8.75A1.75 1.75 0 0 1 14.5 17.25h-9a1.75 1.75 0 0 1-1.75-1.75V6.75A1.75 1.75 0 0 1 5.5 5Z" />
+            </svg>
+          </button>
+        </div>
+      {% else %}
+        <div class="manager-field-control">
+          {{ field }}
+        </div>
+      {% endif %}
+    {% endwith %}
+    {% if field.field.manager_helper_text and not compact %}
+      <p class="manager-field-helper">{{ field.field.manager_helper_text }}</p>
+    {% endif %}
+    {% if field.field.manager_autofill_note and not compact %}
+      <p class="manager-field-note">{{ field.field.manager_autofill_note }}</p>
+    {% endif %}
+    {% if field.errors %}
+      <p class="manager-field-error">{{ field.errors|join:', ' }}</p>
+    {% endif %}
+  </div>
+{% endif %}

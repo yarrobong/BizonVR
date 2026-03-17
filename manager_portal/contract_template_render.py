@@ -100,9 +100,7 @@ def _build_contract_items(document) -> list[dict]:
     if not items and document.linked_order_id:
         order = document.linked_order
         for i, oi in enumerate(order.items.select_related('product', 'variant').all(), start=1):
-            name = oi.product.name
-            if oi.variant_id:
-                name = f'{name} ({oi.variant.name})'
+            name = oi.display_name
             unit_price = oi.unit_price or oi.sale_price or oi.purchase_price or Decimal('0')
             qty = int(oi.quantity or 1)
             line_total = (unit_price * qty) if unit_price else Decimal('0')

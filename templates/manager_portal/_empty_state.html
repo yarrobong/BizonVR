@@ -1,0 +1,63 @@
+{% with empty_state_path=reset_path|default:request.path %}
+  {% if colspan %}
+    <tr>
+      <td colspan="{{ colspan }}" class="px-4 py-6">
+        <div class="manager-empty rounded-[1.75rem] px-6 py-16 text-center opacity-70">
+          <div class="mx-auto max-w-md">
+            <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-slate-700 bg-slate-950/80 text-slate-300">
+              <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 5.25h16.5M5.25 5.25V18a.75.75 0 0 0 .75.75h12a.75.75 0 0 0 .75-.75V5.25M9 9.75h6m-6 4.5h4.5" />
+              </svg>
+            </div>
+            <h3 class="mt-4 text-lg font-semibold text-white">{{ empty_state_title|default:"Нет данных" }}</h3>
+            <p class="mt-2 text-sm text-slate-400">{{ empty_state_description|default:"Нет записей за выбранный период" }}</p>
+            <div class="mt-6 flex flex-wrap items-center justify-center gap-3">
+              {% if empty_state_action_target %}
+                <button type="button" data-drawer-target="{{ empty_state_action_target }}" class="inline-flex rounded-xl border border-slate-700 px-4 py-2.5 text-sm text-slate-200 transition hover:bg-slate-800">
+                  {{ empty_state_action_label|default:"Открыть" }}
+                </button>
+              {% else %}
+                <a href="{% firstof empty_state_action_url empty_state_path %}{% if not empty_state_action_url and reset_query_string %}?{{ reset_query_string }}{% endif %}" class="inline-flex rounded-xl border border-slate-700 px-4 py-2.5 text-sm text-slate-200 transition hover:bg-slate-800">
+                  {{ empty_state_action_label|default:"Сбросить фильтры" }}
+                </a>
+              {% endif %}
+              {% if empty_state_secondary_url %}
+                <a href="{{ empty_state_secondary_url }}" class="inline-flex rounded-xl border border-slate-800 px-4 py-2.5 text-sm text-slate-400 transition hover:bg-slate-900 hover:text-slate-200">
+                  {{ empty_state_secondary_label|default:"Подробнее" }}
+                </a>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </td>
+    </tr>
+  {% else %}
+    <div class="manager-empty rounded-[1.75rem] px-6 py-16 text-center opacity-70">
+      <div class="mx-auto max-w-md">
+        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-slate-700 bg-slate-950/80 text-slate-300">
+          <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 5.25h16.5M5.25 5.25V18a.75.75 0 0 0 .75.75h12a.75.75 0 0 0 .75-.75V5.25M9 9.75h6m-6 4.5h4.5" />
+          </svg>
+        </div>
+        <h3 class="mt-4 text-lg font-semibold text-white">{{ empty_state_title|default:"Нет данных" }}</h3>
+        <p class="mt-2 text-sm text-slate-400">{{ empty_state_description|default:"Нет записей за выбранный период" }}</p>
+        <div class="mt-6 flex flex-wrap items-center justify-center gap-3">
+          {% if empty_state_action_target %}
+            <button type="button" data-drawer-target="{{ empty_state_action_target }}" class="inline-flex rounded-xl border border-slate-700 px-4 py-2.5 text-sm text-slate-200 transition hover:bg-slate-800">
+              {{ empty_state_action_label|default:"Открыть" }}
+            </button>
+          {% else %}
+            <a href="{% firstof empty_state_action_url empty_state_path %}{% if not empty_state_action_url and reset_query_string %}?{{ reset_query_string }}{% endif %}" class="inline-flex rounded-xl border border-slate-700 px-4 py-2.5 text-sm text-slate-200 transition hover:bg-slate-800">
+              {{ empty_state_action_label|default:"Сбросить фильтры" }}
+            </a>
+          {% endif %}
+          {% if empty_state_secondary_url %}
+            <a href="{{ empty_state_secondary_url }}" class="inline-flex rounded-xl border border-slate-800 px-4 py-2.5 text-sm text-slate-400 transition hover:bg-slate-900 hover:text-slate-200">
+              {{ empty_state_secondary_label|default:"Подробнее" }}
+            </a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  {% endif %}
+{% endwith %}

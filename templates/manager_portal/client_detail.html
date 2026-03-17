@@ -22,7 +22,7 @@
           </div>
           <div class="rounded-2xl border border-slate-800 bg-slate-950 p-4">
             <p class="text-sm text-slate-400">Пользователь сайта</p>
-            <p class="mt-1">{{ client.user|default:"—" }}</p>
+            <p class="mt-1">{{ client.user|manager_user_label|default:"—" }}</p>
           </div>
         </div>
         {% if client.address %}

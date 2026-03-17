@@ -7,8 +7,8 @@
     <section class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
       <div class="flex items-center justify-between">
         <div>
-          <p class="text-sm uppercase tracking-[0.24em] text-cyan-300">Order</p>
-          <h2 class="mt-2 text-3xl font-semibold">Заказ #{{ order.pk }}</h2>
+          <p class="manager-page-kicker">Заказ</p>
+          <h2 class="manager-section-title mt-2">Заказ #{{ order.pk }}</h2>
           <p class="mt-2 text-slate-400">{% if manager_deal %}Сделка от {{ manager_deal.deal_created_at|date:"d.m.Y H:i" }}{% else %}{{ order.created_at|date:"d.m.Y H:i" }}{% endif %}</p>
         </div>
         <div class="flex gap-2">
@@ -50,7 +50,7 @@
             <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Суммы</p>
             <p class="mt-2 text-lg font-medium">{{ manager_deal.grand_total|rub }}</p>
             <p class="mt-1 text-slate-400">Товары: {{ manager_deal.items_gross_total|rub }} · скидка: {{ manager_deal.items_discount_total|rub }}</p>
-            <p class="mt-1 text-slate-400">Trade-in: {{ manager_deal.trade_in_value|rub }} · доставка: {{ order.delivery_cost|rub }} · оплачено: {{ manager_deal.amount_paid|rub }}</p>
+            <p class="mt-1 text-slate-400">Трейд-ин: {{ manager_deal.trade_in_value|rub }} · доставка: {{ order.delivery_cost|rub }} · оплачено: {{ manager_deal.amount_paid|rub }}</p>
             <p class="mt-1 text-slate-400">Ожидаемая маржа: {{ manager_deal.expected_margin|rub }} {% if manager_deal.balance_due < 0 %}· переплата клиенту: {{ manager_deal.overpayment_to_client|rub }}{% else %}· остаток: {{ manager_deal.balance_due|rub }}{% endif %}</p>
           </div>
         </div>
@@ -62,7 +62,7 @@
           {% for item in order.items.all %}
             <div class="flex items-center justify-between rounded-xl border border-slate-800 px-4 py-3">
               <div>
-                <p>{{ item.product.name }}{% if item.variant_name %} <span class="text-slate-500">/ {{ item.variant_name }}</span>{% endif %}</p>
+                <p>{{ item.resolved_product_name }}{% if item.resolved_variant_name %} <span class="text-slate-500">/ {{ item.resolved_variant_name }}</span>{% endif %}</p>
                 <p class="text-sm text-slate-400">{{ item.quantity }} шт. · {{ item.get_condition_display }} · продажа {{ item.price|rub }}{% if item.discount_amount %} · скидка {{ item.discount_amount|rub }}{% endif %}</p>
                 {% if item.comment %}<p class="text-sm text-slate-500">{{ item.comment }}</p>{% endif %}
               </div>
@@ -115,11 +115,17 @@
                 <p class="mt-1 text-slate-400">ИНН: {{ manager_deal.business_inn|default:"—" }}</p>
                 <p class="mt-1 text-slate-400">КПП: {{ manager_deal.business_kpp|default:"—" }}</p>
                 <p class="mt-1 text-slate-400">ОГРН / ОГРНИП: {{ manager_deal.business_ogrn|default:"—" }}</p>
+                <p class="mt-1 text-slate-400">Номер счёта: {{ manager_deal.business_checking_account|default:"—" }}</p>
+                <p class="mt-1 text-slate-400">Банк: {{ manager_deal.business_bank_name|default:"—" }}</p>
+                <p class="mt-1 text-slate-400">БИК: {{ manager_deal.business_bik|default:"—" }}</p>
+                <p class="mt-1 text-slate-400">Корр. счёт банка: {{ manager_deal.business_correspondent_account|default:"—" }}</p>
               </div>
               <div class="rounded-xl border border-slate-800 px-4 py-3">
                 <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Контакты</p>
                 <p class="mt-2">{{ manager_deal.business_contact_person|default:"—" }}</p>
                 <p class="mt-1 text-slate-400">{{ manager_deal.business_phone|default:"—" }}</p>
+                <p class="mt-1 text-slate-400">{{ manager_deal.business_telegram|default:"—" }}</p>
+                <p class="mt-1 text-slate-400">{{ manager_deal.business_whatsapp|default:"—" }}</p>
                 <p class="mt-1 text-slate-400">{{ manager_deal.business_email|default:"—" }}</p>
                 <p class="mt-1 text-slate-400">{{ manager_deal.business_city|default:"—" }}</p>
                 <p class="mt-1 text-slate-400">{{ manager_deal.business_legal_address|default:"—" }}</p>

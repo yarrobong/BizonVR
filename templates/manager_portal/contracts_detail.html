@@ -7,21 +7,21 @@
     <section class="manager-panel rounded-[1.75rem] p-6">
       <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <p class="text-xs uppercase tracking-[0.24em] text-cyan-300">Document</p>
+          <p class="manager-page-kicker">Документ</p>
           <h2 class="mt-2 text-3xl font-semibold text-white">{{ contract_document.number }}</h2>
           <p class="mt-2 text-sm leading-6 text-slate-400">{{ contract_document.title }}</p>
         </div>
         <div class="flex flex-wrap gap-2 text-xs text-slate-400">
           <span class="manager-pill">{{ contract_document.get_document_type_display }}</span>
-          <span class="manager-pill">{{ contract_document.get_status_display }}</span>
+          {% manager_semantic_status contract_document as document_status %}<span class="{{ document_status|manager_semantic_badge_classes }}"><span class="sr-only">Статус:</span> {{ contract_document.get_status_display }}</span>
           <span class="manager-pill">{{ contract_document.issue_date|date:"d.m.Y" }}</span>
         </div>
       </div>
     </section>
 
     {% if contract_missing_fields %}
-      <section class="manager-panel rounded-[1.75rem] border border-amber-400/30 bg-amber-400/10 p-6">
-        <p class="text-xs uppercase tracking-[0.22em] text-amber-100">Не хватает реквизитов</p>
+      <section class="manager-panel manager-semantic-surface manager-semantic-surface-attention rounded-[1.75rem] p-6">
+        <p class="text-xs uppercase tracking-[0.22em] manager-semantic-text manager-semantic-text-attention">Не хватает реквизитов</p>
         <div class="mt-4 flex flex-wrap gap-2">
           {% for field in contract_missing_fields %}
             <span class="manager-pill">{{ field }}</span>
@@ -82,7 +82,7 @@
       <section class="manager-panel rounded-[1.75rem] p-6">
         <div class="flex items-center justify-between gap-3">
           <div>
-            <p class="text-xs uppercase tracking-[0.22em] text-slate-500">Preview</p>
+            <p class="manager-section-kicker">Предпросмотр</p>
             <h3 class="mt-2 text-2xl font-semibold text-white">Предпросмотр</h3>
           </div>
           <a href="{% url 'manager_portal:contracts_documents' %}" class="text-sm text-cyan-300">Назад к реестру</a>

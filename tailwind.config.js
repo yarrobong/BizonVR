@@ -44,6 +44,6 @@ module.exports = {
     },
   },
   blocklist: ['pt-[var(--header-height)]'],
-  safelist: ['md:flex', 'lg:grid-cols-[minmax(500px,600px)_1fr]', '2xl:grid-cols-[620px_1fr]', 'top-[5rem]', 'top-[12rem]', 'h-[calc(100vh-5rem)]', 'h-[calc(100vh-12rem)]', 'hidden', 'lg:block', 'lg:hidden'],
+  safelist: ['md:flex', 'lg:grid-cols-[minmax(500px,600px)_1fr]', '2xl:grid-cols-[620px_1fr]', 'top-[5rem]', 'top-[12rem]', 'h-[calc(100vh-5rem)]', 'h-[calc(100vh-12rem)]', 'hidden', 'lg:block', 'lg:hidden', '2xl:block', '2xl:hidden'],
   plugins: [],
 };

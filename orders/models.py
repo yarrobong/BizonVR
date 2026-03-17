@@ -6,9 +6,24 @@ import secrets
 from decimal import Decimal
 from django.db import models
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.utils import timezone
 
 from catalog.models import Product, ProductVariant
+
+
+def resolve_order_item_image_url(*, product=None, variant=None):
+    image = None
+    if variant is not None and getattr(variant, 'image', None):
+        image = variant.image
+    elif product is not None:
+        image = product.get_display_image()
+    if not image:
+        return ''
+    try:
+        return image.url
+    except (AttributeError, ValueError):
+        return ''
 
 
 class PurchaseRequest(models.Model):
@@ -248,6 +263,16 @@ class Order(models.Model):
     address_line = models.TextField('Адрес доставки (структурированный)', blank=True)
     delivery_comment = models.TextField('Комментарий для доставки', blank=True)
     address = models.TextField('Адрес доставки', blank=True)
+    business_company_name = models.CharField('Организация', max_length=255, blank=True)
+    business_inn = models.CharField('ИНН организации', max_length=32, blank=True)
+    business_kpp = models.CharField('КПП организации', max_length=32, blank=True)
+    business_checking_account = models.CharField('Номер счёта', max_length=64, blank=True)
+    business_bank_name = models.CharField('Банк', max_length=255, blank=True)
+    business_bik = models.CharField('БИК', max_length=20, blank=True)
+    business_correspondent_account = models.CharField('Корр. счёт банка', max_length=64, blank=True)
+    business_phone = models.CharField('Телефон юр. лица', max_length=40, blank=True)
+    business_telegram = models.CharField('Telegram юр. лица', max_length=120, blank=True)
+    business_whatsapp = models.CharField('WhatsApp юр. лица', max_length=120, blank=True)
     delivery_cost = models.DecimalField(
         'Стоимость доставки',
         max_digits=12,
@@ -392,8 +417,22 @@ class OrderItem(models.Model):
     product = models.ForeignKey(
         Product,
         on_delete=models.PROTECT,
+        null=True,
+        blank=True,
         related_name='order_items',
         verbose_name='Товар',
+    )
+    product_name = models.CharField(
+        'Название товара',
+        max_length=300,
+        blank=True,
+        help_text='Снапшот названия на момент заказа или ручное название, если позиции нет в каталоге.',
+    )
+    product_image_url = models.CharField(
+        'Изображение товара',
+        max_length=500,
+        blank=True,
+        help_text='Снапшот изображения для ручных и архивных позиций.',
     )
     variant = models.ForeignKey(
         ProductVariant,
@@ -445,15 +484,27 @@ class OrderItem(models.Model):
         verbose_name_plural = 'Позиции заказа'
 
     def __str__(self):
-        variant_label = self.variant_name or (self.variant.name if self.variant_id else '')
-        name = f'{self.product.name} ({variant_label})' if variant_label else self.product.name
-        return f'{name} x {self.quantity}'
+        return f'{self.display_name} x {self.quantity}'
+
+    def save(self, *args, **kwargs):
+        if self.product_id:
+            if not (self.product_name or '').strip():
+                self.product_name = self.product.name
+            if not (self.product_image_url or '').strip():
+                self.product_image_url = resolve_order_item_image_url(product=self.product, variant=self.variant)
+        super().save(*args, **kwargs)
 
     def clean(self):
+        if not self.product_id and not (self.product_name or '').strip():
+            raise ValidationError({'product_name': 'Укажите название позиции.'})
+        if self.variant_id and not self.product_id:
+            raise ValidationError({'variant': 'Вариант можно указать только для товара из каталога.'})
         if self.variant_id and self.variant.product_id != self.product_id:
-            from django.core.exceptions import ValidationError
-
             raise ValidationError({'variant': 'Вариант должен относиться к выбранному товару.'})
+        if self.product_id and not (self.product_name or '').strip():
+            self.product_name = self.product.name
+        if self.product_id and not (self.product_image_url or '').strip():
+            self.product_image_url = resolve_order_item_image_url(product=self.product, variant=self.variant)
 
     @property
     def subtotal(self):
@@ -466,3 +517,46 @@ class OrderItem(models.Model):
     @property
     def discount_total(self):
         return self.discount_amount * self.quantity
+
+    @property
+    def is_catalog_item(self):
+        return bool(self.product_id)
+
+    @property
+    def resolved_product_name(self):
+        if (self.product_name or '').strip():
+            return self.product_name.strip()
+        if self.product_id:
+            return self.product.name
+        return 'Товар'
+
+    @property
+    def resolved_variant_name(self):
+        if (self.variant_name or '').strip():
+            return self.variant_name.strip()
+        if self.variant_id:
+            return self.variant.name
+        return ''
+
+    @property
+    def display_name(self):
+        variant_label = self.resolved_variant_name
+        if variant_label:
+            return f'{self.resolved_product_name} ({variant_label})'
+        return self.resolved_product_name
+
+    @property
+    def display_image_url(self):
+        if (self.product_image_url or '').strip():
+            return self.product_image_url.strip()
+        if self.product_id:
+            return resolve_order_item_image_url(product=self.product, variant=self.variant)
+        return ''
+
+    @property
+    def sku(self):
+        if self.variant_id and getattr(self.variant, 'sku', ''):
+            return self.variant.sku.strip()
+        if self.product_id:
+            return (self.product.sku or '').strip()
+        return ''

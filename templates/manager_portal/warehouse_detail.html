@@ -13,8 +13,7 @@
 
       <div class="rounded-3xl border border-slate-800 bg-slate-900 p-6">
         <h3 class="text-xl font-semibold">Матрица остатка</h3>
-        <div class="mt-4 overflow-x-auto">
-          <table class="w-full min-w-[48rem] text-sm">
+        {% manager_table wrapper_class="mt-4" table_class="w-full min-w-[48rem] text-sm" %}
             <thead class="text-left text-slate-400">
               <tr>
                 <th class="pb-3 font-medium">Товар</th>
@@ -25,7 +24,7 @@
                 <th class="pb-3 font-medium">Свободно в пути</th>
               </tr>
             </thead>
-            <tbody class="divide-y divide-slate-800">
+            <tbody>
               {% for row in balances %}
                 <tr>
                   <td class="py-3 pr-4">{{ row.product_name }}{% if row.variant_name %} <span class="text-slate-500">/ {{ row.variant_name }}</span>{% endif %}</td>
@@ -36,11 +35,10 @@
                   <td class="py-3">{{ row.inbound_available }}</td>
                 </tr>
               {% empty %}
-                <tr><td colspan="6" class="py-6 text-slate-400">По складу нет строк.</td></tr>
+                {% include "manager_portal/_empty_state.html" with colspan=6 %}
               {% endfor %}
             </tbody>
-          </table>
-        </div>
+        {% endmanager_table %}
       </div>
 
       <div id="warehouse-movements" class="rounded-3xl border border-slate-800 bg-slate-900 p-6">

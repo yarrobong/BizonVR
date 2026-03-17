@@ -7,10 +7,8 @@
     <section class="manager-panel rounded-[1.75rem] p-6">
       <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <p class="text-xs uppercase tracking-[0.24em] text-cyan-300">Registry</p>
+          <p class="manager-page-kicker">Реестр</p>
           <h2 class="mt-2 text-3xl font-semibold text-white">Реестр документов</h2>
-          <p class="mt-2 text-sm leading-6 text-slate-400">Общий список договоров и счетов внутри менеджерского кабинета. Все записи живут в общей базе проекта.</p>
-          <a href="/manager/contracts/app/documents/all/" class="mt-3 inline-flex text-sm text-cyan-300 hover:text-cyan-200">Внутренний route documents/all</a>
         </div>
         <a href="{% url 'manager_portal:contracts_create' %}" class="manager-create-action">Новый документ</a>
       </div>
@@ -25,8 +23,47 @@
     </section>
 
     <section class="manager-panel rounded-[1.75rem] p-6">
-      <div class="overflow-x-auto">
-        <table class="min-w-full text-sm">
+      <div class="space-y-3 md:hidden">
+        {% for item in contract_documents %}
+          <article class="manager-responsive-card rounded-[1.35rem] border border-slate-800/80 bg-slate-950/70 p-4">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <a href="{% url 'manager_portal:contracts_detail' item.pk %}" class="text-base font-semibold text-white hover:text-cyan-300">{{ item.number }}</a>
+                <p class="mt-1 text-sm text-slate-400">{{ item.title }}</p>
+                <p class="mt-1 text-sm text-slate-500">{{ item.get_document_type_display }}</p>
+              </div>
+              {% manager_semantic_status item as document_status %}<span class="{{ document_status|manager_semantic_badge_classes }} shrink-0">{{ item.get_status_display }}</span>
+            </div>
+            <div class="mt-4 grid grid-cols-2 gap-3 text-sm">
+              <div class="rounded-2xl border border-slate-800/80 bg-slate-950/60 px-3 py-3">
+                <p class="text-[0.68rem] uppercase tracking-[0.16em] text-slate-500">Контрагент</p>
+                <p class="mt-2 font-medium text-white">{{ item.counterparty_display }}</p>
+              </div>
+              <div class="rounded-2xl border border-slate-800/80 bg-slate-950/60 px-3 py-3">
+                <p class="text-[0.68rem] uppercase tracking-[0.16em] text-slate-500">Менеджер</p>
+                <p class="mt-2 font-medium text-white">{{ item.responsible_manager.username|default:"—" }}</p>
+              </div>
+              <div class="rounded-2xl border border-slate-800/80 bg-slate-950/60 px-3 py-3">
+                <p class="text-[0.68rem] uppercase tracking-[0.16em] text-slate-500">Сумма</p>
+                <p class="mt-2 font-medium text-white">{% if item.amount is not None %}{{ item.amount|currency_amount:item.currency }}{% else %}—{% endif %}</p>
+              </div>
+              <div class="rounded-2xl border border-slate-800/80 bg-slate-950/60 px-3 py-3">
+                <p class="text-[0.68rem] uppercase tracking-[0.16em] text-slate-500">Дата</p>
+                <p class="mt-2 font-medium text-white">{{ item.issue_date|date:"d.m.Y" }}</p>
+              </div>
+            </div>
+            {% if item.linked_order_id %}
+              <div class="mt-4">
+                <a href="{% url 'manager_portal:order_detail' item.linked_order_id %}" class="inline-flex w-full items-center justify-center rounded-xl border border-slate-700 px-3 py-2 text-sm font-medium text-slate-100 transition hover:bg-slate-800">Заказ #{{ item.linked_order_id }}</a>
+              </div>
+            {% endif %}
+          </article>
+        {% empty %}
+          {% include "manager_portal/_empty_state.html" with empty_state_title="Документов пока нет" empty_state_description="Реестр заполнится после создания первого документа." %}
+        {% endfor %}
+      </div>
+
+      {% manager_table table_class="hidden min-w-full text-sm md:table" %}
           <thead class="text-left text-slate-500">
             <tr>
               <th class="pb-3 pr-4">Номер</th>
@@ -39,7 +76,7 @@
               <th class="pb-3">Дата</th>
             </tr>
           </thead>
-          <tbody class="divide-y divide-slate-800">
+          <tbody>
             {% for item in contract_documents %}
               <tr>
                 <td class="py-3 pr-4">
@@ -58,7 +95,7 @@
                     —
                   {% endif %}
                 </td>
-                <td class="py-3 pr-4 text-slate-300">{{ item.get_status_display }}</td>
+                <td class="py-3 pr-4">{% manager_semantic_status item as document_status %}<span class="{{ document_status|manager_semantic_badge_classes }}">{{ item.get_status_display }}</span></td>
                 <td class="py-3 pr-4 text-slate-300">
                   {% if item.amount is not None %}
                     {{ item.amount|currency_amount:item.currency }}
@@ -69,13 +106,10 @@
                 <td class="py-3 text-slate-400">{{ item.issue_date|date:"d.m.Y" }}</td>
               </tr>
             {% empty %}
-              <tr>
-                <td colspan="8" class="py-8 text-slate-500">Документы не найдены.</td>
-              </tr>
+              {% include "manager_portal/_empty_state.html" with colspan=8 %}
             {% endfor %}
           </tbody>
-        </table>
-      </div>
+      {% endmanager_table %}
     </section>
   </div>
 {% endblock %}

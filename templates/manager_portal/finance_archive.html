@@ -6,72 +6,115 @@
   <div class="space-y-8">
     <section class="manager-panel rounded-3xl p-6">
       <h2 class="text-2xl font-semibold text-white">Архив операций</h2>
-      <p class="mt-2 text-sm text-slate-400">Полная история сделок, расходов и выплат финансового модуля.</p>
     </section>
     <section class="manager-panel rounded-3xl p-6">
       <h3 class="text-xl font-semibold text-white">Сделки</h3>
-      <div class="mt-5 overflow-x-auto">
-        <table class="min-w-full text-sm text-slate-300">
+      <div class="mt-5 space-y-3 md:hidden">
+        {% for deal in finance_archive.deals %}
+          <article class="manager-responsive-card rounded-[1.35rem] border border-slate-800/80 bg-slate-950/70 p-4">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p class="text-sm text-slate-400">{{ deal.date }}</p>
+                <p class="mt-1 text-base font-semibold text-white">{{ deal.contract_number|default:"—" }}</p>
+                <p class="mt-1 text-sm text-slate-400">{{ deal.deal_type.name }}</p>
+              </div>
+              <span class="manager-pill shrink-0">{{ deal.margin }}</span>
+            </div>
+          </article>
+        {% empty %}
+          {% include "manager_portal/_empty_state.html" with empty_state_title="Архив сделок пуст" empty_state_description="Здесь появятся закрытые финансовые кейсы." %}
+        {% endfor %}
+      </div>
+
+      {% manager_table wrapper_class="mt-5" table_class="hidden min-w-full text-sm text-slate-300 md:table" %}
           <thead class="text-left text-xs uppercase tracking-[0.18em] text-slate-500">
             <tr><th class="pb-3 pr-4">Дата</th><th class="pb-3 pr-4">Клиент</th><th class="pb-3 pr-4">Тип</th><th class="pb-3 pr-4">Маржа</th></tr>
           </thead>
           <tbody>
             {% for deal in finance_archive.deals %}
-              <tr class="border-t border-slate-800">
+              <tr>
                 <td class="py-3 pr-4">{{ deal.date }}</td>
                 <td class="py-3 pr-4">{{ deal.contract_number|default:"—" }}</td>
                 <td class="py-3 pr-4">{{ deal.deal_type.name }}</td>
                 <td class="py-3 pr-4">{{ deal.margin }}</td>
               </tr>
             {% empty %}
-              <tr><td colspan="4" class="py-4 text-slate-500">Сделок нет.</td></tr>
+              {% include "manager_portal/_empty_state.html" with colspan=4 %}
             {% endfor %}
           </tbody>
-        </table>
-      </div>
+      {% endmanager_table %}
     </section>
     <section class="manager-panel rounded-3xl p-6">
       <h3 class="text-xl font-semibold text-white">Расходы</h3>
-      <div class="mt-5 overflow-x-auto">
-        <table class="min-w-full text-sm text-slate-300">
+      <div class="mt-5 space-y-3 md:hidden">
+        {% for expense in finance_archive.expenses %}
+          <article class="manager-responsive-card rounded-[1.35rem] border border-slate-800/80 bg-slate-950/70 p-4">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p class="text-sm text-slate-400">{{ expense.date }}</p>
+                <p class="mt-1 text-base font-semibold text-white">{{ expense.category.name }}</p>
+                <p class="mt-1 text-sm text-slate-400">{{ expense.get_expense_side_display }}</p>
+              </div>
+              <span class="manager-pill shrink-0">{{ expense.amount|rub }}</span>
+            </div>
+          </article>
+        {% empty %}
+          {% include "manager_portal/_empty_state.html" with empty_state_title="Архив расходов пуст" empty_state_description="Списания появятся после переноса операций в архив." %}
+        {% endfor %}
+      </div>
+
+      {% manager_table wrapper_class="mt-5" table_class="hidden min-w-full text-sm text-slate-300 md:table" %}
           <thead class="text-left text-xs uppercase tracking-[0.18em] text-slate-500">
             <tr><th class="pb-3 pr-4">Дата</th><th class="pb-3 pr-4">Сторона</th><th class="pb-3 pr-4">Категория</th><th class="pb-3 pr-4">Сумма</th></tr>
           </thead>
           <tbody>
             {% for expense in finance_archive.expenses %}
-              <tr class="border-t border-slate-800">
+              <tr>
                 <td class="py-3 pr-4">{{ expense.date }}</td>
                 <td class="py-3 pr-4">{{ expense.get_expense_side_display }}</td>
                 <td class="py-3 pr-4">{{ expense.category.name }}</td>
                 <td class="py-3 pr-4">{{ expense.amount|rub }}</td>
               </tr>
             {% empty %}
-              <tr><td colspan="4" class="py-4 text-slate-500">Расходов нет.</td></tr>
+              {% include "manager_portal/_empty_state.html" with colspan=4 %}
             {% endfor %}
           </tbody>
-        </table>
-      </div>
+      {% endmanager_table %}
     </section>
     <section class="manager-panel rounded-3xl p-6">
       <h3 class="text-xl font-semibold text-white">Выплаты</h3>
-      <div class="mt-5 overflow-x-auto">
-        <table class="min-w-full text-sm text-slate-300">
+      <div class="mt-5 space-y-3 md:hidden">
+        {% for payout in finance_archive.payouts %}
+          <article class="manager-responsive-card rounded-[1.35rem] border border-slate-800/80 bg-slate-950/70 p-4">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p class="text-sm text-slate-400">{{ payout.date }}</p>
+                <p class="mt-1 text-base font-semibold text-white">{{ payout.comment|default:"Без комментария" }}</p>
+              </div>
+              <span class="manager-pill shrink-0">{{ payout.amount|rub }}</span>
+            </div>
+          </article>
+        {% empty %}
+          {% include "manager_portal/_empty_state.html" with empty_state_title="Архив выплат пуст" empty_state_description="Выплаты появятся здесь после завершения периода." %}
+        {% endfor %}
+      </div>
+
+      {% manager_table wrapper_class="mt-5" table_class="hidden min-w-full text-sm text-slate-300 md:table" %}
           <thead class="text-left text-xs uppercase tracking-[0.18em] text-slate-500">
             <tr><th class="pb-3 pr-4">Дата</th><th class="pb-3 pr-4">Сумма</th><th class="pb-3 pr-4">Комментарий</th></tr>
           </thead>
           <tbody>
             {% for payout in finance_archive.payouts %}
-              <tr class="border-t border-slate-800">
+              <tr>
                 <td class="py-3 pr-4">{{ payout.date }}</td>
                 <td class="py-3 pr-4">{{ payout.amount|rub }}</td>
                 <td class="py-3 pr-4">{{ payout.comment|default:"—" }}</td>
               </tr>
             {% empty %}
-              <tr><td colspan="3" class="py-4 text-slate-500">Выплат нет.</td></tr>
+              {% include "manager_portal/_empty_state.html" with colspan=3 %}
             {% endfor %}
           </tbody>
-        </table>
-      </div>
+      {% endmanager_table %}
     </section>
   </div>
 {% endblock %}

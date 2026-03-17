@@ -7,9 +7,8 @@
     <section class="manager-dashboard-hero manager-panel rounded-[1.75rem] p-6 lg:p-8">
       <div class="manager-dashboard-hero-grid">
         <div>
-          <p class="text-sm uppercase tracking-[0.24em] text-cyan-300">Dashboard</p>
-          <h2 class="mt-3 text-4xl font-semibold lg:text-5xl">Операционный центр</h2>
-          <p class="mt-3 max-w-3xl text-slate-300">Быстрый обзор по заказам сайта, логистике, просроченным ETA и проблемным остаткам. Главная страница собрана как daily-console для менеджера, а не как обычный список ссылок.</p>
+          <p class="manager-page-kicker">Операционный обзор</p>
+          <h2 class="manager-page-title mt-3">Операционный центр</h2>
           <div class="mt-6 flex flex-wrap gap-2">
             <span class="manager-pill"><strong>{{ stats.new_orders }}</strong> новых заказов</span>
             <span class="manager-pill"><strong>{{ stats.cargos_in_transit }}</strong> грузов в пути</span>
@@ -27,21 +26,17 @@
             <div class="mt-4 space-y-3">
               <div class="manager-dashboard-alert-row">
                 <span class="text-slate-300">Просроченные ETA</span>
-                <strong class="{% if stats.overdue_cargos %}manager-status-danger{% endif %}">{{ stats.overdue_cargos }}</strong>
+                <strong class="{% if stats.overdue_cargos %}manager-semantic-text manager-semantic-text-critical{% endif %}">{{ stats.overdue_cargos }}</strong>
               </div>
               <div class="manager-dashboard-alert-row">
                 <span class="text-slate-300">Проблемные остатки</span>
-                <strong class="{% if stats.inventory_problem_rows %}manager-status-danger{% endif %}">{{ stats.inventory_problem_rows }}</strong>
+                <strong class="{% if stats.inventory_problem_rows %}manager-semantic-text manager-semantic-text-critical{% endif %}">{{ stats.inventory_problem_rows }}</strong>
               </div>
               <div class="manager-dashboard-alert-row">
                 <span class="text-slate-300">Активные брони</span>
                 <strong>{{ stats.active_reservations }}</strong>
               </div>
             </div>
-          </div>
-          <div class="manager-dashboard-note">
-            <p class="manager-dashboard-alert-label">Фокус смены</p>
-            <p class="mt-3 text-sm leading-6 text-slate-300">Сначала разберите новые заказы, затем проверьте грузы с риском по ETA и после этого синхронизируйте остатки и резервы.</p>
           </div>
         </div>
       </div>
@@ -60,18 +55,18 @@
       </div>
       <div class="manager-kpi manager-panel rounded-[1.75rem] p-5">
         <p class="text-sm text-slate-400">Просроченный ETA</p>
-        <p class="mt-3 text-4xl font-semibold {% if stats.overdue_cargos %}manager-status-danger{% endif %}">{{ stats.overdue_cargos }}</p>
+        <p class="mt-3 text-4xl font-semibold {% if stats.overdue_cargos %}manager-semantic-text manager-semantic-text-critical{% endif %}">{{ stats.overdue_cargos }}</p>
         <p class="mt-2 text-sm text-slate-500">требуют вмешательства</p>
       </div>
       <div class="manager-kpi manager-panel rounded-[1.75rem] p-5">
         <p class="text-sm text-slate-400">Активные брони</p>
         <p class="mt-3 text-4xl font-semibold">{{ stats.active_reservations }}</p>
-        <p class="mt-2 text-sm text-slate-500">в резерве склада или incoming</p>
+        <p class="mt-2 text-sm text-slate-500">в резерве склада или в пути</p>
       </div>
       <div class="manager-kpi manager-panel rounded-[1.75rem] p-5">
         <p class="text-sm text-slate-400">Проблемные строки</p>
-        <p class="mt-3 text-4xl font-semibold {% if stats.inventory_problem_rows %}manager-status-danger{% endif %}">{{ stats.inventory_problem_rows }}</p>
-        <p class="mt-2 text-sm text-slate-500">конфликты availability</p>
+        <p class="mt-3 text-4xl font-semibold {% if stats.inventory_problem_rows %}manager-semantic-text manager-semantic-text-critical{% endif %}">{{ stats.inventory_problem_rows }}</p>
+        <p class="mt-2 text-sm text-slate-500">конфликты доступности</p>
       </div>
     </div>
 
@@ -87,8 +82,7 @@
             <a href="{% url 'manager_portal:inventory' %}" class="manager-pill text-cyan-200">Открыть полную матрицу</a>
           </div>
         </div>
-        <div class="manager-dashboard-table-wrap overflow-x-auto">
-          <table class="manager-table w-full min-w-[44rem] text-sm">
+        {% manager_table wrapper_class="manager-dashboard-table-wrap" table_class="w-full min-w-[44rem] text-sm" %}
             <thead class="text-left text-slate-400">
               <tr>
                 <th class="px-4 py-4 font-medium">Склад</th>
@@ -99,9 +93,9 @@
                 <th class="px-4 py-4 font-medium">Свободно в пути</th>
               </tr>
             </thead>
-            <tbody class="divide-y divide-slate-800">
+            <tbody>
               {% for row in stats.inventory_rows %}
-                <tr class="hover:bg-slate-950/60">
+                <tr>
                   <td class="px-4 py-4">{{ row.warehouse_name }}</td>
                   <td class="px-4 py-4">
                     {{ row.product_name }}
@@ -109,15 +103,14 @@
                   </td>
                   <td class="px-4 py-4">{{ row.on_hand }}</td>
                   <td class="px-4 py-4">{{ row.reserved_on_hand }}</td>
-                  <td class="px-4 py-4 {% if row.available < 0 %}manager-status-danger{% else %}manager-status-positive{% endif %}">{{ row.available }}</td>
-                  <td class="px-4 py-4 {% if row.inbound_available < 0 %}manager-status-danger{% endif %}">{{ row.inbound_available }}</td>
+                  <td class="px-4 py-4 {% if row.available < 0 %}manager-semantic-text manager-semantic-text-critical{% else %}manager-semantic-text manager-semantic-text-complete{% endif %}">{{ row.available }}</td>
+                  <td class="px-4 py-4 {% if row.inbound_available < 0 %}manager-semantic-text manager-semantic-text-critical{% elif row.inbound_available > 0 %}manager-semantic-text manager-semantic-text-active{% endif %}">{{ row.inbound_available }}</td>
                 </tr>
               {% empty %}
-                <tr><td colspan="6" class="py-6 text-slate-400">Нет данных по складам.</td></tr>
+                {% include "manager_portal/_empty_state.html" with colspan=6 %}
               {% endfor %}
             </tbody>
-          </table>
-        </div>
+        {% endmanager_table %}
       </section>
 
       <div class="space-y-6">

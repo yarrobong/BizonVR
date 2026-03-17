@@ -156,6 +156,104 @@ class CheckoutForm(forms.Form):
         choices=Order.PUBLIC_PAYMENT_METHOD_CHOICES,
         widget=forms.RadioSelect(),
     )
+    business_company_name = forms.CharField(
+        label='Организация',
+        max_length=255,
+        required=False,
+        widget=forms.TextInput(attrs={
+            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
+            'placeholder': 'ООО Виртуальный Мир',
+            'autocomplete': 'organization',
+        }),
+    )
+    business_checking_account = forms.CharField(
+        label='Номер счёта',
+        max_length=64,
+        required=False,
+        widget=forms.TextInput(attrs={
+            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
+            'placeholder': '40702810900000000001',
+            'inputmode': 'numeric',
+        }),
+    )
+    business_inn = forms.CharField(
+        label='ИНН',
+        max_length=32,
+        required=False,
+        widget=forms.TextInput(attrs={
+            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
+            'placeholder': '6677001122',
+            'inputmode': 'numeric',
+        }),
+    )
+    business_kpp = forms.CharField(
+        label='КПП',
+        max_length=32,
+        required=False,
+        widget=forms.TextInput(attrs={
+            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
+            'placeholder': '667701001',
+            'inputmode': 'numeric',
+        }),
+    )
+    business_bank_name = forms.CharField(
+        label='Банк',
+        max_length=255,
+        required=False,
+        widget=forms.TextInput(attrs={
+            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
+            'placeholder': 'ПАО Сбербанк',
+        }),
+    )
+    business_bik = forms.CharField(
+        label='БИК',
+        max_length=20,
+        required=False,
+        widget=forms.TextInput(attrs={
+            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
+            'placeholder': '046577674',
+            'inputmode': 'numeric',
+        }),
+    )
+    business_correspondent_account = forms.CharField(
+        label='Корр. счёт банка',
+        max_length=64,
+        required=False,
+        widget=forms.TextInput(attrs={
+            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
+            'placeholder': '30101810500000000674',
+            'inputmode': 'numeric',
+        }),
+    )
+    business_phone = forms.CharField(
+        label='Телефон контактного лица',
+        max_length=40,
+        required=False,
+        widget=forms.TextInput(attrs={
+            'class': 'js-phone-mask w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
+            'placeholder': '+7 (999) 999-99-99',
+            'inputmode': 'tel',
+            'autocomplete': 'tel',
+        }),
+    )
+    business_telegram = forms.CharField(
+        label='Telegram',
+        max_length=120,
+        required=False,
+        widget=forms.TextInput(attrs={
+            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
+            'placeholder': '@username или t.me/username',
+        }),
+    )
+    business_whatsapp = forms.CharField(
+        label='WhatsApp',
+        max_length=120,
+        required=False,
+        widget=forms.TextInput(attrs={
+            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
+            'placeholder': '+7 (999) 999-99-99 или wa.me/79991234567',
+        }),
+    )
     comment = forms.CharField(
         label='Комментарий к заказу',
         required=False,
@@ -240,6 +338,57 @@ class CheckoutForm(forms.Form):
     def clean_delivery_comment(self):
         return (self.cleaned_data.get('delivery_comment') or '').strip()
 
+    def clean_business_company_name(self):
+        return ' '.join((self.cleaned_data.get('business_company_name') or '').split())
+
+    def clean_business_checking_account(self):
+        return (self.cleaned_data.get('business_checking_account') or '').strip()
+
+    def clean_business_inn(self):
+        return (self.cleaned_data.get('business_inn') or '').strip()
+
+    def clean_business_kpp(self):
+        return (self.cleaned_data.get('business_kpp') or '').strip()
+
+    def clean_business_bank_name(self):
+        return ' '.join((self.cleaned_data.get('business_bank_name') or '').split())
+
+    def clean_business_bik(self):
+        return (self.cleaned_data.get('business_bik') or '').strip()
+
+    def clean_business_correspondent_account(self):
+        return (self.cleaned_data.get('business_correspondent_account') or '').strip()
+
+    def clean_business_phone(self):
+        value = (self.cleaned_data.get('business_phone') or '').strip()
+        if not value:
+            return value
+        digits = re.sub(r'\D', '', value)
+        if len(digits) < 10:
+            raise forms.ValidationError('Введите корректный номер телефона контактного лица.')
+        return value
+
+    def clean_business_telegram(self):
+        value = (self.cleaned_data.get('business_telegram') or '').strip()
+        if not value:
+            return value
+        lower_value = value.lower()
+        if lower_value.startswith('https://t.me/'):
+            value = value.split('t.me/', 1)[1]
+        elif lower_value.startswith('http://t.me/'):
+            value = value.split('t.me/', 1)[1]
+        elif lower_value.startswith('t.me/'):
+            value = value.split('t.me/', 1)[1]
+        value = value.strip().lstrip('@')
+        if not value:
+            return ''
+        if ' ' in value:
+            return (self.cleaned_data.get('business_telegram') or '').strip()
+        return f'@{value}'
+
+    def clean_business_whatsapp(self):
+        return (self.cleaned_data.get('business_whatsapp') or '').strip()
+
     def clean(self):
         cleaned_data = super().clean()
         address_line = (cleaned_data.get('address_line') or '').strip()
@@ -270,6 +419,8 @@ class CheckoutForm(forms.Form):
             cleaned_data.get('payment_method')
             or Order.PAYMENT_METHOD_BANK_CARD
         )
+        if cleaned_data['payment_method'] == Order.PAYMENT_METHOD_MANAGER_PAYMENT and not cleaned_data.get('business_phone'):
+            cleaned_data['business_phone'] = phone
         cleaned_data['country'] = 'Россия'
         cleaned_data['postal_code'] = ''
         cleaned_data['pickup_point'] = None

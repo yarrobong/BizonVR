@@ -259,7 +259,7 @@
                       {% if phone_verified_at %}
                         Телефон подтверждён {{ phone_verified_at|date:"d.m.Y H:i" }}
                       {% else %}
-                        Телефон станет подтверждённым после входа по SMS
+                        Телефон будет подтверждён после отдельной проверки номера
                       {% endif %}
                     </p>
                   </div>
@@ -511,7 +511,7 @@
                     <div class="flex items-start justify-between gap-3">
                       <div>
                         <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Пароль</p>
-                        <p class="mt-2 text-white">{% if has_password %}Можно войти по паролю{% else %}Используется вход по SMS{% endif %}</p>
+                        <p class="mt-2 text-white">{% if has_password %}Можно войти по email и паролю{% else %}Для входа нужно установить пароль{% endif %}</p>
                       </div>
                       <span class="rounded-full border px-3 py-1 text-xs {% if has_password %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% else %}border-white/10 bg-dark-900/40 text-gray-200{% endif %}">
                         {% if has_password %}Установлен{% else %}Не установлен{% endif %}

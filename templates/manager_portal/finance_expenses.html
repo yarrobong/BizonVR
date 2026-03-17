@@ -5,7 +5,7 @@
 {% block content %}
   <div class="grid gap-8 xl:grid-cols-[24rem_1fr]">
     <section class="manager-panel rounded-3xl p-6">
-      <p class="text-xs uppercase tracking-[0.22em] text-cyan-300">Operational Expense</p>
+      <p class="manager-page-kicker">Операционные расходы</p>
       <h2 class="mt-3 text-2xl font-semibold text-white">Новый расход</h2>
       <form method="post" class="mt-5 grid gap-4">
         {% csrf_token %}
@@ -16,8 +16,24 @@
     <section class="space-y-8">
       <div class="manager-panel rounded-3xl p-6">
         <h2 class="text-2xl font-semibold text-white">Наши расходы</h2>
-        <div class="mt-5 overflow-x-auto">
-          <table class="min-w-full text-sm text-slate-300">
+        <div class="mt-5 space-y-3 md:hidden">
+          {% for expense in finance_our_expenses %}
+            <article class="manager-responsive-card rounded-[1.35rem] border border-slate-800/80 bg-slate-950/70 p-4">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <p class="text-sm text-slate-400">{{ expense.date }}</p>
+                  <p class="mt-1 text-base font-semibold text-white">{{ expense.category.name }}</p>
+                  <p class="mt-1 text-sm text-slate-400">{{ expense.comment|default:"—" }}</p>
+                </div>
+                <span class="manager-pill shrink-0">{{ expense.amount|rub }}</span>
+              </div>
+            </article>
+          {% empty %}
+            {% include "manager_portal/_empty_state.html" with empty_state_title="Наших расходов пока нет" empty_state_description="Список появится после первого списания." %}
+          {% endfor %}
+        </div>
+
+        {% manager_table wrapper_class="mt-5" table_class="hidden min-w-full text-sm text-slate-300 md:table" %}
             <thead class="text-left text-xs uppercase tracking-[0.18em] text-slate-500">
               <tr>
                 <th class="pb-3 pr-4">Дата</th>
@@ -28,23 +44,38 @@
             </thead>
             <tbody>
               {% for expense in finance_our_expenses %}
-                <tr class="border-t border-slate-800">
+                <tr>
                   <td class="py-3 pr-4">{{ expense.date }}</td>
                   <td class="py-3 pr-4">{{ expense.category.name }}</td>
                   <td class="py-3 pr-4">{{ expense.amount|rub }}</td>
                   <td class="py-3 pr-4">{{ expense.comment|default:"—" }}</td>
                 </tr>
               {% empty %}
-                <tr><td colspan="4" class="py-4 text-slate-500">Наших расходов пока нет.</td></tr>
+                {% include "manager_portal/_empty_state.html" with colspan=4 %}
               {% endfor %}
             </tbody>
-          </table>
-        </div>
+        {% endmanager_table %}
       </div>
       <div class="manager-panel rounded-3xl p-6">
         <h2 class="text-2xl font-semibold text-white">Расходы партнера</h2>
-        <div class="mt-5 overflow-x-auto">
-          <table class="min-w-full text-sm text-slate-300">
+        <div class="mt-5 space-y-3 md:hidden">
+          {% for expense in finance_partner_expenses %}
+            <article class="manager-responsive-card rounded-[1.35rem] border border-slate-800/80 bg-slate-950/70 p-4">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <p class="text-sm text-slate-400">{{ expense.date }}</p>
+                  <p class="mt-1 text-base font-semibold text-white">{{ expense.category.name }}</p>
+                  <p class="mt-1 text-sm text-slate-400">{{ expense.comment|default:"—" }}</p>
+                </div>
+                <span class="manager-pill shrink-0">{{ expense.amount|rub }}</span>
+              </div>
+            </article>
+          {% empty %}
+            {% include "manager_portal/_empty_state.html" with empty_state_title="Расходов партнера пока нет" empty_state_description="После первых операций записи появятся здесь." %}
+          {% endfor %}
+        </div>
+
+        {% manager_table wrapper_class="mt-5" table_class="hidden min-w-full text-sm text-slate-300 md:table" %}
             <thead class="text-left text-xs uppercase tracking-[0.18em] text-slate-500">
               <tr>
                 <th class="pb-3 pr-4">Дата</th>
@@ -55,18 +86,17 @@
             </thead>
             <tbody>
               {% for expense in finance_partner_expenses %}
-                <tr class="border-t border-slate-800">
+                <tr>
                   <td class="py-3 pr-4">{{ expense.date }}</td>
                   <td class="py-3 pr-4">{{ expense.category.name }}</td>
                   <td class="py-3 pr-4">{{ expense.amount|rub }}</td>
                   <td class="py-3 pr-4">{{ expense.comment|default:"—" }}</td>
                 </tr>
               {% empty %}
-                <tr><td colspan="4" class="py-4 text-slate-500">Расходов партнера пока нет.</td></tr>
+                {% include "manager_portal/_empty_state.html" with colspan=4 %}
               {% endfor %}
             </tbody>
-          </table>
-        </div>
+        {% endmanager_table %}
       </div>
     </section>
   </div>

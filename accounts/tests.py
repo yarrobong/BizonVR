@@ -1,4 +1,4 @@
-"""Базовые тесты входа по телефону (Фаза 6)."""
+"""Базовые тесты аккаунта и аутентификации."""
 import os
 from decimal import Decimal
 from unittest.mock import Mock, patch
@@ -20,7 +20,6 @@ from orders.models import Order
 
 from .models import (
     CommercialProposalContact,
-    EmailLoginCode,
     EmailVerificationCode,
     NotificationPreference,
     PhoneVerificationCode,
@@ -49,9 +48,7 @@ class ConfigBoolParsingTest(SimpleTestCase):
 
 
 class LoginViewsTest(TestCase):
-    """Страница входа, регистрация и ограничение частоты запросов."""
-    LOGIN_PENDING_PHONE_SESSION_KEY = 'accounts:login:pending_phone'
-    LOGIN_PENDING_SENT_AT_SESSION_KEY = 'accounts:login:last_sent_at'
+    """Страница входа, регистрация и публичный auth-контракт."""
 
     def setUp(self):
         self.client = Client()
@@ -60,15 +57,18 @@ class LoginViewsTest(TestCase):
     def test_login_page_returns_200(self):
         resp = self.client.get(reverse('accounts:login'))
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, 'Вход без блокировки покупки')
+        self.assertContains(resp, 'Вход по email и паролю')
         self.assertContains(resp, 'Email')
-        self.assertContains(resp, 'Телефон')
-        self.assertContains(resp, 'Получить код на email')
+        self.assertContains(resp, 'Пароль')
+        self.assertNotContains(resp, 'Телефон')
+        self.assertNotContains(resp, 'Получить код на email')
+        self.assertNotContains(resp, 'Войти по коду')
 
     def test_login_page_does_not_render_sms_turnstile(self):
         resp = self.client.get(reverse('accounts:login'))
         self.assertEqual(resp.status_code, 200)
         self.assertNotContains(resp, 'cf-turnstile')
+        self.assertNotContains(resp, 'Получить код по SMS')
 
     def test_register_page_uses_same_template_with_register_panel(self):
         resp = self.client.get(reverse('accounts:register'))
@@ -146,24 +146,22 @@ class LoginViewsTest(TestCase):
         self.assertEqual(response.url, reverse('home'))
         self.assertEqual(self.client.session.get('_auth_user_id'), str(user.pk))
 
-    def test_email_code_login_creates_account_for_new_email(self):
-        EmailLoginCode.objects.create(
-            email='new-client@example.com',
-            code='123456',
-            purpose=EmailLoginCode.PURPOSE_LOGIN,
+    def test_password_login_accepts_unique_unverified_email_account(self):
+        user = User.objects.create_user(
+            username='user_email_only',
+            email='oneboardshol@gmail.com',
+            password='StrongPass123!',
         )
 
-        response = self.client.post(reverse('accounts:verify_email_login'), {
-            'email': 'new-client@example.com',
-            'code': '123456',
+        response = self.client.post(reverse('accounts:password_login'), {
+            'login': 'oneboardshol@gmail.com',
+            'password': 'StrongPass123!',
         })
 
         self.assertEqual(response.status_code, 302)
-        user = User.objects.get(email='new-client@example.com')
-        profile = Profile.objects.get(user=user)
-        self.assertEqual(response.url, reverse('accounts:profile_settings') + '#profile')
-        self.assertIsNone(profile.phone)
-        self.assertIsNotNone(profile.email_verified_at)
+        self.assertEqual(response.url, f"{reverse('accounts:profile_settings')}#profile")
+        self.assertEqual(self.client.session.get('_auth_user_id'), str(user.pk))
+        self.assertTrue(Profile.objects.filter(user=user).exists())
 
     def test_authenticated_login_view_ignores_external_next(self):
         user = User.objects.create_user(username='9991234567', password='testpass')
@@ -172,56 +170,6 @@ class LoginViewsTest(TestCase):
         resp = self.client.get(reverse('accounts:login'), {'next': 'https://evil.example/phish'})
         self.assertEqual(resp.status_code, 302)
         self.assertEqual(resp.url, reverse('accounts:profile'))
-
-    @override_settings(TURNSTILE_SITE_KEY='site-key', TURNSTILE_SECRET_KEY='secret-key')
-    def test_send_code_requires_turnstile_token_when_enabled(self):
-        resp = self.client.post(
-            reverse('accounts:send_code'),
-            {
-                'phone': '+7 (999) 123-45-67',
-                'agree_privacy': 'on',
-            },
-        )
-        self.assertEqual(resp.status_code, 400)
-        data = resp.json()
-        self.assertFalse(data.get('ok'))
-        self.assertIn('робот', data.get('error', ''))
-
-    def test_send_code_invalid_phone_returns_400(self):
-        resp = self.client.post(
-            reverse('accounts:send_code'),
-            {'phone': '123'},
-        )
-        self.assertEqual(resp.status_code, 400)
-        data = resp.json()
-        self.assertFalse(data.get('ok'))
-        self.assertIn('error', data)
-
-    @override_settings(TURNSTILE_SITE_KEY='site-key', TURNSTILE_SECRET_KEY='secret-key')
-    @patch('accounts.views.auth.verify_turnstile_token', return_value=(True, ''))
-    @patch('accounts.views.auth.create_and_send_code', return_value=(True, ''))
-    def test_send_code_success_saves_pending_phone_in_session(
-        self,
-        mocked_create_and_send_code,
-        mocked_turnstile,
-    ):
-        resp = self.client.post(
-            reverse('accounts:send_code'),
-            {
-                'phone': '+7 (999) 123-45-67',
-                'agree_privacy': 'on',
-                'cf-turnstile-response': 'token',
-            },
-        )
-        self.assertEqual(resp.status_code, 200)
-        data = resp.json()
-        self.assertTrue(data.get('ok'))
-        self.assertEqual(data.get('phone'), '9991234567')
-        session = self.client.session
-        self.assertEqual(session.get(self.LOGIN_PENDING_PHONE_SESSION_KEY), '9991234567')
-        self.assertIsInstance(session.get(self.LOGIN_PENDING_SENT_AT_SESSION_KEY), int)
-        mocked_turnstile.assert_called_once()
-        mocked_create_and_send_code.assert_called_once()
 
     @patch('accounts.services.generate_code', return_value='654321')
     @patch('accounts.services.send_sms', return_value=False)
@@ -232,25 +180,6 @@ class LoginViewsTest(TestCase):
         self.assertFalse(ok)
         self.assertIn('Не удалось отправить SMS', error)
         self.assertFalse(PhoneVerificationCode.objects.filter(phone='9991234567').exists())
-
-    def test_verify_rate_limit_applies_per_phone_not_only_per_ip(self):
-        PhoneVerificationCode.objects.create(phone='9991234567', code='123456')
-
-        for attempt in range(10):
-            response = self.client.post(
-                reverse('accounts:verify_code'),
-                {'phone': '9991234567', 'code': '000000'},
-                REMOTE_ADDR=f'10.0.0.{attempt + 1}',
-            )
-            self.assertEqual(response.status_code, 200)
-
-        blocked_response = self.client.post(
-            reverse('accounts:verify_code'),
-            {'phone': '9991234567', 'code': '000000'},
-            REMOTE_ADDR='10.0.0.99',
-        )
-        self.assertEqual(blocked_response.status_code, 200)
-        self.assertContains(blocked_response, 'лимит попыток')
 
     def test_logout_requires_post(self):
         user = User.objects.create_user(username='79995554433', password='testpass')
@@ -264,80 +193,19 @@ class LoginViewsTest(TestCase):
         self.assertEqual(post_response.url, reverse('home'))
         self.assertNotIn('_auth_user_id', self.client.session)
 
-    def test_resend_code_without_pending_session_returns_400(self):
-        resp = self.client.post(reverse('accounts:resend_code'))
-        self.assertEqual(resp.status_code, 400)
-        data = resp.json()
-        self.assertFalse(data.get('ok'))
-        self.assertIn('истекла', data.get('error', ''))
-
-    @override_settings(TURNSTILE_SITE_KEY='site-key', TURNSTILE_SECRET_KEY='secret-key')
-    @patch('accounts.views.auth.verify_turnstile_token', return_value=(True, ''))
-    @patch('accounts.views.auth.create_and_send_code', return_value=(True, ''))
-    def test_resend_code_is_rate_limited_for_one_minute(
-        self,
-        mocked_create_and_send_code,
-        mocked_turnstile,
-    ):
-        send_resp = self.client.post(
-            reverse('accounts:send_code'),
-            {
-                'phone': '+7 (999) 123-45-67',
-                'agree_privacy': 'on',
-                'cf-turnstile-response': 'token',
-            },
-        )
-        self.assertEqual(send_resp.status_code, 200)
-
-        resend_resp = self.client.post(reverse('accounts:resend_code'))
-        self.assertEqual(resend_resp.status_code, 429)
-        data = resend_resp.json()
-        self.assertFalse(data.get('ok'))
-        self.assertGreater(data.get('resend_available_in', 0), 0)
-
-    @patch('accounts.views.auth.verify_turnstile_token')
-    @patch('accounts.views.auth.create_and_send_code', return_value=(True, ''))
-    def test_resend_code_after_minute_succeeds_without_turnstile(
-        self,
-        mocked_create_and_send_code,
-        mocked_turnstile,
-    ):
-        session = self.client.session
-        session[self.LOGIN_PENDING_PHONE_SESSION_KEY] = '9991234567'
-        session[self.LOGIN_PENDING_SENT_AT_SESSION_KEY] = int((timezone.now() - timezone.timedelta(seconds=61)).timestamp())
-        session.save()
-        cache.clear()
-
-        resend_resp = self.client.post(reverse('accounts:resend_code'))
-        self.assertEqual(resend_resp.status_code, 200)
-        data = resend_resp.json()
-        self.assertTrue(data.get('ok'))
-        self.assertEqual(data.get('resend_available_in'), 60)
-        mocked_create_and_send_code.assert_called_once()
-        mocked_turnstile.assert_not_called()
-
-    def test_verify_code_redirects_new_user_to_profile_instead_of_separate_step(self):
-        PhoneVerificationCode.objects.create(phone='9991234567', code='123456')
-
-        response = self.client.post(reverse('accounts:verify_code'), {
-            'phone': '9991234567',
-            'code': '123456',
-        })
-
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(response.url, f"{reverse('accounts:profile_settings')}#profile")
-
-    def test_verify_code_keeps_next_redirect_for_incomplete_profile(self):
-        PhoneVerificationCode.objects.create(phone='9991234567', code='123456')
-
-        response = self.client.post(reverse('accounts:verify_code'), {
-            'phone': '9991234567',
-            'code': '123456',
-            'next': '/orders/checkout/',
-        })
-
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(response.url, '/orders/checkout/')
+    def test_legacy_code_login_endpoints_are_not_publicly_available(self):
+        for path in (
+            '/accounts/send-code/',
+            '/accounts/resend-code/',
+            '/accounts/verify/',
+            '/accounts/login/email-code/',
+            '/accounts/login/email-code/verify/',
+            '/accounts/password-reset/verify/',
+            '/accounts/password-reset/set-password/',
+        ):
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertEqual(response.status_code, 404)
 
 
 class OtpLifecycleTest(TestCase):
@@ -374,9 +242,6 @@ class OtpLifecycleTest(TestCase):
 
 
 class PasswordAccessRecoveryTest(TestCase):
-    PASSWORD_RESET_PENDING_PHONE_SESSION_KEY = 'accounts:password-reset:pending-phone'
-    PASSWORD_RESET_VERIFIED_USER_SESSION_KEY = 'accounts:password-reset:verified-user-id'
-
     def setUp(self):
         self.client = Client()
         self.user = User.objects.create_user(
@@ -402,36 +267,30 @@ class PasswordAccessRecoveryTest(TestCase):
         self.assertEqual(response.status_code, 405)
         self.assertIsNone(self.client.session.get('_auth_user_id'))
 
-    @patch('accounts.services.generate_code', return_value='112233')
-    def test_phone_password_reset_sets_new_password_and_logs_user_in(self, mocked_generate_code):
-        request_response = self.client.post(reverse('accounts:password_reset_request'), {
-            'method': 'phone',
-            'phone': '+7 (999) 123-45-67',
-        })
-        self.assertEqual(request_response.status_code, 302)
-        self.assertEqual(request_response.url, f"{reverse('accounts:password_reset_phone_verify')}?phone=9991234567")
-        self.assertEqual(self.client.session.get(self.PASSWORD_RESET_PENDING_PHONE_SESSION_KEY), '9991234567')
+    def test_password_reset_request_page_uses_email_only(self):
+        response = self.client.get(reverse('accounts:password_reset_request'))
 
-        verify_response = self.client.post(reverse('accounts:password_reset_phone_verify'), {
-            'phone': '9991234567',
-            'code': '112233',
-        })
-        self.assertEqual(verify_response.status_code, 302)
-        self.assertEqual(verify_response.url, reverse('accounts:password_reset_set_password'))
-        self.assertEqual(self.client.session.get(self.PASSWORD_RESET_VERIFIED_USER_SESSION_KEY), self.user.pk)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'только через подтверждённый email')
+        self.assertContains(response, 'Email')
+        self.assertNotContains(response, 'Номер телефона')
+        self.assertNotContains(response, 'Способ восстановления')
 
-        set_password_response = self.client.post(reverse('accounts:password_reset_set_password'), {
-            'new_password1': 'NewStrongPass456!',
-            'new_password2': 'NewStrongPass456!',
-        })
-        self.assertEqual(set_password_response.status_code, 302)
-        self.assertEqual(set_password_response.url, reverse('accounts:profile'))
+    def test_password_reset_rejects_unverified_email_account(self):
+        unverified_user = User.objects.create_user(
+            username='user_unverified_email',
+            password='OldPassword123!',
+            email='oneboardshol@gmail.com',
+        )
+        Profile.objects.create(user=unverified_user)
 
-        self.user.refresh_from_db()
-        self.assertTrue(self.user.check_password('NewStrongPass456!'))
-        self.assertEqual(self.client.session.get('_auth_user_id'), str(self.user.pk))
-        self.assertNotIn(self.PASSWORD_RESET_PENDING_PHONE_SESSION_KEY, self.client.session)
-        self.assertNotIn(self.PASSWORD_RESET_VERIFIED_USER_SESSION_KEY, self.client.session)
+        response = self.client.post(reverse('accounts:password_reset_request'), {
+            'email': 'oneboardshol@gmail.com',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Аккаунт с таким email не найден.')
+        self.assertEqual(len(mail.outbox), 0)
 
     @override_settings(
         EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
@@ -439,7 +298,6 @@ class PasswordAccessRecoveryTest(TestCase):
     )
     def test_email_password_reset_sends_mail_and_sets_new_password(self):
         request_response = self.client.post(reverse('accounts:password_reset_request'), {
-            'method': 'email',
             'email': 'verified@example.com',
         })
 
@@ -1051,30 +909,6 @@ class GuestOrderAutoClaimTest(TestCase):
     def setUp(self):
         self.client = Client()
 
-    def test_sms_login_auto_claims_guest_orders_by_verified_phone(self):
-        guest_order = Order.objects.create(
-            user=None,
-            status=Order.STATUS_NEW,
-            total=Decimal('100.00'),
-            phone='+7 999 123 45 67',
-            email='guest-phone@example.com',
-            first_name='Гость',
-        )
-        PhoneVerificationCode.objects.create(phone='9991234567', code='123456')
-
-        response = self.client.post(reverse('accounts:verify_code'), {
-            'phone': '9991234567',
-            'code': '123456',
-        })
-
-        self.assertEqual(response.status_code, 302)
-        user = User.objects.get(username='9991234567')
-        guest_order.refresh_from_db()
-        profile = Profile.objects.get(user=user)
-        self.assertEqual(guest_order.user, user)
-        self.assertIsNotNone(profile.phone_verified_at)
-        self.assertTrue(NotificationPreference.objects.filter(user=user).exists())
-
     def test_password_login_auto_claims_guest_orders_by_verified_email(self):
         user = User.objects.create_user(
             username='9991234567',
@@ -1107,43 +941,6 @@ class GuestOrderAutoClaimTest(TestCase):
         guest_order.refresh_from_db()
         self.assertEqual(guest_order.user, user)
         self.assertTrue(NotificationPreference.objects.filter(user=user).exists())
-
-    def test_email_code_login_auto_claims_guest_orders_by_verified_email(self):
-        user = User.objects.create_user(
-            username='9991234567',
-            email='verified@example.com',
-        )
-        user.set_unusable_password()
-        user.save(update_fields=['password'])
-        Profile.objects.create(
-            user=user,
-            phone='9991234567',
-            email_verified_at=timezone.now(),
-            contact_name='Иван Иванов',
-            privacy_agreed_at=timezone.now(),
-        )
-        guest_order = Order.objects.create(
-            user=None,
-            status=Order.STATUS_NEW,
-            total=Decimal('100.00'),
-            phone='+7 900 000 00 02',
-            email='verified@example.com',
-            first_name='Гость',
-        )
-        EmailLoginCode.objects.create(
-            email='verified@example.com',
-            code='654321',
-            purpose=EmailLoginCode.PURPOSE_LOGIN,
-        )
-
-        response = self.client.post(reverse('accounts:verify_email_login'), {
-            'email': 'verified@example.com',
-            'code': '654321',
-        })
-
-        self.assertEqual(response.status_code, 302)
-        guest_order.refresh_from_db()
-        self.assertEqual(guest_order.user, user)
 
     def test_confirm_email_verification_auto_claims_guest_orders(self):
         user = User.objects.create_user(username='9991234567', password='testpass')
@@ -1424,49 +1221,3 @@ class SavedAddressAndCheckoutTest(TestCase):
         self.assertEqual(self.profile.contact_name, 'Петров Петр')
         self.assertIsNotNone(self.profile.privacy_agreed_at)
         self.assertEqual(self.profile.privacy_policy_version, LEGAL_BUNDLE_VERSION)
-
-
-class VerifyCodeTemplateTest(TestCase):
-    LOGIN_PENDING_PHONE_SESSION_KEY = 'accounts:login:pending_phone'
-    LOGIN_PENDING_SENT_AT_SESSION_KEY = 'accounts:login:last_sent_at'
-
-    def setUp(self):
-        self.client = Client()
-        self.user = User.objects.create_user(username='9991234567', password='testpass')
-        cache.clear()
-
-    @patch('accounts.views.auth.is_sms_debug_mode', return_value=True)
-    def test_verify_code_page_shows_terminal_hint_in_debug_mode(self, mocked_debug):
-        resp = self.client.get(reverse('accounts:verify_code'), {'phone': self.user.username})
-        self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, 'терминале, где запущен сервер')
-        mocked_debug.assert_called()
-
-    @patch('accounts.views.auth.is_sms_debug_mode', return_value=False)
-    def test_verify_code_page_hides_terminal_hint_in_live_mode(self, mocked_debug):
-        resp = self.client.get(reverse('accounts:verify_code'), {'phone': self.user.username})
-        self.assertEqual(resp.status_code, 200)
-        self.assertNotContains(resp, 'терминале, где запущен сервер')
-        mocked_debug.assert_called()
-
-    def test_verify_code_page_hides_login_info_block_when_session_pending(self):
-        session = self.client.session
-        session[self.LOGIN_PENDING_PHONE_SESSION_KEY] = self.user.username
-        session[self.LOGIN_PENDING_SENT_AT_SESSION_KEY] = int(timezone.now().timestamp())
-        session.save()
-
-        resp = self.client.get(reverse('accounts:verify_code'))
-        self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, 'Введите код')
-        self.assertContains(resp, 'Изменить номер')
-        self.assertNotContains(resp, '6 цифр')
-
-    def test_verify_code_page_shows_change_number_link_with_next(self):
-        resp = self.client.get(reverse('accounts:verify_code'), {
-            'phone': self.user.username,
-            'next': '/orders/checkout/',
-        })
-        self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, 'Мы отправили код на')
-        self.assertContains(resp, f'href="{reverse("accounts:login")}?next=/orders/checkout/"')
-        self.assertNotContains(resp, '6 цифр')

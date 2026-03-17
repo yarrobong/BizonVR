@@ -7,64 +7,53 @@
     <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
       <div>
         <p class="text-sm uppercase tracking-[0.24em] text-cyan-300">Клиенты</p>
-        <h2 class="mt-2 text-4xl font-semibold">Клиентская база</h2>
-        <p class="mt-2 max-w-3xl text-slate-400">Рабочий экран CRM: слева фильтры, в центре плотный список клиентов, справа быстрый preview и действия без лишних переходов.</p>
+        <h2 class="mt-2 text-2xl font-semibold md:text-4xl">Клиентская база</h2>
+        <p class="mt-2 max-w-3xl text-slate-400">Рабочий экран CRM: компактный срез базы по кнопке, в центре плотный список клиентов, справа быстрый preview и действия без лишних переходов.</p>
       </div>
       <div class="flex flex-wrap gap-2">
         <span class="manager-pill"><strong>{{ client_metrics.total }}</strong> в выдаче</span>
         <span class="manager-pill"><strong>{{ client_metrics.with_orders }}</strong> с заказами</span>
         <span class="manager-pill"><strong>{{ client_metrics.with_reservations }}</strong> с бронями</span>
-        <button type="button" data-drawer-target="#client-create-drawer" class="manager-create-action">Новый клиент</button>
+        <button type="button" data-drawer-target="#client-filters-drawer" class="manager-inline-action 2xl:hidden">
+          Фильтры
+          <span class="manager-queue-chip-count {% if client_filters_count %}manager-queue-chip-count-active{% else %}manager-queue-chip-count-muted{% endif %}">{{ client_filters_count }}</span>
+        </button>
+        <a href="{% url 'manager_portal:client_create' %}" class="manager-create-action">Новый клиент</a>
       </div>
     </div>
 
-    <div class="manager-clients-workspace">
-      <aside>
-        <section class="manager-panel rounded-[1.75rem] p-5">
-          <div class="flex items-center justify-between gap-3">
+    <div class="manager-clients-workspace {% if highlighted_client %}manager-clients-workspace-with-preview{% endif %}" data-client-filters-root data-client-filters-open="false">
+      <aside class="manager-clients-filter-panel hidden 2xl:block">
+        <section class="manager-panel manager-client-filters-shell rounded-[1.75rem] p-3">
+          <button
+            type="button"
+            class="manager-inline-action manager-client-filters-toggle"
+            data-client-filters-toggle
+            aria-expanded="false"
+            aria-controls="client-filters-desktop-panel"
+          >
+            <span class="manager-client-filters-toggle-label">Фильтры</span>
+            <span class="manager-queue-chip-count {% if client_filters_count %}manager-queue-chip-count-active{% else %}manager-queue-chip-count-muted{% endif %}" data-client-filters-count>{{ client_filters_count }}</span>
+          </button>
+          <div
+            id="client-filters-desktop-panel"
+            class="manager-client-filters-panel-content"
+            data-client-filters-panel
+            aria-hidden="true"
+          >
             <div>
               <p class="text-xs uppercase tracking-[0.22em] text-slate-500">Фильтры</p>
               <h3 class="mt-2 text-xl font-semibold">Срез базы</h3>
+              <p class="mt-2 text-sm text-slate-400">Активных фильтров: {{ client_filters_count }}</p>
             </div>
-            <a href="{% url 'manager_portal:client_list' %}" class="rounded-xl border border-slate-700 px-3 py-2 text-xs hover:bg-slate-800">Сбросить</a>
+            <div class="mt-5">
+              {% include "manager_portal/_client_filter_form.html" with field_grid_classes="grid gap-4" %}
+            </div>
           </div>
-          <form method="get" data-manager-filter-form class="mt-5 space-y-4">
-            <div class="manager-form-field space-y-1">
-              <label for="{{ filter_form.q.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.q.label }}</label>
-              {{ filter_form.q }}
-            </div>
-            <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-              <div class="manager-form-field space-y-1">
-                <label for="{{ filter_form.status.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.status.label }}</label>
-                {{ filter_form.status }}
-              </div>
-              <div class="manager-form-field space-y-1">
-                <label for="{{ filter_form.has_orders.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.has_orders.label }}</label>
-                {{ filter_form.has_orders }}
-              </div>
-              <div class="manager-form-field space-y-1">
-                <label for="{{ filter_form.has_reservations.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.has_reservations.label }}</label>
-                {{ filter_form.has_reservations }}
-              </div>
-              <div class="manager-form-field space-y-1">
-                <label for="{{ filter_form.buyer_type.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.buyer_type.label }}</label>
-                {{ filter_form.buyer_type }}
-              </div>
-              <div class="manager-form-field space-y-1">
-                <label for="{{ filter_form.customer_source.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.customer_source.label }}</label>
-                {{ filter_form.customer_source }}
-              </div>
-              <div class="manager-form-field space-y-1">
-                <label for="{{ filter_form.responsible_manager.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.responsible_manager.label }}</label>
-                {{ filter_form.responsible_manager }}
-              </div>
-            </div>
-            <button class="w-full rounded-xl bg-cyan-500 px-4 py-3 text-sm font-medium text-slate-950">Применить</button>
-          </form>
         </section>
       </aside>
 
-      <section class="manager-panel rounded-[1.75rem] p-4 sm:p-5">
+      <section class="manager-panel manager-clients-list-panel rounded-[1.75rem] p-4 sm:p-5">
         <div class="flex flex-col gap-3 border-b border-slate-800/80 pb-4 xl:flex-row xl:items-end xl:justify-between">
           <div>
             <p class="text-xs uppercase tracking-[0.22em] text-slate-500">Каталог клиентов</p>
@@ -80,285 +69,359 @@
           </div>
         </div>
 
-        <div class="manager-client-directory-head">
-          <span>Клиент</span>
-          <span>Активная сделка</span>
-          <span>Риски / статус</span>
-          <span>Последний заказ</span>
-          <span>Ответственный</span>
-        </div>
-
-        <div class="mt-3 space-y-3">
-          {% for client in clients %}
-            <a href="{% url 'manager_portal:client_list' %}?client={{ client.pk }}{% if client_querystring %}&{{ client_querystring }}{% endif %}" class="manager-card-link manager-client-directory-row {% if highlighted_client and highlighted_client.pk == client.pk %}manager-client-directory-row-active{% endif %}">
-              <div class="min-w-0">
-                <div class="flex flex-wrap items-center gap-2">
-                  <h3 class="truncate text-base font-semibold text-white">{{ client.name }}</h3>
-                  <span class="manager-pill">{{ client.get_status_display }}</span>
+        {% if clients %}
+          <div class="mt-5 space-y-3 lg:hidden">
+            {% for client in clients %}
+              <a href="{{ client.detail_url }}" class="manager-card-link manager-client-mobile-card {% if highlighted_client and highlighted_client.pk == client.pk %}manager-client-directory-row-active{% endif %}" data-client-row-mobile="{{ client.pk }}">
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <h3 class="truncate text-base font-semibold text-white">{{ client.name }}</h3>
+                    <p class="mt-1 text-sm text-slate-400">{{ client.list_client_type_label }}</p>
+                  </div>
+                  <p class="manager-client-directory-value text-right">{{ client.list_main_status_label }}</p>
                 </div>
-                <p class="mt-2 text-sm text-slate-200">{{ client.phone|default:"—" }}</p>
-                <p class="mt-1 truncate text-sm text-slate-400">
-                  {% if client.email or client.telegram %}
-                    {{ client.email|default:"" }}{% if client.email and client.telegram %} · {% endif %}{{ client.telegram|default:"" }}
-                  {% else %}
-                    Email / tg не указаны
-                  {% endif %}
-                </p>
-              </div>
-
-              <div class="manager-client-directory-cell">
-                <p class="text-sm font-medium text-white">{{ client.crm_latest_deal_label }}</p>
-                <p class="mt-1 text-xs text-slate-400">{{ client.crm_latest_deal_step_label }}</p>
-              </div>
-
-              <div class="manager-client-directory-cell">
-                <p class="text-sm font-medium text-white">{{ client.crm_latest_deal_status_label }}</p>
-                <div class="mt-2 flex flex-wrap gap-2">
-                  {% for label in client.crm_latest_problem_labels %}
-                    <span class="manager-client-tag">{{ label }}</span>
-                  {% empty %}
-                    <span class="text-xs text-slate-500">Открытых рисков нет</span>
-                  {% endfor %}
+                <div class="manager-client-mobile-grid mt-4">
+                  <div class="manager-client-mobile-item">
+                    <p class="manager-client-directory-label">Последний заказ</p>
+                    <p class="manager-client-directory-value">{{ client.list_last_order_label }}</p>
+                  </div>
+                  <div class="manager-client-mobile-item">
+                    <p class="manager-client-directory-label">Ответственный</p>
+                    <p class="manager-client-directory-value">{{ client.list_responsible_label }}</p>
+                  </div>
+                  <div class="manager-client-mobile-item">
+                    <p class="manager-client-directory-label">Следующее действие</p>
+                    <p class="manager-client-directory-value">{{ client.list_next_action_label }}</p>
+                  </div>
+                  <div class="manager-client-mobile-item">
+                    <p class="manager-client-directory-label">Риск</p>
+                    <p class="manager-client-directory-value {% if client.list_has_risk %}manager-client-directory-cell-risk{% endif %}">{{ client.list_risk_label }}</p>
+                  </div>
                 </div>
-              </div>
-
-              <div class="manager-client-directory-cell">
-                {% if client.latest_order_created_at %}
-                  <p class="text-sm font-medium text-white">{{ client.latest_order_created_at|date:"d.m.Y H:i" }}</p>
-                  <p class="mt-1 text-xs text-slate-400">{{ client.orders_count }} заказов · {{ client.active_reservations_count }} активных броней</p>
-                {% else %}
-                  <p class="text-sm font-medium text-white">Заказов пока нет</p>
-                  <p class="mt-1 text-xs text-slate-400">Можно открыть первую сделку вручную</p>
-                {% endif %}
-              </div>
-
-              <div class="manager-client-directory-cell">
-                <p class="text-sm font-medium text-white">{{ client.crm_responsible_label }}</p>
-                <p class="mt-1 text-xs text-slate-400">{{ client.crm_source_label }} · {{ client.crm_buyer_type_label }}</p>
-              </div>
-            </a>
-          {% empty %}
-            <div class="manager-empty rounded-[1.75rem] p-8 text-slate-400">По текущему фильтру клиенты не найдены.</div>
-          {% endfor %}
-        </div>
-      </section>
-
-      <aside class="manager-panel rounded-[1.75rem] p-5 xl:sticky xl:top-8 xl:self-start">
-        {% if highlighted_client %}
-          <p class="text-xs uppercase tracking-[0.2em] text-cyan-300">Карточка клиента</p>
-          <h3 class="mt-3 text-2xl font-semibold">{{ highlighted_client.name }}</h3>
-
-          <div class="mt-4 flex flex-wrap gap-2">
-            <span class="manager-pill">{{ highlighted_client.get_status_display }}</span>
-            <span class="manager-pill">{{ highlighted_client.crm_buyer_type_label }}</span>
-            <span class="manager-pill">{{ highlighted_client.crm_source_label }}</span>
-            <span class="manager-pill">{{ highlighted_client.crm_responsible_label }}</span>
+              </a>
+            {% endfor %}
           </div>
 
-          {% if highlighted_client.active_deal %}
-            <section class="manager-preview-item mt-4">
-              <div class="flex items-start justify-between gap-3">
-                <div>
-                  <p class="manager-preview-label">Активная сделка</p>
-                  <p class="mt-2 text-base font-semibold text-white">#{{ highlighted_client.active_deal.order_id }}</p>
-                  <p class="mt-1 text-sm text-slate-300">{{ highlighted_client.active_deal.next_step_label }}</p>
-                </div>
-                <span class="manager-pill">{{ highlighted_client.active_deal.get_case_status_display }}</span>
-              </div>
-              <p class="mt-3 text-sm text-slate-400">{{ highlighted_client.active_deal.get_deal_type_display }} · {{ highlighted_client.active_deal.grand_total|rub }}</p>
-              <div class="mt-3 flex flex-wrap gap-2">
-                {% for label in highlighted_client.active_deal_problem_labels %}
-                  <span class="manager-client-tag">{{ label }}</span>
-                {% empty %}
-                  <span class="text-xs text-slate-500">Открытых рисков по сделке нет</span>
-                {% endfor %}
-              </div>
-              <div class="mt-4 grid gap-2">
-                {% with action=highlighted_client.active_deal_primary_action %}
-                  {% if action %}
+          <div class="manager-client-directory-table mt-5 hidden lg:block">
+            <div class="manager-client-directory-head">
+              <span>Имя / компания</span>
+              <span>Тип клиента</span>
+              <span>Главный статус</span>
+              <span>Последний заказ</span>
+              <span>Ответственный</span>
+              <span>Следующее действие</span>
+              <span>Риск</span>
+            </div>
+            <div class="manager-client-directory-body">
+              {% for client in clients %}
+                <a href="{{ client.select_url }}" class="manager-card-link manager-client-directory-row {% if highlighted_client and highlighted_client.pk == client.pk %}manager-client-directory-row-active{% endif %}" data-client-row-desktop="{{ client.pk }}">
+                  <div class="manager-client-directory-cell manager-client-directory-cell-primary">
+                    <p class="manager-client-directory-title">{{ client.name }}</p>
+                  </div>
+                  <div class="manager-client-directory-cell">
+                    <p class="manager-client-directory-value">{{ client.list_client_type_label }}</p>
+                  </div>
+                  <div class="manager-client-directory-cell">
+                    <p class="manager-client-directory-value">{{ client.list_main_status_label }}</p>
+                  </div>
+                  <div class="manager-client-directory-cell">
+                    <p class="manager-client-directory-value">{{ client.list_last_order_label }}</p>
+                  </div>
+                  <div class="manager-client-directory-cell">
+                    <p class="manager-client-directory-value">{{ client.list_responsible_label }}</p>
+                  </div>
+                  <div class="manager-client-directory-cell">
+                    <p class="manager-client-directory-value">{{ client.list_next_action_label }}</p>
+                  </div>
+                  <div class="manager-client-directory-cell {% if client.list_has_risk %}manager-client-directory-cell-risk{% endif %}">
+                    <p class="manager-client-directory-value">{{ client.list_risk_label }}</p>
+                  </div>
+                </a>
+              {% endfor %}
+            </div>
+          </div>
+        {% else %}
+          <div class="manager-empty rounded-[1.75rem] p-8 text-slate-400">По текущему фильтру клиенты не найдены.</div>
+        {% endif %}
+      </section>
+
+      {% if highlighted_client %}
+        <aside class="manager-client-preview-panel hidden lg:block manager-panel rounded-[1.75rem] p-5 xl:sticky xl:top-8 xl:self-start">
+          <div class="manager-client-preview-header">
+            <p class="text-xs uppercase tracking-[0.2em] text-cyan-300">Карточка клиента</p>
+            <h3 class="mt-3 text-2xl font-semibold">{{ highlighted_client.name }}</h3>
+            <div class="mt-4 flex flex-wrap gap-2">
+              <span class="{{ highlighted_client.semantic_status|manager_semantic_badge_classes }}"><span class="sr-only">Статус:</span> {{ highlighted_client.get_status_display }}</span>
+              <span class="manager-pill">{{ highlighted_client.crm_buyer_type_label }}</span>
+              <span class="manager-pill">{{ highlighted_client.crm_source_label }}</span>
+            </div>
+          </div>
+
+          <div class="manager-client-preview-actions">
+            {% with action=highlighted_client.preview_primary_action %}
+              {% if action %}
+                {% if action.kind == 'form' %}
+                  <form method="post" action="{{ action.url }}" class="flex-1">
+                    {% csrf_token %}
+                    {% for key, value in action.fields.items %}
+                      <input type="hidden" name="{{ key }}" value="{{ value }}">
+                    {% endfor %}
+                    <button type="submit" class="manager-client-preview-primary-action">{{ action.label }}</button>
+                  </form>
+                {% else %}
+                  <a href="{{ action.url }}" class="manager-client-preview-primary-action">{{ action.label }}</a>
+                {% endif %}
+              {% endif %}
+            {% endwith %}
+
+            {% if highlighted_client.preview_secondary_actions %}
+              <details class="manager-inline-dropdown">
+                <summary class="manager-inline-action rounded-xl border border-slate-700 px-4 py-3 text-sm text-slate-200 transition hover:bg-slate-800">Еще</summary>
+                <div class="manager-inline-dropdown-menu manager-inline-dropdown-menu-right manager-inline-dropdown-menu-compact grid gap-2">
+                  {% for action in highlighted_client.preview_secondary_actions %}
                     {% if action.kind == 'form' %}
                       <form method="post" action="{{ action.url }}">
                         {% csrf_token %}
                         {% for key, value in action.fields.items %}
                           <input type="hidden" name="{{ key }}" value="{{ value }}">
                         {% endfor %}
-                        <button type="submit" class="w-full rounded-xl bg-cyan-500 px-4 py-3 text-sm font-medium text-slate-950 hover:bg-cyan-400">{{ action.label }}</button>
+                        <button type="submit" class="manager-action-menu-item w-full text-left">{{ action.label }}</button>
                       </form>
                     {% else %}
-                      <a href="{{ action.url }}" class="rounded-xl bg-cyan-500 px-4 py-3 text-center text-sm font-medium text-slate-950 hover:bg-cyan-400">{{ action.label }}</a>
+                      <a href="{{ action.url }}" class="manager-action-menu-item">{{ action.label }}</a>
                     {% endif %}
+                  {% endfor %}
+                </div>
+              </details>
+            {% endif %}
+          </div>
+
+          <div class="manager-client-preview-sections">
+            <section class="manager-client-preview-section">
+              <div class="manager-client-preview-section-head">
+                <h4 class="manager-client-preview-section-title">Основное</h4>
+              </div>
+              <div class="manager-client-preview-facts">
+                <div class="manager-client-preview-fact">
+                  <p class="manager-preview-label">Имя</p>
+                  <p class="mt-1 text-sm text-slate-100">{{ highlighted_client.name }}</p>
+                </div>
+                <div class="manager-client-preview-fact">
+                  <p class="manager-preview-label">Тип</p>
+                  <p class="mt-1 text-sm text-slate-100">{{ highlighted_client.crm_buyer_type_label }}</p>
+                </div>
+                <div class="manager-client-preview-fact">
+                  <p class="manager-preview-label">Статус</p>
+                  <p class="mt-1"><span class="{{ highlighted_client.semantic_status|manager_semantic_badge_classes }}">{{ highlighted_client.get_status_display }}</span></p>
+                </div>
+                <div class="manager-client-preview-fact">
+                  <p class="manager-preview-label">Ответственный</p>
+                  <p class="mt-1 text-sm text-slate-100">{{ highlighted_client.crm_responsible_label }}</p>
+                </div>
+                <div class="manager-client-preview-fact manager-client-preview-fact-wide">
+                  <p class="manager-preview-label">Контакты</p>
+                  <p class="mt-1 text-sm text-slate-100">{{ highlighted_client.phone|default:"—" }}</p>
+                  <p class="mt-1 text-sm text-slate-400">
+                    {% if highlighted_client.email or highlighted_client.telegram %}
+                      {{ highlighted_client.email|default:"—" }}{% if highlighted_client.email and highlighted_client.telegram %} · {% endif %}{{ highlighted_client.telegram|default:"" }}
+                    {% else %}
+                      Email / tg не указаны
+                    {% endif %}
+                  </p>
+                </div>
+                {% if highlighted_client.address %}
+                  <div class="manager-client-preview-fact manager-client-preview-fact-wide">
+                    <p class="manager-preview-label">Адрес</p>
+                    <p class="mt-1 text-sm leading-6 text-slate-300">{{ highlighted_client.address|linebreaksbr }}</p>
+                  </div>
+                {% endif %}
+              </div>
+            </section>
+
+            <section class="manager-client-preview-section">
+              <div class="manager-client-preview-section-head">
+                <h4 class="manager-client-preview-section-title">Активная сделка</h4>
+              </div>
+              {% if highlighted_client.active_deal %}
+                <div class="manager-client-preview-facts">
+                  <div class="manager-client-preview-fact">
+                    <p class="manager-preview-label">Номер</p>
+                    <p class="mt-1 text-sm font-medium text-white">Сделка #{{ highlighted_client.active_deal.pk }}</p>
+                    <p class="mt-1 text-xs text-slate-500">Заказ #{{ highlighted_client.active_deal.order_id }}</p>
+                  </div>
+                  <div class="manager-client-preview-fact">
+                    <p class="manager-preview-label">Статус</p>
+                    <p class="mt-1"><span class="{{ highlighted_client.active_deal_primary_status|manager_semantic_badge_classes }}">{{ highlighted_client.active_deal.get_case_status_display }}</span></p>
+                    <p class="mt-1 text-xs text-slate-500">{{ highlighted_client.active_deal.get_deal_type_display }}</p>
+                  </div>
+                  <div class="manager-client-preview-fact manager-client-preview-fact-wide">
+                    <p class="manager-preview-label">Следующий шаг</p>
+                    <p class="mt-1 text-sm text-slate-100">{{ highlighted_client.active_deal.next_step_label }}</p>
+                    <p class="mt-1 text-xs text-slate-500">{{ highlighted_client.active_deal.next_step_reason_snapshot|default:"Без дополнительного пояснения." }}</p>
+                  </div>
+                </div>
+                <div class="mt-3 flex flex-wrap gap-2">
+                  <span class="{{ highlighted_client.active_deal_secondary_status|manager_semantic_badge_classes }}">{{ highlighted_client.active_deal_secondary_status.label }}</span>
+                  <span class="{{ highlighted_client.active_deal_risk_summary|manager_semantic_badge_classes }}">{{ highlighted_client.active_deal_risk_summary.label }}</span>
+                </div>
+              {% else %}
+                <div class="rounded-2xl border border-dashed border-slate-700 px-4 py-4 text-sm text-slate-400">Активной сделки нет. Следующее действие можно начать из CTA сверху.</div>
+              {% endif %}
+            </section>
+
+            <section class="manager-client-preview-section">
+              <div class="manager-client-preview-section-head">
+                <h4 class="manager-client-preview-section-title">Финансы</h4>
+                <span class="text-xs text-slate-500">{{ highlighted_client.preview_finance.source_label }}</span>
+              </div>
+              <div class="manager-client-preview-finance-grid">
+                <div class="manager-client-preview-metric">
+                  <p class="manager-preview-label">Сумма</p>
+                  <p class="mt-2 text-lg font-semibold text-white">
+                    {% if highlighted_client.preview_finance.sum_total is not None %}
+                      {{ highlighted_client.preview_finance.sum_total|rub }}
+                    {% else %}
+                      —
+                    {% endif %}
+                  </p>
+                </div>
+                <div class="manager-client-preview-metric">
+                  <p class="manager-preview-label">Оплата</p>
+                  <p class="mt-2 text-lg font-semibold text-white">
+                    {% if highlighted_client.preview_finance.amount_paid is not None %}
+                      {{ highlighted_client.preview_finance.amount_paid|rub }}
+                    {% else %}
+                      —
+                    {% endif %}
+                  </p>
+                </div>
+                <div class="manager-client-preview-metric">
+                  <p class="manager-preview-label">Задолженность</p>
+                  <p class="mt-2 text-lg font-semibold text-white">
+                    {% if highlighted_client.preview_finance.balance_due is not None %}
+                      {{ highlighted_client.preview_finance.balance_due|rub }}
+                    {% else %}
+                      —
+                    {% endif %}
+                  </p>
+                </div>
+              </div>
+              <p class="mt-3 text-sm text-slate-400">Статус оплаты: <span class="text-slate-200">{{ highlighted_client.preview_finance.payment_status_label }}</span></p>
+            </section>
+
+            <section class="manager-client-preview-section">
+              <div class="manager-client-preview-section-head">
+                <h4 class="manager-client-preview-section-title">Последние действия</h4>
+              </div>
+              <div class="manager-client-preview-stack">
+                <div class="manager-client-preview-line">
+                  <div>
+                    <p class="manager-preview-label">Последний заказ</p>
+                    {% if highlighted_client.preview_last_activity.latest_order %}
+                      <p class="mt-1 text-sm text-slate-100">Заказ #{{ highlighted_client.preview_last_activity.latest_order.pk }}</p>
+                      <p class="mt-1 text-xs text-slate-500">
+                        {% if highlighted_client.preview_last_activity.latest_order.manager_deal %}
+                          {{ highlighted_client.preview_last_activity.latest_order.manager_deal.get_deal_status_display }}
+                        {% else %}
+                          {{ highlighted_client.preview_last_activity.latest_order.get_status_display }}
+                        {% endif %}
+                        · {{ highlighted_client.preview_last_activity.latest_order.total_to_pay|rub }}
+                      </p>
+                    {% else %}
+                      <p class="mt-1 text-sm text-slate-400">Заказов пока нет.</p>
+                    {% endif %}
+                  </div>
+                  {% if highlighted_client.preview_last_activity.latest_order %}
+                    <a href="{% url 'manager_portal:order_detail' highlighted_client.preview_last_activity.latest_order.pk %}" class="manager-inline-action">Открыть</a>
                   {% endif %}
-                {% endwith %}
-                <div class="flex flex-wrap gap-2">
-                  <a href="{{ highlighted_client.active_deal_url }}" class="manager-inline-action">Открыть deal</a>
-                  {% for action in highlighted_client.active_deal_secondary_actions %}
-                    <a href="{{ action.url }}" class="manager-inline-action">{{ action.label }}</a>
+                </div>
+                <div class="manager-client-preview-line">
+                  <div>
+                    <p class="manager-preview-label">Последнее изменение</p>
+                    <p class="mt-1 text-sm text-slate-100">
+                      {% if highlighted_client.preview_last_activity.changed_at %}
+                        {{ highlighted_client.preview_last_activity.changed_at|date:"d.m.Y H:i" }}
+                      {% else %}
+                        —
+                      {% endif %}
+                    </p>
+                  </div>
+                </div>
+                <div class="manager-client-preview-line">
+                  <div>
+                    <p class="manager-preview-label">Комментарии</p>
+                    <p class="mt-1 text-sm leading-6 text-slate-300">
+                      {% if highlighted_client.preview_last_activity.has_comments %}
+                        {{ highlighted_client.preview_last_activity.comments|truncatechars:180 }}
+                      {% else %}
+                        Без комментариев
+                      {% endif %}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="manager-client-preview-section">
+              <div class="manager-client-preview-section-head">
+                <h4 class="manager-client-preview-section-title">Документы и брони</h4>
+              </div>
+              <div class="manager-client-preview-subsection">
+                <div class="flex items-center justify-between gap-3">
+                  <p class="manager-preview-label">Документы</p>
+                  <span class="text-xs text-slate-500">{{ highlighted_client.preview_documents_and_reservations.documents_count }} всего</span>
+                </div>
+                <div class="mt-3 space-y-3">
+                  {% for document in highlighted_client.preview_documents_and_reservations.documents %}
+                    <a href="{% url 'manager_portal:contracts_detail' document.pk %}" class="manager-preview-link">
+                      <div class="flex items-center justify-between gap-3">
+                        <p class="font-medium text-white">{{ document.title|default:document.get_document_type_display }}</p>
+                        <span class="text-xs text-slate-500">{{ document.updated_at|date:"d.m.Y" }}</span>
+                      </div>
+                      <p class="mt-1 text-sm text-slate-400">{{ document.get_status_display }}{% if document.responsible_manager %} · {{ document.responsible_manager.username }}{% endif %}</p>
+                    </a>
+                  {% empty %}
+                    <div class="rounded-2xl border border-dashed border-slate-700 px-4 py-4 text-sm text-slate-400">Документов пока нет.</div>
+                  {% endfor %}
+                </div>
+              </div>
+              <div class="manager-client-preview-subsection">
+                <div class="flex items-center justify-between gap-3">
+                  <p class="manager-preview-label">Брони</p>
+                  <span class="text-xs text-slate-500">{{ highlighted_client.preview_documents_and_reservations.reservations_count }} активных</span>
+                </div>
+                <div class="mt-3 space-y-3">
+                  {% for reservation in highlighted_client.preview_documents_and_reservations.reservations %}
+                    <a href="{% url 'manager_portal:reservation_detail' reservation.pk %}" class="manager-preview-link">
+                      <div class="flex items-center justify-between gap-3">
+                        <p class="font-medium text-white">Бронь #{{ reservation.pk }}</p>
+                        <span class="text-xs text-slate-500">{{ reservation.updated_at|date:"d.m.Y H:i" }}</span>
+                      </div>
+                      <p class="mt-1 text-sm text-slate-400">{{ reservation.get_status_display }} · {{ reservation.items_count }} поз.</p>
+                    </a>
+                  {% empty %}
+                    <div class="rounded-2xl border border-dashed border-slate-700 px-4 py-4 text-sm text-slate-400">Активных броней нет.</div>
                   {% endfor %}
                 </div>
               </div>
             </section>
-          {% endif %}
-
-          <div class="mt-4 grid grid-cols-3 gap-3">
-            <div class="manager-stat-card">
-              <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Заказы</p>
-              <p class="mt-2 text-2xl font-semibold">{{ highlighted_client.orders_count }}</p>
-            </div>
-            <div class="manager-stat-card">
-              <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Брони</p>
-              <p class="mt-2 text-2xl font-semibold">{{ highlighted_client.active_reservations_count }}</p>
-            </div>
-            <div class="manager-stat-card">
-              <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Документы</p>
-              <p class="mt-2 text-2xl font-semibold">{{ highlighted_client.documents_count }}</p>
-            </div>
           </div>
-
-          <div class="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-            <a href="{% url 'manager_portal:client_detail' highlighted_client.pk %}" class="rounded-xl bg-cyan-500 px-4 py-3 text-center text-sm font-medium text-slate-950">Открыть карточку</a>
-            <a href="{% url 'manager_portal:deal_create' %}?client={{ highlighted_client.pk }}" class="rounded-xl border border-slate-700 px-4 py-3 text-center text-sm hover:bg-slate-800">Создать заказ</a>
-            {% if highlighted_client.latest_deal_id %}
-              <a href="{% url 'manager_portal:deal_detail' highlighted_client.latest_deal_id %}#deal-timeline" class="rounded-xl border border-slate-700 px-4 py-3 text-center text-sm hover:bg-slate-800">Добавить комментарий</a>
-            {% else %}
-              <a href="{% url 'manager_portal:client_detail' highlighted_client.pk %}#client-comments" class="rounded-xl border border-slate-700 px-4 py-3 text-center text-sm hover:bg-slate-800">Добавить комментарий</a>
-            {% endif %}
-            <a href="{% url 'manager_portal:reservation_list' %}?createFromClient={{ highlighted_client.pk }}" class="rounded-xl border border-slate-700 px-4 py-3 text-center text-sm hover:bg-slate-800">Создать бронь</a>
-          </div>
-
-          {% if highlighted_client.latest_order %}
-            <section class="manager-preview-item mt-6">
-              <p class="manager-preview-label">Последний заказ</p>
-              <div class="mt-3 flex items-start justify-between gap-3">
-                <div>
-                  <p class="text-base font-semibold text-white">Заказ #{{ highlighted_client.latest_order.pk }}</p>
-                  <p class="mt-1 text-sm text-slate-400">{{ highlighted_client.latest_order.created_at|date:"d.m.Y H:i" }}</p>
-                </div>
-                <a href="{% url 'manager_portal:order_detail' highlighted_client.latest_order.pk %}" class="manager-inline-action">Открыть</a>
-              </div>
-              <p class="mt-3 text-sm text-slate-300">
-                {% if highlighted_client.latest_order.manager_deal %}
-                  {{ highlighted_client.latest_order.manager_deal.get_deal_status_display }}
-                {% else %}
-                  {{ highlighted_client.latest_order.get_status_display }}
-                {% endif %}
-                · {{ highlighted_client.latest_order.total_to_pay|rub }}
-              </p>
-            </section>
-          {% endif %}
-
-          <div class="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-            <div class="manager-preview-item">
-              <p class="manager-preview-label">Телефон</p>
-              <p class="mt-1 text-sm text-slate-200">{{ highlighted_client.phone|default:"—" }}</p>
-            </div>
-            <div class="manager-preview-item">
-              <p class="manager-preview-label">Email / Telegram</p>
-              <p class="mt-1 text-sm text-slate-200">
-                {% if highlighted_client.email or highlighted_client.telegram %}
-                  {{ highlighted_client.email|default:"—" }}{% if highlighted_client.email and highlighted_client.telegram %} · {% endif %}{{ highlighted_client.telegram|default:"" }}
-                {% else %}
-                  —
-                {% endif %}
-              </p>
-            </div>
-          </div>
-
-          {% if highlighted_client.address %}
-            <div class="manager-preview-item mt-4">
-              <p class="manager-preview-label">Адрес</p>
-              <p class="mt-2 text-sm leading-6 text-slate-300">{{ highlighted_client.address|linebreaksbr }}</p>
-            </div>
-          {% endif %}
-
-          <section class="mt-6">
-            <div class="flex items-center justify-between gap-3">
-              <h4 class="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Последние заказы</h4>
-              <span class="text-xs text-slate-500">{{ highlighted_client.orders_count }} всего</span>
-            </div>
-            <div class="mt-3 space-y-3">
-              {% for order in highlighted_client.preview_orders|slice:":3" %}
-                <a href="{% url 'manager_portal:order_detail' order.pk %}" class="manager-preview-link">
-                  <div class="flex items-center justify-between gap-3">
-                    <p class="font-medium text-white">Заказ #{{ order.pk }}</p>
-                    <span class="text-xs text-slate-500">{{ order.created_at|date:"d.m.Y" }}</span>
-                  </div>
-                  <p class="mt-1 text-sm text-slate-400">
-                    {% if order.manager_deal %}
-                      {{ order.manager_deal.get_deal_status_display }}
-                    {% else %}
-                      {{ order.get_status_display }}
-                    {% endif %}
-                    · {{ order.total_to_pay|rub }}
-                  </p>
-                </a>
-              {% empty %}
-                <div class="rounded-2xl border border-dashed border-slate-700 px-4 py-4 text-sm text-slate-400">Заказов пока нет.</div>
-              {% endfor %}
-            </div>
-          </section>
-
-          <section class="mt-6">
-            <div class="flex items-center justify-between gap-3">
-              <h4 class="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Активные брони</h4>
-              <span class="text-xs text-slate-500">{{ highlighted_client.active_reservations_count }} активных</span>
-            </div>
-            <div class="mt-3 space-y-3">
-              {% for reservation in highlighted_client.preview_reservations|slice:":3" %}
-                <a href="{% url 'manager_portal:reservation_detail' reservation.pk %}" class="manager-preview-link">
-                  <div class="flex items-center justify-between gap-3">
-                    <p class="font-medium text-white">Бронь #{{ reservation.pk }}</p>
-                    <span class="text-xs text-slate-500">{{ reservation.updated_at|date:"d.m.Y H:i" }}</span>
-                  </div>
-                  <p class="mt-1 text-sm text-slate-400">{{ reservation.get_status_display }} · {{ reservation.items_count }} поз.</p>
-                </a>
-              {% empty %}
-                <div class="rounded-2xl border border-dashed border-slate-700 px-4 py-4 text-sm text-slate-400">Активных броней нет.</div>
-              {% endfor %}
-            </div>
-          </section>
-
-          <section class="mt-6">
-            <div class="flex items-center justify-between gap-3">
-              <h4 class="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Документы</h4>
-              <span class="text-xs text-slate-500">{{ highlighted_client.documents_count }} всего</span>
-            </div>
-            <div class="mt-3 space-y-3">
-              {% for document in highlighted_client.preview_documents|slice:":3" %}
-                <a href="{% url 'manager_portal:contracts_detail' document.pk %}" class="manager-preview-link">
-                  <div class="flex items-center justify-between gap-3">
-                    <p class="font-medium text-white">{{ document.title|default:document.get_document_type_display }}</p>
-                    <span class="text-xs text-slate-500">{{ document.updated_at|date:"d.m.Y" }}</span>
-                  </div>
-                  <p class="mt-1 text-sm text-slate-400">{{ document.get_status_display }}{% if document.responsible_manager %} · {{ document.responsible_manager.username }}{% endif %}</p>
-                </a>
-              {% empty %}
-                <div class="rounded-2xl border border-dashed border-slate-700 px-4 py-4 text-sm text-slate-400">Документов пока нет.</div>
-              {% endfor %}
-            </div>
-          </section>
-
-          {% if highlighted_client.comments %}
-            <div class="manager-preview-item mt-6">
-              <p class="manager-preview-label">Комментарий по клиенту</p>
-              <p class="mt-2 text-sm leading-6 text-slate-300">{{ highlighted_client.comments|linebreaksbr }}</p>
-            </div>
-          {% endif %}
-        {% else %}
-          <p class="text-sm text-slate-400">Добавьте клиента или ослабьте фильтры, чтобы увидеть preview и быстрые действия.</p>
-        {% endif %}
-      </aside>
+        </aside>
+      {% endif %}
     </div>
   </div>
 
-  <aside id="client-create-drawer" class="manager-drawer manager-glass border-l border-slate-800 p-6" aria-hidden="true">
-    <div class="flex items-center justify-between">
-      <h3 class="text-2xl font-semibold">Новый клиент</h3>
+  <aside id="client-filters-drawer" class="manager-drawer manager-drawer-mobile-sheet manager-glass border-l border-slate-800 p-5 lg:p-6 2xl:hidden" aria-hidden="true">
+    <div class="flex items-start justify-between gap-4">
+      <div>
+        <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Фильтры</p>
+        <h3 class="mt-2 text-2xl font-semibold">Срез базы</h3>
+        <p class="mt-2 text-sm text-slate-400">Активных фильтров: {{ client_filters_count }}</p>
+      </div>
       <button type="button" data-drawer-close class="rounded-full border border-slate-700 px-3 py-1 text-sm">Закрыть</button>
     </div>
-    <form method="post" class="mt-6 space-y-4">
-      {% csrf_token %}
-      {% include "manager_portal/_form_fields.html" with form=form %}
-      <button class="manager-create-action manager-create-action-block">Создать клиента</button>
-    </form>
+    <div class="mt-6">
+      {% include "manager_portal/_client_filter_form.html" with field_grid_classes="grid gap-4 md:grid-cols-2" %}
+    </div>
   </aside>
 {% endblock %}

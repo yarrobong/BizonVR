@@ -20,7 +20,7 @@ from django.test.client import RequestFactory
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 
-from accounts.models import PhoneVerificationCode, Profile
+from accounts.models import Profile
 from config.forms import CallbackForm, ContactForm
 from config.legal_docs import LEGAL_BUNDLE_VERSION
 from orders.models import Order, OrderItem
@@ -1146,10 +1146,15 @@ class CompareFeatureTest(TestCase):
     def setUp(self):
         cache.clear()
         self.client = Client()
-        self.user = User.objects.create_user(username='9991234567', password='testpass')
+        self.user = User.objects.create_user(
+            username='9991234567',
+            email='compare@example.com',
+            password='testpass',
+        )
         Profile.objects.create(
             user=self.user,
             phone='9991234567',
+            email_verified_at=timezone.now(),
             contact_name='Иван Иванов',
             privacy_agreed_at=timezone.now(),
         )
@@ -1248,11 +1253,10 @@ class CompareFeatureTest(TestCase):
         session = self.client.session
         session['compare_product_ids'] = [self.products[0].pk, self.products[1].pk]
         session.save()
-        PhoneVerificationCode.objects.create(phone=self.user.username, code='123456')
 
-        resp = self.client.post(reverse('accounts:verify_code'), {
-            'phone': self.user.username,
-            'code': '123456',
+        resp = self.client.post(reverse('accounts:password_login'), {
+            'login': self.user.email,
+            'password': 'testpass',
         })
         self.assertEqual(resp.status_code, 302)
         self.assertEqual(

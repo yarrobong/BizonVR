@@ -1,0 +1,48 @@
+<div class="flex items-start justify-between gap-4">
+  <div>
+    <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Быстрое действие</p>
+    <h2 class="mt-2 text-2xl font-semibold text-white">Назначить ответственного</h2>
+    <p class="mt-2 text-sm text-slate-400">{{ client.name }}</p>
+  </div>
+  <button type="button" data-drawer-close class="rounded-full border border-slate-700 px-3 py-1 text-sm">Закрыть</button>
+</div>
+
+{% if latest_deal %}
+  <section class="manager-preview-item mt-6">
+    <p class="manager-preview-label">Последняя сделка</p>
+    <div class="mt-3 flex items-center justify-between gap-3">
+      <div>
+        <p class="text-base font-semibold text-white">Сделка #{{ latest_deal.order_id }}</p>
+        <p class="mt-1 text-sm text-slate-400">{{ latest_deal.get_case_status_display }}{% if latest_deal.responsible_manager %} · {{ latest_deal.responsible_manager.username }}{% endif %}</p>
+      </div>
+      <a href="{% url 'manager_portal:deal_detail' latest_deal.pk %}" class="manager-inline-action">Открыть</a>
+    </div>
+  </section>
+
+  <form
+    method="post"
+    action="{% url 'manager_portal:client_quick_assign' client.pk %}"
+    hx-post="{% url 'manager_portal:client_quick_assign' client.pk %}"
+    hx-target="#manager-remote-drawer-content"
+    hx-swap="innerHTML"
+    hx-push-url="false"
+    class="mt-6 space-y-4"
+  >
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{{ next_url }}">
+    {% include "manager_portal/_form_fields.html" with form=form %}
+    <div class="flex flex-wrap gap-2">
+      <button type="submit" class="rounded-xl bg-cyan-500 px-4 py-3 text-sm font-medium text-slate-950 hover:bg-cyan-400">Сохранить ответственного</button>
+      <button type="button" data-drawer-close class="manager-inline-action">Отмена</button>
+    </div>
+  </form>
+{% else %}
+  <section class="manager-preview-item mt-6 border-rose-500/25 bg-rose-500/10">
+    <p class="manager-preview-label text-rose-200">Нет сделки</p>
+    <p class="mt-3 text-sm leading-6 text-rose-100">Быстрое назначение работает только через последнюю сделку клиента. Сначала создайте заказ.</p>
+    <div class="mt-4 flex flex-wrap gap-2">
+      <a href="{{ deal_create_url }}" class="rounded-xl bg-cyan-500 px-4 py-3 text-sm font-medium text-slate-950 hover:bg-cyan-400">Создать заказ</a>
+      <button type="button" data-drawer-close class="manager-inline-action">Закрыть</button>
+    </div>
+  </section>
+{% endif %}

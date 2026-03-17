@@ -4,91 +4,154 @@
 
 {% block content %}
   <div class="space-y-3">
-    {% if open_receipt_drawer %}
-      <div data-open-drawer-on-load="#inventory-receipt-drawer" hidden></div>
-    {% endif %}
     <div class="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
       <div class="min-w-0">
         <div class="flex flex-wrap items-center gap-2">
           <h2 class="text-2xl font-semibold">Остатки</h2>
           {% if inventory_summary.problem_sku_count %}
-            <span class="rounded-full bg-rose-500/12 px-2.5 py-1 text-[0.72rem] font-medium text-rose-100 ring-1 ring-inset ring-rose-400/25">{{ inventory_summary.problem_sku_count }} в проблеме</span>
+            <span class="manager-semantic-badge manager-semantic-badge-critical">{{ inventory_summary.problem_sku_count }} в проблеме</span>
           {% endif %}
         </div>
       </div>
       <div class="flex items-center gap-2">
         <a href="{% url 'manager_portal:inventory' %}" class="rounded-xl bg-slate-950/65 px-3 py-2 text-sm text-slate-300 ring-1 ring-inset ring-slate-800 transition hover:bg-slate-900 hover:text-white">Сбросить</a>
-        <button type="button" data-drawer-target="#inventory-receipt-drawer" class="manager-create-action">Ручной приход</button>
+        <button type="submit" form="inventory-filter-form" name="export" value="csv" class="rounded-xl bg-slate-950/65 px-3 py-2 text-sm text-slate-300 ring-1 ring-inset ring-slate-800 transition hover:bg-slate-900 hover:text-white">Экспорт CSV</button>
+        <button type="submit" form="inventory-filter-form" name="export" value="excel" class="rounded-xl bg-slate-950/65 px-3 py-2 text-sm text-slate-300 ring-1 ring-inset ring-slate-800 transition hover:bg-slate-900 hover:text-white">Экспорт Excel</button>
+        <a href="{% url 'manager_portal:inventory_receipt' %}{% if selected_warehouse %}?warehouse={{ selected_warehouse.pk }}{% endif %}" class="manager-create-action">Ручной приход</a>
       </div>
     </div>
 
     <section>
-      <div class="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
-        <div class="flex items-baseline justify-between gap-3 rounded-xl bg-emerald-500/[0.07] px-3 py-2 ring-1 ring-inset ring-emerald-400/15">
-          <span class="text-[0.82rem] text-slate-300">Можно продавать</span>
-          <strong class="text-lg font-semibold text-white">{{ inventory_summary.sellable_sku_count }}</strong>
-        </div>
-        <div class="flex items-baseline justify-between gap-3 rounded-xl {% if inventory_summary.below_min_stock_count %}bg-amber-500/[0.09] ring-1 ring-inset ring-amber-400/25{% else %}bg-slate-950/45 ring-1 ring-inset ring-slate-800{% endif %} px-3 py-2">
-          <span class="text-[0.82rem] text-slate-300">Нужно пополнить</span>
-          <strong class="text-lg font-semibold {% if inventory_summary.below_min_stock_count %}text-amber-100{% else %}text-white{% endif %}">{{ inventory_summary.below_min_stock_count }}</strong>
-        </div>
-        <div class="flex items-baseline justify-between gap-3 rounded-xl {% if affected_deal_count %}bg-rose-500/[0.09] ring-1 ring-inset ring-rose-400/25{% else %}bg-slate-950/45 ring-1 ring-inset ring-slate-800{% endif %} px-3 py-2">
-          <span class="text-[0.82rem] text-slate-300">Риск обещания</span>
-          <strong class="text-lg font-semibold {% if affected_deal_count %}text-rose-100{% else %}text-white{% endif %}">{{ affected_deal_count }}</strong>
-        </div>
-        <div class="flex items-baseline justify-between gap-3 rounded-xl {% if inventory_summary.public_mismatch_count %}bg-amber-500/[0.07] ring-1 ring-inset ring-amber-400/20{% else %}bg-slate-950/45 ring-1 ring-inset ring-slate-800{% endif %} px-3 py-2">
-          <span class="text-[0.82rem] text-slate-300">Сайт расходится</span>
-          <strong class="text-lg font-semibold {% if inventory_summary.public_mismatch_count %}text-amber-100{% else %}text-white{% endif %}">{{ inventory_summary.public_mismatch_count }}</strong>
-        </div>
-        <div class="flex items-baseline justify-between gap-3 rounded-xl {% if inventory_summary.waiting_inbound_count %}bg-sky-500/[0.09] ring-1 ring-inset ring-sky-400/25{% else %}bg-slate-950/45 ring-1 ring-inset ring-slate-800{% endif %} px-3 py-2">
-          <span class="text-[0.82rem] text-slate-300">Ждут приход</span>
-          <strong class="text-lg font-semibold {% if inventory_summary.waiting_inbound_count %}text-sky-100{% else %}text-white{% endif %}">{{ inventory_summary.waiting_inbound_count }}</strong>
-        </div>
+      <div class="manager-inventory-kpi-grid grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+        <article class="manager-inventory-kpi manager-semantic-surface manager-semantic-surface-complete">
+          <div class="manager-inventory-kpi-copy">
+            <span class="manager-inventory-kpi-label">Можно продавать</span>
+            <p class="manager-inventory-kpi-note">SKU без блокирующих сигналов</p>
+          </div>
+          <strong class="manager-inventory-kpi-value">{{ inventory_summary.sellable_sku_count }}</strong>
+        </article>
+        <article class="manager-inventory-kpi manager-semantic-surface {% if inventory_summary.below_min_stock_count %}manager-semantic-surface-attention{% else %}manager-semantic-surface-unknown{% endif %}">
+          <div class="manager-inventory-kpi-copy">
+            <span class="manager-inventory-kpi-label">Нужно пополнить</span>
+            <p class="manager-inventory-kpi-note">Позиции ниже минимального остатка</p>
+          </div>
+          <strong class="manager-inventory-kpi-value">{{ inventory_summary.below_min_stock_count }}</strong>
+        </article>
+        <article class="manager-inventory-kpi manager-semantic-surface {% if affected_deal_count %}manager-semantic-surface-critical{% else %}manager-semantic-surface-unknown{% endif %}">
+          <div class="manager-inventory-kpi-copy">
+            <span class="manager-inventory-kpi-label">Риск обещания</span>
+            <p class="manager-inventory-kpi-note">Сделки, где обещание упирается в склад</p>
+          </div>
+          <strong class="manager-inventory-kpi-value">{{ affected_deal_count }}</strong>
+        </article>
+        <article class="manager-inventory-kpi manager-semantic-surface {% if inventory_summary.public_mismatch_count %}manager-semantic-surface-attention{% else %}manager-semantic-surface-unknown{% endif %}">
+          <div class="manager-inventory-kpi-copy">
+            <span class="manager-inventory-kpi-label">Сайт расходится</span>
+            <p class="manager-inventory-kpi-note">Публичный остаток не совпадает с ожидаемым</p>
+          </div>
+          <strong class="manager-inventory-kpi-value">{{ inventory_summary.public_mismatch_count }}</strong>
+        </article>
+        <article class="manager-inventory-kpi manager-semantic-surface {% if inventory_summary.waiting_inbound_count %}manager-semantic-surface-active{% else %}manager-semantic-surface-unknown{% endif %}">
+          <div class="manager-inventory-kpi-copy">
+            <span class="manager-inventory-kpi-label">Ждут приход</span>
+            <p class="manager-inventory-kpi-note">Товары в пути, которые уже влияют на обещание</p>
+          </div>
+          <strong class="manager-inventory-kpi-value">{{ inventory_summary.waiting_inbound_count }}</strong>
+        </article>
       </div>
     </section>
 
-    <section class="rounded-[1.1rem] bg-slate-950/30 px-3 py-3 ring-1 ring-inset ring-slate-800/70">
-      <form method="get" data-manager-filter-form class="space-y-2.5">
+    <section class="manager-inventory-filter-shell rounded-[1.1rem] px-3 py-3 ring-1 ring-inset ring-slate-800/70">
+      <form id="inventory-filter-form" method="get" data-manager-filter-form class="space-y-3">
         {% if selected_business_view %}
           <input type="hidden" name="business_view" value="{{ selected_business_view }}">
         {% endif %}
-        <div class="grid gap-3 lg:grid-cols-[minmax(0,1.3fr),14rem,auto]">
-          <div class="space-y-1">
-            <label class="block text-[0.68rem] font-medium uppercase tracking-[0.18em] text-slate-500">Поиск</label>
-            <input type="text" name="q" value="{{ search }}" placeholder="SKU, товар, вариант или склад" class="w-full rounded-xl bg-slate-950/85 px-4 py-2.5 text-sm text-white ring-1 ring-inset ring-slate-700">
-          </div>
-          <div class="space-y-1">
-            <label class="block text-[0.68rem] font-medium uppercase tracking-[0.18em] text-slate-500">Склад</label>
-            <select name="warehouse" class="w-full rounded-xl bg-slate-950/85 px-4 py-2.5 text-sm text-white ring-1 ring-inset ring-slate-700">
-              <option value="">Все склады</option>
-              {% for warehouse in warehouse_options %}
-                <option value="{{ warehouse.pk }}" {% if selected_warehouse and selected_warehouse.pk == warehouse.pk %}selected{% endif %}>{{ warehouse.name }}</option>
-              {% endfor %}
-            </select>
+        <div class="manager-inventory-filter-head">
+          <div class="manager-inventory-filter-field">
+            <label class="manager-inventory-filter-label" for="inventory-product-q">Быстрый поиск товара</label>
+            <input
+              id="inventory-product-q"
+              type="search"
+              name="product_q"
+              value="{{ product_search }}"
+              placeholder="Начните вводить название товара"
+              class="manager-inventory-filter-control"
+            >
           </div>
           <div class="flex items-end">
-            <label class="inline-flex items-center gap-2 rounded-xl bg-slate-950/85 px-3 py-2.5 text-sm text-slate-300 ring-1 ring-inset ring-slate-700">
-              <input type="checkbox" name="problematic" value="1" {% if only_problematic and not selected_problem_filters %}checked{% endif %} class="h-4 w-4">
-              Только проблемные
-            </label>
+            <button
+              type="button"
+              class="manager-inline-action manager-inventory-filter-toggle"
+              data-manager-disclosure-button
+              data-manager-disclosure-target="#inventory-advanced-filters"
+              aria-expanded="{% if inventory_filters_open %}true{% else %}false{% endif %}"
+            >
+              <span>Фильтры</span>
+              {% if inventory_advanced_filter_count %}
+                <span class="manager-queue-chip-count manager-queue-chip-count-warning">{{ inventory_advanced_filter_count }}</span>
+              {% endif %}
+              <span data-manager-disclosure-icon class="manager-inventory-filter-toggle-icon">{% if inventory_filters_open %}▾{% else %}▸{% endif %}</span>
+            </button>
           </div>
         </div>
-        <details class="rounded-xl bg-slate-950/45 px-3 py-2.5 ring-1 ring-inset ring-slate-800/80" {% if selected_problem_filters %}open{% endif %}>
-          <summary class="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium text-slate-300">
-            <span>Расширенные фильтры</span>
-            <span class="rounded-full bg-slate-900/90 px-2.5 py-1 text-[0.7rem] text-slate-500 ring-1 ring-inset ring-slate-700">
-              {% if selected_problem_filters %}{{ selected_problem_filters|length }} выбрано{% else %}точные типы проблем{% endif %}
-            </span>
-          </summary>
-          <div class="mt-2.5 flex flex-wrap gap-2">
-            {% for problem_filter in problem_filters %}
-              <label class="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm ring-1 ring-inset {% if problem_filter.param in selected_problem_filters %}bg-cyan-500/10 text-cyan-100 ring-cyan-400/35{% else %}bg-slate-950/85 text-slate-300 ring-slate-800{% endif %}">
-                <input type="checkbox" name="{{ problem_filter.param }}" value="1" {% if problem_filter.param in selected_problem_filters %}checked{% endif %} class="h-4 w-4">
-                {{ problem_filter.label }}
-              </label>
-            {% endfor %}
+        <div id="inventory-advanced-filters" class="manager-inventory-advanced-filters" {% if not inventory_filters_open %}hidden{% endif %}>
+          <div class="manager-inventory-advanced-grid">
+            <div class="manager-inventory-filter-field">
+              <label class="manager-inventory-filter-label" for="inventory-warehouse">Склад</label>
+              <select id="inventory-warehouse" name="warehouse" class="manager-inventory-filter-control">
+                <option value="">Все склады</option>
+                {% for warehouse in warehouse_options %}
+                  <option value="{{ warehouse.pk }}" {% if selected_warehouse and selected_warehouse.pk == warehouse.pk %}selected{% endif %}>{{ warehouse.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="manager-inventory-filter-field">
+              <label class="manager-inventory-filter-label" for="inventory-exact-q">SKU / вариант / склад</label>
+              <input
+                id="inventory-exact-q"
+                type="text"
+                name="q"
+                value="{{ search }}"
+                placeholder="Точный фильтр для SKU, варианта или склада"
+                class="manager-inventory-filter-control"
+              >
+            </div>
           </div>
-        </details>
+
+          <section class="manager-inventory-problem-card">
+            <div class="manager-inventory-problem-head">
+              <div>
+                <p class="manager-inventory-filter-label">Проблемные позиции</p>
+                <p class="manager-inventory-filter-hint">Сначала включите общий проблемный срез или откройте подменю, чтобы выбрать конкретные типы сигналов.</p>
+              </div>
+              <div class="manager-inventory-problem-actions">
+                <label class="manager-inventory-problem-toggle {% if only_problematic and not selected_problem_filters %}manager-inventory-problem-toggle-active{% endif %}">
+                  <input type="checkbox" name="problematic" value="1" {% if only_problematic and not selected_problem_filters %}checked{% endif %} class="h-4 w-4">
+                  <span>Только проблемные</span>
+                </label>
+                <details class="manager-inline-dropdown manager-inventory-problem-dropdown" {% if inventory_problem_filters_open %}open{% endif %}>
+                  <summary class="manager-inline-action">
+                    <span>Типы проблем</span>
+                    <span class="manager-queue-chip-count {% if selected_problem_filters %}manager-queue-chip-count-warning{% else %}manager-queue-chip-count-muted{% endif %}">
+                      {% if selected_problem_filters %}{{ selected_problem_filters|length }}{% else %}Все{% endif %}
+                    </span>
+                  </summary>
+                  <div class="manager-inline-dropdown-menu manager-inline-dropdown-menu-right manager-inventory-problem-menu">
+                    <p class="manager-inventory-problem-menu-copy">Если ничего не выбрано, переключатель слева показывает все проблемные строки сразу.</p>
+                    <div class="manager-inventory-problem-chips">
+                      {% for problem_filter in problem_filters %}
+                        <label class="manager-inventory-problem-chip {% if problem_filter.param in selected_problem_filters %}manager-inventory-problem-chip-active{% endif %}">
+                          <input type="checkbox" name="{{ problem_filter.param }}" value="1" {% if problem_filter.param in selected_problem_filters %}checked{% endif %} class="h-4 w-4">
+                          <span>{{ problem_filter.label }}</span>
+                        </label>
+                      {% endfor %}
+                    </div>
+                  </div>
+                </details>
+              </div>
+            </div>
+          </section>
+        </div>
       </form>
     </section>
 
@@ -108,8 +171,7 @@
     </section>
 
     <section class="overflow-hidden rounded-[1.25rem] bg-slate-950/70 ring-1 ring-inset ring-slate-800/90">
-      <div class="overflow-x-auto">
-        <table class="manager-table w-full min-w-[78rem] text-sm">
+      {% manager_table table_class="hidden w-full min-w-[84rem] text-sm md:table" %}
           <thead class="bg-slate-950/70 text-left text-[0.72rem] uppercase tracking-[0.16em] text-slate-500">
             <tr>
               <th class="px-4 py-3 font-medium">Товар</th>
@@ -118,45 +180,32 @@
               <th class="px-4 py-3 font-medium">В пути</th>
               <th class="px-4 py-3 font-medium">Можно обещать</th>
               <th class="px-4 py-3 font-medium">Проблема</th>
+              <th class="px-4 py-3 text-right font-medium">Открыть</th>
             </tr>
           </thead>
-          <tbody class="divide-y divide-slate-800/80">
+          <tbody>
             {% for row in inventory_rows %}
               <tr
                 data-row-toggle-row="{{ row.row_key }}"
                 title="Показать детали"
-                class="cursor-pointer border-l-2 {% if row.has_problem %}border-rose-400/55 bg-rose-500/[0.04]{% else %}border-transparent bg-transparent{% endif %} transition hover:bg-slate-950/70"
+                class="cursor-pointer border-l-2 {% if row.risk_summary.tone == 'critical' %}border-rose-400/55 bg-rose-500/[0.04]{% elif row.risk_summary.tone == 'attention' %}border-amber-400/45 bg-amber-500/[0.04]{% elif row.risk_summary.tone == 'active' %}border-cyan-400/45 bg-cyan-500/[0.04]{% else %}border-transparent bg-transparent{% endif %} transition hover:bg-slate-950/70"
               >
                 <td class="px-4 py-3 align-top">
-                  <div class="flex items-start gap-2.5">
-                    <button
-                      type="button"
-                      data-row-toggle="{{ row.row_key }}"
-                      aria-expanded="false"
-                      class="mt-0.5 inline-flex h-7 w-7 items-center justify-center rounded-full bg-slate-950 text-slate-400 ring-1 ring-inset ring-slate-700 transition hover:text-cyan-200 hover:ring-cyan-400/30"
-                    >
-                      <span data-row-toggle-icon>▸</span>
-                    </button>
-                    <div class="max-w-[28rem] min-w-0">
-                      <p class="font-medium text-white">{{ row.product_name }}{% if row.variant_name %} <span class="text-slate-500">/ {{ row.variant_name }}</span>{% endif %}</p>
-                      <p class="mt-0.5 text-xs text-slate-500">
-                        <span>SKU {{ row.sku|default:"—" }}</span>
-                        <span class="mx-1">·</span>
-                        <a href="{% url 'manager_portal:warehouse_detail' row.warehouse_id %}" class="text-cyan-300 hover:text-cyan-200">{{ row.warehouse_name }}</a>
-                      </p>
-                    </div>
+                  <div class="max-w-[28rem] min-w-0">
+                    <p class="font-medium text-white">{{ row.product_name }}{% if row.variant_name %} <span class="text-slate-500">/ {{ row.variant_name }}</span>{% endif %}</p>
+                    <p class="mt-0.5 text-xs text-slate-500">
+                      <span>SKU {{ row.sku|default:"—" }}</span>
+                      <span class="mx-1">·</span>
+                      <a href="{% url 'manager_portal:warehouse_detail' row.warehouse_id %}" class="text-cyan-300 hover:text-cyan-200">{{ row.warehouse_name }}</a>
+                    </p>
                   </div>
                 </td>
                 <td class="px-4 py-3 align-top">
                   <div class="space-y-1">
-                    <span class="inline-flex rounded-full border px-3 py-1 text-xs {% if row.row_status.tone == 'rose' %}border-rose-400/25 bg-rose-500/10 text-rose-100{% elif row.row_status.tone == 'amber' %}border-amber-400/25 bg-amber-500/10 text-amber-100{% elif row.row_status.tone == 'sky' %}border-sky-400/25 bg-sky-500/10 text-sky-100{% else %}border-emerald-400/25 bg-emerald-500/10 text-emerald-100{% endif %}">
-                      {{ row.row_status.label }}
+                    <span class="{{ row.row_status|manager_semantic_badge_classes }}">
+                      <span class="sr-only">Статус:</span> {{ row.row_status.label }}
                     </span>
-                    {% if row.public_sync_status_code == 'unlinked' %}
-                      <p class="text-xs text-slate-500">Нет связи с сайтом</p>
-                    {% elif row.public_sync_status_code == 'mismatch' %}
-                      <p class="text-xs text-slate-500">Сайт: {{ row.public_published_qty|default:"—" }} / {{ row.public_expected_qty }}</p>
-                    {% endif %}
+                    <p class="text-xs {{ row.public_sync_status|manager_semantic_text_classes }}">{{ row.public_sync_status.label }}</p>
                   </div>
                 </td>
                 <td class="px-4 py-3 align-top text-base font-semibold {% if row.available < 0 %}text-rose-300{% elif row.min_stock and row.available < row.min_stock %}text-amber-300{% else %}text-emerald-300{% endif %}">{{ row.available }}</td>
@@ -169,219 +218,151 @@
                 <td class="px-4 py-3 align-top text-base font-semibold {% if row.promise_capacity > 0 %}text-cyan-200{% else %}text-slate-400{% endif %}">{{ row.promise_capacity }}</td>
                 <td class="px-4 py-3 align-top">
                   <div class="max-w-[18rem] space-y-1.5">
-                    {% if row.problem_types %}
-                      <div class="flex flex-wrap gap-2">
-                        {% for problem in row.problem_types|slice:":2" %}
-                          <span class="inline-flex rounded-full border px-3 py-1 text-xs {% if problem.code == 'public_mismatch' or problem.code == 'below_min_stock' or problem.code == 'inbound_fully_allocated' %}border-amber-400/20 bg-amber-500/10 text-amber-100{% else %}border-rose-400/20 bg-rose-500/10 text-rose-100{% endif %}">
-                            {{ problem.label }}
-                          </span>
-                        {% endfor %}
-                        {% if row.problem_types|length > 2 %}
-                          <span class="inline-flex rounded-full border border-slate-700 px-3 py-1 text-xs text-slate-300">+{{ row.problem_types|length|add:"-2" }}</span>
-                        {% endif %}
-                      </div>
-                    {% else %}
-                      <p class="text-sm text-slate-500">Без сигнала</p>
+                    <div class="{{ row.risk_summary|manager_semantic_risk_classes }}">
+                      <p class="manager-status-line-label">Риски</p>
+                      <p class="mt-1 text-sm font-medium text-white">{{ row.risk_summary.label }}</p>
+                      {% if row.risk_summary.detail %}
+                        <p class="manager-status-line-detail mt-1">{{ row.risk_summary.detail }}</p>
+                      {% endif %}
+                    </div>
+                    {% if row.problem_types|length > 1 or row.linked_deals %}
+                      <details class="text-xs text-slate-400">
+                        <summary class="cursor-pointer text-slate-500 hover:text-slate-200">Подробности</summary>
+                        <div class="mt-2 space-y-2">
+                          {% if row.problem_types %}
+                            <div class="flex flex-wrap gap-2">
+                              {% for problem in row.problem_types %}
+                                <span class="manager-pill">{{ problem.label }}</span>
+                              {% endfor %}
+                            </div>
+                          {% endif %}
+                          {% if row.linked_deals %}
+                            <p>
+                              {% for item in row.linked_deals|slice:":2" %}
+                                <a href="{% url 'manager_portal:deal_detail' item.deal.pk %}" class="text-cyan-300 hover:text-cyan-200">#{{ item.deal.order_id }}</a>{% if not forloop.last %}, {% endif %}
+                              {% endfor %}
+                              {% if row.linked_deals|length > 2 %}и ещё {{ row.linked_deals|length|add:"-2" }}{% endif %}
+                            </p>
+                          {% endif %}
+                        </div>
+                      </details>
                     {% endif %}
-                    {% if row.linked_deals %}
-                      <p class="text-[0.78rem] text-slate-500">
-                        {% for item in row.linked_deals|slice:":2" %}
-                          <a href="{% url 'manager_portal:deal_detail' item.deal.pk %}" class="text-cyan-300 hover:text-cyan-200">#{{ item.deal.order_id }}</a>{% if not forloop.last %}, {% endif %}
-                        {% endfor %}
-                        {% if row.linked_deals|length > 2 %}и ещё {{ row.linked_deals|length|add:"-2" }}{% endif %}
-                      </p>
-                    {% endif %}
+                  </div>
+                </td>
+                <td class="px-4 py-3 align-top">
+                  <div class="flex justify-end">
+                    <button
+                      type="button"
+                      data-row-toggle="{{ row.row_key }}"
+                      aria-expanded="false"
+                      class="inline-flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-xs font-medium text-slate-100 transition hover:border-cyan-400/30 hover:bg-slate-800"
+                    >
+                      Открыть
+                      <span data-row-toggle-icon>▸</span>
+                    </button>
                   </div>
                 </td>
               </tr>
               <tr id="inventory-row-detail-{{ row.row_key }}" data-row-detail="{{ row.row_key }}" hidden>
-                <td colspan="6" class="border-t border-slate-800/70 bg-slate-950/70 px-4 py-4">
-                  <div class="mb-3 grid gap-3 xl:grid-cols-[minmax(0,1.6fr),minmax(0,1fr)]">
-                    <section class="rounded-2xl bg-slate-950/65 p-4 ring-1 ring-inset ring-slate-800">
-                      <div class="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Бизнес-объяснение</p>
-                          <p class="mt-2 text-lg font-semibold text-white">{{ row.row_status.label }}</p>
-                          <p class="mt-1.5 max-w-3xl text-sm text-slate-300">{{ row.row_status.detail }}</p>
-                        </div>
-                        <span class="rounded-full border px-3 py-1 text-xs {% if row.row_status.tone == 'rose' %}border-rose-400/25 bg-rose-500/10 text-rose-100{% elif row.row_status.tone == 'amber' %}border-amber-400/25 bg-amber-500/10 text-amber-100{% elif row.row_status.tone == 'sky' %}border-sky-400/25 bg-sky-500/10 text-sky-100{% else %}border-emerald-400/25 bg-emerald-500/10 text-emerald-100{% endif %}">
-                          Показаны причины
-                        </span>
-                      </div>
-                      <div class="mt-3 grid gap-2 lg:grid-cols-2">
-                        {% for reason in row.detail_reasons %}
-                          <div class="rounded-xl bg-slate-900/70 px-3 py-2.5 text-sm text-slate-200 ring-1 ring-inset ring-slate-800">{{ reason }}</div>
-                        {% empty %}
-                          <div class="rounded-xl px-3 py-3 text-sm text-slate-500 ring-1 ring-inset ring-slate-800">Дополнительных причин не найдено.</div>
-                        {% endfor %}
-                      </div>
-                    </section>
-                    <section class="rounded-2xl bg-slate-950/65 p-4 ring-1 ring-inset ring-slate-800">
-                      <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Связка чисел</p>
-                      <div class="mt-3 grid gap-2 sm:grid-cols-2">
-                        <div class="rounded-xl bg-slate-900/70 px-3 py-2.5 ring-1 ring-inset ring-slate-800">
-                          <p class="text-xs uppercase tracking-[0.14em] text-slate-500">Факт</p>
-                          <p class="mt-2 text-2xl font-semibold text-white">{{ row.on_hand }}</p>
-                        </div>
-                        <div class="rounded-xl bg-slate-900/70 px-3 py-2.5 ring-1 ring-inset ring-slate-800">
-                          <p class="text-xs uppercase tracking-[0.14em] text-slate-500">В резерве</p>
-                          <p class="mt-2 text-2xl font-semibold text-white">{{ row.reserved_on_hand }}</p>
-                        </div>
-                        <div class="rounded-xl bg-slate-900/70 px-3 py-2.5 ring-1 ring-inset ring-slate-800">
-                          <p class="text-xs uppercase tracking-[0.14em] text-slate-500">Свободно</p>
-                          <p class="mt-2 text-2xl font-semibold {% if row.available < 0 %}text-rose-300{% elif row.min_stock and row.available < row.min_stock %}text-amber-300{% else %}text-emerald-300{% endif %}">{{ row.available }}</p>
-                        </div>
-                        <div class="rounded-xl bg-slate-900/70 px-3 py-2.5 ring-1 ring-inset ring-slate-800">
-                          <p class="text-xs uppercase tracking-[0.14em] text-slate-500">Можно обещать</p>
-                          <p class="mt-2 text-2xl font-semibold text-cyan-200">{{ row.promise_capacity }}</p>
-                        </div>
-                      </div>
-                      <div class="mt-2.5 rounded-xl bg-slate-900/70 px-3 py-2.5 ring-1 ring-inset ring-slate-800">
-                        <p class="text-xs uppercase tracking-[0.14em] text-slate-500">Сайт</p>
-                        <p class="mt-2 text-sm font-semibold text-white">{{ row.public_sync_status_label }}</p>
-                        <p class="mt-1 text-xs text-slate-500">Опубликовано {% if row.public_published_qty == None %}—{% else %}{{ row.public_published_qty }}{% endif %}, ожидается {{ row.public_expected_qty }}</p>
-                      </div>
-                    </section>
-                  </div>
-                  <div class="grid gap-3 xl:grid-cols-[1.2fr,1.2fr,1.2fr,1fr]">
-                    <section class="rounded-2xl bg-slate-950/65 p-4 ring-1 ring-inset ring-slate-800">
-                      <div class="flex items-center justify-between gap-3">
-                        <h3 class="text-sm font-semibold text-white">Активные брони</h3>
-                        <span class="text-xs text-slate-500">{{ row.active_reservations|length }}</span>
-                      </div>
-                      <div class="mt-3 space-y-3">
-                        {% for item in row.active_reservations %}
-                          <a href="{% url 'manager_portal:reservation_detail' item.reservation.pk %}" class="block rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-3 hover:border-cyan-400/30">
-                            <div class="flex items-start justify-between gap-3">
-                              <div>
-                                <p class="font-medium text-cyan-300">Бронь #{{ item.reservation.pk }}</p>
-                                <p class="mt-1 text-xs text-slate-400">{{ item.reservation.client.name }} · {{ item.source_type_label }} · {{ item.source_label }}</p>
-                              </div>
-                              <span class="text-sm font-semibold text-white">{{ item.quantity }}</span>
-                            </div>
-                          </a>
-                        {% empty %}
-                          <p class="rounded-xl border border-dashed border-slate-800 px-3 py-4 text-sm text-slate-500">Нет активных броней по этой позиции.</p>
-                        {% endfor %}
-                      </div>
-                    </section>
-
-                    <section class="rounded-2xl bg-slate-950/65 p-4 ring-1 ring-inset ring-slate-800">
-                      <div class="flex items-center justify-between gap-3">
-                        <h3 class="text-sm font-semibold text-white">Последние движения</h3>
-                        <span class="text-xs text-slate-500">{{ row.recent_movements|length }}</span>
-                      </div>
-                      <div class="mt-3 space-y-3">
-                        {% for movement in row.recent_movements %}
-                          <div class="rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-3">
-                            <div class="flex items-start justify-between gap-3">
-                              <div>
-                                <p class="font-medium text-white">{{ movement.get_movement_type_display }}</p>
-                                <p class="mt-1 text-xs text-slate-400">{{ movement.created_at|date:"d.m.Y H:i" }} · {% if movement.author %}{{ movement.author.username }}{% else %}Система{% endif %}</p>
-                              </div>
-                              <span class="text-sm font-semibold text-white">{{ movement.quantity }}</span>
-                            </div>
-                            {% if movement.comment %}
-                              <p class="mt-2 text-xs text-slate-500">{{ movement.comment }}</p>
-                            {% endif %}
-                            {% if movement.reference_id %}
-                              <p class="mt-1 text-xs text-slate-500">{{ movement.reference_type }} #{{ movement.reference_id }}</p>
-                            {% endif %}
-                          </div>
-                        {% empty %}
-                          <p class="rounded-xl border border-dashed border-slate-800 px-3 py-4 text-sm text-slate-500">Движений по позиции пока нет.</p>
-                        {% endfor %}
-                      </div>
-                    </section>
-
-                    <section class="rounded-2xl bg-slate-950/65 p-4 ring-1 ring-inset ring-slate-800">
-                      <div class="flex items-center justify-between gap-3">
-                        <h3 class="text-sm font-semibold text-white">Входящие грузы</h3>
-                        <span class="text-xs text-slate-500">{{ row.incoming_cargos|length }}</span>
-                      </div>
-                      <div class="mt-3 space-y-3">
-                        {% for item in row.incoming_cargos %}
-                          <a href="{% url 'manager_portal:cargo_detail' item.cargo.pk %}" class="block rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-3 hover:border-cyan-400/30">
-                            <div class="flex items-start justify-between gap-3">
-                              <div>
-                                <p class="font-medium text-cyan-300">{{ item.cargo.cargo_number }}</p>
-                                <p class="mt-1 text-xs text-slate-400">{{ item.cargo.get_status_display }}{% if item.cargo.eta %} · ETA {{ item.cargo.eta|date:"d.m.Y" }}{% endif %}</p>
-                              </div>
-                              <span class="text-sm font-semibold text-white">{{ item.remaining_quantity }}</span>
-                            </div>
-                            {% if item.purchase %}
-                              <p class="mt-2 text-xs text-slate-500">Закупка #{{ item.purchase.pk }}</p>
-                            {% endif %}
-                            {% if item.linked_order %}
-                              <p class="mt-1 text-xs text-slate-500">Заказ #{{ item.linked_order.pk }}</p>
-                            {% endif %}
-                          </a>
-                        {% empty %}
-                          <p class="rounded-xl border border-dashed border-slate-800 px-3 py-4 text-sm text-slate-500">Открытых incoming по позиции нет.</p>
-                        {% endfor %}
-                      </div>
-                    </section>
-
-                    <section class="rounded-2xl bg-slate-950/65 p-4 ring-1 ring-inset ring-slate-800">
-                      <div class="flex items-center justify-between gap-3">
-                        <h3 class="text-sm font-semibold text-white">Связанные сделки</h3>
-                        <span class="text-xs text-slate-500">{{ row.linked_deals|length }}</span>
-                      </div>
-                      <div class="mt-3 space-y-3">
-                        {% for item in row.linked_deals %}
-                          <a href="{% url 'manager_portal:deal_detail' item.deal.pk %}" class="block rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-3 hover:border-cyan-400/30">
-                            <div class="flex items-start justify-between gap-3">
-                              <div>
-                                <p class="font-medium text-cyan-300">Заказ #{{ item.deal.order_id }}</p>
-                                <p class="mt-1 text-xs text-slate-400">{{ item.source_label }} · {{ item.deal.customer_name|default:item.deal.order.first_name|default:item.deal.order.phone }}</p>
-                              </div>
-                              <span class="rounded-full border border-slate-700 px-2 py-1 text-[0.7rem] text-slate-300">{{ item.deal.next_step_label }}</span>
-                            </div>
-                          </a>
-                        {% empty %}
-                          <p class="rounded-xl border border-dashed border-slate-800 px-3 py-4 text-sm text-slate-500">Связанные сделки не найдены.</p>
-                        {% endfor %}
-                      </div>
-                    </section>
-
-                    <section class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-                      <h3 class="text-sm font-semibold text-white">Последнее изменение</h3>
-                      {% if row.last_change %}
-                        <div class="mt-3 rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-3">
-                          <p class="font-medium text-white">{{ row.last_change.author_name }}</p>
-                          <p class="mt-1 text-xs text-slate-400">{{ row.last_change.created_at|date:"d.m.Y H:i" }}</p>
-                          <p class="mt-3 text-sm text-slate-300">{{ row.last_change.movement_type_label }}</p>
-                          {% if row.last_change.comment %}
-                            <p class="mt-2 text-xs text-slate-500">{{ row.last_change.comment }}</p>
-                          {% endif %}
-                        </div>
-                      {% else %}
-                        <p class="mt-3 rounded-xl border border-dashed border-slate-800 px-3 py-4 text-sm text-slate-500">Автор последнего изменения не зафиксирован.</p>
-                      {% endif %}
-                    </section>
-                  </div>
+                <td colspan="7" class="border-t border-slate-800/70 bg-slate-950/70 px-4 py-4">
+                  {% include "manager_portal/_inventory_detail_panel.html" with row=row %}
                 </td>
               </tr>
             {% empty %}
-              <tr>
-                <td colspan="6" class="px-4 py-12 text-center text-slate-400">Нет строк по выбранным фильтрам.</td>
-              </tr>
+              {% include "manager_portal/_empty_state.html" with colspan=7 empty_state_title="Нет строк по выбранным фильтрам" empty_state_description="Измените фильтры или сбросьте их, чтобы увидеть складской реестр." %}
             {% endfor %}
           </tbody>
-        </table>
+      {% endmanager_table %}
+
+      <div class="block md:hidden p-3">
+        {% for row in inventory_rows %}
+          <article
+            data-row-toggle-row="inventory-mobile-{{ row.row_key }}"
+            title="Показать детали"
+            class="manager-responsive-card mb-3 rounded-lg border border-slate-700 bg-slate-800 p-4"
+          >
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p class="text-lg font-semibold text-white">{{ row.product_name }}{% if row.variant_name %} <span class="text-slate-500">/ {{ row.variant_name }}</span>{% endif %}</p>
+                <p class="mt-1 text-xs text-slate-400">
+                  <span>SKU {{ row.sku|default:"—" }}</span>
+                  <span class="mx-1">·</span>
+                  <a href="{% url 'manager_portal:warehouse_detail' row.warehouse_id %}" class="text-cyan-300 hover:text-cyan-200">{{ row.warehouse_name }}</a>
+                </p>
+              </div>
+              <span class="shrink-0 rounded-full border px-3 py-1 text-xs {% if row.row_status.tone == 'rose' %}border-rose-400/25 bg-rose-500/10 text-rose-100{% elif row.row_status.tone == 'amber' %}border-amber-400/25 bg-amber-500/10 text-amber-100{% elif row.row_status.tone == 'sky' %}border-sky-400/25 bg-sky-500/10 text-sky-100{% else %}border-emerald-400/25 bg-emerald-500/10 text-emerald-100{% endif %}">
+              <span class="{{ row.row_status|manager_semantic_badge_classes }} shrink-0">
+                {{ row.row_status.label }}
+              </span>
+            </div>
+            <div class="mt-4 grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Свободно</p>
+                <p class="mt-1 font-semibold {% if row.available < 0 %}text-rose-300{% elif row.min_stock and row.available < row.min_stock %}text-amber-300{% else %}text-emerald-300{% endif %}">{{ row.available }}</p>
+              </div>
+              <div>
+                <p class="text-xs uppercase tracking-[0.16em] text-slate-500">В пути</p>
+                <p class="mt-1 font-semibold text-white">{{ row.inbound }}</p>
+              </div>
+              <div>
+                <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Можно обещать</p>
+                <p class="mt-1 font-semibold {% if row.promise_capacity > 0 %}text-cyan-200{% else %}text-slate-400{% endif %}">{{ row.promise_capacity }}</p>
+              </div>
+              <div>
+                <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Проблемы</p>
+                <p class="mt-1 text-slate-100">{% if row.problem_types %}{{ row.problem_types|length }}{% else %}Нет{% endif %}</p>
+              </div>
+            </div>
+            <div class="mt-4 space-y-2">
+              <div class="{{ row.risk_summary|manager_semantic_risk_classes }}">
+                <p class="manager-status-line-label">Риски</p>
+                <p class="mt-1 text-sm font-medium text-white">{{ row.risk_summary.label }}</p>
+                {% if row.risk_summary.detail %}
+                  <p class="manager-status-line-detail mt-1">{{ row.risk_summary.detail }}</p>
+                {% endif %}
+              </div>
+              {% if row.problem_types|length > 1 or row.linked_deals %}
+                <details class="text-xs text-slate-400">
+                  <summary class="cursor-pointer text-slate-500 hover:text-slate-200">Подробности</summary>
+                  <div class="mt-2 space-y-2">
+                    {% if row.problem_types %}
+                      <div class="flex flex-wrap gap-2">
+                        {% for problem in row.problem_types %}
+                          <span class="manager-pill">{{ problem.label }}</span>
+                        {% endfor %}
+                      </div>
+                    {% endif %}
+                    {% if row.linked_deals %}
+                      <p>
+                        {% for item in row.linked_deals|slice:":2" %}
+                          <a href="{% url 'manager_portal:deal_detail' item.deal.pk %}" class="text-cyan-300 hover:text-cyan-200">#{{ item.deal.order_id }}</a>{% if not forloop.last %}, {% endif %}
+                        {% endfor %}
+                        {% if row.linked_deals|length > 2 %} и ещё {{ row.linked_deals|length|add:"-2" }}{% endif %}
+                      </p>
+                    {% endif %}
+                  </div>
+                </details>
+              {% endif %}
+            </div>
+            <div class="mt-4">
+              <button
+                type="button"
+                data-row-toggle="inventory-mobile-{{ row.row_key }}"
+                aria-expanded="false"
+                class="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-600 px-3 py-2 text-sm font-medium text-slate-100 transition hover:border-cyan-400/30 hover:bg-slate-700/70"
+              >
+                Открыть
+                <span data-row-toggle-icon>▸</span>
+              </button>
+            </div>
+            <div data-row-detail="inventory-mobile-{{ row.row_key }}" hidden class="mt-4 border-t border-slate-700 pt-4">
+              {% include "manager_portal/_inventory_detail_panel.html" with row=row %}
+            </div>
+          </article>
+        {% empty %}
+          {% include "manager_portal/_empty_state.html" with empty_state_title="Нет строк по выбранным фильтрам" empty_state_description="Измените фильтры или сбросьте их, чтобы увидеть складской реестр." %}
+        {% endfor %}
       </div>
     </section>
   </div>
-
-  <aside id="inventory-receipt-drawer" class="manager-drawer manager-glass border-l border-slate-800 p-6" aria-hidden="true">
-    <div class="flex items-center justify-between">
-      <h3 class="text-2xl font-semibold">Ручной приход</h3>
-      <button type="button" data-drawer-close class="rounded-full border border-slate-700 px-3 py-1 text-sm">Закрыть</button>
-    </div>
-    <form method="post" action="{% url 'manager_portal:inventory_receipt' %}" class="mt-6 space-y-4">
-      {% csrf_token %}
-      {% include "manager_portal/_form_fields.html" with form=receipt_form %}
-      <button class="manager-create-action manager-create-action-block">Записать приход</button>
-    </form>
-  </aside>
 {% endblock %}

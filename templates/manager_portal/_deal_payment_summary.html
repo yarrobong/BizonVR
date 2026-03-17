@@ -1,0 +1,25 @@
+<div class="manager-deal-payment manager-deal-payment-{{ payment.state_code }}">
+  <p class="manager-deal-payment-state manager-deal-payment-state-{{ payment.state_code }}">
+    {{ payment.state_label }}
+  </p>
+  <dl class="manager-deal-payment-grid">
+    <div class="manager-deal-payment-row">
+      <dt class="manager-deal-payment-label">Оплачено</dt>
+      <dd class="manager-deal-payment-value">{{ payment.paid_total|rub }}</dd>
+    </div>
+    <div class="manager-deal-payment-row">
+      <dt class="manager-deal-payment-label">К оплате</dt>
+      <dd class="manager-deal-payment-value">{{ payment.due_total|rub }}</dd>
+    </div>
+    <div class="manager-deal-payment-row">
+      <dt class="manager-deal-payment-label">Последний платеж</dt>
+      <dd class="manager-deal-payment-value">
+        {% if payment.last_date %}
+          <time datetime="{{ payment.last_date|date:'c' }}">{{ payment.last_date|date:"d.m.Y" }}</time>
+        {% else %}
+          &mdash;
+        {% endif %}
+      </dd>
+    </div>
+  </dl>
+</div>

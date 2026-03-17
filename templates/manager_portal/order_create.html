@@ -6,32 +6,31 @@
   <div class="space-y-6">
     <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
       <div>
-        <p class="text-sm uppercase tracking-[0.24em] text-cyan-300">Orders</p>
-        <h2 class="mt-2 text-4xl font-semibold">Ручное создание заказа</h2>
-        <p class="mt-2 max-w-4xl text-slate-400">Форма перестраивается под выбранный сценарий: под заказ, из наличия, trade-in или Avito. Все суммы, маржа, предоплата, остаток и доплата считаются автоматически.</p>
+        <p class="manager-page-kicker">Заказы</p>
+        <h2 class="manager-page-title mt-2">Ручное создание заказа</h2>
+        <p class="manager-body-copy mt-2 max-w-4xl">На первом этапе менеджер фиксирует только стартовую информацию: сценарий, базовые данные, покупателя, запрос клиента и товарные позиции. Логистика, резервы и сценарные детали заполняются уже в карточке сделки.</p>
       </div>
       <a href="{% url 'manager_portal:order_list' %}" class="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800">К списку заказов</a>
     </div>
 
+    {% with selected_deal_type=form.deal_type.value|default:form.deal_type.field.initial selected_buyer_type=form.buyer_type.value|default:form.buyer_type.field.initial %}
     <form method="post" data-manual-order-form class="manager-manual-order-form grid gap-6 xl:grid-cols-[1.24fr,0.76fr]">
       {% csrf_token %}
       {{ formset.management_form }}
-      {{ tradein_formset.management_form }}
 
       <div class="space-y-6">
-        {% if form.non_field_errors or formset.non_form_errors or tradein_formset.non_form_errors %}
+        {% if form.non_field_errors or formset.non_form_errors %}
           <section class="manager-panel rounded-[1.75rem] p-6">
             {% for error in form.non_field_errors %}<p class="text-sm text-rose-300">{{ error }}</p>{% endfor %}
             {% for error in formset.non_form_errors %}<p class="text-sm text-rose-300">{{ error }}</p>{% endfor %}
-            {% for error in tradein_formset.non_form_errors %}<p class="text-sm text-rose-300">{{ error }}</p>{% endfor %}
           </section>
         {% endif %}
 
         {% if selected_client %}
           <section class="manager-panel rounded-[1.75rem] border border-cyan-400/30 bg-cyan-400/10 p-6">
-            <p class="text-xs uppercase tracking-[0.22em] text-cyan-100">Клиент найден</p>
+            <p class="manager-section-kicker text-cyan-100">Клиент найден</p>
             <p class="mt-2 text-sm text-white">{{ selected_client.name }} · {{ selected_client.phone|default:"без телефона" }} · {{ selected_client.email|default:"без email" }}</p>
-            <p class="mt-2 text-sm text-slate-300">Форма уже предзаполнена buyer type, source, manager, доставкой, реквизитами клиента и последними товарными строками. Повторно вводить известные системе данные не нужно, если они не изменились.</p>
+            <p class="mt-2 text-sm text-slate-300">Форма уже предзаполнена типом покупателя, источником, ответственным, реквизитами клиента и последними товарными строками. Дополнительно вводите только то, что изменилось.</p>
             {% if selected_client_prefill.summary %}
               <div class="mt-4 flex flex-wrap gap-2">
                 {% for item in selected_client_prefill.summary %}
@@ -46,11 +45,12 @@
           <div class="mb-6">
             <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Шаг 1</p>
             <h3 class="mt-2 text-2xl font-semibold">Сценарий заказа</h3>
+            <p class="mt-2 text-sm text-slate-400">Сначала определите сценарий, тип покупателя и стартовый статус сделки.</p>
           </div>
           <div class="grid gap-4 md:grid-cols-3">
-            <div>{{ form.deal_type.label_tag }}{{ form.deal_type }}{% if form.deal_type.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.deal_type.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ form.buyer_type.label_tag }}{{ form.buyer_type }}{% if form.buyer_type.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.buyer_type.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ form.deal_status.label_tag }}{{ form.deal_status }}{% if form.deal_status.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.deal_status.errors|join:', ' }}</p>{% endif %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=form.deal_type compact=False only %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=form.buyer_type compact=False only %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=form.deal_status compact=False only %}</div>
           </div>
         </section>
 
@@ -58,167 +58,67 @@
           <div class="mb-6">
             <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Основное</p>
             <h3 class="mt-2 text-2xl font-semibold">Общие данные</h3>
+            <p class="mt-2 text-sm text-slate-400">Здесь остаются только поля, которые реально нужны на старте сделки.</p>
           </div>
           <div class="grid gap-4 md:grid-cols-2">
-            <div>{{ form.responsible_manager.label_tag }}{{ form.responsible_manager }}{% if form.responsible_manager.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.responsible_manager.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ form.deal_created_at.label_tag }}{{ form.deal_created_at }}{% if form.deal_created_at.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.deal_created_at.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ form.customer_source.label_tag }}{{ form.customer_source }}{% if form.customer_source.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.customer_source.errors|join:', ' }}</p>{% endif %}</div>
-            <div data-avito-hide="customer_deadline">{{ form.customer_deadline.label_tag }}{{ form.customer_deadline }}{% if form.customer_deadline.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.customer_deadline.errors|join:', ' }}</p>{% endif %}</div>
-            <div class="md:col-span-2">{{ form.deal_comment.label_tag }}{{ form.deal_comment }}{% if form.deal_comment.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.deal_comment.errors|join:', ' }}</p>{% endif %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=form.responsible_manager compact=False only %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=form.deal_created_at compact=False only %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=form.customer_source compact=False only %}</div>
+            <div class="md:col-span-2">{% include "manager_portal/_form_field.html" with field=form.deal_comment compact=False only %}</div>
           </div>
         </section>
 
-        <section class="manager-panel rounded-[1.75rem] p-6" data-buyer-section="individual">
+        <section class="manager-panel rounded-[1.75rem] p-6" data-buyer-section="individual"{% if selected_buyer_type != 'individual' %} hidden{% endif %}>
           <div class="mb-6">
             <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Покупатель</p>
             <h3 class="mt-2 text-2xl font-semibold">Физ. лицо</h3>
+            <p class="mt-2 text-sm text-slate-400">Оставили только данные, которые нужны для идентификации и связи с клиентом.</p>
           </div>
           <div class="grid gap-4 md:grid-cols-2">
-            <div data-avito-hide="individual_full_name">{{ form.individual_full_name.label_tag }}{{ form.individual_full_name }}{% if form.individual_full_name.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.individual_full_name.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ form.individual_phone.label_tag }}{{ form.individual_phone }}{% if form.individual_phone.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.individual_phone.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ form.individual_additional_phone.label_tag }}{{ form.individual_additional_phone }}{% if form.individual_additional_phone.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.individual_additional_phone.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ form.individual_city.label_tag }}{{ form.individual_city }}{% if form.individual_city.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.individual_city.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ form.individual_messenger.label_tag }}{{ form.individual_messenger }}{% if form.individual_messenger.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.individual_messenger.errors|join:', ' }}</p>{% endif %}</div>
-            <div class="md:col-span-2">{{ form.individual_pickup_address.label_tag }}{{ form.individual_pickup_address }}{% if form.individual_pickup_address.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.individual_pickup_address.errors|join:', ' }}</p>{% endif %}</div>
-            <div class="md:col-span-2">{{ form.individual_delivery_address.label_tag }}{{ form.individual_delivery_address }}{% if form.individual_delivery_address.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.individual_delivery_address.errors|join:', ' }}</p>{% endif %}</div>
-            <div class="md:col-span-2">{{ form.individual_comment.label_tag }}{{ form.individual_comment }}{% if form.individual_comment.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.individual_comment.errors|join:', ' }}</p>{% endif %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=form.individual_full_name compact=False only %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=form.individual_phone compact=False only %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=form.individual_additional_phone compact=False only %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=form.individual_city compact=False only %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=form.individual_messenger compact=False only %}</div>
+            <div class="md:col-span-2">{% include "manager_portal/_form_field.html" with field=form.individual_comment compact=False only %}</div>
           </div>
         </section>
 
-        <section class="manager-panel rounded-[1.75rem] p-6" data-buyer-section="business">
+        <section class="manager-panel rounded-[1.75rem] p-6" data-buyer-section="business"{% if selected_buyer_type != 'business' %} hidden{% endif %}>
           <div class="mb-6">
             <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Покупатель</p>
             <h3 class="mt-2 text-2xl font-semibold">Юр. лицо</h3>
+            <p class="mt-2 text-sm text-slate-400">На старте сохраняем только реквизиты и контакты покупателя.</p>
           </div>
           <div class="grid gap-4 md:grid-cols-2">
-            <div>{{ form.business_company_name.label_tag }}{{ form.business_company_name }}{% if form.business_company_name.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.business_company_name.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ form.business_contact_person.label_tag }}{{ form.business_contact_person }}{% if form.business_contact_person.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.business_contact_person.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ form.business_inn.label_tag }}{{ form.business_inn }}{% if form.business_inn.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.business_inn.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ form.business_kpp.label_tag }}{{ form.business_kpp }}{% if form.business_kpp.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.business_kpp.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ form.business_ogrn.label_tag }}{{ form.business_ogrn }}{% if form.business_ogrn.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.business_ogrn.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ form.business_phone.label_tag }}{{ form.business_phone }}{% if form.business_phone.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.business_phone.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ form.business_email.label_tag }}{{ form.business_email }}{% if form.business_email.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.business_email.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ form.business_city.label_tag }}{{ form.business_city }}{% if form.business_city.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.business_city.errors|join:', ' }}</p>{% endif %}</div>
-            <div class="md:col-span-2">{{ form.business_legal_address.label_tag }}{{ form.business_legal_address }}{% if form.business_legal_address.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.business_legal_address.errors|join:', ' }}</p>{% endif %}</div>
-            <div class="md:col-span-2">{{ form.business_delivery_address.label_tag }}{{ form.business_delivery_address }}{% if form.business_delivery_address.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.business_delivery_address.errors|join:', ' }}</p>{% endif %}</div>
-            <div class="md:col-span-2">{{ form.business_comment.label_tag }}{{ form.business_comment }}{% if form.business_comment.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.business_comment.errors|join:', ' }}</p>{% endif %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=form.business_company_name compact=False only %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=form.business_contact_person compact=False only %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=form.business_inn compact=False only %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=form.business_kpp compact=False only %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=form.business_ogrn compact=False only %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=form.business_phone compact=False only %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=form.business_telegram compact=False only %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=form.business_whatsapp compact=False only %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=form.business_email compact=False only %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=form.business_city compact=False only %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=form.business_checking_account compact=False only %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=form.business_bank_name compact=False only %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=form.business_bik compact=False only %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=form.business_correspondent_account compact=False only %}</div>
+            <div class="md:col-span-2">{% include "manager_portal/_form_field.html" with field=form.business_legal_address compact=False only %}</div>
+            <div class="md:col-span-2">{% include "manager_portal/_form_field.html" with field=form.business_comment compact=False only %}</div>
           </div>
         </section>
 
-        <section class="manager-panel rounded-[1.75rem] p-6" data-deal-section="sale_on_request">
+        <section class="manager-panel rounded-[1.75rem] p-6">
           <div class="mb-6">
-            <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Сценарий №1</p>
-            <h3 class="mt-2 text-2xl font-semibold">Продажа под заказ</h3>
+            <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Запрос</p>
+            <h3 class="mt-2 text-2xl font-semibold">Что хочет клиент</h3>
+            <p class="mt-2 text-sm text-slate-400">Поле не обязательно, но помогает зафиксировать задачу клиента до детальной проработки сделки.</p>
           </div>
-          <div class="grid gap-4 md:grid-cols-2">
-            <div class="md:col-span-2">{{ form.customer_request.label_tag }}{{ form.customer_request }}{% if form.customer_request.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.customer_request.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ form.procurement_origin.label_tag }}{{ form.procurement_origin }}{% if form.procurement_origin.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.procurement_origin.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ form.supplier_agent.label_tag }}{{ form.supplier_agent }}{% if form.supplier_agent.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.supplier_agent.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ form.supplier_name.label_tag }}{{ form.supplier_name }}{% if form.supplier_name.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.supplier_name.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ form.planned_purchase_date.label_tag }}{{ form.planned_purchase_date }}{% if form.planned_purchase_date.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.planned_purchase_date.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ form.expected_arrival_date.label_tag }}{{ form.expected_arrival_date }}{% if form.expected_arrival_date.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.expected_arrival_date.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ form.expected_customer_ship_date.label_tag }}{{ form.expected_customer_ship_date }}{% if form.expected_customer_ship_date.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.expected_customer_ship_date.errors|join:', ' }}</p>{% endif %}</div>
-            <div class="md:col-span-2">{{ form.customer_request_comment.label_tag }}{{ form.customer_request_comment }}{% if form.customer_request_comment.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.customer_request_comment.errors|join:', ' }}</p>{% endif %}</div>
-          </div>
-        </section>
-
-        <section class="manager-panel rounded-[1.75rem] p-6" data-deal-section="sale_from_stock">
-          <div class="mb-6">
-            <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Сценарий №2</p>
-            <h3 class="mt-2 text-2xl font-semibold">Продажа из наличия</h3>
-          </div>
-          <div class="grid gap-4 md:grid-cols-2">
-            <div>{{ form.stock_warehouse.label_tag }}{{ form.stock_warehouse }}{% if form.stock_warehouse.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.stock_warehouse.errors|join:', ' }}</p>{% endif %}</div>
-            <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
-              <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Авто-логика</p>
-              <p class="mt-2 text-sm text-slate-300">После сохранения заказ автоматически создаёт резерв по выбранным позициям. После перевода в статус отправки резерв снимается и остаток списывается.</p>
-            </div>
-            <div class="md:col-span-2 overflow-x-auto rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
-              <table class="manager-table w-full min-w-[42rem] text-sm">
-                <thead class="text-left text-slate-400">
-                  <tr>
-                    <th class="px-3 py-2 font-medium">Склад</th>
-                    <th class="px-3 py-2 font-medium">Товар</th>
-                    <th class="px-3 py-2 font-medium">Вариант</th>
-                    <th class="px-3 py-2 font-medium">Остаток</th>
-                    <th class="px-3 py-2 font-medium">Резерв</th>
-                    <th class="px-3 py-2 font-medium">Доступно</th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-slate-800">
-                  {% for row in inventory_rows %}
-                    <tr>
-                      <td class="px-3 py-2">{{ row.warehouse_name }}</td>
-                      <td class="px-3 py-2">{{ row.product_name }}</td>
-                      <td class="px-3 py-2">{{ row.variant_name|default:"—" }}</td>
-                      <td class="px-3 py-2">{{ row.on_hand }}</td>
-                      <td class="px-3 py-2">{{ row.reserved_on_hand }}</td>
-                      <td class="px-3 py-2">{{ row.available }}</td>
-                    </tr>
-                  {% empty %}
-                    <tr><td colspan="6" class="px-3 py-4 text-center text-slate-500">Остатки пока не заведены.</td></tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </section>
-
-        <section class="manager-panel rounded-[1.75rem] p-6" data-deal-section="trade_in">
-          <div class="mb-6">
-            <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Сценарий №3</p>
-            <h3 class="mt-2 text-2xl font-semibold">Трейд-ин</h3>
-          </div>
-          <div class="mb-6 rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
-            <p class="text-sm text-slate-300">Сначала добавьте устройство, которое клиент сдаёт. Предварительная оценка задаёт ориентир, финальная оценка после проверки корректирует доплату автоматически.</p>
-          </div>
-          <div class="space-y-4" data-tradein-items>
-            {% for item_form in tradein_formset %}
-              <div class="manager-item-card rounded-3xl border border-slate-800 bg-slate-950/70 p-4" data-tradein-item-row>
-                {{ item_form.DELETE.as_hidden }}
-                <div class="mb-4 flex items-center justify-between gap-3">
-                  <p class="text-sm font-medium text-slate-200">Принимаемая позиция {{ forloop.counter }}</p>
-                  <button type="button" data-tradein-item-remove class="rounded-lg border border-slate-700 px-3 py-2 text-xs hover:bg-slate-800">Удалить</button>
-                </div>
-                <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                  <div>{{ item_form.device_type.label_tag }}{{ item_form.device_type }}{% if item_form.device_type.errors %}<p class="mt-1 text-xs text-rose-300">{{ item_form.device_type.errors|join:', ' }}</p>{% endif %}</div>
-                  <div>{{ item_form.model_name.label_tag }}{{ item_form.model_name }}{% if item_form.model_name.errors %}<p class="mt-1 text-xs text-rose-300">{{ item_form.model_name.errors|join:', ' }}</p>{% endif %}</div>
-                  <div>{{ item_form.version.label_tag }}{{ item_form.version }}{% if item_form.version.errors %}<p class="mt-1 text-xs text-rose-300">{{ item_form.version.errors|join:', ' }}</p>{% endif %}</div>
-                  <div>{{ item_form.condition.label_tag }}{{ item_form.condition }}{% if item_form.condition.errors %}<p class="mt-1 text-xs text-rose-300">{{ item_form.condition.errors|join:', ' }}</p>{% endif %}</div>
-                  <div class="xl:col-span-2">{{ item_form.kit_description.label_tag }}{{ item_form.kit_description }}{% if item_form.kit_description.errors %}<p class="mt-1 text-xs text-rose-300">{{ item_form.kit_description.errors|join:', ' }}</p>{% endif %}</div>
-                  <div class="xl:col-span-2">{{ item_form.defects.label_tag }}{{ item_form.defects }}{% if item_form.defects.errors %}<p class="mt-1 text-xs text-rose-300">{{ item_form.defects.errors|join:', ' }}</p>{% endif %}</div>
-                  <div>{{ item_form.preliminary_estimate.label_tag }}{{ item_form.preliminary_estimate }}{% if item_form.preliminary_estimate.errors %}<p class="mt-1 text-xs text-rose-300">{{ item_form.preliminary_estimate.errors|join:', ' }}</p>{% endif %}</div>
-                  <div>{{ item_form.final_estimate.label_tag }}{{ item_form.final_estimate }}{% if item_form.final_estimate.errors %}<p class="mt-1 text-xs text-rose-300">{{ item_form.final_estimate.errors|join:', ' }}</p>{% endif %}</div>
-                  <div class="manager-form-field manager-form-field-checkbox space-y-1"><label class="manager-checkbox-field">{{ item_form.is_working }}<span class="text-sm font-medium text-slate-200">{{ item_form.is_working.label }}</span></label></div>
-                  <div class="manager-form-field manager-form-field-checkbox space-y-1"><label class="manager-checkbox-field">{{ item_form.has_box }}<span class="text-sm font-medium text-slate-200">{{ item_form.has_box.label }}</span></label></div>
-                  <div class="manager-form-field manager-form-field-checkbox space-y-1"><label class="manager-checkbox-field">{{ item_form.has_controllers }}<span class="text-sm font-medium text-slate-200">{{ item_form.has_controllers.label }}</span></label></div>
-                  <div class="manager-form-field manager-form-field-checkbox space-y-1"><label class="manager-checkbox-field">{{ item_form.has_accessories }}<span class="text-sm font-medium text-slate-200">{{ item_form.has_accessories.label }}</span></label></div>
-                </div>
-              </div>
-            {% endfor %}
-          </div>
-          <button type="button" data-tradein-item-add class="mt-4 rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800">Добавить сдаваемое устройство</button>
-        </section>
-
-        <section class="manager-panel rounded-[1.75rem] p-6" data-deal-section="avito_sale">
-          <div class="mb-6">
-            <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Сценарий №4</p>
-            <h3 class="mt-2 text-2xl font-semibold">Продажа Avito</h3>
-          </div>
-          <div class="mb-6 rounded-2xl border border-slate-800 bg-slate-950/60 p-4 text-sm text-slate-300">
-            Для Avito этапы упрощены: новая, отправлено, чел забрал, возврат. Дедлайн и имя клиента здесь не обязательны.
-          </div>
-          <div class="grid gap-4 md:grid-cols-2">
-            <div class="md:col-span-2">{{ form.avito_listing_url.label_tag }}{{ form.avito_listing_url }}{% if form.avito_listing_url.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.avito_listing_url.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ form.avito_listing_id.label_tag }}{{ form.avito_listing_id }}{% if form.avito_listing_id.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.avito_listing_id.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ form.avito_contact_channel.label_tag }}{{ form.avito_contact_channel }}{% if form.avito_contact_channel.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.avito_contact_channel.errors|join:', ' }}</p>{% endif %}</div>
-            <div class="md:col-span-2">{{ form.avito_listing_title.label_tag }}{{ form.avito_listing_title }}{% if form.avito_listing_title.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.avito_listing_title.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ form.avito_list_price.label_tag }}{{ form.avito_list_price }}{% if form.avito_list_price.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.avito_list_price.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ form.avito_final_price.label_tag }}{{ form.avito_final_price }}{% if form.avito_final_price.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.avito_final_price.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ form.avito_commission.label_tag }}{{ form.avito_commission }}{% if form.avito_commission.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.avito_commission.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ form.answered_person_alias.label_tag }}{{ form.answered_person_alias }}{% if form.answered_person_alias.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.answered_person_alias.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ form.shipped_person_alias.label_tag }}{{ form.shipped_person_alias }}{% if form.shipped_person_alias.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.shipped_person_alias.errors|join:', ' }}</p>{% endif %}</div>
-            <div class="md:col-span-2">{{ form.shipping_comment.label_tag }}{{ form.shipping_comment }}{% if form.shipping_comment.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.shipping_comment.errors|join:', ' }}</p>{% endif %}</div>
+          <div class="grid gap-4">
+            <div>{% include "manager_portal/_form_field.html" with field=form.customer_request compact=False only %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=form.customer_request_comment compact=False only %}</div>
           </div>
         </section>
 
@@ -227,6 +127,7 @@
             <div>
               <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Исходящий товар</p>
               <h3 class="mt-2 text-2xl font-semibold">Товары в заказе</h3>
+              <p class="mt-2 text-sm text-slate-400">Хотя бы одна позиция обязательна. Цена продажи обязательна для каждой заполненной строки.</p>
             </div>
             <button type="button" data-order-item-add class="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800">Добавить позицию</button>
           </div>
@@ -234,47 +135,39 @@
             {% for item_form in formset %}
               <div class="manager-item-card rounded-3xl border border-slate-800 bg-slate-950/70 p-4" data-order-item-row>
                 {{ item_form.DELETE.as_hidden }}
+                {{ item_form.product }}
                 <div class="mb-4 flex items-center justify-between gap-3">
                   <p class="text-sm font-medium text-slate-200">Позиция {{ forloop.counter }}</p>
                   <button type="button" data-order-item-remove class="rounded-lg border border-slate-700 px-3 py-2 text-xs hover:bg-slate-800">Удалить</button>
                 </div>
                 <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                  <div class="xl:col-span-2">{{ item_form.product.label_tag }}{{ item_form.product }}{% if item_form.product.errors %}<p class="mt-1 text-xs text-rose-300">{{ item_form.product.errors|join:', ' }}</p>{% endif %}</div>
-                  <div class="xl:col-span-2">{{ item_form.configuration.label_tag }}{{ item_form.configuration }}{% if item_form.configuration.errors %}<p class="mt-1 text-xs text-rose-300">{{ item_form.configuration.errors|join:', ' }}</p>{% endif %}</div>
-                  <div>{{ item_form.condition.label_tag }}{{ item_form.condition }}{% if item_form.condition.errors %}<p class="mt-1 text-xs text-rose-300">{{ item_form.condition.errors|join:', ' }}</p>{% endif %}</div>
-                  <div>{{ item_form.quantity.label_tag }}{{ item_form.quantity }}{% if item_form.quantity.errors %}<p class="mt-1 text-xs text-rose-300">{{ item_form.quantity.errors|join:', ' }}</p>{% endif %}</div>
-                  <div>{{ item_form.purchase_price.label_tag }}{{ item_form.purchase_price }}{% if item_form.purchase_price.errors %}<p class="mt-1 text-xs text-rose-300">{{ item_form.purchase_price.errors|join:', ' }}</p>{% endif %}</div>
-                  <div>{{ item_form.sale_price.label_tag }}{{ item_form.sale_price }}{% if item_form.sale_price.errors %}<p class="mt-1 text-xs text-rose-300">{{ item_form.sale_price.errors|join:', ' }}</p>{% endif %}</div>
-                  <div>{{ item_form.discount_amount.label_tag }}{{ item_form.discount_amount }}{% if item_form.discount_amount.errors %}<p class="mt-1 text-xs text-rose-300">{{ item_form.discount_amount.errors|join:', ' }}</p>{% endif %}</div>
+                  <div class="xl:col-span-2">
+                    {% include "manager_portal/_form_field.html" with field=item_form.product_name compact=False only %}
+                    <div class="manager-summary-box mt-3 hidden" data-order-product-preview>
+                      <div class="flex items-center gap-3">
+                        <img src="" alt="" class="hidden h-14 w-14 rounded-xl object-cover" data-order-product-preview-image>
+                        <div class="min-w-0">
+                          <p class="text-sm font-medium text-slate-100" data-order-product-preview-title>Позиция без каталога</p>
+                          <p class="text-xs text-slate-400" data-order-product-preview-status>Если товара нет в каталоге, укажите полное наименование и цену вручную.</p>
+                          <p class="mt-1 text-sm text-cyan-300" data-order-product-preview-price></p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="xl:col-span-2">{% include "manager_portal/_form_field.html" with field=item_form.configuration compact=False only %}</div>
+                  <div>{% include "manager_portal/_form_field.html" with field=item_form.condition compact=False only %}</div>
+                  <div>{% include "manager_portal/_form_field.html" with field=item_form.quantity compact=False only %}</div>
+                  <div>{% include "manager_portal/_form_field.html" with field=item_form.purchase_price compact=False only %}</div>
+                  <div>{% include "manager_portal/_form_field.html" with field=item_form.sale_price compact=False only %}</div>
+                  <div>{% include "manager_portal/_form_field.html" with field=item_form.discount_amount compact=False only %}</div>
                   <div>
                     <label class="block text-sm font-medium text-slate-200">Итог по позиции</label>
                     <div class="manager-summary-box mt-1" data-item-subtotal>0 ₽</div>
                   </div>
-                  <div class="xl:col-span-4">{{ item_form.comment.label_tag }}{{ item_form.comment }}{% if item_form.comment.errors %}<p class="mt-1 text-xs text-rose-300">{{ item_form.comment.errors|join:', ' }}</p>{% endif %}</div>
+                  <div class="xl:col-span-4">{% include "manager_portal/_form_field.html" with field=item_form.comment compact=False only %}</div>
                 </div>
               </div>
             {% endfor %}
-          </div>
-        </section>
-
-        <section class="manager-panel rounded-[1.75rem] p-6">
-          <div class="mb-6">
-            <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Доставка</p>
-            <h3 class="mt-2 text-2xl font-semibold">Логистика заказа</h3>
-          </div>
-          <div class="grid gap-4 md:grid-cols-2">
-            <div>{{ form.delivery_method.label_tag }}{{ form.delivery_method }}{% if form.delivery_method.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.delivery_method.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ form.delivery_payer.label_tag }}{{ form.delivery_payer }}{% if form.delivery_payer.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.delivery_payer.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ form.delivery_from_city.label_tag }}{{ form.delivery_from_city }}{% if form.delivery_from_city.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.delivery_from_city.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ form.delivery_to_city.label_tag }}{{ form.delivery_to_city }}{% if form.delivery_to_city.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.delivery_to_city.errors|join:', ' }}</p>{% endif %}</div>
-            <div class="md:col-span-2" data-delivery-group="pickup">{{ form.delivery_pickup_address.label_tag }}{{ form.delivery_pickup_address }}{% if form.delivery_pickup_address.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.delivery_pickup_address.errors|join:', ' }}</p>{% endif %}</div>
-            <div class="md:col-span-2" data-delivery-group="address">{{ form.delivery_full_address.label_tag }}{{ form.delivery_full_address }}{% if form.delivery_full_address.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.delivery_full_address.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ form.delivery_cost.label_tag }}{{ form.delivery_cost }}{% if form.delivery_cost.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.delivery_cost.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ form.tracking_number.label_tag }}{{ form.tracking_number }}{% if form.tracking_number.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.tracking_number.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ form.shipment_status.label_tag }}{{ form.shipment_status }}{% if form.shipment_status.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.shipment_status.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ form.shipped_at.label_tag }}{{ form.shipped_at }}{% if form.shipped_at.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.shipped_at.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ form.planned_receipt_at.label_tag }}{{ form.planned_receipt_at }}{% if form.planned_receipt_at.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.planned_receipt_at.errors|join:', ' }}</p>{% endif %}</div>
-            <div class="md:col-span-2">{{ form.shipping_comment.label_tag }}{{ form.shipping_comment }}{% if form.shipping_comment.errors %}<p class="mt-1 text-xs text-rose-300">{{ form.shipping_comment.errors|join:', ' }}</p>{% endif %}</div>
           </div>
         </section>
       </div>
@@ -283,84 +176,71 @@
         <section class="manager-panel rounded-[1.75rem] p-6">
           <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Финансы</p>
           <h3 class="mt-2 text-2xl font-semibold">Авторасчёт</h3>
+          <p class="mt-2 text-sm text-slate-400">На старте считаем только исходящие позиции, скидку, предоплату и ожидаемую прибыль по товару.</p>
           <div class="mt-6 space-y-3">
             <div class="manager-summary-row"><span>Стоимость товаров</span><strong data-summary-field="goods_total">0 ₽</strong></div>
             <div class="manager-summary-row"><span>Скидка</span><strong data-summary-field="discount_total">0 ₽</strong></div>
-            <div class="manager-summary-row"><span>Оценка trade-in</span><strong data-summary-field="tradein_total">0 ₽</strong></div>
-            <div class="manager-summary-row"><span>Доставка</span><strong data-summary-field="delivery_cost">0 ₽</strong></div>
-            <div class="manager-summary-row"><span>Комиссия Avito</span><strong data-summary-field="avito_commission">0 ₽</strong></div>
             <div class="manager-summary-row"><span>Ожидаемая прибыль</span><strong data-summary-field="expected_margin">0 ₽</strong></div>
-            <div class="manager-summary-row">
-              <label for="{{ form.prepayment_required_amount.id_for_label }}" class="text-sm font-medium text-slate-200">{{ form.prepayment_required_amount.label }}</label>
-              {{ form.prepayment_required_amount }}
-            </div>
-            {% if form.prepayment_required_amount.errors %}<p class="text-xs text-rose-300">{{ form.prepayment_required_amount.errors|join:', ' }}</p>{% endif %}
-            <div class="manager-summary-row">
-              <label for="{{ form.prepayment_amount.id_for_label }}" class="text-sm font-medium text-slate-200">{{ form.prepayment_amount.label }}</label>
-              {{ form.prepayment_amount }}
-            </div>
-            {% if form.prepayment_amount.errors %}<p class="text-xs text-rose-300">{{ form.prepayment_amount.errors|join:', ' }}</p>{% endif %}
+            {% include "manager_portal/_form_field.html" with field=form.prepayment_required_amount compact=False only %}
+            {% include "manager_portal/_form_field.html" with field=form.prepayment_amount compact=False only %}
             <div class="manager-summary-row border-t border-slate-800 pt-3"><span>Итого к оплате</span><strong data-summary-field="grand_total">0 ₽</strong></div>
             <div class="manager-summary-row"><span data-balance-label>Остаток / доплата</span><strong data-summary-field="balance_due">0 ₽</strong></div>
           </div>
-          <p class="mt-6 text-sm text-slate-500">Формула: товары - скидка - оценка trade-in + доставка. Маржа = продажа - закупка - комиссия - оценка trade-in.</p>
+          <p class="mt-6 text-sm text-slate-500">Формула: товары - скидка. Ожидаемая прибыль = продажа - скидка - закупка.</p>
         </section>
 
         <section class="manager-panel rounded-[1.75rem] p-6">
           <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Сохранение</p>
           <h3 class="mt-2 text-2xl font-semibold">Результат</h3>
-          <p class="mt-3 text-sm text-slate-400">Заказ появится в общем реестре заказов. Для сценария «из наличия» резерв создаётся автоматически, для trade-in сохраняются предварительная и финальная оценки, для Avito отдельно видны цена объявления и комиссия.</p>
+          <p class="mt-2 text-sm text-slate-400">После сохранения откроется карточка сделки, где менеджер добавит логистику, резервы и сценарные детали.</p>
           <button class="mt-6 w-full rounded-2xl bg-cyan-500 px-4 py-3 font-medium text-slate-950 hover:bg-cyan-400">Создать заказ</button>
         </section>
       </aside>
     </form>
+    {% endwith %}
   </div>
 
   <template data-order-item-template>
     <div class="manager-item-card rounded-3xl border border-slate-800 bg-slate-950/70 p-4" data-order-item-row>
       {{ formset.empty_form.DELETE.as_hidden }}
+      {{ formset.empty_form.product }}
       <div class="mb-4 flex items-center justify-between gap-3">
         <p class="text-sm font-medium text-slate-200">Новая позиция</p>
         <button type="button" data-order-item-remove class="rounded-lg border border-slate-700 px-3 py-2 text-xs hover:bg-slate-800">Удалить</button>
       </div>
       <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <div class="xl:col-span-2">{{ formset.empty_form.product.label_tag }}{{ formset.empty_form.product }}</div>
-        <div class="xl:col-span-2">{{ formset.empty_form.configuration.label_tag }}{{ formset.empty_form.configuration }}</div>
-        <div>{{ formset.empty_form.condition.label_tag }}{{ formset.empty_form.condition }}</div>
-        <div>{{ formset.empty_form.quantity.label_tag }}{{ formset.empty_form.quantity }}</div>
-        <div>{{ formset.empty_form.purchase_price.label_tag }}{{ formset.empty_form.purchase_price }}</div>
-        <div>{{ formset.empty_form.sale_price.label_tag }}{{ formset.empty_form.sale_price }}</div>
-        <div>{{ formset.empty_form.discount_amount.label_tag }}{{ formset.empty_form.discount_amount }}</div>
+        <div class="xl:col-span-2">
+          {% include "manager_portal/_form_field.html" with field=formset.empty_form.product_name compact=False only %}
+          <div class="manager-summary-box mt-3 hidden" data-order-product-preview>
+            <div class="flex items-center gap-3">
+              <img src="" alt="" class="hidden h-14 w-14 rounded-xl object-cover" data-order-product-preview-image>
+              <div class="min-w-0">
+                <p class="text-sm font-medium text-slate-100" data-order-product-preview-title>Позиция без каталога</p>
+                <p class="text-xs text-slate-400" data-order-product-preview-status>Если товара нет в каталоге, укажите полное наименование и цену вручную.</p>
+                <p class="mt-1 text-sm text-cyan-300" data-order-product-preview-price></p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="xl:col-span-2">{% include "manager_portal/_form_field.html" with field=formset.empty_form.configuration compact=False only %}</div>
+        <div>{% include "manager_portal/_form_field.html" with field=formset.empty_form.condition compact=False only %}</div>
+        <div>{% include "manager_portal/_form_field.html" with field=formset.empty_form.quantity compact=False only %}</div>
+        <div>{% include "manager_portal/_form_field.html" with field=formset.empty_form.purchase_price compact=False only %}</div>
+        <div>{% include "manager_portal/_form_field.html" with field=formset.empty_form.sale_price compact=False only %}</div>
+        <div>{% include "manager_portal/_form_field.html" with field=formset.empty_form.discount_amount compact=False only %}</div>
         <div>
           <label class="block text-sm font-medium text-slate-200">Итог по позиции</label>
           <div class="manager-summary-box mt-1" data-item-subtotal>0 ₽</div>
         </div>
-        <div class="xl:col-span-4">{{ formset.empty_form.comment.label_tag }}{{ formset.empty_form.comment }}</div>
+        <div class="xl:col-span-4">{% include "manager_portal/_form_field.html" with field=formset.empty_form.comment compact=False only %}</div>
       </div>
     </div>
   </template>
 
-  <template data-tradein-item-template>
-    <div class="manager-item-card rounded-3xl border border-slate-800 bg-slate-950/70 p-4" data-tradein-item-row>
-      {{ tradein_formset.empty_form.DELETE.as_hidden }}
-      <div class="mb-4 flex items-center justify-between gap-3">
-        <p class="text-sm font-medium text-slate-200">Новая принимаемая позиция</p>
-        <button type="button" data-tradein-item-remove class="rounded-lg border border-slate-700 px-3 py-2 text-xs hover:bg-slate-800">Удалить</button>
-      </div>
-      <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <div>{{ tradein_formset.empty_form.device_type.label_tag }}{{ tradein_formset.empty_form.device_type }}</div>
-        <div>{{ tradein_formset.empty_form.model_name.label_tag }}{{ tradein_formset.empty_form.model_name }}</div>
-        <div>{{ tradein_formset.empty_form.version.label_tag }}{{ tradein_formset.empty_form.version }}</div>
-        <div>{{ tradein_formset.empty_form.condition.label_tag }}{{ tradein_formset.empty_form.condition }}</div>
-        <div class="xl:col-span-2">{{ tradein_formset.empty_form.kit_description.label_tag }}{{ tradein_formset.empty_form.kit_description }}</div>
-        <div class="xl:col-span-2">{{ tradein_formset.empty_form.defects.label_tag }}{{ tradein_formset.empty_form.defects }}</div>
-        <div>{{ tradein_formset.empty_form.preliminary_estimate.label_tag }}{{ tradein_formset.empty_form.preliminary_estimate }}</div>
-        <div>{{ tradein_formset.empty_form.final_estimate.label_tag }}{{ tradein_formset.empty_form.final_estimate }}</div>
-        <div class="manager-form-field manager-form-field-checkbox space-y-1"><label class="manager-checkbox-field">{{ tradein_formset.empty_form.is_working }}<span class="text-sm font-medium text-slate-200">{{ tradein_formset.empty_form.is_working.label }}</span></label></div>
-        <div class="manager-form-field manager-form-field-checkbox space-y-1"><label class="manager-checkbox-field">{{ tradein_formset.empty_form.has_box }}<span class="text-sm font-medium text-slate-200">{{ tradein_formset.empty_form.has_box.label }}</span></label></div>
-        <div class="manager-form-field manager-form-field-checkbox space-y-1"><label class="manager-checkbox-field">{{ tradein_formset.empty_form.has_controllers }}<span class="text-sm font-medium text-slate-200">{{ tradein_formset.empty_form.has_controllers.label }}</span></label></div>
-        <div class="manager-form-field manager-form-field-checkbox space-y-1"><label class="manager-checkbox-field">{{ tradein_formset.empty_form.has_accessories }}<span class="text-sm font-medium text-slate-200">{{ tradein_formset.empty_form.has_accessories.label }}</span></label></div>
-      </div>
-    </div>
-  </template>
+  <datalist id="manual-order-product-names">
+    {% for product in product_catalog %}
+      <option value="{{ product.name }}"></option>
+    {% endfor %}
+  </datalist>
+  {{ product_catalog|json_script:"manual-order-product-catalog" }}
 {% endblock %}

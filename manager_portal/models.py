@@ -557,9 +557,15 @@ class ManagerDeal(models.Model):
     business_legal_address = models.TextField('Юридический адрес', blank=True)
     business_contact_person = models.CharField('Контактное лицо', max_length=255, blank=True)
     business_phone = models.CharField('Телефон юр. лица', max_length=40, blank=True)
+    business_telegram = models.CharField('Telegram юр. лица', max_length=120, blank=True)
+    business_whatsapp = models.CharField('WhatsApp юр. лица', max_length=120, blank=True)
     business_email = models.EmailField('Email юр. лица', blank=True)
     business_city = models.CharField('Город юр. лица', max_length=120, blank=True)
     business_delivery_address = models.TextField('Адрес доставки / ПВЗ юр. лица', blank=True)
+    business_checking_account = models.CharField('Номер счёта', max_length=64, blank=True)
+    business_bank_name = models.CharField('Банк', max_length=255, blank=True)
+    business_bik = models.CharField('БИК', max_length=20, blank=True)
+    business_correspondent_account = models.CharField('Корр. счёт банка', max_length=64, blank=True)
     business_comment = models.TextField('Комментарий по юр. лицу', blank=True)
     customer_request = models.TextField('Что хочет клиент', blank=True)
     customer_deadline = models.DateField('Дедлайн клиента', null=True, blank=True)
@@ -593,6 +599,7 @@ class ManagerDeal(models.Model):
     planned_receipt_at = models.DateField('Плановая дата получения', null=True, blank=True)
     prepayment_required_amount = models.DecimalField('Требуемая предоплата', max_digits=12, decimal_places=2, default=Decimal('0'))
     prepayment_amount = models.DecimalField('Оплачено клиентом', max_digits=12, decimal_places=2, default=Decimal('0'))
+    last_payment_at = models.DateTimeField('Дата последнего платежа', null=True, blank=True)
     stock_warehouse = models.ForeignKey(
         'manager_portal.Warehouse',
         on_delete=models.SET_NULL,
@@ -643,8 +650,7 @@ class ManagerDeal(models.Model):
         order_item = self.order.items.select_related('product', 'variant').first()
         if not order_item:
             return ''
-        variant_label = order_item.variant.name if order_item.variant_id else (order_item.variant_name or '')
-        return _join_identity_title(order_item.product.name, variant_label)
+        return _join_identity_title(order_item.resolved_product_name, order_item.resolved_variant_name)
 
     def generated_title(self):
         return _join_identity_title(

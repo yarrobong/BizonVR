@@ -13,7 +13,7 @@
       <div style="border-radius:18px;background:#0f172a;border:1px solid rgba(255,255,255,0.08);padding:20px;">
         {% for item in items %}
         <div style="display:flex;justify-content:space-between;gap:16px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.06);">
-          <div style="color:#e5eefc;">{{ item.product.name }}{% if item.variant_name %} ({{ item.variant_name }}){% endif %} x {{ item.quantity }}</div>
+          <div style="color:#e5eefc;">{{ item.display_name }} x {{ item.quantity }}</div>
           <div style="color:#ffffff;white-space:nowrap;">{{ item.subtotal|rub }}</div>
         </div>
         {% endfor %}

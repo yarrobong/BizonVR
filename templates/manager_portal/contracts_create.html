@@ -9,13 +9,11 @@
         <div>
           <p class="text-xs uppercase tracking-[0.24em] text-cyan-300">Создание</p>
           <h2 class="mt-2 text-3xl font-semibold text-white">Новый документ</h2>
-          <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-400">Создание договора или счета внутри Django-проекта. Документ сразу можно привязать к клиенту, менеджеру и заказу сайта.</p>
           {% if contract_prefill_deal %}
             <span class="mt-3 inline-flex rounded-full border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-100">{{ contract_prefill_note }}</span>
           {% endif %}
         </div>
         <div class="flex flex-wrap gap-2 text-xs text-slate-400">
-          <span class="manager-pill">Общая база проекта</span>
           <span class="manager-pill">{% if contracts_has_templates %}Шаблоны готовы{% else %}Нет шаблонов{% endif %}</span>
           <span class="manager-pill">{% if contracts_has_profiles %}Профиль компании готов{% else %}Нет профиля{% endif %}</span>
         </div>
@@ -59,19 +57,20 @@
           <div class="mb-6">
             <p class="text-xs uppercase tracking-[0.22em] text-slate-500">Основное</p>
             <h3 class="mt-2 text-2xl font-semibold text-white">Карточка документа</h3>
+            <p class="mt-2 text-sm text-slate-400">Здесь менеджер видит, какие реквизиты обязательны сразу, а что можно оставить системе или заполнить позже.</p>
           </div>
           <div class="grid gap-4 md:grid-cols-2">
-            <div>{{ contract_form.document_type.label_tag }}{{ contract_form.document_type }}{% if contract_form.document_type.errors %}<p class="mt-1 text-xs text-rose-300">{{ contract_form.document_type.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ contract_form.status.label_tag }}{{ contract_form.status }}{% if contract_form.status.errors %}<p class="mt-1 text-xs text-rose-300">{{ contract_form.status.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ contract_form.template.label_tag }}{{ contract_form.template }}{% if contract_form.template.errors %}<p class="mt-1 text-xs text-rose-300">{{ contract_form.template.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ contract_form.company_profile.label_tag }}{{ contract_form.company_profile }}{% if contract_form.company_profile.errors %}<p class="mt-1 text-xs text-rose-300">{{ contract_form.company_profile.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ contract_form.manager_client.label_tag }}{{ contract_form.manager_client }}{% if contract_form.manager_client.errors %}<p class="mt-1 text-xs text-rose-300">{{ contract_form.manager_client.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ contract_form.linked_order.label_tag }}{{ contract_form.linked_order }}{% if contract_form.linked_order.errors %}<p class="mt-1 text-xs text-rose-300">{{ contract_form.linked_order.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ contract_form.responsible_manager.label_tag }}{{ contract_form.responsible_manager }}{% if contract_form.responsible_manager.errors %}<p class="mt-1 text-xs text-rose-300">{{ contract_form.responsible_manager.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ contract_form.number.label_tag }}{{ contract_form.number }}{% if contract_form.number.errors %}<p class="mt-1 text-xs text-rose-300">{{ contract_form.number.errors|join:', ' }}</p>{% endif %}</div>
-            <div class="md:col-span-2">{{ contract_form.title.label_tag }}{{ contract_form.title }}{% if contract_form.title.errors %}<p class="mt-1 text-xs text-rose-300">{{ contract_form.title.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ contract_form.issue_date.label_tag }}{{ contract_form.issue_date }}{% if contract_form.issue_date.errors %}<p class="mt-1 text-xs text-rose-300">{{ contract_form.issue_date.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ contract_form.effective_until.label_tag }}{{ contract_form.effective_until }}{% if contract_form.effective_until.errors %}<p class="mt-1 text-xs text-rose-300">{{ contract_form.effective_until.errors|join:', ' }}</p>{% endif %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=contract_form.document_type compact=False only %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=contract_form.status compact=False only %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=contract_form.template compact=False only %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=contract_form.company_profile compact=False only %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=contract_form.manager_client compact=False only %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=contract_form.linked_order compact=False only %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=contract_form.responsible_manager compact=False only %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=contract_form.number compact=False only %}</div>
+            <div class="md:col-span-2">{% include "manager_portal/_form_field.html" with field=contract_form.title compact=False only %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=contract_form.issue_date compact=False only %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=contract_form.effective_until compact=False only %}</div>
           </div>
         </section>
 
@@ -79,12 +78,13 @@
           <div class="mb-6">
             <p class="text-xs uppercase tracking-[0.22em] text-slate-500">Финансы</p>
             <h3 class="mt-2 text-2xl font-semibold text-white">Сумма и условия</h3>
+            <p class="mt-2 text-sm text-slate-400">Заполните то, что должно попасть в документ. Предмет договора и условия оплаты лучше писать сразу понятным языком.</p>
           </div>
           <div class="grid gap-4 md:grid-cols-3">
-            <div>{{ contract_form.amount.label_tag }}{{ contract_form.amount }}{% if contract_form.amount.errors %}<p class="mt-1 text-xs text-rose-300">{{ contract_form.amount.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ contract_form.currency.label_tag }}{{ contract_form.currency }}{% if contract_form.currency.errors %}<p class="mt-1 text-xs text-rose-300">{{ contract_form.currency.errors|join:', ' }}</p>{% endif %}</div>
-            <div>{{ contract_form.payment_terms.label_tag }}{{ contract_form.payment_terms }}{% if contract_form.payment_terms.errors %}<p class="mt-1 text-xs text-rose-300">{{ contract_form.payment_terms.errors|join:', ' }}</p>{% endif %}</div>
-            <div class="md:col-span-3">{{ contract_form.subject.label_tag }}{{ contract_form.subject }}{% if contract_form.subject.errors %}<p class="mt-1 text-xs text-rose-300">{{ contract_form.subject.errors|join:', ' }}</p>{% endif %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=contract_form.amount compact=False only %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=contract_form.currency compact=False only %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=contract_form.payment_terms compact=False only %}</div>
+            <div class="md:col-span-3">{% include "manager_portal/_form_field.html" with field=contract_form.subject compact=False only %}</div>
           </div>
         </section>
       </div>
@@ -94,22 +94,23 @@
           <div class="mb-6">
             <p class="text-xs uppercase tracking-[0.22em] text-slate-500">Контрагент</p>
             <h3 class="mt-2 text-2xl font-semibold text-white">Реквизиты клиента</h3>
+            <p class="mt-2 text-sm text-slate-400">Если документ создаётся из сделки, часть данных уже подтянется. Проверьте только то, что реально нужно вывести в документ.</p>
           </div>
           <div class="grid gap-4">
-            <div>{{ contract_form.counterparty_name.label_tag }}{{ contract_form.counterparty_name }}{% if contract_form.counterparty_name.errors %}<p class="mt-1 text-xs text-rose-300">{{ contract_form.counterparty_name.errors|join:', ' }}</p>{% endif %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=contract_form.counterparty_name compact=False only %}</div>
             <div class="grid gap-4 md:grid-cols-2">
-              <div>{{ contract_form.counterparty_email.label_tag }}{{ contract_form.counterparty_email }}{% if contract_form.counterparty_email.errors %}<p class="mt-1 text-xs text-rose-300">{{ contract_form.counterparty_email.errors|join:', ' }}</p>{% endif %}</div>
-              <div>{{ contract_form.counterparty_phone.label_tag }}{{ contract_form.counterparty_phone }}{% if contract_form.counterparty_phone.errors %}<p class="mt-1 text-xs text-rose-300">{{ contract_form.counterparty_phone.errors|join:', ' }}</p>{% endif %}</div>
+              <div>{% include "manager_portal/_form_field.html" with field=contract_form.counterparty_email compact=False only %}</div>
+              <div>{% include "manager_portal/_form_field.html" with field=contract_form.counterparty_phone compact=False only %}</div>
             </div>
             <div class="grid gap-4 md:grid-cols-2">
-              <div>{{ contract_form.counterparty_inn.label_tag }}{{ contract_form.counterparty_inn }}{% if contract_form.counterparty_inn.errors %}<p class="mt-1 text-xs text-rose-300">{{ contract_form.counterparty_inn.errors|join:', ' }}</p>{% endif %}</div>
-              <div>{{ contract_form.counterparty_kpp.label_tag }}{{ contract_form.counterparty_kpp }}{% if contract_form.counterparty_kpp.errors %}<p class="mt-1 text-xs text-rose-300">{{ contract_form.counterparty_kpp.errors|join:', ' }}</p>{% endif %}</div>
+              <div>{% include "manager_portal/_form_field.html" with field=contract_form.counterparty_inn compact=False only %}</div>
+              <div>{% include "manager_portal/_form_field.html" with field=contract_form.counterparty_kpp compact=False only %}</div>
             </div>
             <div class="grid gap-4 md:grid-cols-2">
-              <div>{{ contract_form.counterparty_ogrn.label_tag }}{{ contract_form.counterparty_ogrn }}{% if contract_form.counterparty_ogrn.errors %}<p class="mt-1 text-xs text-rose-300">{{ contract_form.counterparty_ogrn.errors|join:', ' }}</p>{% endif %}</div>
-              <div>{{ contract_form.counterparty_ogrnip.label_tag }}{{ contract_form.counterparty_ogrnip }}{% if contract_form.counterparty_ogrnip.errors %}<p class="mt-1 text-xs text-rose-300">{{ contract_form.counterparty_ogrnip.errors|join:', ' }}</p>{% endif %}</div>
+              <div>{% include "manager_portal/_form_field.html" with field=contract_form.counterparty_ogrn compact=False only %}</div>
+              <div>{% include "manager_portal/_form_field.html" with field=contract_form.counterparty_ogrnip compact=False only %}</div>
             </div>
-            <div>{{ contract_form.counterparty_address.label_tag }}{{ contract_form.counterparty_address }}{% if contract_form.counterparty_address.errors %}<p class="mt-1 text-xs text-rose-300">{{ contract_form.counterparty_address.errors|join:', ' }}</p>{% endif %}</div>
+            <div>{% include "manager_portal/_form_field.html" with field=contract_form.counterparty_address compact=False only %}</div>
           </div>
         </section>
 
@@ -117,9 +118,9 @@
           <div class="mb-6">
             <p class="text-xs uppercase tracking-[0.22em] text-slate-500">Заметки</p>
             <h3 class="mt-2 text-2xl font-semibold text-white">Внутренний комментарий</h3>
+            <p class="mt-2 text-sm text-slate-400">Комментарий останется внутри менеджерского контура. Клиент его не увидит.</p>
           </div>
-          {{ contract_form.notes }}
-          {% if contract_form.notes.errors %}<p class="mt-1 text-xs text-rose-300">{{ contract_form.notes.errors|join:', ' }}</p>{% endif %}
+          {% include "manager_portal/_form_field.html" with field=contract_form.notes compact=False only %}
           <div class="mt-6 flex gap-3">
             <button type="submit" name="action" value="create" class="rounded-xl bg-cyan-400 px-4 py-3 text-sm font-semibold text-slate-950">Создать документ</button>
             <button type="submit" name="action" value="preview" class="rounded-xl border border-cyan-500/40 px-4 py-3 text-sm text-cyan-200 hover:bg-cyan-500/10">Показать предпросмотр</button>

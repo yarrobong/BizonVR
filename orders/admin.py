@@ -1,10 +1,46 @@
+from decimal import Decimal
+
 from django.contrib import admin
+from django import forms
 from django.utils.html import format_html
 
+from catalog.models import Product
 from config.formatting import format_currency_amount
 
-from .models import Order, OrderItem, OrderNotificationLog, PromoCode, PurchaseRequest
+from .models import Order, OrderItem, OrderNotificationLog, PromoCode, PurchaseRequest, resolve_order_item_image_url
 from .services import sync_order_state_side_effects
+
+
+def _recalculate_order_total(order):
+    total = sum((item.subtotal for item in order.items.all()), Decimal('0'))
+    if order.total != total:
+        order.total = total
+        order.save(update_fields=['total', 'updated_at'])
+
+
+class OrderItemAdminForm(forms.ModelForm):
+    class Meta:
+        model = OrderItem
+        fields = '__all__'
+
+    def clean(self):
+        cleaned = super().clean()
+        product_name = (cleaned.get('product_name') or '').strip()
+        product = cleaned.get('product')
+        if product is None and product_name:
+            matches = list(Product.objects.filter(name__iexact=product_name).order_by('name')[:2])
+            if len(matches) == 1:
+                product = matches[0]
+                cleaned['product'] = product
+        if product is not None:
+            cleaned['product_name'] = product.name
+            if cleaned.get('price') in (None, ''):
+                cleaned['price'] = product.price
+            if not (cleaned.get('product_image_url') or '').strip():
+                cleaned['product_image_url'] = resolve_order_item_image_url(product=product, variant=cleaned.get('variant'))
+        elif not product_name:
+            self.add_error('product_name', 'Укажите название позиции.')
+        return cleaned
 
 
 @admin.register(PromoCode)
@@ -42,7 +78,7 @@ class OrderAdmin(admin.ModelAdmin):
         'created_at',
     )
     list_filter = ('status', 'payment_status', 'payment_method', 'promo_code', 'partner_bonus_applied', 'city', 'stock_decreased')
-    search_fields = ('id', 'phone', 'email', 'first_name', 'last_name')
+    search_fields = ('id', 'phone', 'email', 'first_name', 'last_name', 'business_company_name', 'business_inn')
     readonly_fields = (
         'created_at',
         'updated_at',
@@ -84,6 +120,20 @@ class OrderAdmin(admin.ModelAdmin):
                 'shipping_weight_kg',
                 'shipping_volume_cm3',
                 'cdek_fallback_to_nearest',
+            ),
+        }),
+        ('Реквизиты юр. лица', {
+            'fields': (
+                'business_company_name',
+                'business_inn',
+                'business_kpp',
+                'business_checking_account',
+                'business_bank_name',
+                'business_bik',
+                'business_correspondent_account',
+                'business_phone',
+                'business_telegram',
+                'business_whatsapp',
             ),
         }),
         ('Суммы и служебные поля', {
@@ -179,13 +229,64 @@ class OrderAdmin(admin.ModelAdmin):
 
 @admin.register(OrderItem)
 class OrderItemAdmin(admin.ModelAdmin):
-    list_display = ('order', 'product', 'variant_name', 'quantity', 'price', 'is_on_request', 'subtotal_display')
+    form = OrderItemAdminForm
+    list_display = ('order', 'display_name', 'quantity', 'price', 'is_on_request', 'subtotal_display')
     list_filter = ('order',)
-    raw_id_fields = ('order', 'product')
+    autocomplete_fields = ('order', 'product', 'variant')
+    search_fields = ('product_name', 'product__name', 'order__id', 'comment')
+    readonly_fields = ('catalog_preview',)
+    fieldsets = (
+        (None, {
+            'fields': (
+                'order',
+                'product_name',
+                'product',
+                'catalog_preview',
+                'product_image_url',
+                'variant',
+                'variant_name',
+                'quantity',
+                'price',
+                'discount_amount',
+                'purchase_price',
+                'condition',
+                'is_on_request',
+                'comment',
+            ),
+        }),
+    )
+
+    def display_name(self, obj):
+        return obj.display_name
+    display_name.short_description = 'Позиция'
 
     def subtotal_display(self, obj):
         return format_currency_amount(obj.subtotal)
     subtotal_display.short_description = 'Сумма'
+
+    def catalog_preview(self, obj):
+        if obj is None:
+            return 'Сохраните позицию, чтобы увидеть превью.'
+        image_url = obj.display_image_url
+        catalog_price = obj.product.price if obj.product_id else None
+        if not image_url and catalog_price is None:
+            return 'Нет связанного товара из каталога.'
+        preview_parts = []
+        if image_url:
+            preview_parts.append(f'<img src="{image_url}" alt="{obj.resolved_product_name}" style="max-height:72px;border-radius:12px;" />')
+        if catalog_price is not None:
+            preview_parts.append(f'<div style="margin-top:8px;">Цена в каталоге: {format_currency_amount(catalog_price)}</div>')
+        return format_html(''.join(preview_parts))
+    catalog_preview.short_description = 'Превью каталога'
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        _recalculate_order_total(obj.order)
+
+    def delete_model(self, request, obj):
+        order = obj.order
+        super().delete_model(request, obj)
+        _recalculate_order_total(order)
 
 
 @admin.register(PurchaseRequest)

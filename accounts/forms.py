@@ -544,32 +544,8 @@ class EmailLoginVerifyForm(EmailLoginRequestForm):
 
 
 class PasswordResetRequestForm(forms.Form):
-    METHOD_PHONE = 'phone'
-    METHOD_EMAIL = 'email'
-    METHOD_CHOICES = [
-        (METHOD_PHONE, 'Через номер телефона'),
-        (METHOD_EMAIL, 'Через email'),
-    ]
-
-    method = forms.ChoiceField(
-        label='Способ восстановления',
-        choices=METHOD_CHOICES,
-        widget=forms.RadioSelect(),
-    )
-    phone = forms.CharField(
-        label='Номер телефона',
-        required=False,
-        max_length=20,
-        widget=forms.TextInput(attrs={
-            'placeholder': '+7 (999) 123-45-67',
-            'autocomplete': 'tel',
-            'inputmode': 'tel',
-            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
-        }),
-    )
     email = forms.EmailField(
         label='Email',
-        required=False,
         widget=forms.EmailInput(attrs={
             'placeholder': 'email@example.com',
             'autocomplete': 'email',
@@ -577,24 +553,11 @@ class PasswordResetRequestForm(forms.Form):
         }),
     )
 
-    def clean(self):
-        cleaned_data = super().clean()
-        method = cleaned_data.get('method') or self.METHOD_PHONE
-
-        if method == self.METHOD_PHONE:
-            phone = normalize_phone(cleaned_data.get('phone') or '')
-            if len(phone) < 10:
-                self.add_error('phone', 'Введите корректный номер телефона.')
-            cleaned_data['phone'] = phone
-            cleaned_data['email'] = ''
-        else:
-            email = normalize_email(cleaned_data.get('email') or '')
-            if not email:
-                self.add_error('email', 'Введите корректный email.')
-            cleaned_data['email'] = email
-            cleaned_data['phone'] = ''
-
-        return cleaned_data
+    def clean_email(self):
+        email = normalize_email(self.cleaned_data.get('email') or '')
+        if not email:
+            raise forms.ValidationError('Введите корректный email.')
+        return email
 
 
 class PasswordResetPhoneVerifyForm(forms.Form):

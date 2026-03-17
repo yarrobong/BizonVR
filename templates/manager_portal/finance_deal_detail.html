@@ -7,7 +7,7 @@
     <section class="manager-panel rounded-3xl p-6">
       <div class="flex items-center justify-between gap-4">
         <div>
-          <p class="text-xs uppercase tracking-[0.22em] text-cyan-300">Deal Card</p>
+          <p class="manager-page-kicker">Карточка сделки</p>
           <h2 class="mt-2 text-2xl font-semibold text-white">{{ finance_deal.contract_number|default:"Сделка" }}</h2>
         </div>
         <a href="{% url 'manager_portal:finance_deal_list' %}" class="rounded-xl border border-slate-700 px-4 py-2 text-xs text-slate-300 hover:bg-slate-800">К списку</a>
@@ -41,7 +41,7 @@
 
     <div class="grid gap-8 xl:grid-cols-[1.1fr_0.9fr]">
       <section class="manager-panel rounded-3xl p-6">
-        <h3 class="text-xl font-semibold text-white">P&amp;L snapshot</h3>
+        <h3 class="text-xl font-semibold text-white">Финансовый срез P&amp;L</h3>
         <div class="mt-5 grid gap-3 text-sm text-slate-300">
           <div class="flex items-start justify-between gap-4"><span class="text-slate-500">Ответственный</span><span class="text-right text-white">{{ finance_deal.responsible_manager.username|default:"—" }}</span></div>
           <div class="flex items-start justify-between gap-4"><span class="text-slate-500">Связанный документ</span><span class="text-right text-white">{% if finance_deal.linked_document_id %}<a href="{% url 'manager_portal:contracts_detail' finance_deal.linked_document_id %}" class="text-cyan-300 hover:text-cyan-200">{{ finance_deal.linked_document.number|default:finance_deal.linked_document.title }}</a>{% else %}—{% endif %}</span></div>
@@ -81,8 +81,7 @@
 
     <section class="manager-panel rounded-3xl p-6">
       <h3 class="text-xl font-semibold text-white">Расходы по сделке</h3>
-      <div class="mt-5 overflow-x-auto">
-        <table class="min-w-full text-sm text-slate-300">
+      {% manager_table wrapper_class="mt-5" table_class="min-w-full text-sm text-slate-300" %}
           <thead class="text-left text-xs uppercase tracking-[0.18em] text-slate-500">
             <tr>
               <th class="pb-3 pr-4">Дата</th>
@@ -94,7 +93,7 @@
           </thead>
           <tbody>
             {% for expense in finance_deal_expenses %}
-              <tr class="border-t border-slate-800">
+              <tr>
                 <td class="py-3 pr-4">{{ expense.date }}</td>
                 <td class="py-3 pr-4">{{ expense.get_expense_side_display }}</td>
                 <td class="py-3 pr-4">{{ expense.category.name }}</td>
@@ -102,11 +101,10 @@
                 <td class="py-3 pr-4">{{ expense.comment|default:"—" }}</td>
               </tr>
             {% empty %}
-              <tr><td colspan="5" class="py-4 text-slate-500">Расходов по сделке пока нет.</td></tr>
+              {% include "manager_portal/_empty_state.html" with colspan=5 %}
             {% endfor %}
           </tbody>
-        </table>
-      </div>
+      {% endmanager_table %}
     </section>
   </div>
 {% endblock %}

@@ -1,0 +1,131 @@
+{% extends "manager_portal/base.html" %}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+  <div class="mx-auto max-w-4xl space-y-6">
+    <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div>
+        {% if page_kicker %}
+          <p class="text-sm uppercase tracking-[0.24em] text-cyan-300">{{ page_kicker }}</p>
+        {% endif %}
+        <h2 class="mt-2 text-2xl font-semibold md:text-4xl">{{ page_title }}</h2>
+        {% if page_description %}
+          <p class="mt-2 max-w-3xl text-slate-400">{{ page_description }}</p>
+        {% endif %}
+      </div>
+      <a href="{{ back_url }}" class="manager-inline-action">Назад к списку</a>
+    </div>
+
+    {% if page_pills %}
+      <div class="flex flex-wrap gap-2">
+        {% for pill in page_pills %}
+          <span class="manager-pill">{{ pill }}</span>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <section class="manager-panel rounded-[1.75rem] p-5 lg:p-6">
+      {% if prefill_note %}
+        <div class="rounded-2xl border border-cyan-500/30 bg-cyan-500/10 p-4 text-sm text-cyan-100">
+          {{ prefill_note }}
+        </div>
+      {% endif %}
+
+      {% if show_prefill_items %}
+        <div class="mt-4 rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+          {% if prefill_items_title %}
+            <p class="text-xs uppercase tracking-[0.18em] text-slate-500">{{ prefill_items_title }}</p>
+          {% endif %}
+          <div class="mt-3 space-y-2">
+            {% for item in prefill_items %}
+              <div class="rounded-xl border border-slate-800 px-3 py-3 text-sm text-slate-200">
+                {{ item.product_name }}{% if item.variant_name %} <span class="text-slate-500">/ {{ item.variant_name }}</span>{% endif %} · {{ item.missing_quantity }} шт.
+              </div>
+            {% empty %}
+              {% if prefill_empty_message %}
+                <p class="text-sm text-slate-400">{{ prefill_empty_message }}</p>
+              {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+
+      {% if form.non_field_errors %}
+        <div class="mt-4 rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-sm text-rose-100">
+          {% for error in form.non_field_errors %}
+            <p>{{ error }}</p>
+          {% endfor %}
+        </div>
+      {% endif %}
+
+      <form method="post" class="mt-6 space-y-4">
+        {% csrf_token %}
+        {% for hidden in hidden_fields %}
+          <input type="hidden" name="{{ hidden.name }}" value="{{ hidden.value }}">
+        {% endfor %}
+        {% if form_sections %}
+          <nav class="manager-create-stepper" aria-label="Шаги формы клиента">
+            <div class="manager-create-stepper-head">
+              <div>
+                <p class="manager-section-kicker">Пошаговая структура</p>
+                <h3 class="manager-card-title mt-2">4 секции в порядке работы менеджера</h3>
+              </div>
+              <p class="manager-caption max-w-xl">Сначала зафиксируйте основу карточки, затем контакты, детали доставки и при необходимости привяжите заказы сайта.</p>
+            </div>
+            <div class="manager-create-stepper-grid">
+              {% for section in form_sections %}
+                <a href="#{{ section.id }}" class="manager-create-stepper-link" {% if forloop.first %}aria-current="step"{% endif %}>
+                  <span class="manager-create-stepper-badge">{{ forloop.counter }}</span>
+                  <span class="manager-create-stepper-copy">
+                    <span class="manager-create-stepper-kicker">{{ section.step_label }}</span>
+                    <span class="manager-create-stepper-title">{{ section.title }}</span>
+                  </span>
+                </a>
+              {% endfor %}
+            </div>
+          </nav>
+
+          <div class="manager-create-sections">
+            {% for section in form_sections %}
+              <section id="{{ section.id }}" class="manager-create-section">
+                <div class="manager-create-section-head">
+                  <div class="manager-create-section-badge" aria-hidden="true">{{ forloop.counter }}</div>
+                  <div>
+                    <p class="manager-section-kicker">{{ section.step_label }}</p>
+                    <h3 class="manager-section-title mt-2">{{ section.title }}</h3>
+                    <p class="manager-body-copy mt-2">{{ section.description }}</p>
+                  </div>
+                </div>
+                <div class="manager-create-section-fields">
+                  {% include "manager_portal/_form_fields.html" with fields=section.fields %}
+                </div>
+              </section>
+            {% endfor %}
+          </div>
+        {% else %}
+          {% include "manager_portal/_form_fields.html" with form=form exclude_field_names=secondary_field_names %}
+          {% if secondary_fields %}
+            <details class="manager-collapsible-panel overflow-hidden rounded-[1.35rem] border border-slate-800/80 bg-slate-950/40" {% if secondary_section_open %}open{% endif %}>
+              <summary class="manager-collapsible-summary">
+                <div>
+                  <p class="text-sm font-medium text-slate-100">{{ secondary_section_title }}</p>
+                  {% if secondary_section_description %}
+                    <p class="mt-1 text-sm text-slate-400">{{ secondary_section_description }}</p>
+                  {% endif %}
+                </div>
+              </summary>
+              <div class="manager-collapsible-body">
+                {% include "manager_portal/_form_fields.html" with fields=secondary_fields %}
+              </div>
+            </details>
+          {% endif %}
+        {% endif %}
+        <div class="flex flex-wrap gap-3 pt-2">
+          <button class="manager-create-action">{{ submit_label }}</button>
+          <a href="{{ back_url }}" class="manager-inline-action">Отмена</a>
+        </div>
+      </form>
+    </section>
+  </div>
+{% endblock %}

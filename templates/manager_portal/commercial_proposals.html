@@ -7,94 +7,253 @@
     <section class="manager-entry-hero manager-panel rounded-[1.75rem] p-6 lg:p-8">
       <div class="manager-entry-hero-grid">
         <div>
-          <p class="text-sm uppercase tracking-[0.24em] text-cyan-300">Module</p>
-          <h2 class="mt-3 text-4xl font-semibold lg:text-5xl">Генератор КП</h2>
-          <p class="mt-3 max-w-3xl text-slate-300">Подбор товаров, настройка количества и цены, затем выгрузка коммерческого предложения в PDF или HTML без захода в Django admin.</p>
+          <p class="manager-page-kicker">Модуль</p>
+          <h2 class="manager-page-title mt-3">Генератор КП</h2>
+          <p class="manager-body-copy mt-3 max-w-3xl">
+            Подберите товары из каталога, соберите предложение по шагам, сохраните черновик в текущем браузере
+            и выгрузите КП в PDF или HTML.
+          </p>
           <div class="mt-6 flex flex-wrap gap-2">
-            <span class="manager-pill"><strong>Статус</strong> Готово</span>
-            <span class="manager-pill"><strong>Источник</strong> Каталог сайта</span>
+            <span class="manager-pill">Готов к работе</span>
+            <span class="manager-pill">Источник товаров: каталог вашего сайта</span>
+            <span class="manager-pill">Черновик сохраняется в этом браузере</span>
           </div>
         </div>
         <div class="manager-entry-summary">
           <div class="manager-entry-summary-card">
-            <p class="manager-dashboard-alert-label">Как использовать</p>
-            <div class="mt-4 space-y-3">
-              <div class="manager-dashboard-alert-row">
-                <span class="text-slate-300">Найти товары</span>
-                <strong>1</strong>
-              </div>
-              <div class="manager-dashboard-alert-row">
-                <span class="text-slate-300">Проверить цену и количество</span>
-                <strong>2</strong>
-              </div>
-              <div class="manager-dashboard-alert-row">
-                <span class="text-slate-300">Скачать PDF или HTML</span>
-                <strong>3</strong>
-              </div>
-            </div>
+            <p class="manager-dashboard-alert-label">Путь менеджера</p>
+            <h3 class="manager-section-title mt-3">4 шага до готового КП</h3>
+            <p class="manager-body-copy mt-3">
+              Прогресс закреплён над шагами: он показывает текущий этап, помогает быстро вернуться к нужному блоку
+              и не терять контекст при прокрутке.
+            </p>
           </div>
         </div>
       </div>
     </section>
 
     <div class="manager-proposal-shell">
-      <section class="manager-panel rounded-[1.75rem] p-6">
-        <div class="manager-proposal-search-row">
-          <div class="min-w-0 flex-1">
-            <label for="product-search" class="block text-sm font-medium text-slate-200">Добавить товар</label>
-            <div class="manager-proposal-search-wrap mt-3">
-              <input
-                type="text"
-                id="product-search"
-                class="manager-proposal-search-input"
-                placeholder="Введите название товара..."
-                autocomplete="off"
-              >
-              <div id="search-dropdown" class="manager-proposal-dropdown"></div>
-            </div>
-            <p class="mt-3 text-sm text-slate-400">Начните вводить название. После выбора товар появится в списке ниже, где можно скорректировать цену и количество.</p>
+      <section class="manager-panel manager-proposal-progress-shell rounded-[1.75rem] p-4 lg:p-5">
+        <div class="manager-proposal-progress-overview">
+          <div>
+            <p class="manager-proposal-progress-label">Пошаговый сценарий</p>
+            <h3 id="proposal-progress-current" class="manager-proposal-progress-current">Шаг 1 из 4. Поиск товара</h3>
           </div>
-          <button type="button" id="add-more-btn" class="rounded-xl border border-slate-700 px-4 py-3 text-sm text-slate-200 hover:bg-slate-800">Добавить ещё</button>
+          <p id="proposal-progress-note" class="manager-proposal-progress-note">
+            Начните с названия товара: поиск покажет совпадения из каталога ниже.
+          </p>
+        </div>
+        <div class="manager-proposal-progress-track" aria-hidden="true">
+          <span id="proposal-progress-fill" class="manager-proposal-progress-fill"></span>
+        </div>
+        <div class="manager-proposal-progress-grid" aria-label="Навигация по шагам генератора КП">
+          <a href="#proposal-step-1" class="manager-proposal-progress-item is-active" data-step-nav="1" aria-current="step">
+            <span class="manager-proposal-progress-badge">1</span>
+            <span class="manager-proposal-progress-copy">
+              <span class="manager-proposal-progress-kicker">Шаг 1</span>
+              <span class="manager-proposal-progress-title">Поиск товара</span>
+            </span>
+          </a>
+          <a href="#proposal-step-2" class="manager-proposal-progress-item" data-step-nav="2">
+            <span class="manager-proposal-progress-badge">2</span>
+            <span class="manager-proposal-progress-copy">
+              <span class="manager-proposal-progress-kicker">Шаг 2</span>
+              <span class="manager-proposal-progress-title">Результаты</span>
+            </span>
+          </a>
+          <a href="#proposal-step-3" class="manager-proposal-progress-item" data-step-nav="3">
+            <span class="manager-proposal-progress-badge">3</span>
+            <span class="manager-proposal-progress-copy">
+              <span class="manager-proposal-progress-kicker">Шаг 3</span>
+              <span class="manager-proposal-progress-title">Добавленные товары</span>
+            </span>
+          </a>
+          <a href="#proposal-step-4" class="manager-proposal-progress-item" data-step-nav="4">
+            <span class="manager-proposal-progress-badge">4</span>
+            <span class="manager-proposal-progress-copy">
+              <span class="manager-proposal-progress-kicker">Шаг 4</span>
+              <span class="manager-proposal-progress-title">Сгенерировать КП</span>
+            </span>
+          </a>
         </div>
       </section>
 
-      <section class="manager-panel rounded-[1.75rem] p-6">
-        <form method="post" id="commercial-proposal-form" hx-boost="false">
-          {% csrf_token %}
-          <div id="hidden-inputs"></div>
-          <div class="flex items-center justify-between gap-3 border-b border-slate-800/80 pb-4">
+      <section id="proposal-step-1" data-proposal-step="1" class="manager-panel manager-proposal-step is-active rounded-[1.75rem] p-6">
+        <div class="manager-proposal-step-head">
+          <span class="manager-proposal-step-index">1</span>
+          <div>
+            <p class="manager-proposal-step-kicker">Шаг 1</p>
+            <h3 class="manager-proposal-step-title">Поиск товара</h3>
+            <p class="manager-proposal-step-note">
+              Начните вводить название товара. Поиск использует каталог сайта и покажет совпадения ниже.
+            </p>
+          </div>
+        </div>
+        <div class="manager-proposal-search-grid mt-5">
+          <div class="manager-proposal-search-wrap">
+            <label for="product-search" class="sr-only">Поиск товара</label>
+            <input
+              type="text"
+              id="product-search"
+              class="manager-proposal-search-input"
+              placeholder="Введите название товара..."
+              autocomplete="off"
+            >
+          </div>
+          <button
+            type="button"
+            id="search-reset-btn"
+            class="rounded-xl border border-slate-700 px-4 py-3 text-sm text-slate-200 transition hover:bg-slate-800"
+          >
+            Очистить поиск
+          </button>
+        </div>
+      </section>
+
+      <section id="proposal-step-2" data-proposal-step="2" class="manager-panel manager-proposal-step rounded-[1.75rem] p-6">
+        <div class="manager-proposal-step-head">
+          <span class="manager-proposal-step-index">2</span>
+          <div>
+            <p class="manager-proposal-step-kicker">Шаг 2</p>
+            <h3 class="manager-proposal-step-title">Результаты</h3>
+            <p class="manager-proposal-step-note">
+              Выберите нужные товары из найденных результатов. Повторное добавление увеличивает количество.
+            </p>
+          </div>
+        </div>
+        <div id="search-results" class="manager-proposal-results mt-5" aria-live="polite">
+          <div class="manager-empty manager-proposal-results-empty rounded-[1.5rem] p-8 text-center text-slate-400">
+            Введите минимум 2 символа, чтобы увидеть результаты поиска.
+          </div>
+        </div>
+      </section>
+
+      <form method="post" id="commercial-proposal-form" hx-boost="false" class="space-y-6">
+        {% csrf_token %}
+        <div id="hidden-inputs"></div>
+
+        <section id="proposal-step-3" data-proposal-step="3" class="manager-panel manager-proposal-step rounded-[1.75rem] p-6">
+          <div class="manager-proposal-step-head">
+            <span class="manager-proposal-step-index">3</span>
             <div>
-              <p class="text-xs uppercase tracking-[0.22em] text-slate-500">Selection</p>
-              <h3 class="mt-2 text-2xl font-semibold">Выбранные товары</h3>
+              <p class="manager-proposal-step-kicker">Шаг 3</p>
+              <h3 class="manager-proposal-step-title">Добавленные товары</h3>
+              <p class="manager-proposal-step-note">
+                Проверьте состав КП, количество и цену по каждой позиции перед генерацией.
+              </p>
+            </div>
+          </div>
+
+          <div class="manager-proposal-summary-grid mt-5">
+            <div class="manager-proposal-summary-card">
+              <span class="manager-proposal-summary-label">Позиций</span>
+              <strong id="selected-count" class="manager-proposal-summary-value">0</strong>
+            </div>
+            <div class="manager-proposal-summary-card">
+              <span class="manager-proposal-summary-label">Сумма КП</span>
+              <strong id="selected-total" class="manager-proposal-summary-value">0 ₽</strong>
             </div>
           </div>
 
           <div id="selected-products" class="mt-5">
-            <div id="empty-msg" class="manager-empty rounded-[1.5rem] p-8 text-center text-slate-400">Выберите товары через поиск выше.</div>
+            <div id="empty-msg" class="manager-empty rounded-[1.5rem] p-8 text-center text-slate-400">
+              Добавьте товары из результатов поиска.
+            </div>
+          </div>
+        </section>
+
+        <section id="proposal-step-4" data-proposal-step="4" class="manager-panel manager-proposal-step rounded-[1.75rem] p-6">
+          <div class="manager-proposal-step-head">
+            <span class="manager-proposal-step-index">4</span>
+            <div>
+              <p class="manager-proposal-step-kicker">Шаг 4</p>
+              <h3 class="manager-proposal-step-title">Сгенерировать КП</h3>
+              <p class="manager-proposal-step-note">
+                Сохраните текущий подбор как черновик или сразу выгрузите коммерческое предложение.
+              </p>
+            </div>
           </div>
 
-          <div class="mt-6 flex flex-wrap gap-3">
-            <button type="submit" id="submit-pdf-btn" class="rounded-xl bg-cyan-500 px-4 py-3 text-sm font-medium text-slate-950 disabled:cursor-not-allowed disabled:opacity-50" name="export_format" value="pdf" disabled>Скачать PDF</button>
-            <button type="submit" id="submit-html-btn" class="rounded-xl border border-slate-700 px-4 py-3 text-sm text-slate-200 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50" name="export_format" value="html" disabled>Скачать HTML</button>
-            <a href="{% url 'manager_portal:entry' %}" class="rounded-xl border border-slate-700 px-4 py-3 text-sm text-slate-200 hover:bg-slate-800">Назад к модулям</a>
+          <div class="manager-proposal-action-grid mt-5">
+            <div class="manager-proposal-action-card">
+              <p class="manager-proposal-action-label">Черновик</p>
+              <p class="manager-proposal-action-copy">
+                <span class="font-semibold text-white">Сохранить черновик</span> сохраняет текущий подбор только в этом браузере и
+                восстанавливает его при следующем открытии страницы.
+              </p>
+              <p id="draft-status" class="manager-proposal-draft-status" data-state="idle">
+                Черновик пока не сохранён.
+              </p>
+            </div>
+
+            <div class="manager-proposal-button-row">
+              <button
+                type="button"
+                id="save-draft-btn"
+                class="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm font-medium text-emerald-100 transition hover:bg-emerald-500/15 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled
+              >
+                Сохранить черновик
+              </button>
+              <button
+                type="submit"
+                id="submit-pdf-btn"
+                class="rounded-xl bg-cyan-500 px-4 py-3 text-sm font-medium text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
+                name="export_format"
+                value="pdf"
+                disabled
+              >
+                Сгенерировать КП
+              </button>
+              <button
+                type="submit"
+                id="submit-html-btn"
+                class="rounded-xl border border-slate-700 px-4 py-3 text-sm text-slate-200 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                name="export_format"
+                value="html"
+                disabled
+              >
+                Скачать HTML
+              </button>
+              <a
+                href="{% url 'manager_portal:entry' %}"
+                class="rounded-xl border border-slate-700 px-4 py-3 text-sm text-slate-200 transition hover:bg-slate-800"
+              >
+                Назад к модулям
+              </a>
+            </div>
           </div>
-        </form>
-      </section>
+        </section>
+      </form>
     </div>
   </div>
 
   <script>
     (function() {
       const searchUrl = "{% url 'manager_portal:commercial_proposals_search' %}";
+      const draftStorageKey = 'manager-commercial-proposal-draft-v1';
       const container = document.getElementById('selected-products');
       const emptyMsg = document.getElementById('empty-msg');
-      const dropdown = document.getElementById('search-dropdown');
+      const resultsContainer = document.getElementById('search-results');
       const searchInput = document.getElementById('product-search');
-      const addMoreBtn = document.getElementById('add-more-btn');
+      const searchResetBtn = document.getElementById('search-reset-btn');
       const submitPdfBtn = document.getElementById('submit-pdf-btn');
       const submitHtmlBtn = document.getElementById('submit-html-btn');
+      const saveDraftBtn = document.getElementById('save-draft-btn');
+      const draftStatusNode = document.getElementById('draft-status');
       const hiddenInputs = document.getElementById('hidden-inputs');
+      const selectedCountNode = document.getElementById('selected-count');
+      const selectedTotalNode = document.getElementById('selected-total');
+      const progressFillNode = document.getElementById('proposal-progress-fill');
+      const progressCurrentNode = document.getElementById('proposal-progress-current');
+      const progressNoteNode = document.getElementById('proposal-progress-note');
+      const stepSections = Array.from(document.querySelectorAll('[data-proposal-step]'));
+      const stepNavItems = Array.from(document.querySelectorAll('[data-step-nav]'));
       const selected = new Map();
+      let latestResults = [];
+      let latestSearchToken = 0;
+      let scheduledProgressSync = 0;
+      let activeStepNumber = stepSections.length ? Number(stepSections[0].dataset.proposalStep) : 1;
 
       function debounce(fn, ms) {
         let timer;
@@ -104,15 +263,34 @@
         };
       }
 
+      function normalizeId(value) {
+        return String(value);
+      }
+
       function escapeHtml(value) {
         const div = document.createElement('div');
-        div.textContent = value;
+        div.textContent = value == null ? '' : String(value);
         return div.innerHTML;
       }
 
+      function parseMoneyInput(value) {
+        const normalized = String(value == null ? '' : value).trim().replace(',', '.');
+        const parsed = Number.parseFloat(normalized);
+        return Number.isFinite(parsed) ? parsed : 0;
+      }
+
+      function sanitizeQtyValue(value) {
+        const parsed = Number.parseInt(value, 10);
+        return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+      }
+
+      function formatInputNumber(value) {
+        const safe = Math.max(0, Math.round((value + Number.EPSILON) * 100) / 100);
+        return Number.isInteger(safe) ? String(safe) : String(safe);
+      }
+
       function formatMoney(value) {
-        const numeric = Number(value);
-        const safe = Number.isFinite(numeric) ? Math.round((numeric + Number.EPSILON) * 100) / 100 : 0;
+        const safe = Number.isFinite(value) ? Math.round((value + Number.EPSILON) * 100) / 100 : 0;
         const isInteger = Math.abs(safe % 1) < 0.000001;
         return new Intl.NumberFormat('ru-RU', {
           minimumFractionDigits: isInteger ? 0 : 2,
@@ -120,123 +298,396 @@
         }).format(safe).replace(/[\u00A0\u202F]/g, ' ');
       }
 
-      function updateButtons() {
-        const disabled = selected.size === 0;
-        submitPdfBtn.disabled = disabled;
-        submitHtmlBtn.disabled = disabled;
-        emptyMsg.style.display = disabled ? 'block' : 'none';
+      function formatDraftTimestamp(value) {
+        try {
+          return new Intl.DateTimeFormat('ru-RU', {
+            dateStyle: 'short',
+            timeStyle: 'short'
+          }).format(new Date(value));
+        } catch (error) {
+          return '';
+        }
       }
 
-      function addProduct(product) {
-        if (selected.has(product.id)) {
-          const card = document.querySelector('[data-product-id="' + product.id + '"]');
-          if (card) {
-            const qtyInput = card.querySelector('.manager-proposal-field-qty input');
-            qtyInput.value = parseInt(qtyInput.value || 1, 10) + 1;
-            qtyInput.dispatchEvent(new Event('input'));
-          }
+      function getStepSection(stepNumber) {
+        return stepSections.find(section => Number(section.dataset.proposalStep) === stepNumber) || null;
+      }
+
+      function setActiveStep(stepNumber) {
+        const stepSection = getStepSection(stepNumber);
+        if (!stepSection) {
           return;
         }
-        selected.set(product.id, product);
+
+        activeStepNumber = stepNumber;
+        const totalSteps = stepSections.length || 1;
+        const progressWidth = (stepNumber / totalSteps) * 100;
+        const titleNode = stepSection.querySelector('.manager-proposal-step-title');
+        const noteNode = stepSection.querySelector('.manager-proposal-step-note');
+
+        if (progressFillNode) {
+          progressFillNode.style.width = progressWidth + '%';
+        }
+        if (progressCurrentNode && titleNode) {
+          progressCurrentNode.textContent = 'Шаг ' + stepNumber + ' из ' + totalSteps + '. ' + titleNode.textContent.trim();
+        }
+        if (progressNoteNode && noteNode) {
+          progressNoteNode.textContent = noteNode.textContent.trim();
+        }
+
+        stepSections.forEach(section => {
+          section.classList.toggle('is-active', Number(section.dataset.proposalStep) === stepNumber);
+        });
+        stepNavItems.forEach(item => {
+          const itemStep = Number(item.dataset.stepNav);
+          const isActive = itemStep === stepNumber;
+          item.classList.toggle('is-active', isActive);
+          item.classList.toggle('is-past', itemStep < stepNumber);
+          if (isActive) {
+            item.setAttribute('aria-current', 'step');
+          } else {
+            item.removeAttribute('aria-current');
+          }
+        });
+      }
+
+      function syncActiveStepFromViewport() {
+        if (!stepSections.length) {
+          return;
+        }
+
+        const marker = Math.min(window.innerHeight * 0.28, 240);
+        let nextStepNumber = activeStepNumber;
+        let closestDistance = Infinity;
+
+        stepSections.forEach(section => {
+          const rect = section.getBoundingClientRect();
+          const anchorPoint = rect.top + Math.min(rect.height * 0.2, 120);
+          const distance = Math.abs(anchorPoint - marker);
+
+          if (distance < closestDistance) {
+            closestDistance = distance;
+            nextStepNumber = Number(section.dataset.proposalStep);
+          }
+        });
+
+        setActiveStep(nextStepNumber);
+      }
+
+      function scheduleProgressSync() {
+        if (scheduledProgressSync) {
+          return;
+        }
+
+        scheduledProgressSync = window.requestAnimationFrame(function() {
+          scheduledProgressSync = 0;
+          syncActiveStepFromViewport();
+        });
+      }
+
+      function getSelectedCard(productId) {
+        return container.querySelector('[data-product-id="' + normalizeId(productId) + '"]');
+      }
+
+      function renderResultsMessage(message) {
+        resultsContainer.innerHTML =
+          '<div class="manager-empty manager-proposal-results-empty rounded-[1.5rem] p-8 text-center text-slate-400">' +
+          escapeHtml(message) +
+          '</div>';
+        scheduleProgressSync();
+      }
+
+      function updateDraftStatus(message, state) {
+        draftStatusNode.textContent = message;
+        draftStatusNode.dataset.state = state || 'idle';
+      }
+
+      function renderSearchResults(results) {
+        latestResults = results.map(product => ({
+          id: normalizeId(product.id),
+          name: product.name || '',
+          category: product.category || '',
+          image_url: product.image_url || '',
+          price: product.price != null ? String(product.price) : '0',
+          base_price: product.base_price != null ? String(product.base_price) : (product.price != null ? String(product.price) : '0')
+        }));
+        resultsContainer.innerHTML = '';
+
+        if (!latestResults.length) {
+          renderResultsMessage('Ничего не найдено. Попробуйте другой запрос.');
+          return;
+        }
+
+        latestResults.forEach(product => {
+          const isSelected = selected.has(product.id);
+          const card = document.createElement('div');
+          card.className = 'manager-proposal-result-card';
+          const imageHtml = product.image_url
+            ? '<img src="' + escapeHtml(product.image_url) + '" alt="">'
+            : '<div class="manager-proposal-thumb-placeholder">Нет фото</div>';
+          card.innerHTML =
+            '<div class="manager-proposal-thumb manager-proposal-result-thumb">' + imageHtml + '</div>' +
+            '<div class="manager-proposal-result-info">' +
+              '<div class="manager-proposal-result-name">' + escapeHtml(product.name) + '</div>' +
+              '<div class="manager-proposal-result-meta">' + escapeHtml(product.category) + '</div>' +
+              '<div class="manager-proposal-result-price">Базовая цена: ' + formatMoney(parseMoneyInput(product.base_price)) + ' ₽</div>' +
+            '</div>' +
+            '<button type="button" class="manager-proposal-result-button' + (isSelected ? ' is-selected' : '') + '">' +
+              (isSelected ? '+1 ещё' : 'Добавить') +
+            '</button>';
+          card.querySelector('.manager-proposal-result-button').addEventListener('click', function() {
+            addProduct(product, { incrementIfExists: true });
+          });
+          resultsContainer.appendChild(card);
+        });
+        scheduleProgressSync();
+      }
+
+      function updateSummary() {
+        const cards = container.querySelectorAll('.manager-proposal-card');
+        const disabled = cards.length === 0;
+        let total = 0;
+
+        cards.forEach(card => {
+          const qtyInput = card.querySelector('.manager-proposal-field-qty input');
+          const priceInput = card.querySelector('.manager-proposal-field-price input');
+          const qty = sanitizeQtyValue(qtyInput.value);
+          const price = Math.max(0, parseMoneyInput(priceInput.value));
+          total += qty * price;
+        });
+
+        emptyMsg.style.display = disabled ? 'block' : 'none';
+        submitPdfBtn.disabled = disabled;
+        submitHtmlBtn.disabled = disabled;
+        saveDraftBtn.disabled = disabled;
+        selectedCountNode.textContent = String(cards.length);
+        selectedTotalNode.textContent = formatMoney(total) + ' ₽';
+        scheduleProgressSync();
+      }
+
+      function rerenderResultsIfPresent() {
+        if (latestResults.length) {
+          renderSearchResults(latestResults);
+        }
+      }
+
+      function syncCardTotal(card) {
+        const qtyInput = card.querySelector('.manager-proposal-field-qty input');
+        const priceInput = card.querySelector('.manager-proposal-field-price input');
+        const sumNode = card.querySelector('.manager-proposal-sum');
+        const qty = sanitizeQtyValue(qtyInput.value);
+        const price = Math.max(0, parseMoneyInput(priceInput.value));
+        sumNode.textContent = formatMoney(qty * price) + ' ₽';
+        updateSummary();
+      }
+
+      function addProduct(product, options = {}) {
+        const normalizedProduct = {
+          id: normalizeId(product.id),
+          name: product.name || '',
+          category: product.category || '',
+          image_url: product.image_url || '',
+          price: product.price != null ? String(product.price) : '0',
+          base_price: product.base_price != null ? String(product.base_price) : (product.price != null ? String(product.price) : '0')
+        };
+
+        if (selected.has(normalizedProduct.id)) {
+          const existingCard = getSelectedCard(normalizedProduct.id);
+          if (existingCard) {
+            const qtyInput = existingCard.querySelector('.manager-proposal-field-qty input');
+            const priceInput = existingCard.querySelector('.manager-proposal-field-price input');
+            if (options.incrementIfExists === false) {
+              qtyInput.value = sanitizeQtyValue(options.qty || qtyInput.value);
+            } else {
+              qtyInput.value = sanitizeQtyValue(qtyInput.value) + 1;
+            }
+            if (options.price != null) {
+              priceInput.value = formatInputNumber(Math.max(0, parseMoneyInput(options.price)));
+            }
+            syncCardTotal(existingCard);
+          }
+          rerenderResultsIfPresent();
+          return;
+        }
+
+        selected.set(normalizedProduct.id, normalizedProduct);
+        const qtyValue = sanitizeQtyValue(options.qty || 1);
+        const priceValue = formatInputNumber(
+          Math.max(0, parseMoneyInput(options.price != null ? options.price : normalizedProduct.price))
+        );
         const card = document.createElement('div');
         card.className = 'manager-proposal-card';
-        card.dataset.productId = product.id;
-        const imageHtml = product.image_url
-          ? '<img src="' + product.image_url.replace(/"/g, '&quot;') + '" alt="">'
+        card.dataset.productId = normalizedProduct.id;
+        const imageHtml = normalizedProduct.image_url
+          ? '<img src="' + escapeHtml(normalizedProduct.image_url) + '" alt="">'
           : '<div class="manager-proposal-thumb-placeholder">Нет фото</div>';
         card.innerHTML =
           '<div class="manager-proposal-thumb">' + imageHtml + '</div>' +
-          '<div class="manager-proposal-info"><div class="manager-proposal-name">' + escapeHtml(product.name) + '</div><div class="manager-proposal-meta">' + escapeHtml(product.category) + ' · базовая: ' + formatMoney(product.price) + ' ₽</div></div>' +
-          '<div class="manager-proposal-field manager-proposal-field-qty"><label>Кол-во</label><input type="number" name="qty_' + product.id + '" value="1" min="1"></div>' +
-          '<div class="manager-proposal-field manager-proposal-field-price"><label>Цена за шт.</label><input type="number" name="price_' + product.id + '" value="' + product.price + '" min="0" step="0.01"></div>' +
-          '<div class="manager-proposal-sum">' + formatMoney(product.price) + ' ₽</div>' +
+          '<div class="manager-proposal-info">' +
+            '<div class="manager-proposal-name">' + escapeHtml(normalizedProduct.name) + '</div>' +
+            '<div class="manager-proposal-meta">' + escapeHtml(normalizedProduct.category) + ' · базовая: ' + formatMoney(parseMoneyInput(normalizedProduct.base_price)) + ' ₽</div>' +
+          '</div>' +
+          '<div class="manager-proposal-field manager-proposal-field-qty"><label>Кол-во</label><input type="number" name="qty_' + normalizedProduct.id + '" value="' + qtyValue + '" min="1"></div>' +
+          '<div class="manager-proposal-field manager-proposal-field-price"><label>Цена за шт.</label><input type="number" name="price_' + normalizedProduct.id + '" value="' + priceValue + '" min="0" step="0.01"></div>' +
+          '<div class="manager-proposal-sum">' + formatMoney(qtyValue * parseMoneyInput(priceValue)) + ' ₽</div>' +
           '<button type="button" class="manager-proposal-remove">Удалить</button>';
 
         const qtyInput = card.querySelector('.manager-proposal-field-qty input');
         const priceInput = card.querySelector('.manager-proposal-field-price input');
-        const sumNode = card.querySelector('.manager-proposal-sum');
 
-        function updateSum() {
-          const qty = parseInt(qtyInput.value || '1', 10) || 1;
-          const price = parseFloat(priceInput.value || '0') || 0;
-          sumNode.textContent = formatMoney(qty * price) + ' ₽';
-        }
-
-        qtyInput.addEventListener('input', updateSum);
-        priceInput.addEventListener('input', updateSum);
+        qtyInput.addEventListener('input', function() {
+          syncCardTotal(card);
+        });
+        qtyInput.addEventListener('change', function() {
+          qtyInput.value = sanitizeQtyValue(qtyInput.value);
+          syncCardTotal(card);
+        });
+        priceInput.addEventListener('input', function() {
+          syncCardTotal(card);
+        });
+        priceInput.addEventListener('change', function() {
+          priceInput.value = formatInputNumber(Math.max(0, parseMoneyInput(priceInput.value)));
+          syncCardTotal(card);
+        });
         card.querySelector('.manager-proposal-remove').addEventListener('click', function() {
-          selected.delete(product.id);
+          selected.delete(normalizedProduct.id);
           card.remove();
-          updateButtons();
+          updateSummary();
+          rerenderResultsIfPresent();
         });
 
         container.appendChild(card);
-        updateButtons();
+        updateSummary();
+        rerenderResultsIfPresent();
+      }
+
+      function collectDraftItems() {
+        const items = [];
+        container.querySelectorAll('.manager-proposal-card').forEach(card => {
+          const productId = normalizeId(card.dataset.productId);
+          const product = selected.get(productId);
+          if (!product) {
+            return;
+          }
+          const qtyInput = card.querySelector('.manager-proposal-field-qty input');
+          const priceInput = card.querySelector('.manager-proposal-field-price input');
+          items.push({
+            id: productId,
+            name: product.name,
+            category: product.category,
+            image_url: product.image_url,
+            base_price: product.base_price || product.price,
+            price: formatInputNumber(Math.max(0, parseMoneyInput(priceInput.value))),
+            qty: sanitizeQtyValue(qtyInput.value)
+          });
+        });
+        return items;
+      }
+
+      function saveDraft() {
+        const items = collectDraftItems();
+        if (!items.length) {
+          updateDraftStatus('Добавьте хотя бы один товар, чтобы сохранить черновик.', 'error');
+          return;
+        }
+        try {
+          const savedAt = new Date().toISOString();
+          localStorage.setItem(draftStorageKey, JSON.stringify({ savedAt, items }));
+          updateDraftStatus('Черновик сохранён: ' + formatDraftTimestamp(savedAt), 'success');
+        } catch (error) {
+          updateDraftStatus('Не удалось сохранить черновик в браузере.', 'error');
+        }
+      }
+
+      function restoreDraft() {
+        try {
+          const rawDraft = localStorage.getItem(draftStorageKey);
+          if (!rawDraft) {
+            updateDraftStatus('Черновик пока не сохранён.', 'idle');
+            return;
+          }
+          const draft = JSON.parse(rawDraft);
+          if (!draft || !Array.isArray(draft.items) || draft.items.length === 0) {
+            updateDraftStatus('Черновик пока не сохранён.', 'idle');
+            return;
+          }
+          draft.items.forEach(item => {
+            addProduct(item, {
+              incrementIfExists: false,
+              qty: item.qty,
+              price: item.price
+            });
+          });
+          updateDraftStatus('Черновик восстановлен: ' + formatDraftTimestamp(draft.savedAt), 'success');
+        } catch (error) {
+          updateDraftStatus('Не удалось восстановить черновик.', 'error');
+        }
       }
 
       function doSearch() {
-        const q = searchInput.value.trim();
-        if (q.length < 2) {
-          dropdown.classList.remove('show');
-          dropdown.innerHTML = '';
+        const query = searchInput.value.trim();
+        if (query.length < 2) {
+          latestResults = [];
+          renderResultsMessage('Введите минимум 2 символа, чтобы увидеть результаты поиска.');
           return;
         }
-        fetch(searchUrl + '?q=' + encodeURIComponent(q))
+
+        const searchToken = ++latestSearchToken;
+        latestResults = [];
+        renderResultsMessage('Загрузка результатов...');
+        fetch(searchUrl + '?q=' + encodeURIComponent(query))
           .then(response => response.json())
           .then(data => {
-            dropdown.innerHTML = '';
-            if (data.length === 0) {
-              dropdown.innerHTML = '<div class="manager-proposal-dropdown-item manager-proposal-dropdown-empty">Ничего не найдено</div>';
-            } else {
-              data.forEach(product => {
-                const item = document.createElement('div');
-                item.className = 'manager-proposal-dropdown-item';
-                const imageHtml = product.image_url
-                  ? '<img src="' + product.image_url.replace(/"/g, '&quot;') + '" alt="">'
-                  : '<div class="manager-proposal-thumb-placeholder-sm"></div>';
-                item.innerHTML =
-                  imageHtml +
-                  '<div><div class="manager-proposal-dropdown-name">' + escapeHtml(product.name) + '</div><div class="manager-proposal-dropdown-meta">' + escapeHtml(product.category) + '</div></div>' +
-                  '<div class="manager-proposal-dropdown-price">' + formatMoney(product.price) + ' ₽</div>';
-                item.addEventListener('click', function() {
-                  addProduct(product);
-                  searchInput.value = '';
-                  dropdown.classList.remove('show');
-                  dropdown.innerHTML = '';
-                  searchInput.focus();
-                });
-                dropdown.appendChild(item);
-              });
+            if (searchToken !== latestSearchToken) {
+              return;
             }
-            dropdown.classList.add('show');
+            renderSearchResults(Array.isArray(data) ? data : []);
           })
           .catch(() => {
-            dropdown.innerHTML = '<div class="manager-proposal-dropdown-item manager-proposal-dropdown-empty">Ошибка загрузки</div>';
-            dropdown.classList.add('show');
+            if (searchToken !== latestSearchToken) {
+              return;
+            }
+            latestResults = [];
+            renderResultsMessage('Ошибка загрузки результатов.');
           });
       }
 
       searchInput.addEventListener('input', debounce(doSearch, 300));
-      searchInput.addEventListener('focus', function() {
-        if (searchInput.value.trim().length >= 2) {
-          doSearch();
-        }
+      stepNavItems.forEach(item => {
+        item.addEventListener('click', function(event) {
+          const stepNumber = Number(item.dataset.stepNav);
+          const stepSection = getStepSection(stepNumber);
+          if (!stepSection) {
+            return;
+          }
+
+          event.preventDefault();
+          setActiveStep(stepNumber);
+          stepSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
       });
-      document.addEventListener('click', function(event) {
-        if (!searchInput.contains(event.target) && !dropdown.contains(event.target)) {
-          dropdown.classList.remove('show');
-        }
+      stepSections.forEach(section => {
+        section.addEventListener('focusin', function() {
+          setActiveStep(Number(section.dataset.proposalStep));
+        });
       });
-      addMoreBtn.addEventListener('click', function() {
+      window.addEventListener('scroll', scheduleProgressSync, { passive: true });
+      window.addEventListener('resize', scheduleProgressSync);
+      searchResetBtn.addEventListener('click', function() {
+        searchInput.value = '';
+        latestResults = [];
+        latestSearchToken += 1;
+        renderResultsMessage('Введите минимум 2 символа, чтобы увидеть результаты поиска.');
         searchInput.focus();
       });
+      saveDraftBtn.addEventListener('click', saveDraft);
 
       document.getElementById('commercial-proposal-form').addEventListener('submit', function() {
         hiddenInputs.innerHTML = '';
         container.querySelectorAll('.manager-proposal-card').forEach(card => {
-          const id = card.dataset.productId;
+          const id = normalizeId(card.dataset.productId);
           const qtyInput = card.querySelector('.manager-proposal-field-qty input');
-          const qty = parseInt(qtyInput.value || '1', 10) || 1;
+          const qty = sanitizeQtyValue(qtyInput.value);
           const productInput = document.createElement('input');
           productInput.type = 'hidden';
           productInput.name = 'products';
@@ -250,6 +701,11 @@
           hiddenInputs.appendChild(qtyHidden);
         });
       });
+
+      restoreDraft();
+      updateSummary();
+      setActiveStep(activeStepNumber);
+      scheduleProgressSync();
     })();
   </script>
 {% endblock %}

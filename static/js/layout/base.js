@@ -296,18 +296,203 @@
         syncValue(false);
       });
     }
+
+    const LOADING_SKELETON_TARGET_SELECTOR = '#main-content, #manager-main-content';
+    const LOADING_SKELETON_SCOPE_CLASS = 'bizon-loading-scope';
+    const LOADING_SKELETON_ACTIVE_CLASS = 'is-loading';
+
+    function isLoadingSkeletonTarget(target) {
+      return target instanceof Element && target.matches(LOADING_SKELETON_TARGET_SELECTOR);
+    }
+
+    function getLoadingSkeletonRoots(root) {
+      if (root instanceof Element) {
+        if (isLoadingSkeletonTarget(root)) {
+          return [root];
+        }
+        return Array.from(root.querySelectorAll(LOADING_SKELETON_TARGET_SELECTOR));
+      }
+      return Array.from(document.querySelectorAll(LOADING_SKELETON_TARGET_SELECTOR));
+    }
+
+    function uniqueElements(elements) {
+      return Array.from(new Set(elements.filter((element) => element instanceof Element)));
+    }
+
+    function buildTableSkeletonMarkup(rowCount, columnCount) {
+      const safeRowCount = Math.max(4, rowCount || 0);
+      const safeColumnCount = Math.max(3, columnCount || 0);
+      const buildColumns = () => {
+        const columns = [];
+        for (let columnIndex = 0; columnIndex < safeColumnCount; columnIndex += 1) {
+          columns.push('<span class="bizon-skeleton-line bizon-skeleton-line-table"></span>');
+        }
+        return columns.join('');
+      };
+      const rows = [];
+
+      for (let rowIndex = 0; rowIndex < safeRowCount; rowIndex += 1) {
+        rows.push(`<div class="bizon-table-skeleton-row">${buildColumns()}</div>`);
+      }
+
+      return `
+        <div class="bizon-table-skeleton">
+          <div class="bizon-table-skeleton-row bizon-table-skeleton-row-head">${buildColumns()}</div>
+          <div class="bizon-table-skeleton-body">${rows.join('')}</div>
+        </div>
+      `;
+    }
+
+    function buildCardSkeletonMarkup(cardCount) {
+      const safeCardCount = Math.max(3, cardCount || 0);
+      const cards = [];
+
+      for (let index = 0; index < safeCardCount; index += 1) {
+        cards.push('<div class="bizon-card-skeleton-item bizon-skeleton-pulse"></div>');
+      }
+
+      return `<div class="bizon-card-skeleton">${cards.join('')}</div>`;
+    }
+
+    function syncLoadingSkeletonScope(scope) {
+      if (!(scope instanceof Element)) {
+        return;
+      }
+
+      const overlay = scope.querySelector(':scope > .bizon-loading-overlay');
+      if (!overlay) {
+        return;
+      }
+
+      const type = scope.dataset.bizonLoadingScope || '';
+      const minHeight = Math.max(scope.clientHeight, 180);
+      overlay.style.minHeight = `${minHeight}px`;
+
+      if (type !== 'table') {
+        return;
+      }
+
+      const table = scope.querySelector('table');
+      const skeleton = overlay.querySelector('.bizon-table-skeleton');
+      if (!table || !skeleton) {
+        return;
+      }
+
+      const tableWidth = Math.max(scope.clientWidth, table.scrollWidth, 640);
+      const tableHeight = Math.max(scope.clientHeight, table.offsetHeight, 220);
+
+      skeleton.style.setProperty('--bizon-table-skeleton-columns', String(
+        Math.min(Math.max(table.tHead?.rows?.[0]?.cells?.length || table.rows?.[0]?.cells?.length || 0, 3), 6)
+      ));
+      skeleton.style.width = `${tableWidth}px`;
+      overlay.style.minHeight = `${tableHeight}px`;
+    }
+
+    function ensureLoadingSkeletonScope(scope, type, options = {}) {
+      if (!(scope instanceof Element) || scope.dataset.bizonLoadingScope === type) {
+        if (scope instanceof Element && scope.dataset.bizonLoadingScope === type) {
+          syncLoadingSkeletonScope(scope);
+        }
+        return;
+      }
+
+      if (scope.dataset.bizonLoadingScope) {
+        return;
+      }
+
+      scope.dataset.bizonLoadingScope = type;
+      scope.classList.add(LOADING_SKELETON_SCOPE_CLASS, `bizon-loading-scope-${type}`);
+
+      const overlay = document.createElement('div');
+      overlay.className = `bizon-loading-overlay bizon-loading-overlay-${type}`;
+      overlay.setAttribute('aria-hidden', 'true');
+
+      if (type === 'table') {
+        overlay.innerHTML = buildTableSkeletonMarkup(options.rowCount, options.columnCount);
+      } else {
+        overlay.innerHTML = buildCardSkeletonMarkup(options.cardCount);
+      }
+
+      scope.appendChild(overlay);
+      syncLoadingSkeletonScope(scope);
+    }
+
+    function prepareLoadingSkeletons(root) {
+      getLoadingSkeletonRoots(root).forEach((targetRoot) => {
+        targetRoot.querySelectorAll('table').forEach((table) => {
+          const scope = table.closest('.overflow-x-auto') || table.parentElement;
+          if (!scope || !targetRoot.contains(scope)) {
+            return;
+          }
+
+          const bodyRows = table.tBodies[0]?.rows?.length || 0;
+          const columns = table.tHead?.rows?.[0]?.cells?.length || table.rows?.[0]?.cells?.length || 0;
+
+          ensureLoadingSkeletonScope(scope, 'table', {
+            rowCount: Math.min(Math.max(bodyRows, 4), 8),
+            columnCount: Math.min(Math.max(columns, 3), 6),
+          });
+        });
+
+        const mobileCardContainers = uniqueElements(
+          Array.from(targetRoot.querySelectorAll('.manager-mobile-deal-card')).map((card) => card.parentElement)
+        );
+
+        mobileCardContainers.forEach((container) => {
+          ensureLoadingSkeletonScope(container, 'cards', {
+            cardCount: Math.min(Math.max(container.querySelectorAll('.manager-mobile-deal-card').length, 3), 5),
+          });
+        });
+
+        targetRoot.querySelectorAll('[data-kanban-column-body]').forEach((container) => {
+          ensureLoadingSkeletonScope(container, 'cards', {
+            cardCount: Math.min(Math.max(container.querySelectorAll('.manager-deal-card').length, 3), 4),
+          });
+        });
+      });
+    }
+
+    function showLoadingSkeletons(root) {
+      getLoadingSkeletonRoots(root).forEach((targetRoot) => {
+        prepareLoadingSkeletons(targetRoot);
+        targetRoot.querySelectorAll(`.${LOADING_SKELETON_SCOPE_CLASS}`).forEach((scope) => {
+          syncLoadingSkeletonScope(scope);
+          scope.classList.add(LOADING_SKELETON_ACTIVE_CLASS);
+        });
+      });
+    }
+
+    function clearLoadingSkeletons(root) {
+      getLoadingSkeletonRoots(root).forEach((targetRoot) => {
+        targetRoot.querySelectorAll(`.${LOADING_SKELETON_SCOPE_CLASS}`).forEach((scope) => {
+          scope.classList.remove(LOADING_SKELETON_ACTIVE_CLASS);
+        });
+      });
+    }
+
+    window.bizonLoadingSkeletons = {
+      clear: clearLoadingSkeletons,
+      prepare: prepareLoadingSkeletons,
+      show: showLoadingSkeletons,
+    };
     
     function initHtmxHandlers() {
       initLucide(); // иконки в шапке (каталог и др.) сразу при загрузке
       ensureLucideObserver();
       initPhoneMasks(document);
       initCookieConsentBanner();
+      prepareLoadingSkeletons(document);
       // Проверяем, что body уже существует
       if (!document.body) {
         console.warn('document.body is not available yet');
         return;
       }
       
+      document.body.addEventListener('htmx:beforeRequest', function(ev) {
+        if (isLoadingSkeletonTarget(ev.detail.target)) {
+          showLoadingSkeletons(ev.detail.target);
+        }
+      });
       document.body.addEventListener('htmx:beforeSwap', function(ev) {
         // Обновляем data-active-section перед заменой контента
         if (ev.detail.target.id === 'main-content') {
@@ -332,14 +517,35 @@
           // Обновляем активную вкладку в мобильном меню
           updateActiveDockItem();
         }
+        if (isLoadingSkeletonTarget(ev.detail.target)) {
+          prepareLoadingSkeletons(ev.detail.target);
+        }
       });
       document.body.addEventListener('htmx:afterSwap', function(ev) {
+        if (isLoadingSkeletonTarget(ev.detail.target)) {
+          prepareLoadingSkeletons(ev.detail.target);
+        }
         if (ev.detail.target.id === 'main-content') {
           // НЕ скроллим вверх автоматически - позицию восстановит скрипт ниже
           // Alpine.js автоматически обнаружит новые элементы с x-data через MutationObserver
           // Поэтому initTree вызывать не обязательно и это может вызвать ошибки
           scheduleLucideRetry(0);
           initPhoneMasks(document);
+        }
+      });
+      document.body.addEventListener('htmx:responseError', function(ev) {
+        if (isLoadingSkeletonTarget(ev.detail.target)) {
+          clearLoadingSkeletons(ev.detail.target);
+        }
+      });
+      document.body.addEventListener('htmx:sendError', function(ev) {
+        if (isLoadingSkeletonTarget(ev.detail.target)) {
+          clearLoadingSkeletons(ev.detail.target);
+        }
+      });
+      document.body.addEventListener('htmx:timeout', function(ev) {
+        if (isLoadingSkeletonTarget(ev.detail.target)) {
+          clearLoadingSkeletons(ev.detail.target);
         }
       });
       

@@ -5,17 +5,21 @@
 {% block content %}
   <div class="space-y-8">
     <section class="manager-panel rounded-[1.75rem] p-6 lg:p-8">
-      <div class="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+      <div class="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
         <div class="max-w-3xl">
-          <p class="text-sm uppercase tracking-[0.24em] text-cyan-300">Finance Workspace</p>
-          <h2 class="mt-3 text-3xl font-semibold text-white lg:text-4xl">Финансовый обзор</h2>
-          <p class="mt-3 text-sm leading-6 text-slate-300">
-            Управленческий контур по сделкам, расходам и выплатам внутри Manager Portal.
-          </p>
+          <p class="manager-page-kicker">Финансовый контур</p>
+          <h2 class="manager-page-title mt-3">Финансовый обзор</h2>
+          <span class="sr-only">Finance Workspace</span>
         </div>
-        <form method="get" class="grid gap-4 rounded-3xl border border-slate-800 bg-slate-950/60 p-4 lg:min-w-[22rem]">
-          {% include "manager_portal/_form_fields.html" with form=finance_period_form %}
-          <button type="submit" class="rounded-xl bg-cyan-400 px-4 py-3 text-sm font-semibold text-slate-950">Применить период</button>
+        <form method="get" class="manager-finance-period-form">
+          <div class="manager-finance-period-field">
+            <label for="{{ finance_period_form.period.id_for_label }}" class="manager-finance-period-label">{{ finance_period_form.period.label }}</label>
+            {{ finance_period_form.period }}
+          </div>
+          <button type="submit" class="manager-finance-period-button">Показать</button>
+          {% if finance_period_form.period.errors %}
+            <p class="manager-finance-period-error">{{ finance_period_form.period.errors|join:', ' }}</p>
+          {% endif %}
         </form>
       </div>
       {% if not finance_has_setup %}
@@ -25,63 +29,185 @@
       {% endif %}
     </section>
 
+    <section class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div class="manager-panel manager-kpi manager-finance-kpi {% if not finance_data.cash_balance and not finance_data.cash_outflow_total %}manager-finance-kpi-muted{% endif %} rounded-3xl border border-cyan-400/20 p-5">
+        <p class="manager-finance-kpi-label manager-card-kicker text-cyan-300">Баланс</p>
+        <p class="manager-finance-kpi-value mt-3 text-3xl font-semibold text-white">{{ finance_data.cash_balance|rub }}</p>
+        <p class="manager-finance-kpi-copy mt-3 text-sm text-slate-300">Баланс периода после наших расходов и выплат.</p>
+        <p class="manager-finance-kpi-meta manager-caption mt-2">Исходящий поток {{ finance_data.cash_outflow_total|rub }}</p>
+      </div>
+      <div class="manager-panel manager-kpi manager-finance-kpi {% if not finance_data.receivables_total and not finance_data.receivables_case_count %}manager-finance-kpi-muted{% endif %} rounded-3xl border border-amber-400/20 p-5">
+        <p class="manager-finance-kpi-label manager-card-kicker text-amber-300">Задолженность</p>
+        <p class="manager-finance-kpi-value mt-3 text-3xl font-semibold text-white">{{ finance_data.receivables_total|rub }}</p>
+        <p class="manager-finance-kpi-copy mt-3 text-sm text-slate-300">Задолженность клиентов по открытым кейсам.</p>
+        <p class="manager-finance-kpi-meta manager-caption mt-2">{{ finance_data.receivables_case_count }} кейсов ждут оплату</p>
+      </div>
+      <div class="manager-panel manager-kpi manager-finance-kpi {% if not finance_data.paid_total and not finance_data.paid_case_count %}manager-finance-kpi-muted{% endif %} rounded-3xl border border-emerald-400/20 p-5">
+        <p class="manager-finance-kpi-label manager-card-kicker text-emerald-300">Оплачено</p>
+        <p class="manager-finance-kpi-value mt-3 text-3xl font-semibold text-white">{{ finance_data.paid_total|rub }}</p>
+        <p class="manager-finance-kpi-copy mt-3 text-sm text-slate-300">Оплачено клиентами за выбранный период.</p>
+        <p class="manager-finance-kpi-meta manager-caption mt-2">{{ finance_data.paid_case_count }} кейсов дали входящий поток</p>
+      </div>
+      <div class="manager-panel manager-kpi manager-finance-kpi {% if not finance_data.overdue_total and not finance_data.overdue_case_count %}manager-finance-kpi-muted{% endif %} rounded-3xl border border-rose-400/20 p-5">
+        <p class="manager-finance-kpi-label manager-card-kicker text-rose-300">Просрочено</p>
+        <p class="manager-finance-kpi-value mt-3 text-3xl font-semibold text-white">{{ finance_data.overdue_total|rub }}</p>
+        <p class="manager-finance-kpi-copy mt-3 text-sm text-slate-300">Просроченные оплаты по кейсам с нарушенным SLA.</p>
+        <p class="manager-finance-kpi-meta manager-caption mt-2">{{ finance_data.overdue_case_count }} кейсов уже требуют эскалации</p>
+      </div>
+    </section>
+
+    <section class="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_23rem]">
+      <div class="manager-panel rounded-3xl p-6">
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <p class="manager-section-kicker">Денежный поток</p>
+            <h3 class="manager-section-title mt-2">Денежный поток за {{ finance_data.period_label }}</h3>
+          </div>
+          <a href="{% url 'manager_portal:finance_report' %}?year={{ finance_data.year }}&month={{ finance_data.month }}" class="rounded-xl border border-slate-700 px-4 py-2 text-xs text-slate-300 hover:bg-slate-800">Открыть отчет</a>
+        </div>
+        {% if finance_data.has_cashflow_activity %}
+          <div class="mt-6 h-[320px] lg:h-[360px]">
+            <canvas
+              data-finance-cashflow-chart
+              data-finance-cashflow-source="manager-finance-cashflow-data"
+              aria-label="График денежного потока"
+              role="img"
+              class="h-full w-full"
+            ></canvas>
+          </div>
+          {{ finance_data.cashflow_chart|json_script:"manager-finance-cashflow-data" }}
+        {% else %}
+          <div class="manager-finance-chart-empty mt-6">
+            <div class="manager-finance-chart-empty-copy">
+              <p class="manager-finance-chart-empty-eyebrow">Пустой период</p>
+              <h4 class="manager-finance-chart-empty-title">Денежный поток появится, когда в периоде будут оплаты, расходы или выплаты.</h4>
+              <p class="manager-finance-chart-empty-text">
+                Секция сохранит тот же расклад: входящий поток, наши расходы, выплаты партнерам и накопленный баланс по дням.
+              </p>
+            </div>
+            <div class="manager-finance-chart-empty-legend">
+              <span class="manager-finance-legend-pill manager-finance-legend-pill-income">Входящий поток</span>
+              <span class="manager-finance-legend-pill manager-finance-legend-pill-expense">Наши расходы</span>
+              <span class="manager-finance-legend-pill manager-finance-legend-pill-payout">Выплаты партнерам</span>
+              <span class="manager-finance-legend-pill manager-finance-legend-pill-balance">Баланс дня</span>
+            </div>
+          </div>
+        {% endif %}
+      </div>
+      <div class="grid gap-6">
+        <div class="manager-panel rounded-3xl p-6">
+          <p class="manager-section-kicker">Срез периода</p>
+          <div class="mt-4 space-y-3">
+            <div class="manager-dashboard-alert-row">
+              <span class="text-slate-300">Входящий поток</span>
+              <strong>{{ finance_data.paid_total|rub }}</strong>
+            </div>
+            <div class="manager-dashboard-alert-row">
+              <span class="text-slate-300">Наши расходы</span>
+              <strong>{{ finance_data.total_opex_display|rub }}</strong>
+            </div>
+            <div class="manager-dashboard-alert-row">
+              <span class="text-slate-300">Выплаты партнерам</span>
+              <strong>{{ finance_data.already_paid|rub }}</strong>
+            </div>
+            <div class="manager-dashboard-alert-row">
+              <span class="text-slate-300">Чистый денежный поток</span>
+              <strong>{{ finance_data.cash_balance|rub }}</strong>
+            </div>
+          </div>
+        </div>
+        <div class="manager-panel rounded-3xl p-6">
+          <div class="flex items-center justify-between gap-4">
+            <div>
+              <p class="manager-section-kicker">Последние движения</p>
+              <h3 class="manager-section-title mt-2">Кассовая лента</h3>
+            </div>
+            <span class="rounded-full border border-slate-700 px-3 py-1 text-[0.7rem] uppercase tracking-[0.18em] text-slate-400">{{ finance_data.period_label }}</span>
+          </div>
+          <div class="mt-4 space-y-3 md:hidden">
+            {% for row in finance_recent_cashflow_rows %}
+              <article class="manager-responsive-card rounded-[1.35rem] border border-slate-800/80 bg-slate-950/70 p-4">
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <p class="text-[0.68rem] uppercase tracking-[0.16em] text-slate-500">Дата</p>
+                    <p class="mt-2 text-base font-semibold text-white">{{ row.date|date:"d.m" }}</p>
+                  </div>
+                  <div class="rounded-full border border-slate-800 px-3 py-1 text-xs text-slate-400">Баланс {{ row.balance|rub }}</div>
+                </div>
+                <div class="mt-4 grid grid-cols-3 gap-3 text-sm">
+                  <div class="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-3">
+                    <p class="text-[0.68rem] uppercase tracking-[0.16em] text-emerald-200">Вход</p>
+                    <p class="mt-2 font-medium text-white">{{ row.income|rub }}</p>
+                  </div>
+                  <div class="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-3 py-3">
+                    <p class="text-[0.68rem] uppercase tracking-[0.16em] text-amber-200">Расход</p>
+                    <p class="mt-2 font-medium text-white">{{ row.operating_expense|rub }}</p>
+                  </div>
+                  <div class="rounded-2xl border border-rose-500/20 bg-rose-500/10 px-3 py-3">
+                    <p class="text-[0.68rem] uppercase tracking-[0.16em] text-rose-200">Выплаты</p>
+                    <p class="mt-2 font-medium text-white">{{ row.payout|rub }}</p>
+                  </div>
+                </div>
+              </article>
+            {% empty %}
+              {% include "manager_portal/_empty_state.html" with empty_state_title="Движений пока нет" empty_state_description="За выбранный период кассовая лента пуста." %}
+            {% endfor %}
+          </div>
+
+          {% manager_table wrapper_class="mt-4" table_class="hidden min-w-full text-sm text-slate-300 md:table" %}
+              <thead class="text-left text-[0.68rem] uppercase tracking-[0.18em] text-slate-500">
+                <tr>
+                  <th class="pb-3 pr-4">Дата</th>
+                  <th class="pb-3 pr-4">Вход</th>
+                  <th class="pb-3 pr-4">Расход</th>
+                  <th class="pb-3 pr-4">Выплаты</th>
+                  <th class="pb-3">Баланс</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in finance_recent_cashflow_rows %}
+                  <tr>
+                    <td class="py-3 pr-4">{{ row.date|date:"d.m" }}</td>
+                    <td class="py-3 pr-4 text-emerald-300">{{ row.income|rub }}</td>
+                    <td class="py-3 pr-4 text-amber-300">{{ row.operating_expense|rub }}</td>
+                    <td class="py-3 pr-4 text-rose-300">{{ row.payout|rub }}</td>
+                    <td class="py-3 font-medium text-white">{{ row.balance|rub }}</td>
+                  </tr>
+                {% empty %}
+                  {% include "manager_portal/_empty_state.html" with colspan=5 %}
+                {% endfor %}
+              </tbody>
+          {% endmanager_table %}
+        </div>
+      </div>
+    </section>
+
     <section class="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
       <div class="manager-panel manager-kpi rounded-3xl p-5">
-        <p class="text-xs uppercase tracking-[0.22em] text-slate-500">Оборот</p>
+        <p class="manager-card-kicker">Оборот</p>
         <p class="mt-3 text-3xl font-semibold text-white">{{ finance_data.turnover|decimal_format }}</p>
       </div>
       <div class="manager-panel manager-kpi rounded-3xl p-5">
-        <p class="text-xs uppercase tracking-[0.22em] text-slate-500">Себестоимость</p>
+        <p class="manager-card-kicker">Себестоимость</p>
         <p class="mt-3 text-3xl font-semibold text-white">{{ finance_data.cost_of_goods|decimal_format }}</p>
       </div>
       <div class="manager-panel manager-kpi rounded-3xl p-5">
-        <p class="text-xs uppercase tracking-[0.22em] text-slate-500">Маржа</p>
+        <p class="manager-card-kicker">Маржа</p>
         <p class="mt-3 text-3xl font-semibold text-white">{{ finance_data.company_profit|decimal_format }}</p>
       </div>
       <div class="manager-panel manager-kpi rounded-3xl p-5">
-        <p class="text-xs uppercase tracking-[0.22em] text-slate-500">Чистая прибыль</p>
+        <p class="manager-card-kicker">Чистая прибыль</p>
         <p class="mt-3 text-3xl font-semibold text-white">{{ finance_data.net_profit|decimal_format }}</p>
       </div>
       <div class="manager-panel manager-kpi rounded-3xl p-5">
-        <p class="text-xs uppercase tracking-[0.22em] text-slate-500">К выплате</p>
+        <p class="manager-card-kicker">К выплате</p>
         <p class="mt-3 text-3xl font-semibold text-white">{{ finance_data.final_payout|decimal_format }}</p>
       </div>
     </section>
 
-    <section class="grid gap-6 xl:grid-cols-[1.4fr_1fr]">
+    <section class="grid gap-6 xl:grid-cols-[1.1fr_1fr]">
       <div class="manager-panel rounded-3xl p-6">
-        <div class="flex items-center justify-between gap-4">
-          <div>
-            <p class="text-xs uppercase tracking-[0.22em] text-slate-500">Динамика</p>
-            <h3 class="mt-2 text-xl font-semibold text-white">Последние 14 дней периода</h3>
-          </div>
-          <a href="{% url 'manager_portal:finance_report' %}?year={{ finance_data.year }}&month={{ finance_data.month }}" class="rounded-xl border border-slate-700 px-4 py-2 text-xs text-slate-300 hover:bg-slate-800">Открыть отчет</a>
-        </div>
-        <div class="mt-5 overflow-x-auto">
-          <table class="min-w-full text-sm text-slate-300">
-            <thead class="text-left text-xs uppercase tracking-[0.18em] text-slate-500">
-              <tr>
-                <th class="pb-3 pr-4">Дата</th>
-                <th class="pb-3 pr-4">Доходы</th>
-                <th class="pb-3 pr-4">Расходы</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for row in finance_recent_daily_rows %}
-                <tr class="border-t border-slate-800">
-                  <td class="py-3 pr-4">{{ row.date }}</td>
-                  <td class="py-3 pr-4">{{ row.income|decimal_format }}</td>
-                  <td class="py-3 pr-4">{{ row.expense|decimal_format }}</td>
-                </tr>
-              {% empty %}
-                <tr><td colspan="3" class="py-4 text-slate-500">Нет данных за период.</td></tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </div>
-      <div class="manager-panel rounded-3xl p-6">
-        <p class="text-xs uppercase tracking-[0.22em] text-slate-500">Расчет с партнером</p>
+        <p class="manager-section-kicker">Расчет с партнером</p>
         <div class="mt-4 space-y-3">
           <div class="manager-dashboard-alert-row">
             <span class="text-slate-300">Наш OPEX</span>
@@ -101,6 +227,27 @@
           </div>
         </div>
       </div>
+      <div class="manager-panel rounded-3xl p-6">
+        <p class="manager-section-kicker">Платежная дисциплина</p>
+        <div class="mt-4 space-y-3">
+          <div class="manager-dashboard-alert-row">
+            <span class="text-slate-300">Оплаченные кейсы</span>
+            <strong>{{ finance_data.paid_case_count }}</strong>
+          </div>
+          <div class="manager-dashboard-alert-row">
+            <span class="text-slate-300">Открытые долги</span>
+            <strong>{{ finance_data.receivables_case_count }}</strong>
+          </div>
+          <div class="manager-dashboard-alert-row">
+            <span class="text-slate-300">Просроченные кейсы</span>
+            <strong>{{ finance_data.overdue_case_count }}</strong>
+          </div>
+          <div class="manager-dashboard-alert-row">
+            <span class="text-slate-300">Период</span>
+            <strong>{{ finance_data.period_label }}</strong>
+          </div>
+        </div>
+      </div>
     </section>
 
     <section class="manager-panel rounded-3xl p-6">
@@ -111,8 +258,37 @@
         </div>
         <a href="{% url 'manager_portal:finance_deal_list' %}" class="rounded-xl border border-slate-700 px-4 py-2 text-xs text-slate-300 hover:bg-slate-800">Сделки</a>
       </div>
-      <div class="mt-5 overflow-x-auto">
-        <table class="min-w-full text-sm text-slate-300">
+      <div class="mt-5 space-y-3 md:hidden">
+        {% for row in finance_data.partner_rows %}
+          <article class="manager-responsive-card rounded-[1.35rem] border border-slate-800/80 bg-slate-950/70 p-4">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p class="text-base font-semibold text-white">{{ row.deal_type }}</p>
+                <p class="mt-1 text-sm text-slate-400">Доля {{ row.share }}</p>
+              </div>
+              <span class="manager-pill shrink-0">Партнер {{ row.partner_profit|decimal_format }}</span>
+            </div>
+            <div class="mt-4 grid grid-cols-2 gap-3 text-sm">
+              <div class="rounded-2xl border border-slate-800/80 bg-slate-950/60 px-3 py-3">
+                <p class="text-[0.68rem] uppercase tracking-[0.16em] text-slate-500">Маржа</p>
+                <p class="mt-2 font-medium text-white">{{ row.margin|decimal_format }}</p>
+              </div>
+              <div class="rounded-2xl border border-slate-800/80 bg-slate-950/60 px-3 py-3">
+                <p class="text-[0.68rem] uppercase tracking-[0.16em] text-slate-500">OPEX</p>
+                <p class="mt-2 font-medium text-white">{{ row.opex_allocated|decimal_format }}</p>
+              </div>
+              <div class="rounded-2xl border border-slate-800/80 bg-slate-950/60 px-3 py-3">
+                <p class="text-[0.68rem] uppercase tracking-[0.16em] text-slate-500">Чистая прибыль</p>
+                <p class="mt-2 font-medium text-white">{{ row.net_profit|decimal_format }}</p>
+              </div>
+            </div>
+          </article>
+        {% empty %}
+          {% include "manager_portal/_empty_state.html" with empty_state_title="Направлений пока нет" empty_state_description="Распределение по типам сделок появится после данных по периоду." %}
+        {% endfor %}
+      </div>
+
+      {% manager_table wrapper_class="mt-5" table_class="hidden min-w-full text-sm text-slate-300 md:table" %}
           <thead class="text-left text-xs uppercase tracking-[0.18em] text-slate-500">
             <tr>
               <th class="pb-3 pr-4">Типы</th>
@@ -125,7 +301,7 @@
           </thead>
           <tbody>
             {% for row in finance_data.partner_rows %}
-              <tr class="border-t border-slate-800">
+              <tr>
                 <td class="py-3 pr-4">{{ row.deal_type }}</td>
                 <td class="py-3 pr-4">{{ row.share }}</td>
                 <td class="py-3 pr-4">{{ row.margin|decimal_format }}</td>
@@ -134,11 +310,10 @@
                 <td class="py-3 pr-4">{{ row.partner_profit|decimal_format }}</td>
               </tr>
             {% empty %}
-              <tr><td colspan="6" class="py-4 text-slate-500">Сделок за период нет.</td></tr>
+              {% include "manager_portal/_empty_state.html" with colspan=6 %}
             {% endfor %}
           </tbody>
-        </table>
-      </div>
+      {% endmanager_table %}
     </section>
   </div>
 {% endblock %}

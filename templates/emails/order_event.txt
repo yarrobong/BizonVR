@@ -3,7 +3,7 @@
 {{ event_description }}
 
 Состав заказа:
-{% for item in items %}- {{ item.product.name }}{% if item.variant_name %} ({{ item.variant_name }}){% endif %} x {{ item.quantity }} — {{ item.subtotal|rub }}
+{% for item in items %}- {{ item.display_name }} x {{ item.quantity }} — {{ item.subtotal|rub }}
 {% endfor %}
 
 Сумма к оплате: {{ order.total_to_pay|rub }}

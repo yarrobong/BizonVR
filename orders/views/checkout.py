@@ -25,7 +25,7 @@ from config.legal_consent import get_legal_bundle_version
 
 from ..cdek import calculate_cdek_delivery_for_lines
 from ..forms import CheckoutForm
-from ..models import Order, OrderItem, PromoCode
+from ..models import Order, OrderItem, PromoCode, resolve_order_item_image_url
 from ..services import issue_guest_access, send_order_event_notifications, sync_order_state_side_effects
 from .utils import _discount_for_promo
 
@@ -78,6 +78,7 @@ def _get_checkout_initial(request, saved_address):
     initial['last_name'] = last_name
     initial['phone'] = get_user_phone(request.user, profile)
     initial['email'] = (request.user.email or '').strip()
+    initial['business_phone'] = initial['phone']
 
     if saved_address:
         saved_first_name, saved_last_name = _split_contact_name(saved_address.recipient_name)
@@ -167,7 +168,19 @@ def _get_checkout_step(form):
         1: {'first_name', 'last_name', 'phone', 'email'},
         2: {'city_text', 'address_line', 'delivery_comment'},
         3: {'recipient_is_customer', 'recipient_name', 'recipient_phone'},
-        4: {'payment_method'},
+        4: {
+            'payment_method',
+            'business_company_name',
+            'business_checking_account',
+            'business_inn',
+            'business_kpp',
+            'business_bank_name',
+            'business_bik',
+            'business_correspondent_account',
+            'business_phone',
+            'business_telegram',
+            'business_whatsapp',
+        },
         5: {'promo_code', 'comment', 'agree_personal_data', 'agree_offer', '__all__'},
     }
     errored_fields = set(form.errors.keys())
@@ -302,6 +315,16 @@ def checkout_view(request):
             address_line=(form.cleaned_data.get('address_line') or '').strip(),
             address=(form.cleaned_data.get('address_line') or '').strip(),
             delivery_comment=(form.cleaned_data.get('delivery_comment') or '').strip(),
+            business_company_name=(form.cleaned_data.get('business_company_name') or '').strip(),
+            business_inn=(form.cleaned_data.get('business_inn') or '').strip(),
+            business_kpp=(form.cleaned_data.get('business_kpp') or '').strip(),
+            business_checking_account=(form.cleaned_data.get('business_checking_account') or '').strip(),
+            business_bank_name=(form.cleaned_data.get('business_bank_name') or '').strip(),
+            business_bik=(form.cleaned_data.get('business_bik') or '').strip(),
+            business_correspondent_account=(form.cleaned_data.get('business_correspondent_account') or '').strip(),
+            business_phone=(form.cleaned_data.get('business_phone') or '').strip(),
+            business_telegram=(form.cleaned_data.get('business_telegram') or '').strip(),
+            business_whatsapp=(form.cleaned_data.get('business_whatsapp') or '').strip(),
             delivery_cost=shipping_quote['delivery_cost'],
             shipping_weight_kg=shipping_quote['total_weight_kg'],
             shipping_volume_cm3=shipping_quote['total_volume_cm3'],
@@ -313,6 +336,8 @@ def checkout_view(request):
             OrderItem(
                 order=order,
                 product=line['product'],
+                product_name=line['product'].name,
+                product_image_url=resolve_order_item_image_url(product=line['product'], variant=line['variant']),
                 variant=line['variant'],
                 quantity=line['quantity'],
                 price=line['price'],

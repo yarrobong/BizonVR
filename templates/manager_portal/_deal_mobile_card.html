@@ -3,13 +3,11 @@
 {% url 'manager_portal:deal_shipment_action' deal.pk as shipment_action_url %}
 {% url 'manager_portal:deal_finance_action' deal.pk as finance_action_url %}
 
-<article class="manager-mobile-deal-card {% if deal.list_problem_labels or deal.list_sla_is_overdue %}manager-mobile-deal-card-problem{% else %}manager-mobile-deal-card-stable{% endif %}">
+<article class="manager-mobile-deal-card {% if deal.risk_summary.tone == 'critical' %}manager-mobile-deal-card-problem{% else %}manager-mobile-deal-card-stable{% endif %}">
   <div class="manager-mobile-deal-card-head">
     <div class="min-w-0">
       <div class="flex flex-wrap items-center gap-2">
-        <span class="manager-mobile-deal-risk {% if deal.list_problem_labels or deal.list_sla_is_overdue %}manager-mobile-deal-risk-problem{% else %}manager-mobile-deal-risk-stable{% endif %}">
-          {% if deal.list_problem_labels or deal.list_sla_is_overdue %}Требует внимания{% else %}В работе{% endif %}
-        </span>
+        <span class="{{ deal.primary_status|manager_semantic_badge_classes }}">{{ deal.primary_status.label }}</span>
         <span class="manager-mobile-deal-code">{% firstof deal.code deal.order_id %}</span>
       </div>
       <a href="{{ deal.list_actions.detail_url }}" class="manager-mobile-deal-client">
@@ -25,60 +23,27 @@
     </div>
     <div class="manager-mobile-deal-amount">
       <strong>{{ deal.grand_total|rub }}</strong>
-      <span>
-        {% if deal.balance_due > 0 %}
-          К доплате {{ deal.balance_due|rub }}
-        {% else %}
-          Оплата закрыта
-        {% endif %}
+      <span class="manager-deal-payment-state manager-deal-payment-state-{{ deal.list_payment_summary.state_code }}">
+        {{ deal.list_payment_summary.state_label }}
       </span>
     </div>
   </div>
 
-  <div class="manager-mobile-deal-step">
-    <div>
-      <p class="manager-mobile-deal-eyebrow">Следующий шаг</p>
-      <p class="manager-mobile-deal-step-title">{{ deal.next_step_label }}</p>
-      <p class="manager-mobile-deal-step-copy">
-        {% if deal.list_problem_labels %}
-          {{ deal.list_problem_labels|join:" · " }}
-        {% elif deal.next_step_reason_snapshot %}
-          {{ deal.next_step_reason_snapshot }}
-        {% else %}
-          {{ deal.get_case_status_display }}
-        {% endif %}
-      </p>
+  <div class="manager-mobile-deal-status-stack">
+    <div class="manager-mobile-deal-step">
+      <div>
+        <p class="manager-mobile-deal-eyebrow">Secondary status</p>
+        <p class="manager-mobile-deal-step-title">{{ deal.secondary_status.label }}</p>
+        <p class="manager-mobile-deal-step-copy">{{ deal.secondary_status.detail }}</p>
+      </div>
+      <div class="{{ deal.secondary_status|manager_semantic_badge_classes }}">
+        {{ deal.secondary_status.tone|title }}
+      </div>
     </div>
-    <div class="manager-mobile-deal-sla {% if deal.list_sla_is_overdue %}manager-mobile-deal-sla-overdue{% endif %}">
-      <span class="manager-mobile-deal-eyebrow">SLA</span>
-      <strong>{% if deal.sla_due_at %}{{ deal.sla_due_at|date:"d.m H:i" }}{% else %}Не задан{% endif %}</strong>
-      <span>
-        {% if not deal.sla_due_at %}
-          Без дедлайна
-        {% elif deal.list_sla_is_overdue %}
-          Просрочен
-        {% else %}
-          В сроке
-        {% endif %}
-      </span>
-    </div>
-  </div>
-
-  <div class="manager-mobile-deal-status-grid">
-    <div class="manager-mobile-deal-status-card {% if deal.amount_paid and deal.balance_due <= 0 %}manager-mobile-deal-status-card-ok{% else %}manager-mobile-deal-status-card-warn{% endif %}">
-      <span class="manager-mobile-deal-status-label">Оплата</span>
-      <strong>{{ deal.get_payment_state_display }}</strong>
-      <small>Оплачено {{ deal.amount_paid|rub }}</small>
-    </div>
-    <div class="manager-mobile-deal-status-card {% if deal.list_fulfillment_detail != 'Покрытие не собрано' %}manager-mobile-deal-status-card-ok{% else %}manager-mobile-deal-status-card-warn{% endif %}">
-      <span class="manager-mobile-deal-status-label">Резерв</span>
-      <strong>{{ deal.get_fulfillment_status_display }}</strong>
-      <small>{{ deal.list_fulfillment_detail }}</small>
-    </div>
-    <div class="manager-mobile-deal-status-card {% if deal.list_documents_detail == 'Не требуются' or deal.get_documents_status_display == 'Подписаны' %}manager-mobile-deal-status-card-ok{% else %}manager-mobile-deal-status-card-warn{% endif %}">
-      <span class="manager-mobile-deal-status-label">Документы</span>
-      <strong>{{ deal.get_documents_status_display }}</strong>
-      <small>{{ deal.list_documents_detail }}</small>
+    <div class="{{ deal.risk_summary|manager_semantic_risk_classes }}">
+      <p class="manager-mobile-deal-eyebrow">Риски</p>
+      <strong>{{ deal.risk_summary.label }}</strong>
+      <span>{{ deal.risk_summary.detail }}</span>
     </div>
   </div>
 
@@ -93,18 +58,27 @@
     </div>
   </div>
 
-  <div class="manager-mobile-deal-flags">
-    {% if deal.list_problem_labels %}
-      {% for label in deal.list_problem_labels|slice:":2" %}
-        <span class="manager-mobile-deal-flag manager-mobile-deal-flag-danger">{{ label }}</span>
-      {% endfor %}
-    {% else %}
-      <span class="manager-mobile-deal-flag manager-mobile-deal-flag-success">Без блокеров</span>
-    {% endif %}
-    {% if deal.responsible_manager %}
-      <span class="manager-mobile-deal-flag">{{ deal.get_buyer_type_display }}</span>
-    {% endif %}
-  </div>
+  <details class="manager-semantic-surface manager-semantic-surface-unknown px-4 py-3">
+    <summary class="cursor-pointer text-sm font-medium text-slate-200">Детали статусов</summary>
+    <div class="mt-3 grid gap-3 text-sm">
+      <div>
+        <p class="manager-mobile-deal-eyebrow">Оплата</p>
+        <div class="mt-2 manager-mobile-deal-payment-card manager-mobile-deal-payment-card-{{ deal.list_payment_summary.state_code }}">
+          {% include "manager_portal/_deal_payment_summary.html" with payment=deal.list_payment_summary %}
+        </div>
+      </div>
+      <div>
+        <p class="manager-mobile-deal-eyebrow">Обеспечение</p>
+        <p class="mt-1 text-white">{{ deal.get_fulfillment_status_display }}</p>
+        <p class="mt-1 text-slate-400">{{ deal.list_fulfillment_detail }}</p>
+      </div>
+      <div>
+        <p class="manager-mobile-deal-eyebrow">Документы</p>
+        <p class="mt-1 text-white">{{ deal.get_documents_status_display }}</p>
+        <p class="mt-1 text-slate-400">{{ deal.list_documents_detail }}</p>
+      </div>
+    </div>
+  </details>
 
   <div class="manager-mobile-deal-actions">
     {% with action=deal.list_actions.primary_action %}

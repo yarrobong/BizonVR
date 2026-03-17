@@ -1,0 +1,164 @@
+<div class="mb-3 grid gap-3 xl:grid-cols-[minmax(0,1.6fr),minmax(0,1fr)]">
+  <section class="rounded-2xl bg-slate-950/65 p-4 ring-1 ring-inset ring-slate-800">
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Бизнес-объяснение</p>
+        <p class="mt-2 text-lg font-semibold text-white">{{ row.row_status.label }}</p>
+        <p class="mt-1.5 max-w-3xl text-sm text-slate-300">{{ row.row_status.detail }}</p>
+      </div>
+      <span class="{{ row.row_status|manager_semantic_badge_classes }}">
+        Показаны причины
+      </span>
+    </div>
+    <div class="mt-3 grid gap-2 lg:grid-cols-2">
+      {% for reason in row.detail_reasons %}
+        <div class="rounded-xl bg-slate-900/70 px-3 py-2.5 text-sm text-slate-200 ring-1 ring-inset ring-slate-800">{{ reason }}</div>
+      {% empty %}
+        <div class="rounded-xl px-3 py-3 text-sm text-slate-500 ring-1 ring-inset ring-slate-800">Дополнительных причин не найдено.</div>
+      {% endfor %}
+    </div>
+  </section>
+  <section class="rounded-2xl bg-slate-950/65 p-4 ring-1 ring-inset ring-slate-800">
+    <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Связка чисел</p>
+    <div class="mt-3 grid gap-2 sm:grid-cols-2">
+      <div class="rounded-xl bg-slate-900/70 px-3 py-2.5 ring-1 ring-inset ring-slate-800">
+        <p class="text-xs uppercase tracking-[0.14em] text-slate-500">Факт</p>
+        <p class="mt-2 text-2xl font-semibold text-white">{{ row.on_hand }}</p>
+      </div>
+      <div class="rounded-xl bg-slate-900/70 px-3 py-2.5 ring-1 ring-inset ring-slate-800">
+        <p class="text-xs uppercase tracking-[0.14em] text-slate-500">В резерве</p>
+        <p class="mt-2 text-2xl font-semibold text-white">{{ row.reserved_on_hand }}</p>
+      </div>
+      <div class="rounded-xl bg-slate-900/70 px-3 py-2.5 ring-1 ring-inset ring-slate-800">
+        <p class="text-xs uppercase tracking-[0.14em] text-slate-500">Свободно</p>
+        <p class="mt-2 text-2xl font-semibold {% if row.available < 0 %}text-rose-300{% elif row.min_stock and row.available < row.min_stock %}text-amber-300{% else %}text-emerald-300{% endif %}">{{ row.available }}</p>
+      </div>
+      <div class="rounded-xl bg-slate-900/70 px-3 py-2.5 ring-1 ring-inset ring-slate-800">
+        <p class="text-xs uppercase tracking-[0.14em] text-slate-500">Можно обещать</p>
+        <p class="mt-2 text-2xl font-semibold text-cyan-200">{{ row.promise_capacity }}</p>
+      </div>
+    </div>
+    <div class="mt-2.5 rounded-xl bg-slate-900/70 px-3 py-2.5 ring-1 ring-inset ring-slate-800">
+      <p class="text-xs uppercase tracking-[0.14em] text-slate-500">Сайт</p>
+      <p class="mt-2 text-sm font-semibold text-white">{{ row.public_sync_status_label }}</p>
+      <p class="mt-1 text-xs {{ row.public_sync_status|manager_semantic_text_classes }}">Опубликовано {% if row.public_published_qty == None %}—{% else %}{{ row.public_published_qty }}{% endif %}, ожидается {{ row.public_expected_qty }}</p>
+    </div>
+  </section>
+</div>
+<div class="grid gap-3 xl:grid-cols-[1.2fr,1.2fr,1.2fr,1fr]">
+  <section class="rounded-2xl bg-slate-950/65 p-4 ring-1 ring-inset ring-slate-800">
+    <div class="flex items-center justify-between gap-3">
+      <h3 class="text-sm font-semibold text-white">Активные брони</h3>
+      <span class="text-xs text-slate-500">{{ row.active_reservations|length }}</span>
+    </div>
+    <div class="mt-3 space-y-3">
+      {% for item in row.active_reservations %}
+        <a href="{% url 'manager_portal:reservation_detail' item.reservation.pk %}" class="block rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-3 hover:border-cyan-400/30">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="font-medium text-cyan-300">Бронь #{{ item.reservation.pk }}</p>
+              <p class="mt-1 text-xs text-slate-400">{{ item.reservation.client.name }} · {{ item.source_type_label }} · {{ item.source_label }}</p>
+            </div>
+            <span class="text-sm font-semibold text-white">{{ item.quantity }}</span>
+          </div>
+        </a>
+      {% empty %}
+        <p class="rounded-xl border border-dashed border-slate-800 px-3 py-4 text-sm text-slate-500">Нет активных броней по этой позиции.</p>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="rounded-2xl bg-slate-950/65 p-4 ring-1 ring-inset ring-slate-800">
+    <div class="flex items-center justify-between gap-3">
+      <h3 class="text-sm font-semibold text-white">Последние движения</h3>
+      <span class="text-xs text-slate-500">{{ row.recent_movements|length }}</span>
+    </div>
+    <div class="mt-3 space-y-3">
+      {% for movement in row.recent_movements %}
+        <div class="rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-3">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="font-medium text-white">{{ movement.get_movement_type_display }}</p>
+              <p class="mt-1 text-xs text-slate-400">{{ movement.created_at|date:"d.m.Y H:i" }} · {% if movement.author %}{{ movement.author.username }}{% else %}Система{% endif %}</p>
+            </div>
+            <span class="text-sm font-semibold text-white">{{ movement.quantity }}</span>
+          </div>
+          {% if movement.comment %}
+            <p class="mt-2 text-xs text-slate-500">{{ movement.comment }}</p>
+          {% endif %}
+          {% if movement.reference_id %}
+            <p class="mt-1 text-xs text-slate-500">{{ movement.reference_type }} #{{ movement.reference_id }}</p>
+          {% endif %}
+        </div>
+      {% empty %}
+        <p class="rounded-xl border border-dashed border-slate-800 px-3 py-4 text-sm text-slate-500">Движений по позиции пока нет.</p>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="rounded-2xl bg-slate-950/65 p-4 ring-1 ring-inset ring-slate-800">
+    <div class="flex items-center justify-between gap-3">
+      <h3 class="text-sm font-semibold text-white">Входящие грузы</h3>
+      <span class="text-xs text-slate-500">{{ row.incoming_cargos|length }}</span>
+    </div>
+    <div class="mt-3 space-y-3">
+      {% for item in row.incoming_cargos %}
+        <a href="{% url 'manager_portal:cargo_detail' item.cargo.pk %}" class="block rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-3 hover:border-cyan-400/30">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="font-medium text-cyan-300">{{ item.cargo.cargo_number }}</p>
+              <p class="mt-1 text-xs text-slate-400">{{ item.cargo.get_status_display }}{% if item.cargo.eta %} · ETA {{ item.cargo.eta|date:"d.m.Y" }}{% endif %}</p>
+            </div>
+            <span class="text-sm font-semibold text-white">{{ item.remaining_quantity }}</span>
+          </div>
+          {% if item.purchase %}
+            <p class="mt-2 text-xs text-slate-500">Закупка #{{ item.purchase.pk }}</p>
+          {% endif %}
+          {% if item.linked_order %}
+            <p class="mt-1 text-xs text-slate-500">Заказ #{{ item.linked_order.pk }}</p>
+          {% endif %}
+        </a>
+      {% empty %}
+        <p class="rounded-xl border border-dashed border-slate-800 px-3 py-4 text-sm text-slate-500">Открытых поставок по позиции нет.</p>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="rounded-2xl bg-slate-950/65 p-4 ring-1 ring-inset ring-slate-800">
+    <div class="flex items-center justify-between gap-3">
+      <h3 class="text-sm font-semibold text-white">Связанные сделки</h3>
+      <span class="text-xs text-slate-500">{{ row.linked_deals|length }}</span>
+    </div>
+    <div class="mt-3 space-y-3">
+      {% for item in row.linked_deals %}
+        <a href="{% url 'manager_portal:deal_detail' item.deal.pk %}" class="block rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-3 hover:border-cyan-400/30">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="font-medium text-cyan-300">Заказ #{{ item.deal.order_id }}</p>
+              <p class="mt-1 text-xs text-slate-400">{{ item.source_label }} · {{ item.deal.customer_name|default:item.deal.order.first_name|default:item.deal.order.phone }}</p>
+            </div>
+            <span class="rounded-full border border-slate-700 px-2 py-1 text-[0.7rem] text-slate-300">{{ item.deal.next_step_label }}</span>
+          </div>
+        </a>
+      {% empty %}
+        <p class="rounded-xl border border-dashed border-slate-800 px-3 py-4 text-sm text-slate-500">Связанные сделки не найдены.</p>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+    <h3 class="text-sm font-semibold text-white">Последнее изменение</h3>
+    {% if row.last_change %}
+      <div class="mt-3 rounded-xl border border-slate-800 bg-slate-900/70 px-3 py-3">
+        <p class="font-medium text-white">{{ row.last_change.author_name }}</p>
+        <p class="mt-1 text-xs text-slate-400">{{ row.last_change.created_at|date:"d.m.Y H:i" }}</p>
+        <p class="mt-3 text-sm text-slate-300">{{ row.last_change.movement_type_label }}</p>
+        {% if row.last_change.comment %}
+          <p class="mt-2 text-xs text-slate-500">{{ row.last_change.comment }}</p>
+        {% endif %}
+      </div>
+    {% else %}
+      <p class="mt-3 rounded-xl border border-dashed border-slate-800 px-3 py-4 text-sm text-slate-500">Автор последнего изменения не зафиксирован.</p>
+    {% endif %}
+  </section>
+</div>

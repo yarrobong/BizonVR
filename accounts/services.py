@@ -132,16 +132,14 @@ def get_user_by_phone(phone: str):
     )
 
 
-def get_user_by_email(email: str):
+def get_user_by_email(email: str, *, require_verified: bool = True):
     email = normalize_email(email)
     if not email:
         return None
 
-    queryset = User.objects.filter(
-        email__iexact=email,
-        is_active=True,
-        profile__email_verified_at__isnull=False,
-    )
+    queryset = User.objects.filter(email__iexact=email, is_active=True)
+    if require_verified:
+        queryset = queryset.filter(profile__email_verified_at__isnull=False)
     if queryset.count() != 1:
         return None
     return queryset.first()
@@ -174,7 +172,7 @@ def authenticate_by_login_identifier(identifier: str, password: str, request=Non
         return None, 'Укажите телефон или email.'
 
     if '@' in identifier:
-        user = get_user_by_email(identifier)
+        user = get_user_by_email(identifier, require_verified=False)
     else:
         user = get_user_by_phone(identifier)
 

@@ -1,6 +1,6 @@
 {% if not query %}
   <div class="manager-global-search-empty-state">
-    <p class="manager-global-search-empty-title">Глобальный поиск в shell</p>
+    <p class="manager-global-search-empty-title">Глобальный поиск</p>
     <p class="manager-global-search-empty-copy">Ищет заказы, клиентов, телефоны, email, договоры, отгрузки, грузы, SKU, товары и номера документов.</p>
     <div class="manager-global-search-empty-tags">
       <span class="manager-pill">Заказы</span>
@@ -43,7 +43,7 @@
                 </div>
                 <div class="manager-global-search-item-meta">
                   <span>{{ item.email|default:"—" }}</span>
-                  <span>{{ item.get_status_display }}</span>
+                  <span><span class="sr-only">Статус:</span> {{ item.get_status_display }}</span>
                 </div>
               </a>
             {% elif group.key == 'documents' %}
@@ -54,7 +54,7 @@
                 </div>
                 <div class="manager-global-search-item-meta">
                   <span>{{ item.counterparty_name|default:"—" }}</span>
-                  <span>{{ item.get_status_display }}</span>
+                  <span><span class="sr-only">Статус:</span> {{ item.get_status_display }}</span>
                 </div>
               </a>
             {% elif group.key == 'shipments' %}
@@ -65,7 +65,7 @@
                 </div>
                 <div class="manager-global-search-item-meta">
                   <span>{{ item.tracking_number|default:"Без трека" }}</span>
-                  <span>{{ item.get_status_display }}</span>
+                  <span><span class="sr-only">Статус:</span> {{ item.get_status_display }}</span>
                 </div>
               </a>
             {% elif group.key == 'cargos' %}
@@ -76,7 +76,7 @@
                 </div>
                 <div class="manager-global-search-item-meta">
                   <span>{{ item.eta|date:"d.m.Y"|default:"ETA не задан" }}</span>
-                  <span>{{ item.get_status_display }}</span>
+                  <span><span class="sr-only">Статус:</span> {{ item.get_status_display }}</span>
                 </div>
               </a>
             {% elif group.key == 'variants' %}

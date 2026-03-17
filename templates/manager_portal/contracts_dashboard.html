@@ -1,49 +1,47 @@
 {% extends "manager_portal/base.html" %}
 
-{% block title %}Договоры: дашборд{% endblock %}
+{% block title %}Договоры: панель управления документами{% endblock %}
 
 {% block content %}
   <div class="space-y-6">
     <section class="manager-panel rounded-[1.75rem] p-6">
       <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <p class="text-xs uppercase tracking-[0.24em] text-cyan-300">Contracts</p>
-          <h2 class="mt-2 text-3xl font-semibold text-white">Внутренний кабинет договоров</h2>
-          <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-400">Модуль работает внутри `manager_portal`, использует общую авторизацию и ту же PostgreSQL-базу, что и сайт BizonVR.</p>
-          <a href="/manager/contracts/app/dashboard/" class="mt-3 inline-flex text-sm text-cyan-300 hover:text-cyan-200">Внутренний route dashboard</a>
+          <p class="manager-page-kicker">Договоры</p>
+          <h2 class="manager-page-title mt-2">Панель управления документами</h2>
         </div>
         <div class="flex gap-3">
-          <a href="{% url 'manager_portal:contracts_create' %}" class="rounded-xl bg-cyan-400 px-4 py-3 text-sm font-semibold text-slate-950">Создать документ</a>
-          <a href="{% url 'manager_portal:contracts_documents' %}" class="rounded-xl border border-slate-700 px-4 py-3 text-sm text-slate-200 hover:bg-slate-800">Реестр</a>
+          <a href="{% url 'manager_portal:contracts_create' %}" class="manager-create-action">Создать документ</a>
+          <a href="{% url 'manager_portal:contracts_documents' %}" class="manager-secondary-action">Реестр документов</a>
         </div>
       </div>
     </section>
 
     <section class="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
       <article class="manager-panel rounded-3xl p-5">
-        <p class="text-xs uppercase tracking-[0.22em] text-slate-500">Всего</p>
+        <p class="manager-card-kicker">Всего</p>
         <p class="mt-3 text-3xl font-semibold text-white">{{ contracts_total_documents }}</p>
-        <p class="mt-2 text-sm text-slate-400">Документов в кабинете</p>
+        <p class="manager-body-copy mt-2">Документов в кабинете</p>
       </article>
       <article class="manager-panel rounded-3xl p-5">
-        <p class="text-xs uppercase tracking-[0.22em] text-slate-500">Черновики</p>
+        <p class="manager-card-kicker">Черновики</p>
         <p class="mt-3 text-3xl font-semibold text-white">{{ contracts_draft_documents }}</p>
-        <p class="mt-2 text-sm text-slate-400">Ожидают заполнения</p>
+        <p class="manager-body-copy mt-2">Ожидают заполнения</p>
       </article>
       <article class="manager-panel rounded-3xl p-5">
-        <p class="text-xs uppercase tracking-[0.22em] text-slate-500">В работе</p>
+        <p class="manager-card-kicker">В работе</p>
         <p class="mt-3 text-3xl font-semibold text-white">{{ contracts_pending_documents }}</p>
-        <p class="mt-2 text-sm text-slate-400">На согласовании и отправке</p>
+        <p class="manager-body-copy mt-2">На согласовании и отправке</p>
       </article>
       <article class="manager-panel rounded-3xl p-5">
-        <p class="text-xs uppercase tracking-[0.22em] text-slate-500">Подписаны</p>
+        <p class="manager-card-kicker">Подписаны</p>
         <p class="mt-3 text-3xl font-semibold text-white">{{ contracts_signed_documents }}</p>
-        <p class="mt-2 text-sm text-slate-400">Завершенные документы</p>
+        <p class="manager-body-copy mt-2">Завершенные документы</p>
       </article>
       <article class="manager-panel rounded-3xl p-5">
-        <p class="text-xs uppercase tracking-[0.22em] text-slate-500">Сумма</p>
+        <p class="manager-card-kicker">Сумма</p>
         <p class="mt-3 text-3xl font-semibold text-white">{{ contracts_total_amount|rub }}</p>
-        <p class="mt-2 text-sm text-slate-400">Общий объем по документам</p>
+        <p class="manager-body-copy mt-2">Общий объем по документам</p>
       </article>
     </section>
 
@@ -51,13 +49,37 @@
       <div class="manager-panel rounded-[1.75rem] p-6">
         <div class="flex items-center justify-between gap-3">
           <div>
-            <p class="text-xs uppercase tracking-[0.22em] text-slate-500">Последние документы</p>
-            <h3 class="mt-2 text-2xl font-semibold text-white">Свежая активность</h3>
+            <p class="manager-section-kicker">Последние документы</p>
+            <h3 class="manager-section-title mt-2">Свежая активность</h3>
           </div>
-          <a href="{% url 'manager_portal:contracts_documents' %}" class="text-sm text-cyan-300">Открыть реестр</a>
         </div>
-        <div class="mt-6 overflow-x-auto">
-          <table class="min-w-full text-sm">
+        <div class="mt-6 space-y-3 md:hidden">
+          {% for item in contracts_recent_documents %}
+            <article class="manager-responsive-card rounded-[1.35rem] border border-slate-800/80 bg-slate-950/70 p-4">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <a href="{% url 'manager_portal:contracts_detail' item.pk %}" class="text-base font-semibold text-white hover:text-cyan-300">{{ item.number }}</a>
+                  <p class="mt-1 text-sm text-slate-400">{{ item.counterparty_display }}</p>
+                </div>
+                {% manager_semantic_status item as document_status %}<span class="{{ document_status|manager_semantic_badge_classes }} shrink-0">{{ item.get_status_display }}</span>
+              </div>
+              <div class="mt-4 grid grid-cols-2 gap-3 text-sm">
+                <div class="rounded-2xl border border-slate-800/80 bg-slate-950/60 px-3 py-3">
+                  <p class="text-[0.68rem] uppercase tracking-[0.16em] text-slate-500">Тип</p>
+                  <p class="mt-2 font-medium text-white">{{ item.get_document_type_display }}</p>
+                </div>
+                <div class="rounded-2xl border border-slate-800/80 bg-slate-950/60 px-3 py-3">
+                  <p class="text-[0.68rem] uppercase tracking-[0.16em] text-slate-500">Дата</p>
+                  <p class="mt-2 font-medium text-white">{{ item.issue_date|date:"d.m.Y" }}</p>
+                </div>
+              </div>
+            </article>
+          {% empty %}
+            {% include "manager_portal/_empty_state.html" with empty_state_title="Свежих документов пока нет" empty_state_description="Когда появятся новые документы, они будут показаны здесь." %}
+          {% endfor %}
+        </div>
+
+        {% manager_table wrapper_class="mt-6" table_class="hidden min-w-full text-sm md:table" %}
             <thead class="text-left text-slate-500">
               <tr>
                 <th class="pb-3 pr-4">Номер</th>
@@ -67,7 +89,7 @@
                 <th class="pb-3">Дата</th>
               </tr>
             </thead>
-            <tbody class="divide-y divide-slate-800">
+            <tbody>
               {% for item in contracts_recent_documents %}
                 <tr>
                   <td class="py-3 pr-4">
@@ -75,29 +97,25 @@
                   </td>
                   <td class="py-3 pr-4 text-slate-300">{{ item.get_document_type_display }}</td>
                   <td class="py-3 pr-4 text-slate-300">{{ item.counterparty_display }}</td>
-                  <td class="py-3 pr-4 text-slate-300">{{ item.get_status_display }}</td>
+                  <td class="py-3 pr-4">{% manager_semantic_status item as document_status %}<span class="{{ document_status|manager_semantic_badge_classes }}">{{ item.get_status_display }}</span></td>
                   <td class="py-3 text-slate-400">{{ item.issue_date|date:"d.m.Y" }}</td>
                 </tr>
               {% empty %}
-                <tr>
-                  <td colspan="5" class="py-6 text-slate-500">Пока нет ни одного документа.</td>
-                </tr>
+                {% include "manager_portal/_empty_state.html" with colspan=5 %}
               {% endfor %}
             </tbody>
-          </table>
-        </div>
+        {% endmanager_table %}
       </div>
 
       <div class="space-y-6">
         <section class="manager-panel rounded-[1.75rem] p-6">
-          <p class="text-xs uppercase tracking-[0.22em] text-slate-500">Связи с сайтом</p>
-          <h3 class="mt-2 text-2xl font-semibold text-white">{{ contracts_linked_orders }}</h3>
-          <p class="mt-2 text-sm leading-6 text-slate-400">Документов уже привязаны к заказам интернет-магазина и используют общие сущности пользователей, клиентов и менеджеров.</p>
+          <p class="manager-section-kicker">Связи с сайтом</p>
+          <h3 class="manager-section-title mt-2">{{ contracts_linked_orders }}</h3>
         </section>
 
         <section class="manager-panel rounded-[1.75rem] p-6">
-          <p class="text-xs uppercase tracking-[0.22em] text-slate-500">Менеджеры</p>
-          <h3 class="mt-2 text-2xl font-semibold text-white">Кто ведет документы</h3>
+          <p class="manager-section-kicker">Менеджеры</p>
+          <h3 class="manager-section-title mt-2">Кто ведет документы</h3>
           <div class="mt-5 space-y-3">
             {% for row in contracts_top_managers %}
               <div class="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950/40 px-4 py-3 text-sm">
@@ -111,8 +129,8 @@
         </section>
 
         <section class="manager-panel rounded-[1.75rem] p-6">
-          <p class="text-xs uppercase tracking-[0.22em] text-slate-500">Клиенты</p>
-          <h3 class="mt-2 text-2xl font-semibold text-white">Частые контрагенты</h3>
+          <p class="manager-section-kicker">Клиенты</p>
+          <h3 class="manager-section-title mt-2">Частые контрагенты</h3>
           <div class="mt-5 space-y-3">
             {% for row in contracts_top_clients %}
               <div class="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950/40 px-4 py-3 text-sm">

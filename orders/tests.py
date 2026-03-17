@@ -70,6 +70,16 @@ class CheckoutTest(TestCase):
             'comment': 'Позвонить за час',
             'agree_personal_data': 'on',
             'agree_offer': 'on',
+            'business_company_name': '',
+            'business_checking_account': '',
+            'business_inn': '',
+            'business_kpp': '',
+            'business_bank_name': '',
+            'business_bik': '',
+            'business_correspondent_account': '',
+            'business_phone': '',
+            'business_telegram': '',
+            'business_whatsapp': '',
         }
         payload.update(overrides)
         return payload
@@ -177,6 +187,47 @@ class CheckoutTest(TestCase):
         self.assertTrue(hasattr(order, 'manager_deal'))
         self.assertEqual(order.manager_deal.customer_source, ManagerDeal.SOURCE_WEBSITE)
         self.assertEqual(order.manager_deal.deal_type, ManagerDeal.DEAL_SALE_ON_REQUEST)
+
+    def test_checkout_manager_payment_persists_business_requisites_in_order_and_deal(self):
+        self.client.force_login(self.user)
+        self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
+
+        response = self.client.post(
+            reverse('orders:checkout'),
+            self._checkout_payload(
+                payment_method=Order.PAYMENT_METHOD_MANAGER_PAYMENT,
+                business_company_name='ООО Вижн',
+                business_checking_account='40702810900000000001',
+                business_inn='6677001122',
+                business_kpp='667701001',
+                business_bank_name='ПАО Сбербанк',
+                business_bik='046577674',
+                business_correspondent_account='30101810500000000674',
+                business_phone='+7 912 000 10 10',
+                business_telegram='vision_finance',
+                business_whatsapp='+7 912 000 10 11',
+            ),
+        )
+
+        self.assertEqual(response.status_code, 302)
+        order = Order.objects.get()
+        self.assertEqual(order.payment_method, Order.PAYMENT_METHOD_MANAGER_PAYMENT)
+        self.assertEqual(order.business_company_name, 'ООО Вижн')
+        self.assertEqual(order.business_checking_account, '40702810900000000001')
+        self.assertEqual(order.business_bank_name, 'ПАО Сбербанк')
+        self.assertEqual(order.business_bik, '046577674')
+        self.assertEqual(order.business_correspondent_account, '30101810500000000674')
+        self.assertEqual(order.business_phone, '+7 912 000 10 10')
+        self.assertEqual(order.business_telegram, '@vision_finance')
+        self.assertEqual(order.business_whatsapp, '+7 912 000 10 11')
+        self.assertEqual(order.manager_deal.buyer_type, ManagerDeal.BUYER_BUSINESS)
+        self.assertEqual(order.manager_deal.business_company_name, 'ООО Вижн')
+        self.assertEqual(order.manager_deal.business_checking_account, '40702810900000000001')
+        self.assertEqual(order.manager_deal.business_bank_name, 'ПАО Сбербанк')
+        self.assertEqual(order.manager_deal.business_bik, '046577674')
+        self.assertEqual(order.manager_deal.business_correspondent_account, '30101810500000000674')
+        self.assertEqual(order.manager_deal.business_telegram, '@vision_finance')
+        self.assertEqual(order.manager_deal.business_whatsapp, '+7 912 000 10 11')
 
     def test_checkout_test_mode_creates_paid_order(self):
         self.client.force_login(self.user)

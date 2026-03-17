@@ -5,7 +5,7 @@
 {% block content %}
   <div class="grid gap-8 xl:grid-cols-[24rem_1fr]">
     <section class="manager-panel rounded-3xl p-6">
-      <p class="text-xs uppercase tracking-[0.22em] text-cyan-300">Payout</p>
+      <p class="manager-page-kicker">Выплаты</p>
       <h2 class="mt-3 text-2xl font-semibold text-white">Новая выплата</h2>
       <form method="post" class="mt-5 grid gap-4">
         {% csrf_token %}
@@ -15,8 +15,24 @@
     </section>
     <section class="manager-panel rounded-3xl p-6">
       <h2 class="text-2xl font-semibold text-white">Журнал выплат</h2>
-      <div class="mt-5 overflow-x-auto">
-        <table class="min-w-full text-sm text-slate-300">
+      <div class="mt-5 space-y-3 md:hidden">
+        {% for payout in finance_payouts %}
+          <article class="manager-responsive-card rounded-[1.35rem] border border-slate-800/80 bg-slate-950/70 p-4">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p class="text-sm text-slate-400">{{ payout.date }}</p>
+                <p class="mt-1 text-base font-semibold text-white">{{ payout.comment|default:"Без комментария" }}</p>
+                <p class="mt-1 text-sm text-slate-400">Кто внес: {{ payout.created_by|default:"—" }}</p>
+              </div>
+              <span class="manager-pill shrink-0">{{ payout.amount|rub }}</span>
+            </div>
+          </article>
+        {% empty %}
+          {% include "manager_portal/_empty_state.html" with empty_state_title="Выплат пока нет" empty_state_description="После первых выплат журнал заполнится автоматически." %}
+        {% endfor %}
+      </div>
+
+      {% manager_table wrapper_class="mt-5" table_class="hidden min-w-full text-sm text-slate-300 md:table" %}
           <thead class="text-left text-xs uppercase tracking-[0.18em] text-slate-500">
             <tr>
               <th class="pb-3 pr-4">Дата</th>
@@ -27,18 +43,17 @@
           </thead>
           <tbody>
             {% for payout in finance_payouts %}
-              <tr class="border-t border-slate-800">
+              <tr>
                 <td class="py-3 pr-4">{{ payout.date }}</td>
                 <td class="py-3 pr-4">{{ payout.amount|rub }}</td>
                 <td class="py-3 pr-4">{{ payout.comment|default:"—" }}</td>
                 <td class="py-3 pr-4">{{ payout.created_by|default:"—" }}</td>
               </tr>
             {% empty %}
-              <tr><td colspan="4" class="py-4 text-slate-500">Выплат пока нет.</td></tr>
+              {% include "manager_portal/_empty_state.html" with colspan=4 %}
             {% endfor %}
           </tbody>
-        </table>
-      </div>
+      {% endmanager_table %}
     </section>
   </div>
 {% endblock %}

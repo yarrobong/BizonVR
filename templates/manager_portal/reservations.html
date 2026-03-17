@@ -3,94 +3,102 @@
 {% block title %}Бронирования{% endblock %}
 
 {% block content %}
+  {% url 'manager_portal:reservation_create' as reservation_create_url %}
   <div class="space-y-6">
     <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
       <div>
-        <h2 class="text-4xl font-semibold">Бронирования</h2>
-        <p class="mt-2 text-slate-400">Источник может быть складом или входящим грузом. Поддержан быстрый вход из карточки клиента.</p>
+        <h2 class="text-2xl md:text-4xl font-semibold">Бронирования</h2>
       </div>
       <div class="flex flex-wrap gap-2">
-        {% if request.GET.createFromClient %}
-          <span class="manager-pill"><strong>Предзаполнение</strong> из карточки клиента</span>
-        {% endif %}
-        {% if reservation_prefill_deal %}
-          <span class="manager-pill"><strong>Сделка</strong> {% firstof reservation_prefill_deal.code reservation_prefill_deal.order_id %}</span>
-        {% endif %}
-        <button type="button" data-drawer-target="#reservation-create-drawer" class="manager-create-action">Новая бронь</button>
+        <a href="{% url 'manager_portal:reservation_create' %}" class="manager-create-action">Новая бронь</a>
       </div>
     </div>
 
-    <section class="manager-panel rounded-[1.75rem] p-6">
-      <form method="get" data-manager-filter-form class="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        {% include "manager_portal/_form_fields.html" with form=filter_form %}
-        <div class="xl:col-span-5 flex flex-wrap gap-3">
-          <a href="{% url 'manager_portal:reservation_list' %}" class="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800">Сбросить</a>
-        </div>
-      </form>
-    </section>
+    {% if show_empty_state_only %}
+      {% include "manager_portal/_empty_state.html" with empty_state_title="Броней пока нет" empty_state_description="Создайте первую бронь, чтобы резервировать товар под заказы и будущие отгрузки." empty_state_action_label="Создать первую бронь" empty_state_action_url=reservation_create_url %}
+    {% else %}
+      {% if show_filter_panel %}
+        {% include "manager_portal/_list_filters.html" with form=filter_form grid_classes="grid gap-4 md:grid-cols-2 xl:grid-cols-5" primary_fields=reservation_primary_filter_fields secondary_fields=reservation_secondary_filter_fields primary_grid_classes="grid gap-4 md:grid-cols-2" secondary_grid_classes="grid gap-4 md:grid-cols-2 xl:grid-cols-3" advanced_filters_open=reservation_advanced_filters_open advanced_filter_count=reservation_advanced_filter_count advanced_toggle_label="Расширенные фильтры" advanced_toggle_description="По умолчанию оставлены только поиск и статус." %}
+      {% endif %}
 
-    <section class="space-y-4">
-      {% for reservation in reservations %}
-        <details class="manager-panel rounded-[1.75rem] p-5">
-          <summary class="flex cursor-pointer list-none items-start justify-between gap-4">
-            <div>
-              <h3 class="text-lg font-semibold">{% firstof reservation.code reservation.pk %}</h3>
-              <p class="mt-1 text-sm text-slate-300">{% firstof reservation.short_label reservation.title reservation.client.name %}</p>
-              <p class="mt-1 text-sm text-slate-500">{{ reservation.get_source_type_display }} · {{ reservation.items.count }} поз.</p>
-            </div>
-            <div class="flex items-center gap-3">
-              <span class="manager-pill">{{ reservation.get_status_display }}</span>
-              <a href="{% url 'manager_portal:reservation_detail' reservation.pk %}" class="rounded-xl border border-slate-700 px-3 py-2 text-xs hover:bg-slate-800">Карточка</a>
-            </div>
-          </summary>
-          <div class="mt-5 grid gap-3">
-            {% for item in reservation.items.all %}
-              <div class="rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3">
-                {{ item.product.name }}{% if item.variant %} <span class="text-slate-500">/ {{ item.variant.name }}</span>{% endif %} · {{ item.quantity }} шт.
+      <section class="space-y-4">
+        {% manager_table table_class="hidden w-full min-w-[78rem] text-sm md:table" %}
+            <thead class="text-left text-slate-400">
+              <tr>
+                <th class="px-4 py-4 font-medium">Бронь</th>
+                <th class="px-4 py-4 font-medium">Клиент</th>
+                <th class="px-4 py-4 font-medium">Статус</th>
+                <th class="px-4 py-4 font-medium">Источник</th>
+                <th class="px-4 py-4 font-medium">Назначение</th>
+                <th class="px-4 py-4 font-medium">Позиции</th>
+                <th class="px-4 py-4 text-right font-medium">Действия</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for reservation in reservations %}
+                <tr class="transition hover:bg-slate-900/60">
+                  <td class="px-4 py-4 align-top">
+                    <p class="font-semibold text-white">{% firstof reservation.code reservation.pk %}</p>
+                    <p class="mt-1 text-xs text-slate-500">{% if reservation.linked_order %}Заказ #{{ reservation.linked_order.pk }}{% else %}Без заказа{% endif %}</p>
+                  </td>
+                  <td class="px-4 py-4 align-top">
+                    <p class="font-medium text-white">{{ reservation.client.name }}</p>
+                    <p class="mt-1 text-xs text-slate-500">{% firstof reservation.short_label reservation.title reservation.get_source_type_display %}</p>
+                  </td>
+                  <td class="px-4 py-4 align-top">{% manager_semantic_status reservation as reservation_status %}<span class="{{ reservation_status|manager_semantic_badge_classes }}"><span class="sr-only">Статус:</span> {{ reservation.get_status_display }}</span></td>
+                  <td class="px-4 py-4 align-top text-slate-300">{% firstof reservation.source_warehouse reservation.source_cargo "—" %}</td>
+                  <td class="px-4 py-4 align-top text-slate-300">{{ reservation.target_warehouse|default:"—" }}</td>
+                  <td class="px-4 py-4 align-top text-slate-300">{{ reservation.items.count }}</td>
+                  <td class="px-4 py-4 align-top">
+                    <div class="flex justify-end">
+                      <a href="{% url 'manager_portal:reservation_detail' reservation.pk %}" class="rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-100 transition hover:border-cyan-400/30 hover:bg-slate-800">Открыть</a>
+                    </div>
+                  </td>
+                </tr>
+              {% empty %}
+                {% include "manager_portal/_empty_state.html" with colspan=7 empty_state_title="Брони не найдены" empty_state_description="Попробуйте изменить условия поиска или сбросить фильтры." %}
+              {% endfor %}
+            </tbody>
+        {% endmanager_table %}
+
+        <div class="block md:hidden">
+          {% for reservation in reservations %}
+            <article class="manager-responsive-card mb-3 rounded-lg border border-slate-700 bg-slate-800 p-4">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <p class="text-lg font-semibold text-white">{% firstof reservation.code reservation.pk %}</p>
+                  <p class="mt-1 text-sm text-slate-300">{{ reservation.client.name }}</p>
+                </div>
+                {% manager_semantic_status reservation as reservation_status %}<span class="{{ reservation_status|manager_semantic_badge_classes }} shrink-0"><span class="sr-only">Статус:</span> {{ reservation.get_status_display }}</span>
               </div>
-            {% empty %}
-              <p class="text-slate-400">Позиции еще не добавлены.</p>
-            {% endfor %}
-          </div>
-        </details>
-      {% empty %}
-        <div class="manager-empty rounded-[1.75rem] p-8 text-slate-400">Брони еще не созданы.</div>
-      {% endfor %}
-    </section>
-  </div>
-
-  {% if reservation_open_drawer %}
-    <div data-open-drawer-on-load="#reservation-create-drawer"></div>
-  {% endif %}
-  <aside id="reservation-create-drawer" class="manager-drawer manager-glass border-l border-slate-800 p-6" aria-hidden="true">
-    <div class="flex items-center justify-between">
-      <h3 class="text-2xl font-semibold">Новая бронь</h3>
-      <button type="button" data-drawer-close class="rounded-full border border-slate-700 px-3 py-1 text-sm">Закрыть</button>
-    </div>
-    {% if reservation_prefill_deal %}
-      <div class="mt-4 rounded-2xl border border-cyan-500/30 bg-cyan-500/10 p-4 text-sm text-cyan-100">
-        {{ reservation_prefill_note }}
-      </div>
-      <div class="mt-4 rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
-        <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Автоподстановка позиций</p>
-        <div class="mt-3 space-y-2">
-          {% for item in reservation_prefill_items %}
-            <div class="rounded-xl border border-slate-800 px-3 py-3 text-sm text-slate-200">
-              {{ item.product_name }}{% if item.variant_name %} <span class="text-slate-500">/ {{ item.variant_name }}</span>{% endif %} · {{ item.missing_quantity }} шт.
-            </div>
+              <div class="mt-4 grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Источник</p>
+                  <p class="mt-1 text-slate-100">{% firstof reservation.source_warehouse reservation.source_cargo "—" %}</p>
+                </div>
+                <div>
+                  <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Назначение</p>
+                  <p class="mt-1 text-slate-100">{{ reservation.target_warehouse|default:"—" }}</p>
+                </div>
+                <div>
+                  <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Заказ</p>
+                  <p class="mt-1 text-slate-100">{% if reservation.linked_order %}#{{ reservation.linked_order.pk }}{% else %}—{% endif %}</p>
+                </div>
+                <div>
+                  <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Позиции</p>
+                  <p class="mt-1 text-slate-100">{{ reservation.items.count }}</p>
+                </div>
+              </div>
+              <div class="mt-4">
+                <a href="{% url 'manager_portal:reservation_detail' reservation.pk %}" class="inline-flex w-full items-center justify-center rounded-lg border border-slate-600 px-3 py-2 text-sm font-medium text-slate-100 transition hover:border-cyan-400/30 hover:bg-slate-700/70">Открыть</a>
+              </div>
+            </article>
           {% empty %}
-            <p class="text-sm text-slate-400">Все строки заказа уже покрыты резервами. Новая бронь создастся без автодобавления позиций.</p>
+            {% include "manager_portal/_empty_state.html" with empty_state_title="Брони не найдены" empty_state_description="Попробуйте изменить условия поиска или сбросить фильтры." %}
           {% endfor %}
         </div>
-      </div>
+      </section>
     {% endif %}
-    <form method="post" class="mt-6 space-y-4">
-      {% csrf_token %}
-      {% if reservation_prefill_deal %}
-        <input type="hidden" name="createFromDeal" value="{{ reservation_prefill_deal.pk }}">
-      {% endif %}
-      {% include "manager_portal/_form_fields.html" with form=form %}
-      <button class="manager-create-action manager-create-action-block">Создать бронь</button>
-    </form>
-  </aside>
+  </div>
+
 {% endblock %}

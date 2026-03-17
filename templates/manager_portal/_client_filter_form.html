@@ -1,0 +1,36 @@
+<form method="get" data-manager-filter-form class="space-y-4">
+  <div class="manager-form-field space-y-1">
+    <label for="{{ filter_form.q.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.q.label }}</label>
+    {{ filter_form.q }}
+  </div>
+  <div class="{{ field_grid_classes|default:'grid gap-4 md:grid-cols-2' }}">
+    <div class="manager-form-field space-y-1">
+      <label for="{{ filter_form.status.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.status.label }}</label>
+      {{ filter_form.status }}
+    </div>
+    <div class="manager-form-field space-y-1">
+      <label for="{{ filter_form.has_orders.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.has_orders.label }}</label>
+      {{ filter_form.has_orders }}
+    </div>
+    <div class="manager-form-field space-y-1">
+      <label for="{{ filter_form.has_reservations.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.has_reservations.label }}</label>
+      {{ filter_form.has_reservations }}
+    </div>
+    <div class="manager-form-field space-y-1">
+      <label for="{{ filter_form.buyer_type.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.buyer_type.label }}</label>
+      {{ filter_form.buyer_type }}
+    </div>
+    <div class="manager-form-field space-y-1">
+      <label for="{{ filter_form.customer_source.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.customer_source.label }}</label>
+      {{ filter_form.customer_source }}
+    </div>
+    <div class="manager-form-field space-y-1">
+      <label for="{{ filter_form.responsible_manager.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.responsible_manager.label }}</label>
+      {{ filter_form.responsible_manager }}
+    </div>
+  </div>
+  <div class="grid gap-2 sm:grid-cols-2">
+    <button class="w-full rounded-xl bg-cyan-500 px-4 py-3 text-sm font-medium text-slate-950">Применить</button>
+    <a href="{% url 'manager_portal:client_list' %}" class="rounded-xl border border-slate-700 px-4 py-3 text-center text-sm text-slate-200 hover:bg-slate-800">Сбросить</a>
+  </div>
+</form>

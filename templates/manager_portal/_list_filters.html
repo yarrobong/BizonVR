@@ -1,0 +1,55 @@
+<section class="manager-panel rounded-[1.75rem] p-6">
+  <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+    <p class="text-xs uppercase tracking-[0.18em] text-slate-400">
+      Фильтры{% if active_filter_count %} ({{ active_filter_count }}){% endif %}
+    </p>
+    {% if active_filter_count %}
+      <a href="{{ clear_all_filters_url }}" class="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800">Сбросить все фильтры</a>
+    {% endif %}
+  </div>
+  <form method="get" data-manager-filter-form class="mt-4 space-y-4">
+    {% if primary_fields or secondary_fields %}
+      {% if primary_fields %}
+        <div class="{{ primary_grid_classes|default:grid_classes }}">
+          {% include "manager_portal/_form_fields.html" with fields=primary_fields %}
+        </div>
+      {% endif %}
+      {% if secondary_fields %}
+        <details class="manager-collapsible-panel" {% if advanced_filters_open %}open{% endif %}>
+          <summary class="manager-collapsible-summary">
+            <div>
+              <p class="text-sm font-medium text-slate-100">{{ advanced_toggle_label|default:"Расширенные фильтры" }}</p>
+              <p class="mt-1 text-xs text-slate-400">{{ advanced_toggle_description|default:"Показывает дополнительные параметры отбора." }}</p>
+            </div>
+            <span class="manager-collapsible-meta">
+              {% if advanced_filter_count %}
+                Активно {{ advanced_filter_count }}
+              {% else %}
+                {{ secondary_fields|length }} полей
+              {% endif %}
+            </span>
+          </summary>
+          <div class="manager-collapsible-body">
+            <div class="{{ secondary_grid_classes|default:grid_classes }}">
+              {% include "manager_portal/_form_fields.html" with fields=secondary_fields %}
+            </div>
+          </div>
+        </details>
+      {% endif %}
+    {% else %}
+      <div class="{{ grid_classes }}">
+        {% include "manager_portal/_form_fields.html" with form=form %}
+      </div>
+    {% endif %}
+  </form>
+  {% if active_filter_chips %}
+    <div class="mt-4 flex flex-wrap gap-2">
+      {% for chip in active_filter_chips %}
+        <a href="{{ chip.remove_url }}" class="inline-flex items-center gap-2 rounded-full bg-slate-700 px-3 py-1 text-xs text-white transition hover:bg-slate-600">
+          <span>{{ chip.label }}</span>
+          <span aria-hidden="true">×</span>
+        </a>
+      {% endfor %}
+    </div>
+  {% endif %}
+</section>

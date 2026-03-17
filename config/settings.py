@@ -78,6 +78,7 @@ TEMPLATES = [
             ],
             'builtins': [
                 'catalog.templatetags.catalog_tags',
+                'manager_portal.templatetags.manager_portal_tags',
             ],
             'libraries': {
                 'catalog_tags': 'catalog.templatetags.catalog_tags',
