@@ -584,7 +584,20 @@ def _deal_page_context_stats():
         .values_list('created_at', flat=True)
         .first()
     )
-    latest_sync_label = timezone.localtime(latest_sync_at).strftime('%d.%m %H:%M') if latest_sync_at else '—'
+    if latest_sync_at:
+        diff_minutes = int((timezone.now() - latest_sync_at).total_seconds() / 60)
+        if diff_minutes < 1:
+            latest_sync_label = 'только что'
+        elif diff_minutes < 60:
+            latest_sync_label = f'{diff_minutes} мин. назад'
+        elif diff_minutes < 1440:
+            latest_sync_label = f'{diff_minutes // 60} ч. назад'
+        else:
+            latest_sync_label = timezone.localtime(latest_sync_at).strftime('%d.%m %H:%M')
+        sync_tone = SEMANTIC_TONE_UNKNOWN
+    else:
+        latest_sync_label = 'Нет данных'
+        sync_tone = SEMANTIC_TONE_ATTENTION
     return (
         {
             'label': 'SLA просрочен',
@@ -601,7 +614,7 @@ def _deal_page_context_stats():
         {
             'label': 'Последняя синхронизация',
             'value': latest_sync_label,
-            'tone': SEMANTIC_TONE_UNKNOWN,
+            'tone': sync_tone,
             'url': '',
         },
     )

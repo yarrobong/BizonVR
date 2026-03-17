@@ -49,7 +49,7 @@
               <details class="manager-inline-dropdown manager-deals-saved-views-dropdown">
                 <summary class="manager-inline-action manager-deals-saved-views-trigger">
                   Виды
-                  <span class="manager-queue-chip-count">{{ saved_views|length }}</span>
+                  {% if saved_views %}<span class="manager-queue-chip-count">{{ saved_views|length }}</span>{% endif %}
                 </summary>
                 <div class="manager-inline-dropdown-menu manager-inline-dropdown-menu-right manager-deals-saved-views-menu">
                   <div class="flex items-start justify-between gap-3">
@@ -170,7 +170,7 @@
               {% for queue in queue_chips %}
                 <a
                   href="{% url 'manager_portal:deal_list' %}{% if queue.query_string or current_view_mode == 'kanban' or current_scope == 'avito' %}?{% endif %}{% if queue.query_string %}{{ queue.query_string }}{% endif %}{% if current_view_mode == 'kanban' %}{% if queue.query_string %}&{% endif %}view=kanban{% elif current_scope == 'avito' %}{% if queue.query_string %}&{% endif %}scope=avito{% endif %}"
-                  class="manager-queue-chip manager-queue-chip-compact {% if active_queue_chip == queue.key %}manager-queue-chip-active{% endif %}"
+                  class="manager-queue-chip manager-queue-chip-compact {% if active_queue_chip == queue.key %}manager-queue-chip-active{% elif queue.count == 0 %}manager-queue-chip-zero{% endif %}"
                 >
                   <span class="manager-queue-chip-label">{{ queue.label }}</span>
                   <span class="manager-queue-chip-count {% if active_queue_chip == queue.key %}manager-queue-chip-count-active{% else %}manager-queue-chip-count-{{ queue.tone }}{% endif %}">{{ queue.count }}</span>
@@ -351,7 +351,6 @@
                               <a href="{% url 'manager_portal:deal_detail' deal.pk %}" class="manager-deal-table-title block text-cyan-300 hover:text-cyan-200">{% firstof deal.code deal.order_id %}</a>
                               <p class="manager-deal-table-subtitle">{% firstof deal.short_label deal.get_case_status_display %}</p>
                               <div class="manager-deal-table-tags">
-                                <span class="manager-pill"><span class="sr-only">Статус:</span> {{ deal.get_case_status_display }}</span>
                                 {% if deal.deal_type %}
                                   <span class="manager-pill">{{ deal.get_deal_type_display }}</span>
                                 {% endif %}
