@@ -3557,3 +3557,39 @@ html:has(.manager-shell) {
 [data-manager-theme="light"] .manager-content-wrapper {
   background: rgb(241 245 249);
 }
+
+/* Deals table: horizontal scroll with right-edge fade indicator */
+.deals-table-outer {
+  position: relative;
+}
+
+.deals-table-outer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 5rem;
+  background: linear-gradient(to left, rgba(2, 6, 23, 0.88), transparent);
+  pointer-events: none;
+  z-index: 4;
+  border-radius: 0 1.5rem 1.5rem 0;
+}
+
+.manager-table-shell {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(71, 85, 105, 0.6) transparent;
+}
+
+.manager-table-shell::-webkit-scrollbar {
+  height: 6px;
+}
+
+.manager-table-shell::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.4);
+}
+
+.manager-table-shell::-webkit-scrollbar-thumb {
+  background: rgba(71, 85, 105, 0.6);
+  border-radius: 3px;
+}

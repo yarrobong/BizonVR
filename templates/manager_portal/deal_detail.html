@@ -8,6 +8,11 @@
   {% url 'manager_portal:deal_shipment_action' deal.pk as deal_shipment_url %}
   {% url 'manager_portal:deal_finance_action' deal.pk as deal_finance_url %}
   <div class="deal-detail-page space-y-6">
+    <nav aria-label="Навигация" class="flex items-center gap-2 text-sm text-slate-400">
+      <a href="{% url 'manager_portal:deal_list' %}" class="transition hover:text-white">Сделки</a>
+      <span aria-hidden="true" class="text-slate-600">›</span>
+      <span class="text-slate-200">{% firstof deal.code deal.order_id %}</span>
+    </nav>
     <section id="deal-sticky-header" class="sticky top-4 z-20">
       <div class="manager-panel rounded-[1.75rem] border border-slate-800/80 bg-slate-950/95 p-5 backdrop-blur">
         <div class="flex flex-col gap-5">
@@ -28,7 +33,7 @@
             <div class="grid gap-6 xl:grid-cols-[minmax(0,1.2fr),minmax(20rem,0.8fr)] xl:items-start">
               <div class="min-w-0">
                 <div class="flex flex-wrap items-center gap-2">
-                  <p class="text-xs uppercase tracking-[0.2em] text-cyan-200">Операционный блок</p>
+                  <p class="text-xs uppercase tracking-[0.2em] text-cyan-200">Текущий статус</p>
                   {% if operation_hub.has_manual_override %}
                     <span class="rounded-full border border-cyan-300/30 bg-cyan-300/10 px-2.5 py-1 text-[11px] text-cyan-100">{{ operation_hub.next_step.source_label }}</span>
                   {% endif %}
@@ -36,14 +41,14 @@
                 <h3 class="mt-2 text-2xl font-semibold text-white">Следующий шаг: {{ operation_hub.next_step.label }}</h3>
                 <dl class="mt-4 grid gap-3 md:grid-cols-3">
                   <div class="deal-inline-card rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-4">
-                    <dt class="text-xs uppercase tracking-[0.16em] text-cyan-100/70">Primary status</dt>
+                    <dt class="text-xs uppercase tracking-[0.16em] text-cyan-100/70">Основной статус</dt>
                     <dd class="mt-2">
                       <span class="{{ operation_hub.primary_status|manager_semantic_badge_classes }}">{{ operation_hub.primary_status.label }}</span>
                       <p class="mt-2 text-sm text-white">{{ operation_hub.primary_status.detail }}</p>
                     </dd>
                   </div>
                   <div class="deal-inline-card rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-4">
-                    <dt class="text-xs uppercase tracking-[0.16em] text-cyan-100/70">Secondary status</dt>
+                    <dt class="text-xs uppercase tracking-[0.16em] text-cyan-100/70">Вторичный статус</dt>
                     <dd class="mt-2">
                       <span class="{{ operation_hub.secondary_status|manager_semantic_badge_classes }}">{{ operation_hub.secondary_status.label }}</span>
                       <p class="mt-2 text-sm text-white">{{ operation_hub.secondary_status.detail }}</p>
@@ -161,9 +166,7 @@
         <div data-manager-tabs data-tab-initial="{{ deal_tab_initial }}" data-tab-url-key="tab" class="space-y-5 min-w-0">
         <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div>
-            <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Tabs</p>
-            <h3 class="mt-2 text-2xl font-semibold text-white">Рабочие разделы сделки</h3>
-            <p class="mt-1 text-sm text-slate-400">Ниже только один активный рабочий слой, а не длинная вертикальная лента.</p>
+              <h3 class="mt-2 text-2xl font-semibold text-white">Рабочие разделы</h3>
           </div>
           <div class="flex flex-wrap gap-2">
             <button type="button" id="deal-tab-overview-button" data-tab-target="overview" class="rounded-xl border px-4 py-2 text-sm transition">Обзор</button>
@@ -195,8 +198,7 @@
               <section id="deal-finance-strip" class="deal-subpanel rounded-2xl border border-slate-800 bg-slate-950/60 p-6">
                 <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                   <div>
-                    <p class="text-xs uppercase tracking-[0.22em] text-slate-500">Finance Strip</p>
-                    <h4 class="mt-2 text-2xl font-semibold text-white">Короткая финансовая сводка</h4>
+                    <h4 class="text-2xl font-semibold text-white">Финансовая сводка</h4>
                   </div>
                   <div class="flex flex-wrap gap-2">
                     <span class="manager-pill" aria-label="Статус: {{ finance_summary.status_label }}"><span class="sr-only">Статус:</span>Статус: {{ finance_summary.status_label }}</span>

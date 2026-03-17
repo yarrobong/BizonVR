@@ -14,19 +14,10 @@
               {% elif current_scope == 'avito' %}
                 Avito
               {% else %}
-                Рабочий экран
+                Список
               {% endif %}
             </p>
             <h2 class="manager-mobile-screen-title">Сделки / Заказы</h2>
-            <p class="manager-mobile-screen-copy hidden md:block">
-              {% if current_view_mode == 'kanban' %}
-                Один header для KPI, очередей и видов. Переключение сохраняет текущую очередь и фильтры.
-              {% elif current_scope == 'avito' %}
-                Avito остаётся отдельным list-only срезом: те же фильтры, те же очереди, без второго режима страницы.
-              {% else %}
-                Единый рабочий экран: диагностика сверху, очереди ниже, компактный список с раскрытием второстепенных деталей.
-              {% endif %}
-            </p>
           </div>
 
           <div class="manager-deals-header-controls">
@@ -314,14 +305,14 @@
           </div>
 
           <div class="hidden lg:block">
-            <div class="manager-work-queue mt-5 overflow-hidden rounded-[1.5rem] border border-slate-800/80">
+            <div class="manager-work-queue deals-table-outer mt-5 overflow-hidden rounded-[1.5rem] border border-slate-800/80">
               {% manager_table table_id="deal-compact-list" table_class="w-full min-w-[88rem] text-sm" %}
                   <thead class="bg-slate-950/70 text-left text-[0.72rem] uppercase tracking-[0.16em] text-slate-500">
                     <tr>
                       <th class="px-4 py-3 font-medium">Сделка</th>
                       <th class="px-4 py-3 font-medium">Клиент / Контекст</th>
-                      <th class="px-4 py-3 font-medium">Primary status</th>
-                      <th class="px-4 py-3 font-medium">Secondary status</th>
+                      <th class="px-4 py-3 font-medium">Основной статус</th>
+                      <th class="px-4 py-3 font-medium">Вторичный статус</th>
                       <th class="px-4 py-3 font-medium">Риск</th>
                       <th class="px-4 py-3 font-medium">Оплата</th>
                       <th class="px-4 py-3 font-medium">Ответственный</th>
@@ -452,12 +443,12 @@
                               </div>
                               <div class="mt-4 space-y-3 text-sm text-slate-300">
                                 <div>
-                                  <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Primary status</p>
+                                  <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Основной статус</p>
                                   <p class="mt-1 font-medium text-white">{{ deal.primary_status.label }}</p>
                                   <p class="mt-1 text-sm text-slate-400">{{ deal.primary_status.detail }}</p>
                                 </div>
                                 <div>
-                                  <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Secondary status</p>
+                                  <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Вторичный статус</p>
                                   <p class="mt-1 font-medium text-white">{{ deal.secondary_status.label }}</p>
                                   <p class="mt-1">{{ deal.secondary_status.detail }}</p>
                                 </div>
