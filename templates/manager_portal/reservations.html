@@ -21,6 +21,28 @@
         {% include "manager_portal/_list_filters.html" with form=filter_form grid_classes="grid gap-4 md:grid-cols-2 xl:grid-cols-5" primary_fields=reservation_primary_filter_fields secondary_fields=reservation_secondary_filter_fields primary_grid_classes="grid gap-4 md:grid-cols-2" secondary_grid_classes="grid gap-4 md:grid-cols-2 xl:grid-cols-3" advanced_filters_open=reservation_advanced_filters_open advanced_filter_count=reservation_advanced_filter_count advanced_toggle_label="Расширенные фильтры" advanced_toggle_description="По умолчанию оставлены только поиск и статус." %}
       {% endif %}
 
+      {% if reservation_prefill_deal %}
+        <section class="manager-panel rounded-[1.5rem] p-5">
+          <p class="manager-section-kicker">Создание из сделки</p>
+          <h3 class="manager-section-title mt-2">{{ reservation_prefill_note }}</h3>
+          {% if reservation_prefill_items %}
+            <div class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {% for item in reservation_prefill_items %}
+                <article class="rounded-2xl border border-slate-800 bg-slate-950/60 px-4 py-4">
+                  <p class="font-medium text-white">{{ item.product_name }}</p>
+                  {% if item.variant_name %}
+                    <p class="mt-1 text-sm text-slate-400">{{ item.variant_name }}</p>
+                  {% endif %}
+                  <p class="mt-3 text-sm text-slate-300">
+                    К резерву: {{ item.missing_quantity }} из {{ item.ordered_quantity }}
+                  </p>
+                </article>
+              {% endfor %}
+            </div>
+          {% endif %}
+        </section>
+      {% endif %}
+
       <section class="space-y-4">
         {% manager_table table_class="hidden w-full min-w-[78rem] text-sm md:table" %}
             <thead class="text-left text-slate-400">

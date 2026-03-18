@@ -3526,7 +3526,16 @@ def order_create_view(request):
                         'email': 'клиент найден по email',
                     }.get(client_resolution['match_source'], 'клиент связан')
                     messages.success(request, f'Заказ #{order.pk} создан, {client_state_message}.')
-                    created_url = _deal_detail_url(deal, created=True)
+                    created_url = _deal_detail_url(
+                        deal,
+                        created=not (
+                            form.cleaned_data['buyer_type'] == ManagerDeal.BUYER_INDIVIDUAL
+                            and ManagerDeal.uses_avito_workflow(
+                                form.cleaned_data['deal_type'],
+                                form.cleaned_data.get('customer_source') or '',
+                            )
+                        ),
+                    )
                     if _is_htmx_request(request):
                         response = HttpResponse(status=204)
                         response['HX-Redirect'] = created_url
@@ -3830,11 +3839,9 @@ def _deal_queue_views(base_queryset):
     tone_map = {
         'all': 'muted',
         'unassigned': 'danger',
-        ManagerDeal.NEXT_STEP_NEEDS_AVAILABILITY_CONFIRMATION: 'warning',
         ManagerDeal.NEXT_STEP_NEEDS_PAYMENT: 'warning',
         ManagerDeal.NEXT_STEP_NEEDS_RESERVATION: 'warning',
         ManagerDeal.NEXT_STEP_NEEDS_DOCUMENTS: 'warning',
-        ManagerDeal.NEXT_STEP_NEEDS_DOCUMENT_DISPATCH: 'warning',
         ManagerDeal.NEXT_STEP_READY_TO_SHIP: 'success',
         'problematic': 'danger',
     }
@@ -3850,11 +3857,6 @@ def _deal_queue_views(base_queryset):
             'params': {'only_unassigned': '1'},
         },
         {
-            'key': ManagerDeal.NEXT_STEP_NEEDS_AVAILABILITY_CONFIRMATION,
-            'label': 'Ждут наличие',
-            'params': {'queue': ManagerDeal.NEXT_STEP_NEEDS_AVAILABILITY_CONFIRMATION},
-        },
-        {
             'key': ManagerDeal.NEXT_STEP_NEEDS_PAYMENT,
             'label': 'Ждут оплату',
             'params': {'queue': ManagerDeal.NEXT_STEP_NEEDS_PAYMENT},
@@ -3868,11 +3870,6 @@ def _deal_queue_views(base_queryset):
             'key': ManagerDeal.NEXT_STEP_NEEDS_DOCUMENTS,
             'label': 'Ждут документы',
             'params': {'queue': ManagerDeal.NEXT_STEP_NEEDS_DOCUMENTS},
-        },
-        {
-            'key': ManagerDeal.NEXT_STEP_NEEDS_DOCUMENT_DISPATCH,
-            'label': 'Отправить документы',
-            'params': {'queue': ManagerDeal.NEXT_STEP_NEEDS_DOCUMENT_DISPATCH},
         },
         {
             'key': ManagerDeal.NEXT_STEP_READY_TO_SHIP,
@@ -4688,7 +4685,7 @@ def _deal_subject_summary(deal, *, order_item_rows, finance_deal=None):
         item = row['item']
         rows.append(
             {
-                'title': item.product.name,
+                'title': item.resolved_product_name,
                 'sku': row['sku'],
                 'quantity': item.quantity,
                 'configuration': item.resolved_variant_name,
@@ -4750,7 +4747,7 @@ def _deal_logistics_summary(deal, *, reservations, shipments, purchase_items, ca
         ),
         'availability_rows': [
             {
-                'title': row['item'].product.name,
+                'title': row['item'].resolved_product_name,
                 'sku': row['sku'],
                 'quantity': row['item'].quantity,
                 'free_stock': row['free_stock'],
