@@ -2435,11 +2435,11 @@ html:has(.manager-shell) {
 @media (min-width: 1024px) {
   .manager-shell-layout {
     display: grid;
-    grid-template-columns: 15rem minmax(0, 1fr);
+    grid-template-columns: 19rem minmax(0, 1fr);
   }
 
   .manager-sidebar-collapsed .manager-shell-layout {
-    grid-template-columns: 4rem minmax(0, 1fr);
+    grid-template-columns: 5rem minmax(0, 1fr);
   }
 
   .manager-entry-hero-grid {
@@ -3231,14 +3231,278 @@ html:has(.manager-shell) {
   overflow: hidden;
 }
 
+@media (min-width: 1024px) {
+  .manager-shell-layout {
+    display: grid;
+    grid-template-columns: 19rem minmax(0, 1fr);
+    background:
+      radial-gradient(circle at top right, rgba(34, 211, 238, 0.08), transparent 24%),
+      linear-gradient(180deg, rgba(2, 6, 23, 0.98), rgba(3, 7, 18, 1));
+  }
+
+  .manager-sidebar-collapsed .manager-shell-layout {
+    grid-template-columns: 5rem minmax(0, 1fr);
+  }
+
+  .manager-content-wrapper {
+    background:
+      radial-gradient(circle at top right, rgba(14, 165, 233, 0.08), transparent 24%),
+      linear-gradient(180deg, rgba(4, 10, 28, 0.98), rgba(2, 6, 23, 1));
+  }
+
+  .manager-sidebar {
+    background:
+      radial-gradient(circle at top left, rgba(34, 211, 238, 0.1), transparent 26%),
+      linear-gradient(180deg, rgba(5, 10, 28, 0.98), rgba(2, 6, 23, 0.98));
+    border-right: 1px solid rgba(51, 65, 85, 0.68);
+  }
+
+  .manager-sidebar .manager-sidebar-inner {
+    width: 19rem;
+    min-width: 19rem;
+    padding: 1.35rem 1.15rem 1rem;
+    gap: 1rem;
+  }
+
+  .manager-sidebar-header,
+  .manager-sidebar-footer-new {
+    border: 1px solid rgba(51, 65, 85, 0.68);
+    border-radius: 1.6rem;
+    background: linear-gradient(180deg, rgba(8, 15, 35, 0.96), rgba(4, 10, 28, 0.9));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  }
+
+  .manager-sidebar-header {
+    padding: 1.15rem 1rem 1.1rem;
+    border-bottom: 1px solid rgba(51, 65, 85, 0.68);
+  }
+
+  .manager-sidebar-avatar {
+    width: 3rem;
+    height: 3rem;
+    border-radius: 1rem;
+    background: linear-gradient(180deg, rgba(20, 184, 166, 0.42), rgba(14, 116, 144, 0.38));
+    border: 1px solid rgba(103, 232, 249, 0.18);
+    font-size: 0.96rem;
+  }
+
+  .manager-sidebar-toggle-btn {
+    min-height: 2.45rem;
+    padding: 0.45rem 0.9rem;
+    border-color: rgba(71, 85, 105, 0.84);
+    background: rgba(15, 23, 42, 0.65);
+    color: rgb(203 213 225);
+    font-size: 0.82rem;
+    font-weight: 600;
+  }
+
+  .manager-sidebar-brand-name {
+    margin-top: 1rem;
+    color: rgb(34 211 238);
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0;
+  }
+
+  .manager-sidebar-portal-name {
+    margin-top: 0.55rem;
+    max-width: 7.5ch;
+    color: rgb(248 250 252);
+    font-size: 1.08rem;
+    font-weight: 800;
+    line-height: 1.08;
+    white-space: normal;
+  }
+
+  .manager-sidebar-nav-new {
+    padding: 0;
+  }
+
+  .manager-sidebar-nav-group {
+    padding: 0;
+  }
+
+  .manager-sidebar-section-label {
+    padding: 0.25rem 0.35rem 0.55rem;
+    color: rgb(100 116 139);
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: none;
+  }
+
+  .manager-nav-item {
+    gap: 0.85rem;
+    min-height: 4.45rem;
+    margin: 0 0 0.6rem;
+    padding: 0.8rem 0.95rem;
+    border: 1px solid rgba(51, 65, 85, 0.62);
+    border-radius: 1.35rem;
+    background: rgba(15, 23, 42, 0.54);
+    color: rgb(203 213 225);
+    font-size: 0.84rem;
+    font-weight: 700;
+  }
+
+  .manager-nav-item:hover {
+    background: rgba(15, 23, 42, 0.82);
+    border-color: rgba(56, 189, 248, 0.22);
+  }
+
+  .manager-nav-item-active {
+    background: linear-gradient(180deg, rgba(14, 116, 144, 0.42), rgba(8, 47, 73, 0.5));
+    border-color: rgba(34, 211, 238, 0.34);
+    color: rgb(226 232 240);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 18px 32px rgba(8, 47, 73, 0.22);
+  }
+
+  .manager-nav-icon {
+    width: 2.8rem;
+    height: 2.8rem;
+    border: 1px solid rgba(71, 85, 105, 0.72);
+    border-radius: 1rem;
+    background: rgba(8, 15, 35, 0.75);
+  }
+
+  .manager-nav-icon svg,
+  .manager-nav-icon i[data-lucide] > svg {
+    width: 1.05rem;
+    height: 1.05rem;
+  }
+
+  .manager-nav-label {
+    white-space: normal;
+    line-height: 1.3;
+  }
+
+  .manager-sidebar-footer-new {
+    margin-top: auto;
+    padding: 1rem;
+    gap: 0.9rem;
+    border-top: 1px solid rgba(51, 65, 85, 0.68);
+  }
+
+  .manager-sidebar-user-email {
+    font-size: 0.86rem;
+    color: rgb(248 250 252);
+  }
+
+  .manager-sidebar-user-role {
+    margin-top: 0.35rem;
+    white-space: normal;
+    line-height: 1.45;
+    color: rgb(148 163 184);
+    font-size: 0.78rem;
+  }
+
+  .manager-theme-toggle {
+    display: grid;
+    gap: 0.45rem;
+  }
+
+  .manager-theme-toggle-buttons {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.35rem;
+    padding: 0.25rem;
+    border: 1px solid rgba(51, 65, 85, 0.7);
+    border-radius: 9999px;
+    background: rgba(2, 6, 23, 0.72);
+  }
+
+  .manager-theme-option {
+    min-height: 2.15rem;
+    font-size: 0.82rem;
+    font-weight: 700;
+  }
+
+  .manager-sidebar-footer-actions {
+    gap: 0.55rem;
+  }
+
+  .manager-footer-action-btn {
+    min-height: 2.8rem;
+    border-radius: 1rem;
+    font-size: 0.86rem;
+    color: rgb(226 232 240);
+    border-color: rgba(71, 85, 105, 0.8);
+    background: rgba(8, 15, 35, 0.6);
+  }
+
+  .manager-topbar-new {
+    margin: 1.2rem 1.25rem 0;
+    padding: 0.95rem 1.3rem;
+    border: 1px solid rgba(51, 65, 85, 0.72);
+    border-radius: 1.9rem;
+    background: linear-gradient(180deg, rgba(8, 15, 35, 0.96), rgba(4, 10, 28, 0.92));
+    min-height: 5rem;
+    top: 1rem;
+    box-shadow: 0 24px 46px rgba(2, 6, 23, 0.28);
+  }
+
+  .manager-topbar-page-title {
+    font-size: 1.12rem;
+    font-weight: 700;
+  }
+
+  .manager-topbar-search {
+    max-width: none;
+  }
+
+  .manager-global-search-input {
+    min-height: 3.85rem;
+    border-radius: 1.45rem;
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+  }
+
+  .manager-topbar-right {
+    gap: 0.75rem;
+  }
+
+  .manager-topbar-signals-btn,
+  .manager-topbar-exit-btn {
+    min-height: 3.15rem;
+    padding: 0.55rem 1rem;
+    border-radius: 9999px;
+    font-size: 0.95rem;
+  }
+
+  .manager-topbar-signals-btn {
+    border-color: rgba(71, 85, 105, 0.72);
+    background: rgba(2, 6, 23, 0.66);
+    color: rgb(248 250 252);
+  }
+
+  .manager-topbar-signals-badge {
+    min-width: 1.7rem;
+    height: 1.7rem;
+    background: rgba(8, 145, 178, 0.28);
+    color: rgb(103 232 249);
+    font-size: 0.82rem;
+  }
+
+  .manager-topbar-exit-btn {
+    color: rgb(248 250 252);
+    background: rgba(2, 6, 23, 0.54);
+  }
+
+  .manager-main {
+    padding: 1.35rem 1.25rem 1.5rem;
+  }
+}
+
 /* Desktop sidebar base — overrides the generic .manager-sidebar above */
 .manager-sidebar {
   position: sticky;
   top: 0;
   height: 100vh;
   overflow: hidden;
-  background: rgb(2 6 23);
-  border-right: 1px solid rgba(30, 41, 59, 0.9);
+  background:
+    radial-gradient(circle at top left, rgba(34, 211, 238, 0.1), transparent 26%),
+    linear-gradient(180deg, rgba(5, 10, 28, 0.98), rgba(2, 6, 23, 0.98));
+  border-right: 1px solid rgba(51, 65, 85, 0.68);
   flex-shrink: 0;
   transition: width 0.22s ease;
 }
@@ -3249,16 +3513,19 @@ html:has(.manager-shell) {
   min-height: unset;
   height: 100%;
   overflow: hidden;
-  width: 15rem;
+  width: 19rem;
   min-width: 0;
-  gap: 0;
-  padding: 0;
+  gap: 1rem;
+  padding: 1.35rem 1.15rem 1rem;
 }
 
 /* Sidebar header */
 .manager-sidebar-header {
-  padding: 1rem 0.875rem 0.75rem;
-  border-bottom: 1px solid rgba(30, 41, 59, 0.8);
+  padding: 1.15rem 1rem 1.1rem;
+  border: 1px solid rgba(51, 65, 85, 0.68);
+  border-radius: 1.6rem;
+  background: linear-gradient(180deg, rgba(8, 15, 35, 0.96), rgba(4, 10, 28, 0.9));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
   flex-shrink: 0;
 }
 
@@ -3273,12 +3540,13 @@ html:has(.manager-shell) {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 2.25rem;
-  height: 2.25rem;
-  border-radius: 0.5rem;
-  background: rgb(13 148 136);
+  width: 3rem;
+  height: 3rem;
+  border-radius: 1rem;
+  background: linear-gradient(180deg, rgba(20, 184, 166, 0.42), rgba(14, 116, 144, 0.38));
+  border: 1px solid rgba(103, 232, 249, 0.18);
   color: #fff;
-  font-size: 0.72rem;
+  font-size: 0.96rem;
   font-weight: 700;
   letter-spacing: 0.04em;
   flex-shrink: 0;
@@ -3288,15 +3556,31 @@ html:has(.manager-shell) {
   display: flex;
   align-items: center;
   gap: 0.3rem;
-  padding: 0.2rem 0.5rem;
-  border: 1px solid rgba(51, 65, 85, 0.7);
+  min-height: 2.45rem;
+  padding: 0.45rem 0.9rem;
+  border: 1px solid rgba(71, 85, 105, 0.84);
   border-radius: 9999px;
-  background: transparent;
-  color: rgb(100 116 139);
-  font-size: 0.7rem;
+  background: rgba(15, 23, 42, 0.65);
+  color: rgb(203 213 225);
+  font-size: 0.82rem;
+  font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
   transition: color 0.15s, border-color 0.15s;
+}
+
+.manager-sidebar-toggle-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+}
+
+.manager-sidebar-toggle-icon .manager-sidebar-icon {
+  width: 1rem;
+  height: 1rem;
 }
 
 .manager-sidebar-toggle-btn:hover {
@@ -3305,54 +3589,44 @@ html:has(.manager-shell) {
 }
 
 .manager-sidebar-brand-name {
-  margin-top: 0.6rem;
-  font-size: 0.68rem;
-  color: rgb(100 116 139);
-  letter-spacing: 0.06em;
+  margin-top: 1rem;
+  font-size: 0.78rem;
+  color: rgb(34 211 238);
+  font-weight: 700;
+  letter-spacing: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .manager-sidebar-portal-name {
-  margin-top: 0.2rem;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: #fff;
-  line-height: 1.3;
+  margin-top: 0.55rem;
+  max-width: 7.5ch;
+  font-size: 1.08rem;
+  font-weight: 800;
+  color: rgb(248 250 252);
+  line-height: 1.08;
+  white-space: normal;
 }
 
 /* Sidebar navigation */
 .manager-sidebar-nav-new {
   flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 0.5rem 0;
-}
-
-.manager-sidebar-nav-new::-webkit-scrollbar {
-  width: 3px;
-}
-
-.manager-sidebar-nav-new::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.manager-sidebar-nav-new::-webkit-scrollbar-thumb {
-  background: rgba(51, 65, 85, 0.5);
-  border-radius: 9999px;
+  overflow: visible;
+  padding: 0;
 }
 
 .manager-sidebar-nav-group {
-  padding: 0.25rem 0;
+  padding: 0;
 }
 
 .manager-sidebar-section-label {
-  padding: 0.55rem 0.875rem 0.2rem;
-  font-size: 0.62rem;
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
-  color: rgb(71 85 105);
+  padding: 0.25rem 0.35rem 0.55rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0.02em;
+  color: rgb(100 116 139);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3361,64 +3635,85 @@ html:has(.manager-shell) {
 .manager-nav-item {
   display: flex;
   align-items: center;
-  gap: 0.65rem;
-  padding: 0.45rem 0.875rem;
-  margin: 0.06rem 0.5rem;
-  border-radius: 0.5rem;
-  color: rgb(148 163 184);
-  font-size: 0.82rem;
+  gap: 0.85rem;
+  min-height: 4.45rem;
+  padding: 0.8rem 0.95rem;
+  margin: 0 0 0.6rem;
+  border: 1px solid rgba(51, 65, 85, 0.62);
+  border-radius: 1.35rem;
+  background: rgba(15, 23, 42, 0.54);
+  color: rgb(203 213 225);
+  font-size: 0.84rem;
+  font-weight: 700;
   text-decoration: none;
   transition: background 0.13s, color 0.13s;
-  white-space: nowrap;
+  white-space: normal;
   overflow: hidden;
 }
 
 .manager-nav-item:hover {
-  background: rgba(30, 41, 59, 0.7);
+  background: rgba(15, 23, 42, 0.82);
+  border-color: rgba(56, 189, 248, 0.22);
   color: rgb(226 232 240);
 }
 
 .manager-nav-item-active {
-  background: rgba(13, 148, 136, 0.15);
-  color: rgb(94 234 212);
+  background: linear-gradient(180deg, rgba(14, 116, 144, 0.42), rgba(8, 47, 73, 0.5));
+  border-color: rgba(34, 211, 238, 0.34);
+  color: rgb(226 232 240);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 18px 32px rgba(8, 47, 73, 0.22);
 }
 
 .manager-nav-item-active:hover {
-  background: rgba(13, 148, 136, 0.2);
-  color: rgb(94 234 212);
+  color: rgb(226 232 240);
 }
 
 .manager-nav-icon {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.1rem;
-  height: 1.1rem;
+  width: 2.8rem;
+  height: 2.8rem;
+  border: 1px solid rgba(71, 85, 105, 0.72);
+  border-radius: 1rem;
+  background: rgba(8, 15, 35, 0.75);
+  color: rgb(148 163 184);
   flex-shrink: 0;
 }
 
-.manager-nav-icon svg,
-.manager-nav-icon i[data-lucide] > svg {
-  width: 1rem;
-  height: 1rem;
+.manager-nav-icon .manager-sidebar-icon {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.manager-nav-item-active .manager-nav-icon {
+  color: rgb(165 243 252);
+  border-color: rgba(34, 211, 238, 0.26);
+  background: rgba(8, 47, 73, 0.62);
 }
 
 .manager-nav-label {
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
   flex: 1;
   transition: opacity 0.18s;
+  line-height: 1.3;
 }
 
 /* Sidebar footer */
 .manager-sidebar-footer-new {
-  padding: 0.75rem 0.875rem;
-  border-top: 1px solid rgba(30, 41, 59, 0.8);
+  padding: 1rem;
+  margin-top: auto;
+  border: 1px solid rgba(51, 65, 85, 0.68);
+  border-radius: 1.6rem;
+  border-top: 1px solid rgba(51, 65, 85, 0.68);
+  background: linear-gradient(180deg, rgba(8, 15, 35, 0.96), rgba(4, 10, 28, 0.9));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 0.9rem;
 }
 
 .manager-sidebar-user-info {
@@ -3427,27 +3722,27 @@ html:has(.manager-shell) {
 }
 
 .manager-sidebar-user-email {
-  font-size: 0.72rem;
-  color: rgb(203 213 225);
+  font-size: 0.86rem;
+  color: rgb(248 250 252);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .manager-sidebar-user-role {
-  margin-top: 0.15rem;
-  font-size: 0.65rem;
-  color: rgb(71 85 105);
-  white-space: nowrap;
+  margin-top: 0.35rem;
+  font-size: 0.78rem;
+  color: rgb(148 163 184);
+  white-space: normal;
+  line-height: 1.45;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 /* Theme toggle */
 .manager-theme-toggle {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
+  display: grid;
+  gap: 0.45rem;
 }
 
 .manager-theme-toggle-label {
@@ -3460,17 +3755,25 @@ html:has(.manager-shell) {
 }
 
 .manager-theme-toggle-buttons {
-  display: flex;
-  gap: 0.2rem;
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.35rem;
+  padding: 0.25rem;
+  border: 1px solid rgba(51, 65, 85, 0.7);
+  border-radius: 9999px;
+  background: rgba(2, 6, 23, 0.72);
 }
 
 .manager-theme-option {
+  min-height: 2.15rem;
   padding: 0.2rem 0.55rem;
   border: 1px solid rgba(51, 65, 85, 0.7);
   border-radius: 9999px;
   background: transparent;
   color: rgb(100 116 139);
-  font-size: 0.67rem;
+  font-size: 0.82rem;
+  font-weight: 700;
   cursor: pointer;
   transition: all 0.13s;
   white-space: nowrap;
@@ -3490,17 +3793,18 @@ html:has(.manager-shell) {
 /* Footer action buttons */
 .manager-sidebar-footer-actions {
   display: flex;
-  gap: 0.35rem;
+  gap: 0.55rem;
 }
 
 .manager-footer-action-btn {
   flex: 1;
+  min-height: 2.8rem;
   padding: 0.3rem 0.5rem;
-  border: 1px solid rgba(51, 65, 85, 0.7);
-  border-radius: 0.45rem;
-  background: transparent;
-  color: rgb(100 116 139);
-  font-size: 0.7rem;
+  border: 1px solid rgba(71, 85, 105, 0.8);
+  border-radius: 1rem;
+  background: rgba(8, 15, 35, 0.6);
+  color: rgb(226 232 240);
+  font-size: 0.86rem;
   text-align: center;
   text-decoration: none;
   cursor: pointer;
@@ -3521,19 +3825,22 @@ html:has(.manager-shell) {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.6rem 1.25rem;
-  border-bottom: 1px solid rgba(30, 41, 59, 0.8);
-  background: rgb(2 6 23);
+  margin: 1.2rem 1.25rem 0;
+  padding: 0.95rem 1.3rem;
+  border: 1px solid rgba(51, 65, 85, 0.72);
+  border-radius: 1.9rem;
+  background: linear-gradient(180deg, rgba(8, 15, 35, 0.96), rgba(4, 10, 28, 0.92));
   flex-shrink: 0;
   position: sticky;
-  top: 0;
+  top: 1rem;
   z-index: 20;
-  min-height: 3.2rem;
+  min-height: 5rem;
+  box-shadow: 0 24px 46px rgba(2, 6, 23, 0.28);
 }
 
 .manager-topbar-page-title {
-  font-size: 0.9rem;
-  font-weight: 600;
+  font-size: 1.12rem;
+  font-weight: 700;
   color: #fff;
   white-space: nowrap;
   flex-shrink: 0;
@@ -3542,13 +3849,13 @@ html:has(.manager-shell) {
 .manager-topbar-search {
   flex: 1;
   min-width: 0;
-  max-width: 42rem;
+  max-width: none;
 }
 
 .manager-topbar-right {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.75rem;
   margin-left: auto;
   flex-shrink: 0;
 }
@@ -3557,12 +3864,13 @@ html:has(.manager-shell) {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  padding: 0.3rem 0.75rem;
-  border: 1px solid rgba(13, 148, 136, 0.4);
+  min-height: 3.15rem;
+  padding: 0.55rem 1rem;
+  border: 1px solid rgba(71, 85, 105, 0.72);
   border-radius: 9999px;
-  background: rgba(13, 148, 136, 0.1);
-  color: rgb(94 234 212);
-  font-size: 0.75rem;
+  background: rgba(2, 6, 23, 0.66);
+  color: rgb(248 250 252);
+  font-size: 0.95rem;
   font-weight: 500;
   text-decoration: none;
   transition: all 0.13s;
@@ -3577,13 +3885,13 @@ html:has(.manager-shell) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 1.25rem;
-  height: 1.25rem;
+  min-width: 1.7rem;
+  height: 1.7rem;
   padding: 0 0.3rem;
   border-radius: 9999px;
-  background: rgb(13 148 136);
-  color: #fff;
-  font-size: 0.65rem;
+  background: rgba(8, 145, 178, 0.28);
+  color: rgb(103 232 249);
+  font-size: 0.82rem;
   font-weight: 700;
   line-height: 1;
 }
@@ -3591,12 +3899,13 @@ html:has(.manager-shell) {
 .manager-topbar-exit-btn {
   display: inline-flex;
   align-items: center;
-  padding: 0.3rem 0.75rem;
+  min-height: 3.15rem;
+  padding: 0.55rem 1rem;
   border: 1px solid rgba(51, 65, 85, 0.7);
   border-radius: 9999px;
-  background: transparent;
-  color: rgb(100 116 139);
-  font-size: 0.75rem;
+  background: rgba(2, 6, 23, 0.54);
+  color: rgb(248 250 252);
+  font-size: 0.95rem;
   text-decoration: none;
   transition: all 0.13s;
 }
@@ -3652,12 +3961,16 @@ html:has(.manager-shell) {
   overflow: visible;
 }
 
-.manager-sidebar-collapsed .manager-sidebar-inner {
-  width: 4rem;
+.manager-sidebar-collapsed .manager-sidebar .manager-sidebar-inner {
+  width: 5rem;
+  min-width: 5rem;
+  padding-inline: 0.55rem;
+  padding-block: 1.35rem 1rem;
+  gap: 0.85rem;
 }
 
 .manager-sidebar-collapsed .manager-sidebar-header {
-  padding: 1rem 0.5rem 0.75rem;
+  padding: 1rem 0.55rem;
 }
 
 .manager-sidebar-collapsed .manager-sidebar-header-row {
@@ -3665,19 +3978,24 @@ html:has(.manager-shell) {
 }
 
 .manager-sidebar-collapsed .manager-sidebar-toggle-btn {
-  border: none;
-  padding: 0.2rem;
+  justify-content: center;
+  border: 1px solid rgba(71, 85, 105, 0.55);
+  padding: 0.45rem;
+  min-height: 2.45rem;
+  width: 2.45rem;
+  border-radius: 9999px;
+  background: rgba(15, 23, 42, 0.45);
 }
 
 .manager-sidebar-collapsed .manager-nav-item {
   justify-content: center;
-  padding: 0.5rem;
-  margin: 0.06rem 0.35rem;
+  padding: 0.8rem 0.5rem;
+  margin: 0 0 0.6rem;
 }
 
 .manager-sidebar-collapsed .manager-sidebar-footer-new {
   align-items: center;
-  padding: 0.75rem 0.5rem;
+  padding: 0.85rem 0.55rem;
 }
 
 /* Light theme overrides for new sidebar */
@@ -3688,6 +4006,7 @@ html:has(.manager-shell) {
 
 [data-manager-theme="light"] .manager-sidebar-header {
   border-bottom-color: rgb(226 232 240);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(241, 245, 249, 0.95));
 }
 
 [data-manager-theme="light"] .manager-sidebar-brand-name {
@@ -3704,6 +4023,8 @@ html:has(.manager-shell) {
 
 [data-manager-theme="light"] .manager-nav-item {
   color: rgb(71 85 105);
+  background: rgba(255, 255, 255, 0.72);
+  border-color: rgb(226 232 240);
 }
 
 [data-manager-theme="light"] .manager-nav-item:hover {
@@ -3714,6 +4035,7 @@ html:has(.manager-shell) {
 [data-manager-theme="light"] .manager-nav-item-active {
   background: rgba(13, 148, 136, 0.1);
   color: rgb(13 148 136);
+  border-color: rgba(13, 148, 136, 0.2);
 }
 
 [data-manager-theme="light"] .manager-nav-item-active:hover {
@@ -3731,6 +4053,7 @@ html:has(.manager-shell) {
 
 [data-manager-theme="light"] .manager-sidebar-footer-new {
   border-top-color: rgb(226 232 240);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(241, 245, 249, 0.95));
 }
 
 [data-manager-theme="light"] .manager-sidebar-toggle-btn {
@@ -3751,6 +4074,11 @@ html:has(.manager-shell) {
   border-color: rgb(226 232 240);
 }
 
+[data-manager-theme="light"] .manager-theme-toggle-buttons {
+  background: rgb(248 250 252);
+  border-color: rgb(226 232 240);
+}
+
 [data-manager-theme="light"] .manager-theme-option:hover {
   color: rgb(15 23 42);
 }
@@ -3758,6 +4086,7 @@ html:has(.manager-shell) {
 [data-manager-theme="light"] .manager-footer-action-btn {
   color: rgb(100 116 139);
   border-color: rgb(226 232 240);
+  background: rgb(255 255 255 / 0.88);
 }
 
 [data-manager-theme="light"] .manager-footer-action-btn:hover {
@@ -3766,7 +4095,7 @@ html:has(.manager-shell) {
 }
 
 [data-manager-theme="light"] .manager-topbar-new {
-  background: rgb(248 250 252);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(241, 245, 249, 0.96));
   border-bottom-color: rgb(226 232 240);
 }
 
@@ -3777,6 +4106,7 @@ html:has(.manager-shell) {
 [data-manager-theme="light"] .manager-topbar-exit-btn {
   color: rgb(100 116 139);
   border-color: rgb(226 232 240);
+  background: rgb(255 255 255 / 0.86);
 }
 
 [data-manager-theme="light"] .manager-topbar-exit-btn:hover {
@@ -3821,4 +4151,430 @@ html:has(.manager-shell) {
 .manager-table-shell::-webkit-scrollbar-thumb {
   background: rgba(71, 85, 105, 0.6);
   border-radius: 3px;
+}
+
+.manager-deals-hero {
+  display: grid;
+  gap: 1.25rem;
+}
+
+@media (min-width: 1280px) {
+  .manager-deals-hero {
+    grid-template-columns: minmax(0, 1.45fr) minmax(20rem, 0.95fr);
+    align-items: start;
+  }
+
+  .manager-deals-diagnostics,
+  .manager-deals-queues {
+    grid-column: 1 / -1;
+  }
+}
+
+.manager-deals-hero-main,
+.manager-deals-diagnostics,
+.manager-deals-queues,
+.manager-deals-saved-views {
+  border: 1px solid rgba(51, 65, 85, 0.7);
+  border-radius: 1.55rem;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.6), rgba(2, 6, 23, 0.54));
+}
+
+.manager-deals-hero-main {
+  padding: 1.55rem 1.45rem 1.35rem;
+}
+
+.manager-deals-eyebrow,
+.manager-deals-saved-views-eyebrow,
+.manager-deals-diagnostics-title,
+.manager-deals-queues-label {
+  color: rgb(148 163 184);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.manager-deals-title {
+  margin-top: 0.6rem;
+  color: white;
+  font-size: clamp(1.9rem, 2.4vw, 2.65rem);
+  font-weight: 800;
+  line-height: 1.02;
+}
+
+.manager-deals-copy {
+  margin-top: 0.85rem;
+  max-width: 46rem;
+  color: rgb(148 163 184);
+  font-size: 1.02rem;
+  line-height: 1.6;
+}
+
+.manager-deals-summary-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+  margin-top: 1.45rem;
+}
+
+.manager-deals-summary-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.85rem;
+  min-height: 3rem;
+  padding: 0.7rem 1rem;
+  border: 1px solid rgba(71, 85, 105, 0.7);
+  border-radius: 9999px;
+  background: rgba(2, 6, 23, 0.54);
+  color: inherit;
+  text-decoration: none;
+}
+
+.manager-deals-summary-label {
+  color: rgb(226 232 240);
+  font-size: 0.95rem;
+}
+
+.manager-deals-summary-value {
+  color: white;
+  font-size: 1.05rem;
+}
+
+.manager-deals-hero-aside {
+  display: grid;
+  gap: 0.95rem;
+}
+
+.manager-deals-hero-meta,
+.manager-deals-hero-controls,
+.manager-deals-saved-views-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.manager-deals-hero-controls {
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.manager-deals-views-button {
+  min-height: 2.95rem;
+  padding-inline: 1rem;
+}
+
+.manager-deals-saved-views {
+  padding: 1.2rem;
+}
+
+.manager-deals-saved-views-text,
+.manager-deals-diagnostics-text,
+.manager-deals-saved-views-empty {
+  margin-top: 0.55rem;
+  color: rgb(148 163 184);
+  line-height: 1.55;
+}
+
+.manager-deals-saved-views-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+
+.manager-deals-saved-view-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.45rem;
+  padding: 0.55rem 0.85rem;
+  border: 1px solid rgba(71, 85, 105, 0.7);
+  border-radius: 9999px;
+  background: rgba(2, 6, 23, 0.55);
+  color: rgb(226 232 240);
+  font-size: 0.88rem;
+  text-decoration: none;
+}
+
+.manager-deals-saved-view-chip:hover,
+.manager-deals-summary-pill:hover {
+  border-color: rgba(34, 211, 238, 0.32);
+  background: rgba(15, 23, 42, 0.88);
+}
+
+.manager-deals-saved-views-actions {
+  margin-top: 1rem;
+  align-items: stretch;
+}
+
+.manager-deals-diagnostics,
+.manager-deals-queues {
+  padding: 1rem 1.1rem;
+}
+
+.manager-deals-diagnostics {
+  display: grid;
+  gap: 0.85rem;
+}
+
+@media (min-width: 1280px) {
+  .manager-deals-diagnostics {
+    grid-template-columns: minmax(13rem, 0.55fr) minmax(0, 1fr);
+    align-items: center;
+  }
+}
+
+.manager-deals-queues-label {
+  margin-bottom: 0.8rem;
+}
+
+.manager-deals-table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.manager-deals-table thead th {
+  border-bottom: 1px solid rgba(51, 65, 85, 0.72);
+}
+
+.manager-deals-table-row td {
+  vertical-align: top;
+}
+
+.manager-deals-row-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+}
+
+.manager-deals-row-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.15rem;
+  height: 2.15rem;
+  border: 1px solid rgba(71, 85, 105, 0.74);
+  border-radius: 9999px;
+  background: rgba(2, 6, 23, 0.72);
+  color: rgb(203 213 225);
+  transition: border-color 180ms ease, color 180ms ease, background 180ms ease;
+}
+
+.manager-deals-row-toggle:hover {
+  border-color: rgba(34, 211, 238, 0.32);
+  color: rgb(103 232 249);
+  background: rgba(8, 15, 35, 0.95);
+}
+
+.manager-deals-row-code {
+  display: inline-block;
+  color: rgb(248 250 252);
+  font-size: 1.05rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.manager-deals-row-summary {
+  margin-top: 0.45rem;
+  color: rgb(203 213 225);
+  line-height: 1.5;
+}
+
+.manager-deals-row-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-top: 0.95rem;
+}
+
+.manager-deals-inline-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2rem;
+  padding: 0.3rem 0.7rem;
+  border: 1px solid rgba(71, 85, 105, 0.7);
+  border-radius: 9999px;
+  background: rgba(2, 6, 23, 0.52);
+  color: rgb(203 213 225);
+  font-size: 0.82rem;
+}
+
+.manager-deals-context-title,
+.manager-deals-risk-title {
+  color: white;
+  font-size: 0.98rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.manager-deals-context-muted,
+.manager-deals-context-subline,
+.manager-deals-status-copy,
+.manager-deals-status-meta,
+.manager-deals-risk-copy {
+  margin-top: 0.42rem;
+  color: rgb(148 163 184);
+  line-height: 1.55;
+}
+
+.manager-deals-status-block {
+  display: grid;
+  gap: 0.18rem;
+}
+
+.manager-deals-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 0.95rem;
+}
+
+.manager-deals-action-primary,
+.manager-deals-action-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.7rem;
+  padding: 0.6rem 0.95rem;
+  border-radius: 1rem;
+  font-size: 0.88rem;
+  font-weight: 700;
+  text-decoration: none;
+  transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
+}
+
+.manager-deals-action-primary {
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  background: linear-gradient(135deg, rgba(34, 211, 238, 0.9), rgba(14, 165, 233, 0.88));
+  color: rgb(8 47 73);
+}
+
+.manager-deals-action-secondary {
+  border: 1px solid rgba(71, 85, 105, 0.78);
+  background: rgba(2, 6, 23, 0.55);
+  color: rgb(226 232 240);
+}
+
+.manager-deals-action-primary:hover,
+.manager-deals-action-secondary:hover {
+  transform: translateY(-1px);
+}
+
+.manager-semantic-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2rem;
+  padding: 0.3rem 0.8rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(71, 85, 105, 0.72);
+  background: rgba(2, 6, 23, 0.55);
+  color: rgb(226 232 240);
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.manager-semantic-badge-critical {
+  border-color: rgba(190, 24, 93, 0.45);
+  background: rgba(127, 29, 29, 0.32);
+  color: rgb(254 205 211);
+}
+
+.manager-semantic-badge-attention {
+  border-color: rgba(217, 119, 6, 0.42);
+  background: rgba(120, 53, 15, 0.28);
+  color: rgb(253 230 138);
+}
+
+.manager-semantic-badge-active {
+  border-color: rgba(59, 130, 246, 0.42);
+  background: rgba(30, 64, 175, 0.28);
+  color: rgb(191 219 254);
+}
+
+.manager-semantic-badge-complete {
+  border-color: rgba(16, 185, 129, 0.34);
+  background: rgba(6, 78, 59, 0.26);
+  color: rgb(167 243 208);
+}
+
+.manager-semantic-badge-unknown {
+  color: rgb(203 213 225);
+}
+
+.manager-semantic-text-critical {
+  color: rgb(254 205 211);
+}
+
+.manager-semantic-text-attention {
+  color: rgb(253 230 138);
+}
+
+.manager-semantic-text-active {
+  color: rgb(191 219 254);
+}
+
+.manager-semantic-text-complete {
+  color: rgb(167 243 208);
+}
+
+.manager-semantic-surface {
+  border: 1px solid rgba(71, 85, 105, 0.7);
+  border-radius: 1.5rem;
+}
+
+.manager-semantic-surface-critical {
+  border-color: rgba(190, 24, 93, 0.32);
+  background: rgba(127, 29, 29, 0.2);
+}
+
+.manager-semantic-surface-attention {
+  border-color: rgba(217, 119, 6, 0.3);
+  background: rgba(120, 53, 15, 0.18);
+}
+
+.manager-semantic-surface-active {
+  border-color: rgba(59, 130, 246, 0.28);
+  background: rgba(30, 64, 175, 0.18);
+}
+
+.manager-semantic-surface-complete {
+  border-color: rgba(16, 185, 129, 0.26);
+  background: rgba(6, 78, 59, 0.16);
+}
+
+.manager-semantic-surface-unknown {
+  background: rgba(15, 23, 42, 0.52);
+}
+
+.manager-risk-block {
+  border: 1px solid rgba(71, 85, 105, 0.72);
+  border-radius: 1.3rem;
+  background: rgba(2, 6, 23, 0.54);
+  padding: 0.95rem 1rem;
+}
+
+.manager-risk-block-critical {
+  border-color: rgba(190, 24, 93, 0.34);
+  background: rgba(127, 29, 29, 0.18);
+}
+
+.manager-risk-block-attention {
+  border-color: rgba(217, 119, 6, 0.3);
+  background: rgba(120, 53, 15, 0.16);
+}
+
+.manager-risk-block-active {
+  border-color: rgba(59, 130, 246, 0.28);
+  background: rgba(30, 64, 175, 0.15);
+}
+
+.manager-risk-block-complete {
+  border-color: rgba(16, 185, 129, 0.26);
+  background: rgba(6, 78, 59, 0.14);
+}
+
+@media (max-width: 1279px) {
+  .manager-deals-hero-controls {
+    justify-content: flex-start;
+  }
 }

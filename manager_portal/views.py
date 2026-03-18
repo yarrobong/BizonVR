@@ -161,6 +161,7 @@ from .services import (
     create_or_update_reservation_movements,
     ensure_manager_client_for_order,
 )
+from .status_system import deal_primary_status, deal_risk_summary, deal_secondary_status
 
 
 CREATE_MODE_QUICK = 'quick'
@@ -374,6 +375,175 @@ def _nav_groups_with_state(user, active_tab):
                 'children': children,
             }
         )
+    return groups
+
+
+def _sidebar_item(*, key, label, url_name, icon, active, enabled=True):
+    return {
+        'key': key,
+        'label': label,
+        'url_name': url_name,
+        'icon': icon,
+        'active': active,
+        'enabled': enabled,
+    }
+
+
+def _sidebar_groups_with_state(user, active_tab):
+    active_module_key = _tab_module_key(active_tab)
+
+    if not has_any_manager_portal_access(user):
+        items = [
+            _sidebar_item(
+                key='entry',
+                label='Модули',
+                url_name='manager_portal:entry',
+                icon='profile',
+                active=active_tab == 'entry',
+            )
+        ]
+        return [
+            {
+                'key': 'entry',
+                'label': 'Навигация',
+                'items': items,
+                'has_enabled_items': True,
+            }
+        ]
+
+    groups = []
+
+    sales_items = []
+    if has_manager_portal_access(user):
+        sales_items.extend(
+            [
+                _sidebar_item(
+                    key='deals',
+                    label='Сделки',
+                    url_name='manager_portal:deal_list',
+                    icon='deals',
+                    active=active_module_key == 'deals',
+                ),
+                _sidebar_item(
+                    key='clients',
+                    label='Клиенты',
+                    url_name='manager_portal:client_list',
+                    icon='clients',
+                    active=active_tab == 'clients',
+                ),
+            ]
+        )
+        if _can_use_commercial_proposals(user):
+            sales_items.append(
+                _sidebar_item(
+                    key='proposals',
+                    label='Коммерческие предложения',
+                    url_name='manager_portal:commercial_proposals',
+                    icon='commercial_proposals',
+                    active=active_module_key == 'proposals',
+                )
+            )
+    if sales_items:
+        groups.append(
+            {
+                'key': 'sales',
+                'label': 'Продажи',
+                'items': sales_items,
+                'has_enabled_items': any(item['enabled'] for item in sales_items),
+            }
+        )
+
+    logistics_items = []
+    if has_manager_portal_access(user):
+        logistics_items.extend(
+            [
+                _sidebar_item(
+                    key='warehouses',
+                    label='Склады',
+                    url_name='manager_portal:warehouse_list',
+                    icon='warehouses',
+                    active=active_tab == 'warehouses',
+                ),
+                _sidebar_item(
+                    key='inventory',
+                    label='Остатки',
+                    url_name='manager_portal:inventory',
+                    icon='inventory',
+                    active=active_tab == 'inventory',
+                ),
+                _sidebar_item(
+                    key='reservations',
+                    label='Бронирования',
+                    url_name='manager_portal:reservation_list',
+                    icon='reservations',
+                    active=active_tab == 'reservations',
+                ),
+                _sidebar_item(
+                    key='cargos',
+                    label='Грузы',
+                    url_name='manager_portal:cargo_list',
+                    icon='cargos',
+                    active=active_tab == 'cargos',
+                ),
+                _sidebar_item(
+                    key='shipments',
+                    label='Отгрузки',
+                    url_name='manager_portal:shipments',
+                    icon='shipments',
+                    active=active_tab == 'shipments',
+                ),
+            ]
+        )
+    if logistics_items:
+        groups.append(
+            {
+                'key': 'logistics',
+                'label': 'Склад и логистика',
+                'items': logistics_items,
+                'has_enabled_items': any(item['enabled'] for item in logistics_items),
+            }
+        )
+
+    finance_docs_items = []
+    if has_finance_portal_access(user):
+        finance_docs_items.append(
+            _sidebar_item(
+                key='finance',
+                label='Финансы',
+                url_name='manager_portal:finance',
+                icon='finance',
+                active=active_module_key == 'finance',
+            )
+        )
+    if has_manager_portal_access(user):
+        finance_docs_items.extend(
+            [
+                _sidebar_item(
+                    key='contracts',
+                    label='Договоры',
+                    url_name='manager_portal:contracts',
+                    icon='contracts',
+                    active=active_module_key == 'contracts',
+                ),
+                _sidebar_item(
+                    key='purchases',
+                    label='Закупки',
+                    url_name='manager_portal:purchase_list',
+                    icon='purchases',
+                    active=active_tab == 'purchases',
+                ),
+            ]
+        )
+    if finance_docs_items:
+        groups.append(
+            {
+                'key': 'finance_docs',
+                'label': 'Финансы и документы',
+                'items': finance_docs_items,
+                'has_enabled_items': any(item['enabled'] for item in finance_docs_items),
+            }
+        )
+
     return groups
 
 
@@ -1451,7 +1621,7 @@ def _decorate_deal_list_rows(deals, *, finance_map, current_user, return_query):
             deal_client=deal.work_queue_client,
             return_query=return_query,
         )
-        deal.blocker_block = _deal_blocker_block(_deal_blockers(
+        blockers = _deal_blockers(
             deal,
             documents=list(getattr(deal, 'contract_documents').all()),
             reservations=list(getattr(deal, 'reservations').all()),
@@ -1459,8 +1629,12 @@ def _decorate_deal_list_rows(deals, *, finance_map, current_user, return_query):
             finance_deal=finance_deal,
             purchase_items=[],
             cargo_items=[],
-        ))
+        )
+        deal.blocker_block = _deal_blocker_block(blockers)
         deal.health_block = _deal_health_block(deal)
+        deal.primary_status = deal_primary_status(deal)
+        deal.secondary_status = deal_secondary_status(deal)
+        deal.risk_summary = deal_risk_summary(deal, blockers=blockers)
     return deals
 
 
@@ -1760,6 +1934,7 @@ def _base_context(request, *, active_tab, **extra):
     nav_items = _nav_items(request.user)
     active_label = next((label for key, label, _ in nav_items if key == active_tab), active_tab)
     nav_groups = _nav_groups_with_state(request.user, active_tab)
+    sidebar_groups = _sidebar_groups_with_state(request.user, active_tab)
     sidebar_module = _sidebar_module_map().get(
         active_tab,
         {
@@ -1773,6 +1948,7 @@ def _base_context(request, *, active_tab, **extra):
     context = {
         'manager_nav_items': nav_items,
         'manager_nav_groups': nav_groups,
+        'manager_sidebar_groups': sidebar_groups,
         'manager_active_tab': active_tab,
         'manager_active_label': active_label,
         'manager_has_staff_access': has_manager_portal_access(request.user),
@@ -3940,6 +4116,52 @@ def _deal_overview_metrics(scope):
     ]
 
 
+def _deal_stage_metrics(scope, query_params):
+    definitions = (
+        (ManagerDeal.CASE_STATUS_NEW, 'Новые'),
+        (ManagerDeal.CASE_STATUS_CONFIRMED, 'Подтверждены'),
+        (ManagerDeal.CASE_STATUS_IN_PROGRESS, 'В работе'),
+        (ManagerDeal.CASE_STATUS_WAITING_CLIENT, 'Ждут клиента'),
+        (ManagerDeal.CASE_STATUS_READY_TO_SHIP, 'Готовы к отправке'),
+    )
+    metrics = []
+    for status, label in definitions:
+        metrics.append(
+            {
+                'key': status,
+                'label': label,
+                'count': scope.filter(case_status=status).count(),
+                'query_string': _deal_query_string_with_updates(query_params, page=None, case_status=status),
+            }
+        )
+    return metrics
+
+
+def _deal_desktop_summary_metrics(scope, query_params):
+    overdue_count = scope.filter(sla_due_at__isnull=False).filter(
+        Q(sla_breached_at__isnull=False) | Q(sla_due_at__lte=timezone.now())
+    ).count()
+    last_sync = scope.aggregate(max_updated_at=Max('updated_at'))['max_updated_at']
+    last_sync_label = timezone.localtime(last_sync).strftime('%d.%m %H:%M') if last_sync else '—'
+    return [
+        {
+            'label': 'SLA просрочен',
+            'value': overdue_count,
+            'query_string': _deal_query_string_with_updates(query_params, page=None, problem_view=DEAL_PROBLEM_VIEW_SLA_OVERDUE),
+        },
+        {
+            'label': 'Без ответственного',
+            'value': scope.filter(responsible_manager__isnull=True).count(),
+            'query_string': _deal_query_string_with_updates(query_params, page=None, only_unassigned='1'),
+        },
+        {
+            'label': 'Последняя синхронизация',
+            'value': last_sync_label,
+            'query_string': '',
+        },
+    ]
+
+
 def _deal_saved_views(user):
     return DealSavedView.objects.filter(owner=user).order_by('name', 'id')
 
@@ -5634,6 +5856,7 @@ def deal_list_view(request):
         active_queue_chip = ''
     else:
         active_queue_chip = 'all'
+    saved_views = _deal_saved_views(request.user)
     return _render(
         request,
         'manager_portal/deals.html',
@@ -5647,9 +5870,11 @@ def deal_list_view(request):
         bulk_form=bulk_form,
         bulk_case_status_form=bulk_case_status_form,
         save_view_form=save_view_form,
-        saved_views=_deal_saved_views(request.user),
+        saved_views=saved_views,
         total_deals=total_deals,
         deal_kpis=_deal_overview_metrics(active_scope),
+        deal_desktop_summary_metrics=_deal_desktop_summary_metrics(active_scope, request.GET),
+        deal_stage_metrics=_deal_stage_metrics(active_scope, request.GET),
         queue_chips=queue_chips,
         signal_views=_deal_signal_views(active_scope),
         active_queue_chip=active_queue_chip,

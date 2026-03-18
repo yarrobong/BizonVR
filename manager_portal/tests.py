@@ -430,6 +430,10 @@ class ManagerPortalAccessTests(ManagerPortalBaseTestCase):
         self.assertEqual(dashboard_response.status_code, 403)
         self.assertEqual(contracts_response.status_code, 403)
 
+        sidebar_groups = entry_response.context['manager_sidebar_groups']
+        self.assertEqual([group['label'] for group in sidebar_groups], ['Финансы и документы'])
+        self.assertEqual([item['label'] for item in sidebar_groups[0]['items']], ['Финансы'])
+
     def test_finance_admin_can_update_finance_settings_without_staff_access(self):
         finance_group, _ = Group.objects.get_or_create(name=FINANCE_ADMIN_GROUP)
         finance_user = User.objects.create_user(username='finance-admin', password='pass1234')
@@ -455,6 +459,23 @@ class ManagerPortalAccessTests(ManagerPortalBaseTestCase):
         response = self.client.get(reverse('manager_portal:entry'))
 
         self.assertRedirects(response, reverse('manager_portal:deal_list'))
+
+    def test_staff_sidebar_groups_include_primary_sections(self):
+        self.login_staff()
+
+        response = self.client.get(reverse('manager_portal:deal_list'))
+
+        sidebar_groups = response.context['manager_sidebar_groups']
+        self.assertEqual(
+            [group['label'] for group in sidebar_groups],
+            ['Продажи', 'Склад и логистика', 'Финансы и документы'],
+        )
+        self.assertEqual(
+            [item['label'] for item in sidebar_groups[0]['items']],
+            ['Сделки', 'Клиенты', 'Коммерческие предложения'],
+        )
+        self.assertTrue(sidebar_groups[0]['items'][0]['active'])
+        self.assertEqual(sidebar_groups[0]['items'][0]['icon'], 'deals')
 
     def test_staff_dashboard_redirects_to_problematic_deals(self):
         self.login_staff()
@@ -1378,7 +1399,7 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
 
         response = self.client.get(reverse('manager_portal:deal_list'), {'view': 'kanban'})
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Сделки Avito')
+        self.assertContains(response, 'Avito')
         self.assertContains(response, regular_deal.customer_name)
         self.assertNotContains(response, avito_deal.customer_name)
         self.assertContains(response, 'Avito остаётся в отдельной таблице')
@@ -1620,10 +1641,10 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'id="deal-compact-list"', html=False)
         self.assertContains(response, 'Сделка')
-        self.assertContains(response, 'Следующий шаг')
-        self.assertContains(response, 'Обеспечение')
-        self.assertContains(response, 'SLA')
-        self.assertContains(response, 'Действия')
+        self.assertContains(response, 'Клиент / Контекст')
+        self.assertContains(response, 'Primary status')
+        self.assertContains(response, 'Secondary status')
+        self.assertContains(response, 'Риск')
         self.assertContains(response, 'Контекст сделки')
         self.assertContains(response, 'Следующий шаг и блокеры')
         self.assertContains(response, 'Второстепенные поля')

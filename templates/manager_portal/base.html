@@ -7,10 +7,15 @@
   <title>{% block title %}Кабинет менеджера{% endblock %}</title>
   {% include "layout/_head_assets.html" %}
   <link rel="stylesheet" href="{% static 'css/manager_portal.css' %}">
+  <script>
+    window.managerPortalShell = Object.assign({}, window.managerPortalShell, {
+      sidebarCollapsedKey: 'manager-portal:sidebar-collapsed:v2'
+    });
+  </script>
   <script defer src="{% static 'js/manager_portal.js' %}"></script>
   <script>
     (function () {
-      var SIDEBAR_KEY = 'manager-portal:sidebar-collapsed';
+      var SIDEBAR_KEY = window.managerPortalShell.sidebarCollapsedKey;
       var THEME_KEY = 'manager-portal:theme';
       try {
         var theme = localStorage.getItem(THEME_KEY);
@@ -85,6 +90,9 @@
           <div class="manager-sidebar-header-row">
             <div class="manager-sidebar-avatar">BV</div>
             <button type="button" data-manager-sidebar-toggle class="manager-sidebar-toggle-btn">
+              <span class="manager-sidebar-toggle-icon" aria-hidden="true">
+                {% include "manager_portal/_sidebar_icon.html" with icon="sidebar_toggle" only %}
+              </span>
               <span data-manager-sidebar-toggle-label data-expanded-label="Свернуть" data-collapsed-label="Развернуть">Свернуть</span>
             </button>
           </div>
@@ -103,7 +111,9 @@
                 {% for item in group.items %}
                   {% if item.enabled %}
                     <a href="{% url item.url_name %}" class="manager-nav-item {% if item.active %}manager-nav-item-active{% endif %}">
-                      <span class="manager-nav-icon"><i data-lucide="{{ item.icon }}"></i></span>
+                      <span class="manager-nav-icon" aria-hidden="true">
+                        {% include "manager_portal/_sidebar_icon.html" with icon=item.icon only %}
+                      </span>
                       <span class="manager-nav-label">{{ item.label }}</span>
                     </a>
                   {% endif %}
@@ -147,7 +157,7 @@
       {# Topbar #}
       <header class="manager-topbar-new">
         <button type="button" data-mobile-sidebar-open class="manager-mobile-menu-btn lg:hidden">Меню</button>
-        <span class="manager-topbar-page-title">{{ manager_active_label }}</span>
+        <span class="manager-topbar-page-title">{% if manager_active_label == 'Заказы' %}Сделки{% else %}{{ manager_active_label }}{% endif %}</span>
         {% if manager_has_staff_access and manager_global_search_url %}
           <div class="manager-topbar-search manager-global-search-shell" data-manager-global-search-root>
             <form
