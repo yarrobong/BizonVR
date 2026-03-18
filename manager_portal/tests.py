@@ -3304,6 +3304,29 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         self.assertEqual(response.context['highlighted_client'].pk, self.manager_client.pk)
         self.assertEqual(response.context['highlighted_client'].crm_source_label, 'Avito')
 
+    def test_client_create_view_creates_client_and_redirects(self):
+        self.login_staff()
+
+        response = self.client.post(
+            reverse('manager_portal:client_create'),
+            {
+                'user': '',
+                'name': 'Новый клиент',
+                'email': 'fresh@example.com',
+                'phone': '+7 912 000 00 00',
+                'telegram': '@fresh',
+                'address': 'Екатеринбург',
+                'comments': 'Создан через форму',
+                'status': ManagerClient.STATUS_ACTIVE,
+                'orders': [self.order.pk],
+            },
+        )
+
+        client = ManagerClient.objects.get(email='fresh@example.com')
+        self.assertRedirects(response, reverse('manager_portal:client_detail', kwargs={'pk': client.pk}))
+        self.assertEqual(client.name, 'Новый клиент')
+        self.assertEqual(list(client.orders.values_list('pk', flat=True)), [self.order.pk])
+
     def test_deal_create_prefills_from_client_query(self):
         self.login_staff()
         ManagerDeal.objects.create(

@@ -6179,6 +6179,32 @@ def order_state_update_view(request, pk):
 
 
 @staff_required
+def client_create_view(request):
+    if request.method == 'POST':
+        form = ManagerClientForm(request.POST)
+        if form.is_valid():
+            client = form.save()
+            messages.success(request, 'Клиент создан.')
+            return redirect('manager_portal:client_detail', pk=client.pk)
+    else:
+        form = ManagerClientForm()
+    return _render(
+        request,
+        'manager_portal/create_form.html',
+        active_tab='clients',
+        form=form,
+        page_kicker='Клиенты',
+        page_title='Новый клиент',
+        page_description='Создайте карточку клиента и при необходимости сразу привяжите заказы сайта.',
+        back_url=reverse('manager_portal:client_list'),
+        submit_label='Создать клиента',
+        hidden_fields=[],
+        form_sections=[],
+        secondary_fields=[],
+    )
+
+
+@staff_required
 def client_list_view(request):
     clients = _manager_client_queryset()
     filter_form = ClientFilterForm(request.GET or None)
@@ -6317,6 +6343,11 @@ def client_detail_view(request, pk):
         client=client,
         form=form,
     )
+
+
+@staff_required
+def warehouse_create_view(request):
+    return warehouse_list_view(request)
 
 
 @staff_required
@@ -6654,6 +6685,11 @@ def inventory_receipt_view(request):
 
 
 @staff_required
+def purchase_create_view(request):
+    return purchase_list_view(request)
+
+
+@staff_required
 def purchase_list_view(request):
     purchases = Purchase.objects.prefetch_related('items').order_by('-date', '-id')
     filter_form = PurchaseFilterForm(request.GET or None)
@@ -6729,6 +6765,11 @@ def purchase_add_item_view(request, pk):
     else:
         messages.error(request, 'Не удалось добавить позицию закупки.')
     return redirect('manager_portal:purchase_detail', pk=purchase.pk)
+
+
+@staff_required
+def cargo_create_view(request):
+    return cargo_list_view(request)
 
 
 @staff_required
@@ -6897,6 +6938,11 @@ def cargo_add_expense_view(request, pk):
     else:
         messages.error(request, 'Не удалось добавить расход.')
     return redirect('manager_portal:cargo_detail', pk=cargo.pk)
+
+
+@staff_required
+def reservation_create_view(request):
+    return reservation_list_view(request)
 
 
 @staff_required
