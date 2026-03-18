@@ -1480,6 +1480,66 @@ def _deal_list_actions(deal, *, current_user):
     }
 
 
+def _deal_contact_action(deal, *, deal_client=None):
+    email = (
+        getattr(deal_client, 'email', '')
+        or deal.business_email
+        or deal.order.email
+    ).strip()
+    if email:
+        return {
+            'label': 'Написать клиенту',
+            'kind': 'link',
+            'url': f'mailto:{email}',
+        }
+    phone = (
+        getattr(deal_client, 'phone', '')
+        or deal.customer_phone
+        or deal.order.phone
+    ).strip()
+    if phone:
+        normalized_phone = ''.join(ch for ch in phone if ch.isdigit() or ch == '+')
+        return {
+            'label': 'Связаться с клиентом',
+            'kind': 'link',
+            'url': f'tel:{normalized_phone or phone}',
+        }
+    return None
+
+
+def _deal_list_more_actions(deal, *, deal_client=None, return_query=''):
+    detail_url = reverse('manager_portal:deal_detail', kwargs={'pk': deal.pk})
+    primary_action = _deal_primary_cta(deal, scope='list', return_query=return_query)
+    actions = []
+    assign_self_action = _deal_assign_self_action(deal, scope='list', return_query=return_query)
+    if deal.responsible_manager_id is None and _action_identity(primary_action) != _action_identity(assign_self_action):
+        actions.append(assign_self_action)
+    contact_action = _deal_contact_action(deal, deal_client=deal_client)
+    if contact_action is not None:
+        actions.append(contact_action)
+    actions.extend(
+        [
+            {'label': 'Добавить комментарий', 'kind': 'link', 'url': f'{detail_url}?tab=history#deal-history'},
+            {'label': 'Изменить статус', 'kind': 'link', 'url': f'{detail_url}#deal-workflow'},
+            {
+                'label': 'Создать документ',
+                'kind': 'link',
+                'url': reverse(
+                    'manager_portal:deal_document_action',
+                    kwargs={'pk': deal.pk, 'document_type': ContractTemplate.DOC_TYPE_CONTRACT},
+                ),
+            },
+        ]
+    )
+    actions.extend(
+        _resolve_deal_scoped_actions(
+            _deal_secondary_ctas(deal, deal_client=deal_client),
+            detail_url=detail_url,
+        )
+    )
+    return _unique_actions(actions)
+
+
 def _deal_list_readiness(deal):
     return (
         {
@@ -1602,6 +1662,11 @@ def _decorate_deal_list_rows(deals, *, finance_map, current_user, return_query):
             _deal_secondary_ctas(deal, deal_client=deal.work_queue_client),
             detail_url=deal.list_actions['detail_url'],
         )
+        deal.list_actions['more_actions'] = _deal_list_more_actions(
+            deal,
+            deal_client=deal.work_queue_client,
+            return_query=return_query,
+        )
         deal.list_readiness = _deal_list_readiness(deal)
         deal.list_problem_labels = list(deal.problem_flag_labels[:3])
         deal.list_row_key = f'deal-{deal.pk}'
@@ -1636,6 +1701,95 @@ def _decorate_deal_list_rows(deals, *, finance_map, current_user, return_query):
         deal.secondary_status = deal_secondary_status(deal)
         deal.risk_summary = deal_risk_summary(deal, blockers=blockers)
     return deals
+
+
+def _decorate_focused_deal_preview(deal):
+    if deal is None:
+        return None
+    deal_client = getattr(deal, 'work_queue_client', None) or deal_manager_client(deal)
+    documents = list(
+        deal.contract_documents.exclude(status=ContractDocument.STATUS_ARCHIVED).order_by('-issue_date', '-id')
+    )
+    reservations = list(
+        deal.reservations.select_related('client', 'target_warehouse', 'source_warehouse')
+        .prefetch_related('items')
+        .order_by('-created_at', '-id')
+    )
+    shipments = list(
+        deal.shipments.select_related('client', 'reservation', 'source_warehouse', 'target_warehouse')
+        .prefetch_related('items')
+        .order_by('-created_at', '-id')
+    )
+    purchase_items = list(
+        PurchaseItem.objects.filter(order_item__order=deal.order)
+        .select_related('purchase', 'product', 'variant', 'order_item')
+        .prefetch_related('cargo_items__cargo')
+        .order_by('purchase_id', 'id')
+    )
+    cargo_items = list(
+        CargoItem.objects.filter(purchase_item__order_item__order=deal.order)
+        .select_related('cargo', 'product', 'variant', 'purchase_item')
+        .order_by('cargo_id', 'id')
+    )
+    supply_summary = _deal_supply_summary(
+        deal,
+        reservations=reservations,
+        purchase_items=purchase_items,
+        cargo_items=cargo_items,
+    )
+    order_item_rows = _deal_order_item_rows(
+        list(deal.order.items.select_related('product', 'variant').all()),
+        deal=deal,
+        reservations=reservations,
+        purchase_items=purchase_items,
+        cargo_items=cargo_items,
+        shipments=shipments,
+    )
+    try:
+        finance_deal = deal.finance_deal
+    except FinanceDeal.DoesNotExist:
+        finance_deal = None
+    finance_expenses = list(deal.finance_expenses.select_related('category', 'created_by').order_by('-date', '-id'))
+    finance_payouts = list(deal.finance_payouts.select_related('created_by').order_by('-date', '-id'))
+    participant_summary = _deal_participant_summary(
+        list(deal.participants.select_related('person_alias', 'order_item').order_by('role', 'id'))
+    )
+    activities = list(deal.activities.select_related('actor').order_by('-created_at', '-id')[:6])
+    timeline_entries = _deal_timeline_entries(activities)
+    payments = list(deal.order.payments.order_by('-created_at', '-id'))
+    latest_payment = next((payment for payment in payments if payment.status == Payment.STATUS_FINISHED), None)
+    if latest_payment is None and payments:
+        latest_payment = payments[0]
+    finance_summary = _deal_finance_summary(
+        deal,
+        finance_deal=finance_deal,
+        finance_expenses=finance_expenses,
+        finance_payouts=finance_payouts,
+        participant_summary=participant_summary,
+        latest_payment=latest_payment,
+    )
+    deal.quick_preview = {
+        'subject_summary': _deal_subject_summary(deal, order_item_rows=order_item_rows, finance_deal=finance_deal),
+        'documents_summary': _deal_documents_summary(deal, documents=documents),
+        'logistics_summary': _deal_logistics_summary(
+            deal,
+            reservations=reservations,
+            shipments=shipments,
+            purchase_items=purchase_items,
+            cargo_items=cargo_items,
+            order_item_rows=order_item_rows,
+            supply_summary=supply_summary,
+        ),
+        'history_entries': timeline_entries[:4],
+        'finance_summary': _deal_finance_summary_compact(finance_summary),
+        'client_summary': _deal_client_summary(
+            deal,
+            deal_client=deal_client,
+            activities=activities,
+            client_comment=(deal_client.comments if deal_client else '') or deal.customer_request_comment or deal.order.comment,
+        ),
+    }
+    return deal
 
 
 def _decorate_deal_kanban_rows(deals):
@@ -3813,7 +3967,7 @@ def _today_action_cutoff():
 
 def _use_default_work_scope(params):
     for key, values in params.lists():
-        if key in {'page', 'view', 'scope', 'kanban_scope'}:
+        if key in {'page', 'view', 'scope', 'kanban_scope', 'focus'}:
             continue
         if any((value or '').strip() for value in values):
             return False
@@ -3860,10 +4014,14 @@ def _apply_deal_preset(queryset, params):
         queryset = queryset.filter(problem_flags__contains=[overlay])
     if problem_view:
         queryset = _apply_deal_problem_view(queryset, problem_view)
+    if params.get('only_active'):
+        queryset = _active_deals(queryset)
     if params.get('only_unassigned'):
         queryset = queryset.filter(responsible_manager__isnull=True)
     if params.get('only_problematic'):
         queryset = queryset.exclude(problem_flags=[])
+    if params.get('action_today'):
+        queryset = _active_deals(queryset).filter(sla_due_at__isnull=False, sla_due_at__lte=_today_action_cutoff())
     return queryset
 
 
@@ -3973,6 +4131,8 @@ def _apply_deal_filters(deals, form, *, user):
         deals = deals.filter(responsible_manager=form.cleaned_data['responsible_manager'])
     if form.cleaned_data.get('mine'):
         deals = deals.filter(responsible_manager=user)
+    if form.cleaned_data.get('only_active'):
+        deals = _active_deals(deals)
     if form.cleaned_data.get('only_unassigned'):
         deals = deals.filter(responsible_manager__isnull=True)
     if form.cleaned_data.get('only_problematic'):
@@ -3992,6 +4152,8 @@ def _deal_advanced_filter_state(form):
         'overlay',
         'problem_view',
         'case_status',
+        'mine',
+        'only_active',
         'only_unassigned',
         'action_today',
     )
@@ -4013,24 +4175,28 @@ def _deal_advanced_filter_state(form):
 
 def _deal_queue_views(base_queryset):
     tone_map = {
-        'all': 'muted',
-        'unassigned': 'danger',
-        ManagerDeal.NEXT_STEP_NEEDS_PAYMENT: 'warning',
-        ManagerDeal.NEXT_STEP_NEEDS_RESERVATION: 'warning',
-        ManagerDeal.NEXT_STEP_NEEDS_DOCUMENTS: 'warning',
-        ManagerDeal.NEXT_STEP_READY_TO_SHIP: 'success',
         'problematic': 'danger',
+        'unassigned': 'danger',
+        ManagerDeal.NEXT_STEP_NEEDS_DOCUMENTS: 'warning',
+        ManagerDeal.NEXT_STEP_NEEDS_PAYMENT: 'warning',
+        ManagerDeal.NEXT_STEP_NEEDS_RESERVATION: 'muted',
+        ManagerDeal.NEXT_STEP_READY_TO_SHIP: 'success',
     }
     compact_presets = (
         {
-            'key': 'all',
-            'label': 'В работе',
-            'params': {},
+            'key': 'problematic',
+            'label': 'Проблемные',
+            'params': {'only_problematic': '1'},
         },
         {
             'key': 'unassigned',
             'label': 'Без ответственного',
             'params': {'only_unassigned': '1'},
+        },
+        {
+            'key': ManagerDeal.NEXT_STEP_NEEDS_DOCUMENTS,
+            'label': 'Ждут документы',
+            'params': {'queue': ManagerDeal.NEXT_STEP_NEEDS_DOCUMENTS},
         },
         {
             'key': ManagerDeal.NEXT_STEP_NEEDS_PAYMENT,
@@ -4043,19 +4209,9 @@ def _deal_queue_views(base_queryset):
             'params': {'queue': ManagerDeal.NEXT_STEP_NEEDS_RESERVATION},
         },
         {
-            'key': ManagerDeal.NEXT_STEP_NEEDS_DOCUMENTS,
-            'label': 'Ждут документы',
-            'params': {'queue': ManagerDeal.NEXT_STEP_NEEDS_DOCUMENTS},
-        },
-        {
             'key': ManagerDeal.NEXT_STEP_READY_TO_SHIP,
             'label': 'Готовы к отгрузке',
             'params': {'queue': ManagerDeal.NEXT_STEP_READY_TO_SHIP},
-        },
-        {
-            'key': 'problematic',
-            'label': 'Проблемные',
-            'params': {'only_problematic': '1'},
         },
     )
     presets = []
@@ -4091,29 +4247,68 @@ def _deal_signal_views(base_queryset):
     return signal_views
 
 
-def _deal_overview_metrics(scope):
+def _deal_priority_metrics(scope, query_params):
+    overdue_count = scope.filter(sla_due_at__isnull=False).filter(
+        Q(sla_breached_at__isnull=False) | Q(sla_due_at__lte=timezone.now())
+    ).count()
     return [
         {
-            'label': 'В работе',
-            'count': scope.count(),
-            'query_string': '',
+            'key': 'sla_overdue',
+            'label': 'Просрочено SLA',
+            'count': overdue_count,
+            'value': overdue_count,
+            'tone': 'critical',
+            'query_string': _deal_query_string_with_updates(
+                query_params,
+                page=None,
+                problem_view=DEAL_PROBLEM_VIEW_SLA_OVERDUE,
+            ),
         },
         {
-            'label': 'Проблемные',
-            'count': scope.exclude(problem_flags=[]).count(),
-            'query_string': urlencode({'only_problematic': '1'}),
-        },
-        {
-            'label': 'Требуют действия сегодня',
-            'count': scope.filter(sla_due_at__isnull=False, sla_due_at__lte=_today_action_cutoff()).count(),
-            'query_string': urlencode({'action_today': '1'}),
-        },
-        {
+            'key': 'unassigned',
             'label': 'Без ответственного',
             'count': scope.filter(responsible_manager__isnull=True).count(),
-            'query_string': urlencode({'only_unassigned': '1'}),
+            'value': scope.filter(responsible_manager__isnull=True).count(),
+            'tone': 'neutral',
+            'query_string': _deal_query_string_with_updates(query_params, page=None, only_unassigned='1'),
+        },
+        {
+            'key': 'needs_payment',
+            'label': 'Ждут оплату',
+            'count': scope.filter(next_step_code=ManagerDeal.NEXT_STEP_NEEDS_PAYMENT).count(),
+            'value': scope.filter(next_step_code=ManagerDeal.NEXT_STEP_NEEDS_PAYMENT).count(),
+            'tone': 'warning',
+            'query_string': _deal_query_string_with_updates(
+                query_params,
+                page=None,
+                queue=ManagerDeal.NEXT_STEP_NEEDS_PAYMENT,
+            ),
+        },
+        {
+            'key': 'needs_documents',
+            'label': 'Ждут документы',
+            'count': scope.filter(next_step_code=ManagerDeal.NEXT_STEP_NEEDS_DOCUMENTS).count(),
+            'value': scope.filter(next_step_code=ManagerDeal.NEXT_STEP_NEEDS_DOCUMENTS).count(),
+            'tone': 'notice',
+            'query_string': _deal_query_string_with_updates(
+                query_params,
+                page=None,
+                queue=ManagerDeal.NEXT_STEP_NEEDS_DOCUMENTS,
+            ),
+        },
+        {
+            'key': 'problematic',
+            'label': 'Проблемные',
+            'count': scope.exclude(problem_flags=[]).count(),
+            'value': scope.exclude(problem_flags=[]).count(),
+            'tone': 'problem',
+            'query_string': _deal_query_string_with_updates(query_params, page=None, only_problematic='1'),
         },
     ]
+
+
+def _deal_overview_metrics(scope, query_params):
+    return _deal_priority_metrics(scope, query_params)
 
 
 def _deal_stage_metrics(scope, query_params):
@@ -4123,6 +4318,7 @@ def _deal_stage_metrics(scope, query_params):
         (ManagerDeal.CASE_STATUS_IN_PROGRESS, 'В работе'),
         (ManagerDeal.CASE_STATUS_WAITING_CLIENT, 'Ждут клиента'),
         (ManagerDeal.CASE_STATUS_READY_TO_SHIP, 'Готовы к отправке'),
+        (ManagerDeal.CASE_STATUS_COMPLETED, 'Завершены'),
     )
     metrics = []
     for status, label in definitions:
@@ -4138,32 +4334,98 @@ def _deal_stage_metrics(scope, query_params):
 
 
 def _deal_desktop_summary_metrics(scope, query_params):
-    overdue_count = scope.filter(sla_due_at__isnull=False).filter(
-        Q(sla_breached_at__isnull=False) | Q(sla_due_at__lte=timezone.now())
-    ).count()
-    last_sync = scope.aggregate(max_updated_at=Max('updated_at'))['max_updated_at']
-    last_sync_label = timezone.localtime(last_sync).strftime('%d.%m %H:%M') if last_sync else '—'
-    return [
-        {
-            'label': 'SLA просрочен',
-            'value': overdue_count,
-            'query_string': _deal_query_string_with_updates(query_params, page=None, problem_view=DEAL_PROBLEM_VIEW_SLA_OVERDUE),
-        },
-        {
-            'label': 'Без ответственного',
-            'value': scope.filter(responsible_manager__isnull=True).count(),
-            'query_string': _deal_query_string_with_updates(query_params, page=None, only_unassigned='1'),
-        },
-        {
-            'label': 'Последняя синхронизация',
-            'value': last_sync_label,
-            'query_string': '',
-        },
-    ]
+    return _deal_priority_metrics(scope, query_params)
 
 
 def _deal_saved_views(user):
     return DealSavedView.objects.filter(owner=user).order_by('name', 'id')
+
+
+def _deal_toolbar_presets(query_params):
+    definitions = (
+        ('all', 'Все сделки', {}),
+        ('mine', 'Мои сделки', {'mine': '1'}),
+        ('problematic', 'Проблемные', {'only_problematic': '1'}),
+        ('today', 'На сегодня', {'action_today': '1'}),
+        ('unassigned', 'Без ответственного', {'only_unassigned': '1'}),
+    )
+    active_key = 'all'
+    if (query_params.get('mine') or '').strip():
+        active_key = 'mine'
+    elif (query_params.get('only_problematic') or '').strip():
+        active_key = 'problematic'
+    elif (query_params.get('action_today') or '').strip():
+        active_key = 'today'
+    elif (query_params.get('only_unassigned') or '').strip():
+        active_key = 'unassigned'
+    presets = []
+    for key, label, updates in definitions:
+        params = {
+            'mine': None,
+            'only_problematic': None,
+            'action_today': None,
+            'only_unassigned': None,
+            'page': None,
+        }
+        params.update(updates)
+        presets.append(
+            {
+                'key': key,
+                'label': label,
+                'active': active_key == key,
+                'query_string': _deal_query_string_with_updates(query_params, **params),
+            }
+        )
+    return presets
+
+
+def _deal_quick_toggle_filters(query_params):
+    definitions = (
+        ('mine', 'Только мои', 'mine', '1'),
+        ('overdue', 'Только просроченные', 'sla_status', 'overdue'),
+        ('active', 'Только активные', 'only_active', '1'),
+    )
+    toggles = []
+    for key, label, param_key, param_value in definitions:
+        is_active = (query_params.get(param_key) or '').strip() == param_value
+        toggles.append(
+            {
+                'key': key,
+                'label': label,
+                'active': is_active,
+                'query_string': _deal_query_string_with_updates(
+                    query_params,
+                    page=None,
+                    **{param_key: None if is_active else param_value},
+                ),
+            }
+        )
+    return toggles
+
+
+def _deal_reset_filters_query_string(query_params):
+    return _deal_query_string_with_updates(
+        query_params,
+        page=None,
+        q=None,
+        overlay=None,
+        problem_view=None,
+        case_status=None,
+        payment_state=None,
+        fulfillment_status=None,
+        documents_status=None,
+        deal_type=None,
+        sla_status=None,
+        responsible_manager=None,
+        mine=None,
+        only_active=None,
+        only_unassigned=None,
+        only_problematic=None,
+        action_today=None,
+        queue=None,
+        sort=None,
+        focus=None,
+    )
 
 
 def _deal_customer_label(deal):
@@ -5800,6 +6062,7 @@ def deal_list_view(request):
     deals_page = None
     deal_page_numbers = []
     deal_kanban_columns = []
+    focused_deal = None
     if current_view_mode == DEAL_VIEW_KANBAN:
         kanban_deals = list(deals)
         decorated_kanban_deals = _decorate_deal_kanban_rows(kanban_deals)
@@ -5818,9 +6081,19 @@ def deal_list_view(request):
             current_user=request.user,
             return_query=request.GET.urlencode(),
         ))
+        focused_deal_id = (request.GET.get('focus') or '').strip()
+        focused_deal = next(
+            (deal for deal in deal_rows if str(deal.pk) == focused_deal_id),
+            deal_rows[0] if deal_rows else None,
+        )
+        for deal in deal_rows:
+            deal.is_focused = focused_deal is not None and deal.pk == focused_deal.pk
+            deal.list_focus_query = _deal_query_string_with_updates(request.GET, focus=deal.pk)
+        focused_deal = _decorate_focused_deal_preview(focused_deal)
         deals_page.object_list = deal_rows
         deal_page_numbers = _deal_page_numbers(deals_page)
     current_filter_query_string = _deal_query_string_without_page(request.GET)
+    current_focus_reset_query_string = _deal_query_string_with_updates(request.GET, focus=None)
     all_deals = deal_queryset_factory()
     all_deals = _apply_deal_scope(all_deals, current_scope)
     active_scope = _active_deals(all_deals)
@@ -5845,6 +6118,7 @@ def deal_list_view(request):
             'sla_status',
             'responsible_manager',
             'mine',
+            'only_active',
             'only_unassigned',
             'only_problematic',
             'action_today',
@@ -5872,14 +6146,19 @@ def deal_list_view(request):
         save_view_form=save_view_form,
         saved_views=saved_views,
         total_deals=total_deals,
-        deal_kpis=_deal_overview_metrics(active_scope),
+        deal_kpis=_deal_overview_metrics(active_scope, request.GET),
         deal_desktop_summary_metrics=_deal_desktop_summary_metrics(active_scope, request.GET),
         deal_stage_metrics=_deal_stage_metrics(active_scope, request.GET),
         queue_chips=queue_chips,
         signal_views=_deal_signal_views(active_scope),
+        deal_toolbar_presets=_deal_toolbar_presets(request.GET),
+        deal_quick_toggle_filters=_deal_quick_toggle_filters(request.GET),
+        deal_reset_filters_query_string=_deal_reset_filters_query_string(request.GET),
+        focused_deal=focused_deal,
         active_queue_chip=active_queue_chip,
         current_view_mode=current_view_mode,
         current_scope=current_scope,
+        current_focus_reset_query_string=current_focus_reset_query_string,
         list_view_query_string=_deal_query_string_with_updates(request.GET, page=None, view=None, scope=None, kanban_scope=None),
         kanban_view_query_string=_deal_query_string_with_updates(
             request.GET,

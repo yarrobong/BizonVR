@@ -168,6 +168,7 @@ class DealFilterForm(StyledFormMixin, forms.Form):
         label='Ответственный',
     )
     mine = forms.BooleanField(required=False, label='Только мои')
+    only_active = forms.BooleanField(required=False, label='Только активные')
     only_unassigned = forms.BooleanField(required=False, label='Без ответственного')
     only_problematic = forms.BooleanField(required=False, label='Проблемные')
     action_today = forms.BooleanField(required=False, label='Требуют действия сегодня')

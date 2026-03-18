@@ -28,7 +28,6 @@
       } catch (e) {}
     })();
   </script>
-  <style>html { font-size: 15px; }</style>
 </head>
 <body class="manager-shell">
   <div data-drawer-overlay class="manager-drawer-overlay"></div>
@@ -201,7 +200,26 @@
               <span class="manager-topbar-signals-badge">{{ manager_shell.problem_count }}</span>
             </a>
           {% endif %}
-          <a href="{% url 'accounts:logout' %}" class="manager-topbar-exit-btn">Выход</a>
+          <a href="{% url 'accounts:profile' %}" class="manager-topbar-profile-btn">
+            <span class="manager-topbar-profile-avatar">{{ request.user.get_username|slice:":1"|upper }}</span>
+            <span class="manager-topbar-profile-copy">
+              <span class="manager-topbar-profile-label">Профиль</span>
+              <span class="manager-topbar-profile-name">{{ request.user.get_full_name|default:request.user.get_username }}</span>
+            </span>
+          </a>
+          <details class="manager-topbar-account-menu">
+            <summary class="manager-topbar-account-summary">
+              Аккаунт
+              <span class="manager-topbar-account-caret" aria-hidden="true">▾</span>
+            </summary>
+            <div class="manager-topbar-account-dropdown">
+              <a href="{% url 'accounts:profile' %}" class="manager-topbar-account-link">Профиль</a>
+              {% if manager_can_access_admin %}
+                <a href="{% url 'admin:index' %}" class="manager-topbar-account-link">Админка</a>
+              {% endif %}
+              <a href="{% url 'accounts:logout' %}" class="manager-topbar-account-link manager-topbar-account-link-danger">Выход</a>
+            </div>
+          </details>
         </div>
       </header>
 

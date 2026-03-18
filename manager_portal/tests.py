@@ -1599,11 +1599,11 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             [metric['label'] for metric in response.context['deal_kpis']],
-            ['В работе', 'Проблемные', 'Требуют действия сегодня', 'Без ответственного'],
+            ['Просрочено SLA', 'Без ответственного', 'Ждут оплату', 'Ждут документы', 'Проблемные'],
         )
         self.assertEqual(
             [chip['label'] for chip in response.context['queue_chips']],
-            ['В работе', 'Без ответственного', 'Ждут оплату', 'Ждут резерв', 'Ждут документы', 'Готовы к отгрузке', 'Проблемные'],
+            ['Проблемные', 'Без ответственного', 'Ждут документы', 'Ждут оплату', 'Ждут резерв', 'Готовы к отгрузке'],
         )
         self.assertFalse(response.context['problem_views_expanded'])
         self.assertContains(response, 'Очередь сделок')
@@ -1626,7 +1626,7 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             [chip['label'] for chip in response.context['queue_chips']],
-            ['В работе', 'Без ответственного', 'Ждут оплату', 'Ждут резерв', 'Ждут документы', 'Готовы к отгрузке', 'Проблемные'],
+            ['Проблемные', 'Без ответственного', 'Ждут документы', 'Ждут оплату', 'Ждут резерв', 'Готовы к отгрузке'],
         )
         self.assertContains(response, 'Сделки / Заказы')
         self.assertContains(response, 'Очередь сделок')
@@ -1640,10 +1640,13 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'id="deal-compact-list"', html=False)
+        self.assertContains(response, 'Выбор')
         self.assertContains(response, 'Сделка')
         self.assertContains(response, 'Клиент / Контекст')
-        self.assertContains(response, 'Primary status')
-        self.assertContains(response, 'Secondary status')
+        self.assertContains(response, 'Текущий статус')
+        self.assertContains(response, 'Следующее действие')
+        self.assertContains(response, 'Деньги')
+        self.assertContains(response, 'Ответственный / SLA')
         self.assertContains(response, 'Риск')
         self.assertContains(response, 'Контекст сделки')
         self.assertContains(response, 'Следующий шаг и блокеры')
@@ -1651,10 +1654,17 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         self.assertContains(response, 'Канал')
         self.assertContains(response, 'Доставка')
         self.assertContains(response, 'Комментарии')
+        self.assertContains(response, 'Открыть')
+        self.assertContains(response, 'Ещё')
+        self.assertContains(response, 'Товары')
+        self.assertContains(response, 'Документы')
+        self.assertContains(response, 'Логистика')
+        self.assertContains(response, 'История')
         self.assertContains(response, f'data-row-toggle="deal-{deal.pk}"', html=False)
         self.assertContains(response, f'data-row-detail="deal-{deal.pk}"', html=False)
+        self.assertContains(response, f'data-row-focus-url="?focus={deal.pk}"', html=False)
         self.assertContains(response, deal.code)
-        self.assertContains(response, deal.short_label)
+        self.assertContains(response, self.order.first_name)
         self.assertContains(response, 'Развернуть строку сделки')
         self.assertNotContains(response, '>Activity<', html=False)
         self.assertNotContains(response, '>Blockers<', html=False)

@@ -1912,6 +1912,8 @@
   }
 
   function wireExpandableRows(root) {
+    const interactiveSelector = 'a, button, input, select, textarea, label, summary, details, form';
+
     function toggleRow(rowKey, button) {
       const detailRow = root.querySelector(`[data-row-detail="${rowKey}"]`) || document.querySelector(`[data-row-detail="${rowKey}"]`);
       if (!detailRow) {
@@ -1949,12 +1951,29 @@
       }
       row.dataset.managerBound = '1';
       row.addEventListener('click', (event) => {
-        if (event.target.closest('a, button, input, select, textarea, label')) {
+        if (event.target.closest(interactiveSelector)) {
           return;
         }
         const rowKey = row.dataset.rowToggleRow;
         const button = row.querySelector(`[data-row-toggle="${rowKey}"]`) || root.querySelector(`[data-row-toggle="${rowKey}"]`);
         toggleRow(rowKey, button);
+      });
+    });
+
+    root.querySelectorAll('[data-row-focus-url]').forEach((row) => {
+      if (row.dataset.managerFocusBound === '1') {
+        return;
+      }
+      row.dataset.managerFocusBound = '1';
+      row.addEventListener('click', (event) => {
+        if (event.target.closest(interactiveSelector)) {
+          return;
+        }
+        const {rowFocusUrl} = row.dataset;
+        if (!rowFocusUrl) {
+          return;
+        }
+        window.location.assign(rowFocusUrl);
       });
     });
   }

@@ -1,0 +1,255 @@
+/* Manager Portal contracts and proposals pages */
+
+.manager-proposal-shell {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.manager-proposal-search-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.manager-proposal-search-wrap {
+  position: relative;
+}
+
+.manager-proposal-search-input {
+  width: 100%;
+  border: 1px solid rgba(51, 65, 85, 0.88);
+  border-radius: 1rem;
+  background: linear-gradient(180deg, rgba(2, 6, 23, 0.94), rgba(15, 23, 42, 0.92));
+  color: rgb(248 250 252);
+  padding: 0.95rem 1rem;
+  transition: border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.manager-proposal-search-input:focus {
+  outline: none;
+  border-color: rgba(34, 211, 238, 0.52);
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.14);
+}
+
+.manager-proposal-search-input::placeholder {
+  color: rgb(100 116 139);
+}
+
+.manager-proposal-dropdown {
+  position: absolute;
+  inset: calc(100% + 0.6rem) 0 auto;
+  z-index: 20;
+  display: none;
+  max-height: 22rem;
+  overflow-y: auto;
+  border: 1px solid rgba(51, 65, 85, 0.88);
+  border-radius: 1rem;
+  background: rgba(2, 6, 23, 0.98);
+  box-shadow: 0 24px 48px rgba(2, 6, 23, 0.4);
+}
+
+.manager-proposal-dropdown.show {
+  display: block;
+}
+
+.manager-proposal-dropdown-item {
+  display: grid;
+  grid-template-columns: 3rem minmax(0, 1fr) auto;
+  gap: 0.9rem;
+  align-items: center;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid rgba(30, 41, 59, 0.9);
+  cursor: pointer;
+  transition: background 180ms ease;
+}
+
+.manager-proposal-dropdown-item:last-child {
+  border-bottom: none;
+}
+
+.manager-proposal-dropdown-item:hover {
+  background: rgba(15, 23, 42, 0.96);
+}
+
+.manager-proposal-dropdown-empty {
+  grid-template-columns: 1fr;
+  color: rgb(148 163 184);
+  cursor: default;
+}
+
+.manager-proposal-dropdown-item img,
+.manager-proposal-thumb-placeholder-sm {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 0.8rem;
+  object-fit: cover;
+  background: rgba(15, 23, 42, 0.82);
+  border: 1px solid rgba(51, 65, 85, 0.72);
+}
+
+.manager-proposal-dropdown-name {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: white;
+}
+
+.manager-proposal-dropdown-meta {
+  margin-top: 0.15rem;
+  font-size: 0.78rem;
+  color: rgb(148 163 184);
+}
+
+.manager-proposal-dropdown-price {
+  white-space: nowrap;
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: rgb(165 243 252);
+}
+
+.manager-proposal-card {
+  display: grid;
+  grid-template-columns: 5rem minmax(0, 1fr) 7rem 9rem auto auto;
+  gap: 1rem;
+  align-items: center;
+  border: 1px solid rgba(51, 65, 85, 0.72);
+  border-radius: 1.5rem;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.88), rgba(2, 6, 23, 0.96));
+  padding: 1rem 1.1rem;
+  margin-bottom: 0.9rem;
+}
+
+.manager-proposal-thumb img,
+.manager-proposal-thumb-placeholder {
+  width: 5rem;
+  height: 5rem;
+  border-radius: 1rem;
+  object-fit: cover;
+  background: rgba(15, 23, 42, 0.82);
+  border: 1px solid rgba(51, 65, 85, 0.72);
+}
+
+.manager-proposal-thumb-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgb(148 163 184);
+  font-size: 0.7rem;
+  text-align: center;
+}
+
+.manager-proposal-name {
+  font-size: 1rem;
+  font-weight: 700;
+  color: white;
+  line-height: 1.4;
+}
+
+.manager-proposal-meta {
+  margin-top: 0.3rem;
+  font-size: 0.82rem;
+  color: rgb(148 163 184);
+}
+
+.manager-proposal-field {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.manager-proposal-field label {
+  font-size: 0.68rem;
+  line-height: 1rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgb(100 116 139);
+}
+
+.manager-proposal-field input {
+  width: 100%;
+  border: 1px solid rgba(51, 65, 85, 0.88);
+  border-radius: 0.9rem;
+  background: rgba(2, 6, 23, 0.92);
+  color: white;
+  padding: 0.8rem 0.9rem;
+}
+
+.manager-proposal-field input:focus {
+  outline: none;
+  border-color: rgba(34, 211, 238, 0.52);
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.14);
+}
+
+.manager-proposal-sum {
+  white-space: nowrap;
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: rgb(165 243 252);
+  border: 1px solid rgba(34, 211, 238, 0.22);
+  border-radius: 9999px;
+  background: rgba(8, 145, 178, 0.08);
+  padding: 0.75rem 0.95rem;
+}
+
+.manager-proposal-remove {
+  border: 1px solid rgba(190, 24, 93, 0.28);
+  border-radius: 0.9rem;
+  background: rgba(190, 24, 93, 0.08);
+  color: rgb(253 164 175);
+  padding: 0.8rem 0.95rem;
+  transition: background 180ms ease, border-color 180ms ease;
+}
+
+.manager-proposal-remove:hover {
+  background: rgba(190, 24, 93, 0.14);
+  border-color: rgba(244, 63, 94, 0.34);
+}
+
+@media (max-width: 1023px) {
+  .manager-proposal-card {
+    grid-template-columns: 5rem minmax(0, 1fr);
+  }
+
+  .manager-proposal-sum,
+  .manager-proposal-remove,
+  .manager-proposal-field-qty,
+  .manager-proposal-field-price {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 640px) {
+  .manager-bulk-toolbar {
+    top: 0.75rem;
+    margin: 0.75rem;
+    padding: 0.75rem;
+  }
+
+  .manager-bulk-form-select {
+    flex-basis: 100%;
+  }
+
+  .manager-bulk-form-select button,
+  .manager-bulk-form button {
+    width: 100%;
+  }
+
+  .manager-bulk-toolbar .manager-bulk-form:last-of-type,
+  .manager-bulk-toolbar > button {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .manager-proposal-dropdown-item {
+    grid-template-columns: 2.5rem minmax(0, 1fr);
+  }
+
+  .manager-proposal-dropdown-price {
+    grid-column: 2;
+  }
+
+  .manager-proposal-dropdown-item img,
+  .manager-proposal-thumb-placeholder-sm {
+    width: 2.5rem;
+    height: 2.5rem;
+  }
+}
