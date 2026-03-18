@@ -7,6 +7,7 @@ app_name = 'manager_portal'
 urlpatterns = [
     path('', views.entry_view, name='entry'),
     path('search/', views.global_search_results_view, name='global_search_results'),
+    path('clients/lookup/', views.client_lookup_view, name='client_lookup'),
     path('deals/', views.deal_list_view, name='deal_list'),
     path('deals/new/', views.order_create_view, name='deal_create'),
     path('deals/search/', views.deal_search_view, name='deal_search'),

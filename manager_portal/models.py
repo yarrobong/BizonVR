@@ -350,20 +350,24 @@ class ManagerDeal(models.Model):
     ]
 
     NEXT_STEP_NEEDS_CONFIRMATION = 'needs_confirmation'
+    NEXT_STEP_NEEDS_AVAILABILITY_CONFIRMATION = 'needs_availability_confirmation'
     NEXT_STEP_NEEDS_PAYMENT = 'needs_payment'
     NEXT_STEP_NEEDS_RESERVATION = 'needs_reservation'
     NEXT_STEP_NEEDS_PROCUREMENT = 'needs_procurement'
     NEXT_STEP_NEEDS_DOCUMENTS = 'needs_documents'
+    NEXT_STEP_NEEDS_DOCUMENT_DISPATCH = 'needs_document_dispatch'
     NEXT_STEP_READY_TO_SHIP = 'ready_to_ship'
     NEXT_STEP_SHIPPED = 'shipped'
     NEXT_STEP_RETURN_TO_STOCK = 'return_to_stock'
     NEXT_STEP_COMPLETED = 'completed'
     NEXT_STEP_CHOICES = [
         (NEXT_STEP_NEEDS_CONFIRMATION, 'Подтвердить заказ'),
+        (NEXT_STEP_NEEDS_AVAILABILITY_CONFIRMATION, 'Подтвердить наличие'),
         (NEXT_STEP_NEEDS_PAYMENT, 'Получить оплату'),
         (NEXT_STEP_NEEDS_RESERVATION, 'Создать бронь'),
         (NEXT_STEP_NEEDS_PROCUREMENT, 'Запустить закупку'),
         (NEXT_STEP_NEEDS_DOCUMENTS, 'Подготовить документы'),
+        (NEXT_STEP_NEEDS_DOCUMENT_DISPATCH, 'Отправить клиенту документы'),
         (NEXT_STEP_READY_TO_SHIP, 'Подготовить отправление'),
         (NEXT_STEP_SHIPPED, 'Контролировать доставку'),
         (NEXT_STEP_RETURN_TO_STOCK, 'Забрать возврат'),
@@ -374,16 +378,22 @@ class ManagerDeal(models.Model):
     PROBLEM_FLAG_NO_ASSIGNEE = 'no_assignee'
     PROBLEM_FLAG_SLA_OVERDUE = 'sla_overdue'
     PROBLEM_FLAG_STOCK_CONFLICT = 'stock_conflict'
+    PROBLEM_FLAG_MISSING_CONTACTS = 'missing_contacts'
+    PROBLEM_FLAG_MISSING_PAYMENT = 'missing_payment'
     PROBLEM_FLAG_PAYMENT_BLOCKED = 'payment_blocked'
     PROBLEM_FLAG_MISSING_DOCUMENTS = 'missing_documents'
     PROBLEM_FLAG_SHIPMENT_BLOCKED = 'shipment_blocked'
+    PROBLEM_FLAG_STALE_UPDATES = 'stale_updates'
     PROBLEM_FLAG_LABELS = {
         PROBLEM_FLAG_NO_ASSIGNEE: 'Без ответственного',
         PROBLEM_FLAG_SLA_OVERDUE: 'SLA просрочен',
         PROBLEM_FLAG_STOCK_CONFLICT: 'Конфликт по остатку',
+        PROBLEM_FLAG_MISSING_CONTACTS: 'Нет контактов',
+        PROBLEM_FLAG_MISSING_PAYMENT: 'Нет оплаты',
         PROBLEM_FLAG_PAYMENT_BLOCKED: 'Блокировка оплаты',
         PROBLEM_FLAG_MISSING_DOCUMENTS: 'Не хватает документов',
         PROBLEM_FLAG_SHIPMENT_BLOCKED: 'Блокировка отгрузки',
+        PROBLEM_FLAG_STALE_UPDATES: 'Нет обновлений 48 ч',
     }
 
     BUYER_INDIVIDUAL = 'individual'
@@ -804,7 +814,15 @@ class ManagerDeal(models.Model):
         }
         if self.deal_status and self.deal_status not in allowed_statuses:
             raise ValidationError({'deal_status': 'Статус не подходит для выбранного типа сделки.'})
-        if self.deal_type == self.DEAL_SALE_FROM_STOCK and not self.stock_warehouse_id:
+        if (
+            self.deal_type == self.DEAL_SALE_FROM_STOCK
+            and not self.stock_warehouse_id
+            and self.deal_status
+            not in {
+                self.DEAL_STATUS_NEW,
+                self.DEAL_STATUS_CANCELLED,
+            }
+        ):
             raise ValidationError({'stock_warehouse': 'Для продажи из наличия выберите склад.'})
         if self.deal_type == self.DEAL_SALE_ON_REQUEST and self.deal_status == self.DEAL_STATUS_SUPPLIER_ORDERED:
             if self.prepayment_required_amount > 0 and self.prepayment_amount < self.prepayment_required_amount:

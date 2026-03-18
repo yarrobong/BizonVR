@@ -4,424 +4,424 @@
 
 {% block content %}
   <div class="space-y-5">
-    <section class="manager-panel manager-deals-header-panel rounded-[1.75rem] p-4 lg:p-6">
-      <div class="manager-deals-header-stack">
-        <div class="manager-deals-header-main">
-          <div class="manager-deals-heading">
-            <p class="manager-mobile-screen-eyebrow">
-              {% if current_view_mode == 'kanban' %}
-                Канбан
-              {% elif current_scope == 'avito' %}
-                Avito
-              {% else %}
-                Список
-              {% endif %}
-            </p>
+    <section class="manager-panel rounded-[1.75rem] p-4 lg:p-5">
+      <div class="space-y-4 lg:hidden">
+        <div class="manager-mobile-screen-header">
+          <div>
+            <p class="manager-mobile-screen-eyebrow">Операционный центр</p>
             <h2 class="manager-mobile-screen-title">Сделки / Заказы</h2>
+            <p class="manager-mobile-screen-copy">Очередь, следующий шаг, дедлайн и проблемные сигналы без табличного шума.</p>
           </div>
+          <button type="button" data-drawer-target="#deal-filters-drawer" class="manager-mobile-screen-filter">
+            Фильтры
+            {% if deal_advanced_filters_count %}
+              <span class="manager-queue-chip-count">{{ deal_advanced_filters_count }}</span>
+            {% endif %}
+          </button>
+        </div>
 
-          <div class="manager-deals-header-controls">
-            <div class="manager-deals-header-stats" aria-label="Статистика страницы">
-              {% for stat in page_header_stats %}
-                <span class="manager-compact-stat">
-                  <span class="manager-compact-stat-label">{{ stat.label }}</span>
-                  <strong>{{ stat.value }}</strong>
-                </span>
-              {% endfor %}
-            </div>
+        <div class="manager-mobile-kpi-grid">
+          {% for metric in deal_kpis %}
+            <a
+              href="{% url 'manager_portal:deal_list' %}{% if metric.query_string or current_view_mode == 'kanban' or current_scope == 'avito' %}?{% endif %}{% if metric.query_string %}{{ metric.query_string }}{% endif %}{% if current_view_mode == 'kanban' %}{% if metric.query_string %}&{% endif %}view=kanban{% elif current_scope == 'avito' %}{% if metric.query_string %}&{% endif %}scope=avito{% endif %}"
+              class="manager-mobile-kpi-card {% if metric.label == 'Проблемные' %}manager-mobile-kpi-card-danger{% elif metric.label == 'Требуют действия сегодня' %}manager-mobile-kpi-card-warning{% else %}manager-mobile-kpi-card-neutral{% endif %}"
+            >
+              <span class="manager-mobile-kpi-label">{{ metric.label }}</span>
+              <strong class="manager-mobile-kpi-value">{{ metric.count }}</strong>
+            </a>
+          {% endfor %}
+        </div>
 
-            <div class="manager-deals-header-actions">
-              <div class="manager-view-switch" role="tablist" aria-label="Вид сделок">
-                <a
-                  href="{% url 'manager_portal:deal_list' %}{% if list_view_query_string %}?{{ list_view_query_string }}{% endif %}"
-                  class="manager-view-switch-link {% if current_view_mode == 'list' and current_scope != 'avito' %}manager-view-switch-link-active{% endif %}"
-                >Таблица</a>
-                <a
-                  href="{% url 'manager_portal:deal_list' %}{% if kanban_view_query_string %}?{{ kanban_view_query_string }}{% endif %}"
-                  class="manager-view-switch-link {% if current_view_mode == 'kanban' %}manager-view-switch-link-active{% endif %}"
-                >Канбан</a>
-                <a
-                  href="{% url 'manager_portal:deal_list' %}{% if avito_view_query_string %}?{{ avito_view_query_string }}{% endif %}"
-                  class="manager-view-switch-link {% if current_view_mode == 'list' and current_scope == 'avito' %}manager-view-switch-link-active{% endif %}"
-                >Avito</a>
-              </div>
-
-              <details class="manager-inline-dropdown manager-deals-saved-views-dropdown">
-                <summary class="manager-inline-action manager-deals-saved-views-trigger">
-                  Виды
-                  {% if saved_views %}<span class="manager-queue-chip-count">{{ saved_views|length }}</span>{% endif %}
-                </summary>
-                <div class="manager-inline-dropdown-menu manager-inline-dropdown-menu-right manager-deals-saved-views-menu">
-                  <div class="flex items-start justify-between gap-3">
-                    <div>
-                      <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Сохраненные виды</p>
-                      <p class="mt-2 text-sm text-slate-400">Рабочие подборки фильтров и очередей доступны рядом с переключением вида.</p>
-                    </div>
-                    <button type="button" data-drawer-target="#deal-save-view-drawer" class="manager-inline-action manager-inline-action-primary">
-                      Сохранить текущий
-                    </button>
-                  </div>
-                  <div class="manager-deals-saved-views-list mt-4">
-                    {% for view in saved_views %}
-                      <a
-                        href="{% url 'manager_portal:deal_list' %}{% if view.query_string %}?{{ view.query_string }}{% endif %}"
-                        class="manager-saved-view-chip {% if view.query_string == current_query_string %}manager-saved-view-chip-active{% endif %}"
-                      >
-                        <span class="manager-saved-view-chip-name">{{ view.name }}</span>
-                        {% if view.query_string == current_query_string %}
-                          <span class="manager-pill">Активен</span>
-                        {% endif %}
-                      </a>
-                    {% empty %}
-                      <p class="text-sm text-slate-400">Сохраненных видов пока нет.</p>
-                    {% endfor %}
-                  </div>
-                </div>
-              </details>
-
-              <button type="button" data-drawer-target="#deal-filters-drawer" class="manager-inline-action manager-deals-filter-button">
-                Фильтры
-                {% if deal_advanced_filters_count %}
-                  <span class="manager-queue-chip-count">{{ deal_advanced_filters_count }}</span>
-                {% endif %}
-              </button>
-
-              <a
-                href="{% url 'manager_portal:deal_create' %}"
-                class="manager-create-action manager-deals-create-action"
-              >Новая сделка</a>
-            </div>
+        <div class="manager-mobile-view-row">
+          <div class="manager-view-switch" role="tablist" aria-label="Вид сделок">
+            <a
+              href="{% url 'manager_portal:deal_list' %}{% if list_view_query_string %}?{{ list_view_query_string }}{% endif %}"
+              class="manager-view-switch-link {% if current_view_mode == 'list' and current_scope != 'avito' %}manager-view-switch-link-active{% endif %}"
+            >Список</a>
+            <a
+              href="{% url 'manager_portal:deal_list' %}{% if kanban_view_query_string %}?{{ kanban_view_query_string }}{% endif %}"
+              class="manager-view-switch-link {% if current_view_mode == 'kanban' %}manager-view-switch-link-active{% endif %}"
+            >Канбан</a>
+            <a
+              href="{% url 'manager_portal:deal_list' %}{% if avito_view_query_string %}?{{ avito_view_query_string }}{% endif %}"
+              class="manager-view-switch-link {% if current_view_mode == 'list' and current_scope == 'avito' %}manager-view-switch-link-active{% endif %}"
+            >Avito</a>
           </div>
         </div>
 
-        {% if deal_page_context_stats %}
-          <div class="manager-deals-context-strip" aria-label="Контекст страницы сделок">
-            {% for stat in deal_page_context_stats %}
-              {% if stat.url %}
-                <a href="{{ stat.url }}" class="manager-topbar-meta-pill manager-deals-context-pill manager-deals-context-pill-{{ stat.tone }}">
-              {% else %}
-                <span class="manager-topbar-meta-pill manager-deals-context-pill manager-deals-context-pill-{{ stat.tone }}">
-              {% endif %}
-                  {{ stat.label }}
-                  <strong>{{ stat.value }}</strong>
-              {% if stat.url %}
-                </a>
-              {% else %}
-                </span>
-              {% endif %}
-            {% endfor %}
+        <div class="manager-chip-scroll manager-chip-scroll-compact">
+          {% for queue in queue_chips %}
+            <a
+              href="{% url 'manager_portal:deal_list' %}{% if queue.query_string or current_view_mode == 'kanban' or current_scope == 'avito' %}?{% endif %}{% if queue.query_string %}{{ queue.query_string }}{% endif %}{% if current_view_mode == 'kanban' %}{% if queue.query_string %}&{% endif %}view=kanban{% elif current_scope == 'avito' %}{% if queue.query_string %}&{% endif %}scope=avito{% endif %}"
+              class="manager-queue-chip manager-queue-chip-compact {% if active_queue_chip == queue.key %}manager-queue-chip-active{% endif %}"
+            >
+              <span class="manager-queue-chip-label">{{ queue.label }}</span>
+              <span class="manager-queue-chip-count {% if active_queue_chip == queue.key %}manager-queue-chip-count-active{% else %}manager-queue-chip-count-{{ queue.tone }}{% endif %}">{{ queue.count }}</span>
+            </a>
+          {% endfor %}
+        </div>
+
+        <div class="manager-mobile-signal-strip">
+          {% for signal in signal_views|slice:":3" %}
+            <a href="{% url 'manager_portal:deal_list' %}?{{ signal.query_string }}" class="manager-mobile-signal-card {% if signal.count %}manager-mobile-signal-card-live{% endif %}">
+              <div>
+                <p class="manager-mobile-signal-title">{{ signal.label }}</p>
+                <p class="manager-mobile-signal-copy">{{ signal.description }}</p>
+              </div>
+              <strong class="manager-mobile-signal-count">{{ signal.count }}</strong>
+            </a>
+          {% endfor %}
+        </div>
+
+        {% if current_view_mode == 'kanban' %}
+          <div class="flex items-center gap-2">
+            <button type="button" class="manager-inline-action flex-1 justify-center" data-board-scroll="prev">← Этап назад</button>
+            <button type="button" class="manager-inline-action flex-1 justify-center" data-board-scroll="next">Этап вперед →</button>
           </div>
         {% endif %}
+      </div>
 
-        <details class="manager-collapsible-panel manager-deals-kpi-panel" {% if deal_kpi_panel_open %}open{% endif %}>
-          <summary class="manager-collapsible-summary manager-deals-kpi-summary">
-            <div class="manager-deals-kpi-summary-copy">
-              <p class="manager-mobile-screen-eyebrow">Диагностика</p>
-              <p class="manager-deals-kpi-summary-title">Компактная строка по этапам вместо высокого блока карточек.</p>
-            </div>
-            <div class="manager-deals-kpi-summary-strip" aria-label="Компактная сводка по этапам">
-              {% for metric in primary_deal_kpis %}
-                <span class="manager-deals-kpi-summary-pill manager-deals-kpi-summary-pill-{{ metric.tone }} {% if metric.is_active %}manager-deals-kpi-summary-pill-active{% endif %}">
-                  <span class="manager-deals-kpi-summary-pill-label">{{ metric.label }}</span>
-                  <strong class="manager-deals-kpi-summary-pill-value">{{ metric.count }}</strong>
-                </span>
-              {% endfor %}
-            </div>
-          </summary>
-          <div class="manager-collapsible-body">
-            <div class="manager-deals-kpi-scroller">
-              <div class="manager-deals-kpi-grid">
-                {% for metric in primary_deal_kpis %}
-                  <a
-                    href="{% url 'manager_portal:deal_list' %}{% if metric.query_string or current_view_mode == 'kanban' or current_scope == 'avito' %}?{% endif %}{% if metric.query_string %}{{ metric.query_string }}{% endif %}{% if current_view_mode == 'kanban' %}{% if metric.query_string %}&{% endif %}view=kanban{% elif current_scope == 'avito' %}{% if metric.query_string %}&{% endif %}scope=avito{% endif %}"
-                    class="manager-deal-kpi manager-deal-kpi-{{ metric.tone }} {% if metric.is_active %}manager-deal-kpi-active{% endif %} rounded-[1.35rem] border border-slate-800/80 bg-slate-950/70 p-4"
-                    aria-label="{{ metric.label }}: {{ metric.count }}. {{ metric.trend.text }}"
-                  >
-                    <span class="manager-deals-kpi-label">{{ metric.label }}</span>
-                    <strong class="manager-deals-kpi-value">{{ metric.count }}</strong>
-                    <span class="manager-deal-kpi-trend manager-deal-kpi-trend-{{ metric.trend.direction }}">
-                      <span class="manager-deal-kpi-trend-icon" aria-hidden="true">{{ metric.trend.icon }}</span>
-                      <span>{{ metric.trend.text }}</span>
-                    </span>
-                    <span class="manager-deal-kpi-hint">
-                      <span>{% if metric.is_active %}Фильтр активен{% else %}Фильтр по статусу{% endif %}</span>
-                      <span aria-hidden="true">→</span>
-                    </span>
-                  </a>
-                {% endfor %}
-              </div>
-            </div>
+      <div class="hidden lg:block">
+        <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+          <div>
+            <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Рабочий центр</p>
+            <h2 class="mt-2 text-2xl font-semibold">Сделки / Заказы</h2>
           </div>
-        </details>
-
-        <div class="manager-deals-chip-section">
-          <div class="manager-deals-chip-section-head">
-            <p class="manager-mobile-screen-eyebrow">Очереди</p>
-            {% if active_queue_chip and active_queue_chip != 'all' %}
-              {% for queue in queue_chips %}
-                {% if active_queue_chip == queue.key %}
-                  <span class="manager-pill">Активная очередь <strong>{{ queue.label }}</strong></span>
-                {% endif %}
-              {% endfor %}
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="manager-pill">Найдено <strong>{{ total_deals }}</strong></span>
+            {% if current_view_mode == 'kanban' %}
+              <span class="manager-pill">Колонки <strong>{{ deal_kanban_columns|length }}</strong></span>
+            {% else %}
+              <span class="manager-pill">Страница <strong>{{ deals_page.number }}</strong> / {{ deals_page.paginator.num_pages }}</span>
             {% endif %}
-          </div>
-          <div class="manager-chip-scroll-shell" data-scroll-fade>
-            <div class="manager-chip-scroll manager-chip-scroll-compact" data-scroll-fade-viewport>
-              {% for queue in queue_chips %}
-                <a
-                  href="{% url 'manager_portal:deal_list' %}{% if queue.query_string or current_view_mode == 'kanban' or current_scope == 'avito' %}?{% endif %}{% if queue.query_string %}{{ queue.query_string }}{% endif %}{% if current_view_mode == 'kanban' %}{% if queue.query_string %}&{% endif %}view=kanban{% elif current_scope == 'avito' %}{% if queue.query_string %}&{% endif %}scope=avito{% endif %}"
-                  class="manager-queue-chip manager-queue-chip-compact {% if active_queue_chip == queue.key %}manager-queue-chip-active{% elif queue.count == 0 %}manager-queue-chip-zero{% endif %}"
-                >
-                  <span class="manager-queue-chip-label">{{ queue.label }}</span>
-                  <span class="manager-queue-chip-count {% if active_queue_chip == queue.key %}manager-queue-chip-count-active{% else %}manager-queue-chip-count-{{ queue.tone }}{% endif %}">{{ queue.count }}</span>
-                </a>
-              {% endfor %}
+            <div class="manager-view-switch" role="tablist" aria-label="Вид сделок">
+              <a
+                href="{% url 'manager_portal:deal_list' %}{% if list_view_query_string %}?{{ list_view_query_string }}{% endif %}"
+                class="manager-view-switch-link {% if current_view_mode == 'list' and current_scope != 'avito' %}manager-view-switch-link-active{% endif %}"
+              >Таблица</a>
+              <a
+                href="{% url 'manager_portal:deal_list' %}{% if kanban_view_query_string %}?{{ kanban_view_query_string }}{% endif %}"
+                class="manager-view-switch-link {% if current_view_mode == 'kanban' %}manager-view-switch-link-active{% endif %}"
+              >Канбан</a>
+              <a
+                href="{% url 'manager_portal:deal_list' %}{% if avito_view_query_string %}?{{ avito_view_query_string }}{% endif %}"
+                class="manager-view-switch-link {% if current_view_mode == 'list' and current_scope == 'avito' %}manager-view-switch-link-active{% endif %}"
+              >Сделки Avito</a>
             </div>
+            <button type="button" data-drawer-target="#deal-filters-drawer" class="manager-inline-action">
+              Фильтры и виды
+              {% if deal_advanced_filters_count %}
+                <span class="manager-queue-chip-count">{{ deal_advanced_filters_count }}</span>
+              {% endif %}
+            </button>
+            <a
+              href="{% url 'manager_portal:deal_create' %}"
+              class="manager-create-action"
+              data-drawer-target="#manager-remote-drawer"
+              hx-get="{% url 'manager_portal:deal_create' %}"
+              hx-select="#manager-main-content > *"
+              hx-target="#manager-remote-drawer-content"
+              hx-swap="innerHTML"
+              hx-push-url="false"
+            >Новая сделка</a>
           </div>
         </div>
 
-        {% if active_filter_chips or active_queue_chip != 'all' %}
-          <div class="manager-deals-filter-strip">
-            <div class="manager-deals-filter-strip-head">
-              <p class="manager-mobile-screen-eyebrow">Активные фильтры</p>
-              <a
-                href="{% url 'manager_portal:deal_list' %}{% if clear_all_filters_query_string %}?{{ clear_all_filters_query_string }}{% endif %}"
-                class="text-sm font-medium text-cyan-200 transition hover:text-cyan-100"
-              >Сбросить всё</a>
-            </div>
-            <div class="manager-chip-scroll-shell" data-scroll-fade>
-              <div class="manager-chip-scroll manager-chip-scroll-compact" data-scroll-fade-viewport>
-                {% if active_queue_chip and active_queue_chip != 'all' %}
-                  {% for queue in queue_chips %}
-                    {% if active_queue_chip == queue.key %}
-                      <span class="manager-active-filter-chip manager-active-filter-chip-passive">Очередь: {{ queue.label }}</span>
-                    {% endif %}
-                  {% endfor %}
-                {% endif %}
-                {% for chip in active_filter_chips %}
-                  <a
-                    href="{% url 'manager_portal:deal_list' %}{% if chip.clear_query_string %}?{{ chip.clear_query_string }}{% endif %}"
-                    class="manager-active-filter-chip"
-                  >
-                    <span>{{ chip.label }}</span>
-                    <span aria-hidden="true">×</span>
-                  </a>
-                {% endfor %}
-                {% if active_filter_chips %}
-                  <a
-                    href="{% url 'manager_portal:deal_list' %}{% if clear_active_filters_query_string %}?{{ clear_active_filters_query_string }}{% endif %}"
-                    class="manager-inline-action"
-                  >Сбросить фильтры</a>
-                {% endif %}
-              </div>
+        <div class="manager-chip-scroll manager-chip-scroll-compact mt-3">
+          {% for queue in queue_chips %}
+            <a
+              href="{% url 'manager_portal:deal_list' %}{% if queue.query_string or current_view_mode == 'kanban' or current_scope == 'avito' %}?{% endif %}{% if queue.query_string %}{{ queue.query_string }}{% endif %}{% if current_view_mode == 'kanban' %}{% if queue.query_string %}&{% endif %}view=kanban{% elif current_scope == 'avito' %}{% if queue.query_string %}&{% endif %}scope=avito{% endif %}"
+              class="manager-queue-chip manager-queue-chip-compact {% if active_queue_chip == queue.key %}manager-queue-chip-active{% endif %}"
+            >
+              <span class="manager-queue-chip-label">{{ queue.label }}</span>
+              <span class="manager-queue-chip-count {% if active_queue_chip == queue.key %}manager-queue-chip-count-active{% else %}manager-queue-chip-count-{{ queue.tone }}{% endif %}">{{ queue.count }}</span>
+            </a>
+          {% endfor %}
+        </div>
+
+        {% if current_view_mode == 'kanban' %}
+          <div class="mt-4 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <p class="text-sm text-slate-400">Канбан доступен только для основных сделок. Avito вынесен из канбана. Avito остаётся в отдельной таблице.</p>
+            <div class="flex items-center gap-2">
+              <button type="button" class="manager-inline-action" data-board-scroll="prev">← Предыдущий этап</button>
+              <button type="button" class="manager-inline-action" data-board-scroll="next">Следующий этап →</button>
             </div>
           </div>
         {% endif %}
       </div>
     </section>
 
-    <section class="manager-panel manager-deals-content-panel rounded-[1.75rem] p-4 lg:p-5">
-      {% if current_view_mode == 'kanban' %}
-      <div class="manager-deals-surface-head">
-        <nav class="manager-kanban-nav" data-kanban-nav aria-label="Навигация по этапам канбана">
-          <button type="button" class="manager-kanban-nav-btn manager-kanban-nav-btn-prev" data-board-scroll="prev" aria-label="Предыдущий этап">
-            <span class="manager-kanban-nav-arrow" aria-hidden="true">←</span>
-            <span class="manager-kanban-nav-label" data-nav-prev-label></span>
-          </button>
-          <span class="manager-kanban-nav-indicator" data-nav-indicator aria-live="polite">Этап 1 из {{ deal_kanban_columns|length }}</span>
-          <button type="button" class="manager-kanban-nav-btn manager-kanban-nav-btn-next" data-board-scroll="next" aria-label="Следующий этап">
-            <span class="manager-kanban-nav-label" data-nav-next-label></span>
-            <span class="manager-kanban-nav-arrow" aria-hidden="true">→</span>
-          </button>
-        </nav>
-      </div>
-      {% endif %}
-
-      {% if current_view_mode == 'list' %}
-        <div id="bulk-toolbar" class="manager-bulk-toolbar" hidden aria-live="polite">
-          <span class="manager-bulk-counter">Выбрано: <strong id="bulk-selected-count">0</strong></span>
-          <button type="button" id="bulk-clear-selection" class="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800">Снять выделение</button>
-          <form method="post" id="bulk-assign-form" class="manager-bulk-form manager-bulk-form-select grid gap-3 md:grid-cols-[minmax(15rem,1fr),auto]">
-            {% csrf_token %}
-            <input type="hidden" name="action" value="bulk_assign">
-            <input type="hidden" name="deal_ids" class="bulk-deal-ids-input">
-            <input type="hidden" name="return_query" value="{{ current_query_string }}">
-            {{ bulk_form.responsible_manager }}
-            <button type="submit" class="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800">Назначить</button>
-          </form>
-          <form method="post" id="bulk-case-status-form" class="manager-bulk-form manager-bulk-form-select grid gap-3 md:grid-cols-[minmax(15rem,1fr),auto]">
-            {% csrf_token %}
-            <input type="hidden" name="action" value="bulk_case_status">
-            <input type="hidden" name="deal_ids" class="bulk-deal-ids-input">
-            <input type="hidden" name="return_query" value="{{ current_query_string }}">
-            {{ bulk_case_status_form.case_status }}
-            <button type="submit" class="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800">Сменить этап</button>
-          </form>
-          <form method="post" id="bulk-export-form" class="manager-bulk-form">
-            {% csrf_token %}
-            <input type="hidden" name="action" value="bulk_export">
-            <input type="hidden" name="deal_ids" class="bulk-deal-ids-input">
-            <input type="hidden" name="return_query" value="{{ current_query_string }}">
-            <button type="submit" class="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800">Экспорт</button>
-          </form>
+    <section class="manager-panel rounded-[1.75rem] p-4 lg:p-5">
+      <div class="flex flex-col gap-4 {% if current_view_mode != 'kanban' %}border-b border-slate-800 pb-4 xl:flex-row xl:items-center xl:justify-between{% endif %}">
+        <div>
+          {% if current_view_mode == 'kanban' %}
+            <h3 class="text-lg font-semibold text-white">Канбан сделок</h3>
+            <p class="mt-1 text-sm text-slate-400">Компактные карточки по основным этапам. Перетаскивание между колонками меняет этап сделки.</p>
+          {% elif current_scope == 'avito' %}
+            <h3 class="text-lg font-semibold text-white">Сделки Avito</h3>
+            <p class="mt-1 text-sm text-slate-400">Avito вынесен из канбана: в списке остаются этап, участники сделки и быстрые действия без дедлайна клиента.</p>
+          {% else %}
+            <h3 class="text-lg font-semibold text-white">Очередь сделок</h3>
+            <p class="mt-1 text-sm text-slate-400">На mobile список перестроен в операционные карточки с быстрыми действиями.</p>
+          {% endif %}
         </div>
-      {% endif %}
+        {% if current_view_mode == 'list' %}
+          <div id="bulk-toolbar" class="manager-bulk-toolbar hidden lg:flex" hidden>
+            <span class="manager-bulk-counter">Выбрано: <strong id="bulk-selected-count">0</strong></span>
+            <button type="button" id="bulk-clear-selection" class="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800">Снять выделение</button>
+            <form method="post" id="bulk-assign-form" class="manager-bulk-form manager-bulk-form-select grid gap-3 md:grid-cols-[minmax(15rem,1fr),auto]">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="bulk_assign">
+              <input type="hidden" name="deal_ids" class="bulk-deal-ids-input">
+              <input type="hidden" name="return_query" value="{{ current_query_string }}">
+              {{ bulk_form.responsible_manager }}
+              <button type="submit" class="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800">Назначить</button>
+            </form>
+            <form method="post" id="bulk-case-status-form" class="manager-bulk-form manager-bulk-form-select grid gap-3 md:grid-cols-[minmax(15rem,1fr),auto]">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="bulk_case_status">
+              <input type="hidden" name="deal_ids" class="bulk-deal-ids-input">
+              <input type="hidden" name="return_query" value="{{ current_query_string }}">
+              {{ bulk_case_status_form.case_status }}
+              <button type="submit" class="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800">Сменить этап</button>
+            </form>
+            <form method="post" id="bulk-export-form" class="manager-bulk-form">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="bulk_export">
+              <input type="hidden" name="deal_ids" class="bulk-deal-ids-input">
+              <input type="hidden" name="return_query" value="{{ current_query_string }}">
+              <button type="submit" class="rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-800">Экспорт</button>
+            </form>
+          </div>
+        {% endif %}
+      </div>
 
       {% if current_view_mode == 'kanban' %}
-        {% if total_deals %}
-          <div
-            class="manager-deal-board mt-5"
-            data-manager-deal-board
-            data-return-query="{{ current_query_string }}"
-          >
-            <div class="manager-deal-board-scroller" data-board-scroller>
-              <div class="manager-deal-board-viewport" data-board-viewport>
-                <div class="manager-deal-board-track">
-                  {% for column in deal_kanban_columns %}
-                    <section class="manager-deal-column" data-kanban-column data-case-status="{{ column.key }}" data-column-index="{{ forloop.counter0 }}" data-column-label="{{ column.label }}">
-                      <div class="manager-deal-column-header">
-                        <div>
-                          <p class="manager-deal-column-title">{{ column.label }}</p>
-                          <p class="manager-deal-column-subtitle">Перетащите карточку для смены этапа.</p>
-                        </div>
-                        <span class="manager-queue-chip-count manager-deal-column-count" data-kanban-count>{{ column.count }}</span>
-                      </div>
-                      <div class="manager-deal-column-body" data-kanban-column-body>
-                        {% for deal in column.deals %}
-                          {% include "manager_portal/_deal_kanban_card.html" with deal=deal current_query_string=current_query_string %}
-                        {% endfor %}
-                        <div class="manager-deal-column-empty {% if column.deals %}hidden{% endif %}" data-kanban-empty {% if column.deals %}hidden{% endif %}>
-                          Здесь пока нет сделок.
-                        </div>
-                      </div>
-                    </section>
-                  {% endfor %}
-                </div>
-              </div>
-              <div class="manager-deal-board-fade-right" aria-hidden="true"></div>
+        <div
+          class="manager-deal-board mt-4"
+          data-manager-deal-board
+          data-return-query="{{ current_query_string }}"
+        >
+          <div class="manager-deal-board-viewport" data-board-viewport>
+            <div class="manager-deal-board-track">
+              {% for column in deal_kanban_columns %}
+                <section class="manager-deal-column" data-kanban-column data-case-status="{{ column.key }}">
+                  <div class="manager-deal-column-header">
+                    <div>
+                      <p class="manager-deal-column-title">{{ column.label }}</p>
+                      <p class="manager-deal-column-subtitle">Перетащите для смены этапа.</p>
+                    </div>
+                    <span class="manager-queue-chip-count manager-deal-column-count" data-kanban-count>{{ column.count }}</span>
+                  </div>
+                  <div class="manager-deal-column-body" data-kanban-column-body>
+                    {% for deal in column.deals %}
+                      {% include "manager_portal/_deal_kanban_card.html" with deal=deal current_query_string=current_query_string %}
+                    {% endfor %}
+                    <div class="manager-deal-column-empty {% if column.deals %}hidden{% endif %}" data-kanban-empty {% if column.deals %}hidden{% endif %}>
+                      Здесь пока нет сделок.
+                    </div>
+                  </div>
+                </section>
+              {% endfor %}
             </div>
           </div>
-        {% else %}
-          {% include "manager_portal/_empty_state.html" with reset_query_string=clear_all_filters_query_string %}
-        {% endif %}
+        </div>
       {% else %}
-        {% if deals_page.object_list %}
-          <div class="mt-5 space-y-3 lg:hidden">
-            {% for deal in deals_page.object_list %}
-              {% include "manager_portal/_deal_mobile_card.html" with deal=deal %}
-            {% endfor %}
-          </div>
+        <div class="mt-5 space-y-3 lg:hidden">
+          {% for deal in deals_page.object_list %}
+            {% include "manager_portal/_deal_mobile_card.html" with deal=deal %}
+          {% empty %}
+            <div class="manager-empty rounded-[1.5rem] px-5 py-10 text-center text-sm text-slate-400">Сделки по текущему фильтру не найдены.</div>
+          {% endfor %}
+        </div>
 
-          <div class="hidden lg:block">
-            <div class="manager-work-queue deals-table-outer mt-5 overflow-hidden rounded-[1.5rem] border border-slate-800/80">
-              {% manager_table table_id="deal-compact-list" table_class="w-full min-w-[88rem] text-sm" %}
-                  <thead class="bg-slate-950/70 text-left text-[0.72rem] uppercase tracking-[0.16em] text-slate-500">
-                    <tr>
-                      <th class="px-4 py-3 font-medium">Сделка</th>
-                      <th class="px-4 py-3 font-medium">Клиент / Контекст</th>
-                      <th class="px-4 py-3 font-medium">Основной статус</th>
-                      <th class="px-4 py-3 font-medium">Вторичный статус</th>
-                      <th class="px-4 py-3 font-medium">Риск</th>
-                      <th class="px-4 py-3 font-medium">Оплата</th>
-                      <th class="px-4 py-3 font-medium">Ответственный</th>
-                      <th class="px-4 py-3 font-medium">Действия</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {% for deal in deals_page.object_list %}
-                      {% url 'manager_portal:deal_reservation_action' deal.pk as reservation_action_url %}
-                      {% url 'manager_portal:deal_document_action' deal.pk 'contract' as contract_action_url %}
-                      {% url 'manager_portal:deal_shipment_action' deal.pk as shipment_action_url %}
-                      {% url 'manager_portal:deal_finance_action' deal.pk as finance_action_url %}
-                      <tr>
-                        <td class="px-4 py-4 align-top min-w-[18rem]">
-                          <div class="flex items-start gap-3">
-                            <input type="checkbox" class="bulk-deal-checkbox mt-2" value="{{ deal.pk }}" aria-label="Выбрать сделку {{ deal.code|default:deal.order_id }}">
-                            <button
-                              type="button"
-                              data-row-toggle="{{ deal.list_row_key }}"
-                              aria-expanded="false"
-                              aria-label="Показать или скрыть детали сделки {{ deal.code|default:deal.order_id }}"
-                              class="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-700 bg-slate-950 text-base text-slate-300 transition hover:border-cyan-400/40 hover:text-cyan-200"
-                              title="Развернуть строку сделки"
-                            >
-                              <span data-row-toggle-icon>▸</span>
-                            </button>
-                            <div class="manager-deal-table-stack min-w-0">
-                              <a href="{% url 'manager_portal:deal_detail' deal.pk %}" class="manager-deal-table-title block text-cyan-300 hover:text-cyan-200">{% firstof deal.code deal.order_id %}</a>
-                              <p class="manager-deal-table-subtitle">{% firstof deal.short_label deal.get_case_status_display %}</p>
-                              <div class="manager-deal-table-tags">
-                                {% if deal.deal_type %}
-                                  <span class="manager-pill">{{ deal.get_deal_type_display }}</span>
+        <div class="hidden lg:block">
+          <div class="manager-work-queue mt-5 overflow-hidden rounded-[1.5rem] border border-slate-800/80">
+            <div class="overflow-x-auto">
+              <table id="deal-compact-list" class="manager-table w-full min-w-[104rem] text-sm">
+                <thead class="bg-slate-950/70 text-left text-[0.72rem] uppercase tracking-[0.16em] text-slate-500">
+                  <tr>
+                    <th class="px-4 py-3 font-medium">Сделка</th>
+                    <th class="px-4 py-3 font-medium">{% if current_scope == 'avito' %}Контекст{% else %}Клиент{% endif %}</th>
+                    <th class="px-4 py-3 font-medium">Сумма</th>
+                    <th class="px-4 py-3 font-medium">Следующее действие</th>
+                    <th class="px-4 py-3 font-medium">Блокеры</th>
+                    <th class="px-4 py-3 font-medium">SLA / активность</th>
+                    <th class="px-4 py-3 font-medium">Действия</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-800/80">
+                  {% for deal in deals_page.object_list %}
+                    {% url 'manager_portal:deal_reservation_action' deal.pk as reservation_action_url %}
+                    {% url 'manager_portal:deal_document_action' deal.pk 'contract' as contract_action_url %}
+                    {% url 'manager_portal:deal_shipment_action' deal.pk as shipment_action_url %}
+                    {% url 'manager_portal:deal_finance_action' deal.pk as finance_action_url %}
+                    <tr class="bg-transparent transition hover:bg-slate-950/70">
+                      <td class="px-4 py-3 align-top min-w-[19rem]">
+                        <div class="flex items-start gap-3">
+                          <input type="checkbox" class="bulk-deal-checkbox mt-2" value="{{ deal.pk }}" aria-label="Выбрать сделку {{ deal.code|default:deal.order_id }}">
+                          <button
+                            type="button"
+                            data-row-toggle="{{ deal.list_row_key }}"
+                            aria-expanded="false"
+                            class="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-700 bg-slate-950 text-base text-slate-300 transition hover:border-cyan-400/40 hover:text-cyan-200"
+                            title="Развернуть строку сделки"
+                          >
+                            <span data-row-toggle-icon>▸</span>
+                          </button>
+                          <div class="min-w-0">
+                            <a href="{% url 'manager_portal:deal_detail' deal.pk %}" class="block font-semibold text-cyan-300 hover:text-cyan-200">{% firstof deal.code deal.order_id %}</a>
+                            <p class="mt-1 text-sm leading-5 text-slate-300">{% firstof deal.short_label deal.get_case_status_display %}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td class="px-4 py-3 align-top min-w-[14rem]">
+                        {% if current_scope == 'avito' %}
+                          <p class="font-medium text-white">{{ deal.avito_listing_title|default:deal.list_product_summary|default:"—" }}</p>
+                          <p class="mt-1 text-xs text-slate-500">{% firstof deal.customer_phone deal.order.phone deal.avito_listing_id "—" %}</p>
+                        {% else %}
+                          <p class="font-medium text-white">{{ deal.customer_name|default:deal.order.first_name|default:deal.order.phone }}</p>
+                          <p class="mt-1 text-xs text-slate-500">{% firstof deal.customer_phone deal.order.phone "—" %}</p>
+                        {% endif %}
+                      </td>
+                      <td class="px-4 py-3 align-top">
+                        <p class="font-semibold text-white">{{ deal.grand_total|rub }}</p>
+                        <p class="mt-1 text-xs text-slate-500">
+                          {% if deal.balance_due > 0 %}
+                            К доплате {{ deal.balance_due|rub }}
+                          {% else %}
+                            Оплата закрыта
+                          {% endif %}
+                        </p>
+                      </td>
+                      <td class="px-4 py-3 align-top min-w-[18rem]">
+                        <p class="font-medium text-white">{{ deal.action_block.label }}</p>
+                        <p class="mt-1 text-xs text-slate-400">{{ deal.action_block.reason }}</p>
+                        <p class="mt-2 text-[11px] uppercase tracking-[0.16em] text-slate-500">{{ deal.action_block.source_label }}</p>
+                      </td>
+                      <td class="px-4 py-3 align-top min-w-[16rem]">
+                        {% if deal.blocker_block.is_blocked %}
+                          {% for blocker in deal.blocker_block.items %}
+                            <p class="font-medium text-rose-100">{{ blocker.text }}</p>
+                          {% endfor %}
+                          {% if deal.blocker_block.extra_count %}
+                            <p class="mt-2 text-xs text-rose-300">Еще +{{ deal.blocker_block.extra_count }}</p>
+                          {% endif %}
+                        {% else %}
+                          <p class="font-medium text-emerald-100">Без блокеров</p>
+                          <p class="mt-1 text-xs text-slate-500">Сделка не требует разблокировки.</p>
+                        {% endif %}
+                      </td>
+                      <td class="px-4 py-3 align-top min-w-[16rem]">
+                        <p class="font-medium {% if deal.health_block.sla.is_overdue %}text-rose-200{% else %}text-white{% endif %}">{{ deal.health_block.sla.text }}</p>
+                        <p class="mt-1 text-xs text-slate-400">{{ deal.health_block.sla.detail }}</p>
+                        <p class="mt-3 text-xs {% if deal.health_block.activity.is_stale %}text-rose-300{% else %}text-slate-500{% endif %}">{{ deal.health_block.activity.text }}</p>
+                        <p class="mt-1 text-xs text-slate-500">{{ deal.health_block.activity.detail }}</p>
+                      </td>
+                      <td class="px-4 py-3 align-top min-w-[15rem]">
+                        <div class="flex flex-wrap gap-2">
+                          {% with action=deal.list_actions.primary_action %}
+                            {% if action.kind == 'form' %}
+                              <form method="post" action="{{ action.url }}">
+                                {% csrf_token %}
+                                {% for key, value in action.fields.items %}
+                                  <input type="hidden" name="{{ key }}" value="{{ value }}">
+                                {% endfor %}
+                                <button type="submit" class="rounded-xl bg-cyan-500 px-3 py-2 text-sm font-medium text-slate-950 transition hover:bg-cyan-400">{{ action.label }}</button>
+                              </form>
+                            {% else %}
+                              <a
+                                href="{{ action.url }}"
+                                class="rounded-xl bg-cyan-500 px-3 py-2 text-sm font-medium text-slate-950 transition hover:bg-cyan-400"
+                                {% if action.url == reservation_action_url or action.url == contract_action_url or action.url == shipment_action_url or action.url == finance_action_url %}
+                                  data-drawer-target="#manager-remote-drawer"
+                                  hx-get="{{ action.url }}"
+                                  hx-select="#manager-main-content > *"
+                                  hx-target="#manager-remote-drawer-content"
+                                  hx-swap="innerHTML"
+                                  hx-push-url="false"
+                                {% endif %}
+                              >{{ action.label }}</a>
+                            {% endif %}
+                          {% endwith %}
+                          <a href="{{ deal.list_actions.detail_url }}" class="rounded-xl border border-slate-700 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800">Открыть</a>
+                        </div>
+                      </td>
+                  </tr>
+                  <tr data-row-detail="{{ deal.list_row_key }}" hidden>
+                    <td colspan="7" class="border-t border-slate-800/70 bg-slate-950/70 px-5 py-5">
+                        <div class="grid gap-4 xl:grid-cols-[1.15fr,1fr,1fr]">
+                          <section class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                            <div class="flex items-start justify-between gap-3">
+                              <div>
+                                <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Контекст сделки</p>
+                                <h4 class="mt-2 text-lg font-semibold text-white">Следующее действие</h4>
+                              </div>
+                              <a href="{{ deal.list_actions.detail_url }}" class="rounded-xl border border-slate-700 px-3 py-2 text-sm hover:bg-slate-800">Карточка сделки</a>
+                            </div>
+                            <div class="mt-4 space-y-3 text-sm text-slate-300">
+                              <div>
+                                <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Следующий шаг</p>
+                                <p class="mt-1 font-medium text-white">{{ deal.action_block.label }}</p>
+                              </div>
+                              <div>
+                                <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Расширенное пояснение</p>
+                                <p class="mt-1">{{ deal.action_block.reason }}</p>
+                              </div>
+                              <div>
+                                <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Блокеры</p>
+                                {% if deal.blocker_block.is_blocked %}
+                                  <div class="mt-2 flex flex-wrap gap-2">
+                                    {% for blocker in deal.blocker_block.items %}
+                                      <span class="manager-pill">{{ blocker.text }}</span>
+                                    {% endfor %}
+                                  </div>
+                                {% else %}
+                                  <p class="mt-1 text-emerald-200">Критичных блокеров нет.</p>
                                 {% endif %}
                               </div>
+                              <div>
+                                <p class="text-xs uppercase tracking-[0.16em] text-slate-500">SLA / активность</p>
+                                <p class="mt-1 text-white">{{ deal.health_block.sla.text }}</p>
+                                <p class="mt-1 text-xs text-slate-400">{{ deal.health_block.activity.text }}</p>
+                              </div>
                             </div>
-                          </div>
-                        </td>
-                        <td class="px-4 py-4 align-top min-w-[16rem]">
-                          <div class="manager-deal-table-stack">
-                            {% if current_scope == 'avito' %}
-                              <p class="manager-deal-table-title">{{ deal.avito_listing_title|default:deal.list_product_summary|default:"—" }}</p>
-                              <p class="manager-deal-table-subtitle">{{ deal.customer_name|default:deal.order.first_name|default:deal.order.phone }}</p>
-                              <p class="manager-deal-table-meta">
-                                {% firstof deal.customer_phone deal.order.phone "—" %}
-                                {% if deal.avito_listing_id %} · Лот {{ deal.avito_listing_id }}{% endif %}
-                              </p>
-                            {% else %}
-                              <p class="manager-deal-table-title">{{ deal.customer_name|default:deal.order.first_name|default:deal.order.phone }}</p>
-                              <p class="manager-deal-table-subtitle">
-                                {% firstof deal.customer_phone deal.order.phone "—" %}
-                                {% if deal.order.email or deal.business_email %} · {% firstof deal.order.email deal.business_email %}{% endif %}
-                              </p>
-                              <p class="manager-deal-table-meta">{{ deal.list_product_summary }}</p>
-                            {% endif %}
-                            <p class="manager-deal-table-meta">{{ deal.list_channel_summary }} · {{ deal.list_delivery_summary }}</p>
-                          </div>
-                        </td>
-                        <td class="px-4 py-4 align-top min-w-[15rem]">
-                          <div class="manager-deal-table-stack">
-                            <span class="{{ deal.primary_status|manager_semantic_badge_classes }}">{{ deal.primary_status.label }}</span>
-                            <p class="manager-deal-table-subtitle">{{ deal.primary_status.detail }}</p>
-                          </div>
-                        </td>
-                        <td class="px-4 py-4 align-top min-w-[13rem]">
-                          <div class="manager-deal-table-stack">
-                            <span class="{{ deal.secondary_status|manager_semantic_badge_classes }}">{{ deal.secondary_status.label }}</span>
-                            <p class="manager-deal-table-subtitle">{{ deal.secondary_status.detail }}</p>
-                            <p class="manager-deal-table-meta">{{ deal.next_step_reason_snapshot|default:deal.get_case_status_display }}</p>
-                          </div>
-                        </td>
-                        <td class="px-4 py-4 align-top min-w-[16rem]">
-                          <div class="{{ deal.risk_summary|manager_semantic_risk_classes }}">
-                            <p class="text-sm font-semibold text-white">{{ deal.risk_summary.label }}</p>
-                            <p class="mt-1 text-xs text-slate-300">{{ deal.risk_summary.detail }}</p>
-                          </div>
-                        </td>
-                        <td class="px-4 py-4 align-top min-w-[15rem]">
-                          {% include "manager_portal/_deal_payment_summary.html" with payment=deal.list_payment_summary %}
-                        </td>
-                        <td class="px-4 py-4 align-top min-w-[15rem]">
-                          <div class="manager-deal-table-stack">
-                            <p class="manager-deal-table-title">{{ deal.responsible_manager|default:"Не назначен" }}</p>
-                            <p class="manager-deal-table-subtitle">{{ deal.get_buyer_type_display }}</p>
-                            <p class="manager-deal-table-meta">{{ deal.grand_total|rub }}</p>
-                          </div>
-                        </td>
-                        <td class="px-4 py-4 align-top min-w-[14rem]">
-                          <div class="flex flex-wrap gap-2">
-                            {% with action=deal.list_actions.primary_action %}
-                              {% if action.kind == 'form' %}
-                                <form method="post" action="{{ action.url }}">
-                                  {% csrf_token %}
-                                  {% for key, value in action.fields.items %}
-                                    <input type="hidden" name="{{ key }}" value="{{ value }}">
+                          </section>
+
+                          <section class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                            <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Второстепенные поля</p>
+                            <div class="mt-4 grid gap-4">
+                              <div>
+                                <p class="text-xs text-slate-500">Канал</p>
+                                <p class="mt-1 text-white">{{ deal.list_channel_summary }}</p>
+                              </div>
+                              <div>
+                                <p class="text-xs text-slate-500">Доставка</p>
+                                <p class="mt-1 text-white">{{ deal.list_delivery_summary }}</p>
+                              </div>
+                              <div>
+                                <p class="text-xs text-slate-500">Комментарии</p>
+                                <div class="mt-1 space-y-2">
+                                  {% for comment in deal.list_comments %}
+                                    <div>
+                                      <p class="text-[0.7rem] uppercase tracking-[0.16em] text-slate-500">{{ comment.label }}</p>
+                                      <p class="mt-1 text-white">{{ comment.value }}</p>
+                                    </div>
+                                  {% empty %}
+                                    <p class="text-white">Комментариев нет.</p>
                                   {% endfor %}
-                                  <button type="submit" class="rounded-xl bg-cyan-500 px-3 py-2 text-sm font-medium text-slate-950 transition hover:bg-cyan-400">{{ action.label }}</button>
-                                </form>
-                              {% else %}
+                                </div>
+                              </div>
+                            </div>
+                          </section>
+
+                          <section class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                            <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Быстрые действия</p>
+                            <div class="mt-4 grid gap-2">
+                              {% for action in deal.list_actions.secondary_actions|slice:":4" %}
                                 <a
                                   href="{{ action.url }}"
-                                  class="rounded-xl bg-cyan-500 px-3 py-2 text-sm font-medium text-slate-950 transition hover:bg-cyan-400"
+                                  class="rounded-xl border border-slate-700 px-4 py-3 text-sm text-slate-200 hover:bg-slate-800"
                                   {% if action.url == reservation_action_url or action.url == contract_action_url or action.url == shipment_action_url or action.url == finance_action_url %}
                                     data-drawer-target="#manager-remote-drawer"
                                     hx-get="{{ action.url }}"
@@ -431,111 +431,22 @@
                                     hx-push-url="false"
                                   {% endif %}
                                 >{{ action.label }}</a>
-                              {% endif %}
-                            {% endwith %}
-                            <a href="{{ deal.list_actions.detail_url }}" class="rounded-xl border border-slate-700 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800">Открыть</a>
-                          </div>
-                        </td>
-                      </tr>
-                      <tr data-row-detail="{{ deal.list_row_key }}" hidden>
-                        <td colspan="8" class="border-t border-slate-800/70 bg-slate-950/70 px-5 py-5">
-                          <div class="grid gap-4 xl:grid-cols-[1.15fr,1fr,1fr]">
-                            <section class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-                              <div class="flex items-start justify-between gap-3">
-                                <div>
-                                  <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Контекст сделки</p>
-                                  <h4 class="mt-2 text-lg font-semibold text-white">Следующий шаг и блокеры</h4>
-                                </div>
-                                <a href="{{ deal.list_actions.detail_url }}" class="rounded-xl border border-slate-700 px-3 py-2 text-sm hover:bg-slate-800">Карточка сделки</a>
-                              </div>
-                              <div class="mt-4 space-y-3 text-sm text-slate-300">
-                                <div>
-                                  <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Основной статус</p>
-                                  <p class="mt-1 font-medium text-white">{{ deal.primary_status.label }}</p>
-                                  <p class="mt-1 text-sm text-slate-400">{{ deal.primary_status.detail }}</p>
-                                </div>
-                                <div>
-                                  <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Вторичный статус</p>
-                                  <p class="mt-1 font-medium text-white">{{ deal.secondary_status.label }}</p>
-                                  <p class="mt-1">{{ deal.secondary_status.detail }}</p>
-                                </div>
-                                <div>
-                                  <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Риски</p>
-                                  {% if deal.list_blockers %}
-                                    <div class="mt-2 flex flex-wrap gap-2">
-                                      {% for blocker in deal.list_blockers %}
-                                        <span class="{{ blocker.tone|manager_semantic_badge_classes }}">{{ blocker.text }}</span>
-                                      {% endfor %}
-                                    </div>
-                                  {% else %}
-                                    <p class="mt-1 text-emerald-200">Критичных блокеров нет.</p>
-                                  {% endif %}
-                                </div>
-                                <div class="flex flex-wrap gap-2">
-                                  {% for card in deal.list_readiness %}
-                                    <span class="manager-pill">{{ card.label }}: {{ card.value }}</span>
-                                  {% endfor %}
-                                </div>
-                              </div>
-                            </section>
-
-                            <section class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-                              <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Комментарии и логистика</p>
-                              <div class="mt-4 grid gap-4">
-                                <div>
-                                  <p class="text-xs text-slate-500">Канал</p>
-                                  <p class="mt-1 text-white">{{ deal.list_channel_summary }}</p>
-                                </div>
-                                <div>
-                                  <p class="text-xs text-slate-500">Доставка</p>
-                                  <p class="mt-1 text-white">{{ deal.list_delivery_summary }}</p>
-                                </div>
-                                <div>
-                                  <p class="text-xs text-slate-500">Комментарии</p>
-                                  <div class="mt-1 space-y-2">
-                                    {% for comment in deal.list_comments %}
-                                      <div>
-                                        <p class="text-[0.7rem] uppercase tracking-[0.16em] text-slate-500">{{ comment.label }}</p>
-                                        <p class="mt-1 text-white">{{ comment.value }}</p>
-                                      </div>
-                                    {% empty %}
-                                      <p class="text-white">Комментариев нет.</p>
-                                    {% endfor %}
-                                  </div>
-                                </div>
-                              </div>
-                            </section>
-
-                            <section class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-                              <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Быстрые действия</p>
-                              <div class="mt-4 grid gap-2">
-                                {% for action in deal.list_actions.secondary_actions|slice:":4" %}
-                                  <a
-                                    href="{{ action.url }}"
-                                    class="rounded-xl border border-slate-700 px-4 py-3 text-sm text-slate-200 hover:bg-slate-800"
-                                    {% if action.url == reservation_action_url or action.url == contract_action_url or action.url == shipment_action_url or action.url == finance_action_url %}
-                                      data-drawer-target="#manager-remote-drawer"
-                                      hx-get="{{ action.url }}"
-                                      hx-select="#manager-main-content > *"
-                                      hx-target="#manager-remote-drawer-content"
-                                      hx-swap="innerHTML"
-                                      hx-push-url="false"
-                                    {% endif %}
-                                  >{{ action.label }}</a>
-                                {% endfor %}
-                              </div>
-                            </section>
-                          </div>
-                        </td>
-                      </tr>
-                    {% endfor %}
-                  </tbody>
-              {% endmanager_table %}
+                              {% endfor %}
+                            </div>
+                          </section>
+                        </div>
+                      </td>
+                    </tr>
+                {% empty %}
+                  <tr>
+                    <td colspan="{% if current_scope == 'avito' %}9{% else %}10{% endif %}" class="px-4 py-10 text-center text-slate-400">Сделки по текущему фильтру не найдены.</td>
+                  </tr>
+                {% endfor %}
+                </tbody>
+              </table>
             </div>
           </div>
-        {% else %}
-          {% include "manager_portal/_empty_state.html" with reset_query_string=clear_all_filters_query_string %}
-        {% endif %}
+        </div>
 
         {% if deals_page.paginator.num_pages > 1 %}
           <nav class="mt-5 flex flex-col gap-3 border-t border-slate-800 pt-4 sm:flex-row sm:items-center sm:justify-between" aria-label="Пагинация сделок">
@@ -557,8 +468,8 @@
   <aside id="deal-filters-drawer" class="manager-drawer manager-drawer-mobile-sheet manager-glass border-l border-slate-800 p-5 lg:p-6" aria-hidden="true">
     <div class="flex items-start justify-between gap-4">
       <div>
-        <h3 class="text-2xl font-semibold">Фильтры</h3>
-        <p class="mt-2 text-sm text-slate-400">Быстрый поиск ниже помогает ориентироваться в длинном наборе фильтров без прокрутки всего drawer.</p>
+        <h3 class="text-2xl font-semibold">Фильтры и виды</h3>
+        <p class="mt-2 text-sm text-slate-400">Соберите рабочий срез: очередь, проблемность, SLA, оплата и тип сделки.</p>
       </div>
       <button type="button" data-drawer-close class="rounded-full border border-slate-700 px-3 py-1 text-sm">Закрыть</button>
     </div>
@@ -567,7 +478,7 @@
       <a
         href="{% url 'manager_portal:deal_list' %}{% if list_view_query_string %}?{{ list_view_query_string }}{% endif %}"
         class="manager-view-switch-link {% if current_view_mode == 'list' and current_scope != 'avito' %}manager-view-switch-link-active{% endif %}"
-      >Таблица</a>
+      >Список</a>
       <a
         href="{% url 'manager_portal:deal_list' %}{% if kanban_view_query_string %}?{{ kanban_view_query_string }}{% endif %}"
         class="manager-view-switch-link {% if current_view_mode == 'kanban' %}manager-view-switch-link-active{% endif %}"
@@ -578,138 +489,103 @@
       >Avito</a>
     </div>
 
-    <div class="manager-filter-search mt-6" data-filter-search-root>
-      <label for="deal-filter-search-input" class="block text-sm font-medium text-slate-200">Быстрый поиск по фильтрам</label>
-      <div class="manager-filter-search-field mt-3">
-        <input
-          id="deal-filter-search-input"
-          type="search"
-          class="manager-filter-search-input"
-          placeholder="Например: SLA, ответственный, документы, оплата"
-          data-filter-search-input
-          autocomplete="off"
-          spellcheck="false"
-        >
-        <button type="button" class="manager-inline-action" data-filter-search-clear hidden>Очистить</button>
-      </div>
-      <p class="manager-filter-search-status mt-2 text-sm text-slate-400" data-filter-search-status>Показываем все фильтры.</p>
+    <form method="get" class="mt-6 space-y-5">
+      {% if current_view_mode == 'kanban' %}
+        <input type="hidden" name="view" value="kanban">
+      {% endif %}
+      {% if current_scope == 'avito' %}
+        <input type="hidden" name="scope" value="avito">
+      {% endif %}
 
-      <form method="get" class="mt-6 space-y-5">
-        {% if current_view_mode == 'kanban' %}
-          <input type="hidden" name="view" value="kanban">
-        {% endif %}
-        {% if current_scope == 'avito' %}
-          <input type="hidden" name="scope" value="avito">
-        {% endif %}
-
-        <section class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4" data-filter-search-section>
-          <p class="text-xs uppercase tracking-[0.18em] text-slate-500" data-filter-search-section-title>Поиск и очередь</p>
-          <div class="mt-4 grid gap-4">
-            <div class="manager-form-field" data-filter-search-item="Поиск клиент телефон email товар договор SKU">
-              <label for="{{ filter_form.q.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.q.label }}</label>
-              {{ filter_form.q }}
-            </div>
-            <div class="manager-form-field" data-filter-search-item="Сортировка SLA активность дата приоритет">
-              <label for="{{ filter_form.sort.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.sort.label }}</label>
-              {{ filter_form.sort }}
-            </div>
-            <div class="manager-form-field" data-filter-search-item="Очередь работа без ответственного оплата резерв документы отгрузка">
-              <label for="{{ filter_form.queue.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.queue.label }}</label>
-              {{ filter_form.queue }}
-            </div>
-            <div class="manager-form-field" data-filter-search-item="Этап заказа статус новый подтвержден в работе ждет клиента готов">
-              <label for="{{ filter_form.case_status.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.case_status.label }}</label>
-              {{ filter_form.case_status }}
-            </div>
-            <div class="manager-form-field" data-filter-search-item="Тип сделки наличие заказ avito trade in">
-              <label for="{{ filter_form.deal_type.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.deal_type.label }}</label>
-              {{ filter_form.deal_type }}
-            </div>
+      <section class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+        <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Поиск и очередь</p>
+        <div class="mt-4 grid gap-4">
+          <div class="manager-form-field">
+            <label for="{{ filter_form.q.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.q.label }}</label>
+            {{ filter_form.q }}
           </div>
-        </section>
-
-        <section class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4" data-filter-search-section>
-          <p class="text-xs uppercase tracking-[0.18em] text-slate-500" data-filter-search-section-title>Статусы исполнения</p>
-          <div class="mt-4 grid gap-4">
-            <div class="manager-form-field" data-filter-search-item="Оплата платеж неоплачено частично оплачено">
-              <label for="{{ filter_form.payment_state.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.payment_state.label }}</label>
-              {{ filter_form.payment_state }}
-            </div>
-            <div class="manager-form-field" data-filter-search-item="Обеспечение исполнение резерв склад закупка доставка">
-              <label for="{{ filter_form.fulfillment_status.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.fulfillment_status.label }}</label>
-              {{ filter_form.fulfillment_status }}
-            </div>
-            <div class="manager-form-field" data-filter-search-item="Документы договор счет подпись">
-              <label for="{{ filter_form.documents_status.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.documents_status.label }}</label>
-              {{ filter_form.documents_status }}
-            </div>
-            <div class="manager-form-field" data-filter-search-item="Ответственный менеджер сотрудник">
-              <label for="{{ filter_form.responsible_manager.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.responsible_manager.label }}</label>
-              {{ filter_form.responsible_manager }}
-            </div>
+          <div class="manager-form-field">
+            <label for="{{ filter_form.sort.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.sort.label }}</label>
+            {{ filter_form.sort }}
           </div>
-        </section>
-
-        <section class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4" data-filter-search-section>
-          <p class="text-xs uppercase tracking-[0.18em] text-slate-500" data-filter-search-section-title>Проблемы и дедлайны</p>
-          <div class="mt-4 grid gap-4">
-            <div class="manager-form-field" data-filter-search-item="Проблемный срез блокеры резерв просрочка">
-              <label for="{{ filter_form.problem_view.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.problem_view.label }}</label>
-              {{ filter_form.problem_view }}
-            </div>
-            <div class="manager-form-field" data-filter-search-item="Сигнал проблема риск оплата документы отправка">
-              <label for="{{ filter_form.overlay.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.overlay.label }}</label>
-              {{ filter_form.overlay }}
-            </div>
-            <div class="manager-form-field" data-filter-search-item="SLA дедлайн срок просрочен сегодня">
-              <label for="{{ filter_form.sla_status.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.sla_status.label }}</label>
-              {{ filter_form.sla_status }}
-            </div>
-            <label class="inline-flex items-center gap-2 text-sm text-slate-300" data-filter-search-item="Только мои менеджер">
-              {{ filter_form.mine }} Только мои
-            </label>
-            <label class="inline-flex items-center gap-2 text-sm text-slate-300" data-filter-search-item="Без ответственного менеджер">
-              {{ filter_form.only_unassigned }} Без ответственного
-            </label>
-            <label class="inline-flex items-center gap-2 text-sm text-slate-300" data-filter-search-item="Только проблемные сигналы риски">
-              {{ filter_form.only_problematic }} Только проблемные
-            </label>
-            <label class="inline-flex items-center gap-2 text-sm text-slate-300" data-filter-search-item="Требуют действия сегодня SLA дедлайн">
-              {{ filter_form.action_today }} Требуют действия сегодня
-            </label>
+          <div class="manager-form-field">
+            <label for="{{ filter_form.queue.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.queue.label }}</label>
+            {{ filter_form.queue }}
           </div>
-        </section>
-
-        <p class="hidden rounded-2xl border border-dashed border-slate-700 bg-slate-950/50 px-4 py-3 text-sm text-slate-400" data-filter-search-empty>
-          По этому запросу фильтры не найдены. Попробуйте другое слово или очистите поиск.
-        </p>
-
-        <div class="manager-mobile-sheet-actions">
-          <button type="submit" class="manager-create-action manager-create-action-block">Применить</button>
-          <a
-            href="{% url 'manager_portal:deal_list' %}{% if clear_all_filters_query_string %}?{{ clear_all_filters_query_string }}{% endif %}"
-            class="rounded-xl border border-slate-700 px-4 py-3 text-center text-sm hover:bg-slate-800"
-          >Сбросить</a>
+          <div class="manager-form-field">
+            <label for="{{ filter_form.case_status.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.case_status.label }}</label>
+            {{ filter_form.case_status }}
+          </div>
+          <div class="manager-form-field">
+            <label for="{{ filter_form.deal_type.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.deal_type.label }}</label>
+            {{ filter_form.deal_type }}
+          </div>
         </div>
-      </form>
-    </div>
+      </section>
+
+      <section class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+        <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Статусы исполнения</p>
+        <div class="mt-4 grid gap-4">
+          <div class="manager-form-field">
+            <label for="{{ filter_form.payment_state.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.payment_state.label }}</label>
+            {{ filter_form.payment_state }}
+          </div>
+          <div class="manager-form-field">
+            <label for="{{ filter_form.fulfillment_status.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.fulfillment_status.label }}</label>
+            {{ filter_form.fulfillment_status }}
+          </div>
+          <div class="manager-form-field">
+            <label for="{{ filter_form.documents_status.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.documents_status.label }}</label>
+            {{ filter_form.documents_status }}
+          </div>
+          <div class="manager-form-field">
+            <label for="{{ filter_form.responsible_manager.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.responsible_manager.label }}</label>
+            {{ filter_form.responsible_manager }}
+          </div>
+        </div>
+      </section>
+
+      <section class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+        <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Проблемы и дедлайны</p>
+        <div class="mt-4 grid gap-4">
+          <div class="manager-form-field">
+            <label for="{{ filter_form.problem_view.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.problem_view.label }}</label>
+            {{ filter_form.problem_view }}
+          </div>
+          <div class="manager-form-field">
+            <label for="{{ filter_form.overlay.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.overlay.label }}</label>
+            {{ filter_form.overlay }}
+          </div>
+          <div class="manager-form-field">
+            <label for="{{ filter_form.sla_status.id_for_label }}" class="block text-sm font-medium text-slate-200">{{ filter_form.sla_status.label }}</label>
+            {{ filter_form.sla_status }}
+          </div>
+          <label class="inline-flex items-center gap-2 text-sm text-slate-300">{{ filter_form.mine }} Только мои</label>
+          <label class="inline-flex items-center gap-2 text-sm text-slate-300">{{ filter_form.only_unassigned }} Без ответственного</label>
+          <label class="inline-flex items-center gap-2 text-sm text-slate-300">{{ filter_form.only_problematic }} Только проблемные</label>
+          <label class="inline-flex items-center gap-2 text-sm text-slate-300">{{ filter_form.action_today }} Требуют действия сегодня</label>
+        </div>
+      </section>
+
+      <div class="manager-mobile-sheet-actions">
+        <button type="submit" class="manager-create-action manager-create-action-block">Применить</button>
+        <a href="{% url 'manager_portal:deal_list' %}" class="rounded-xl border border-slate-700 px-4 py-3 text-center text-sm hover:bg-slate-800">Сбросить</a>
+      </div>
+    </form>
 
     <section class="mt-6 rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
       <div class="flex items-center justify-between gap-3">
-        <h4 class="text-base font-semibold text-white">Сигналы</h4>
-        <span class="manager-pill">Глобальный badge в shell</span>
+        <h4 class="text-base font-semibold text-white">Сохраненные виды</h4>
+        <button type="button" data-drawer-target="#deal-save-view-drawer" class="rounded-xl border border-slate-700 px-3 py-2 text-xs hover:bg-slate-800">Сохранить текущий</button>
       </div>
       <div class="mt-4 space-y-3">
-        {% for signal in signal_views %}
-          <a href="{% url 'manager_portal:deal_list' %}?{{ signal.query_string }}" class="block rounded-2xl border border-slate-800 px-4 py-3 hover:bg-slate-900/70">
-            <div class="flex items-start justify-between gap-3">
-              <div>
-                <p class="font-medium text-white">{{ signal.label }}</p>
-                <p class="mt-1 text-sm text-slate-400">{{ signal.description }}</p>
-              </div>
-              <span class="manager-queue-chip-count {% if signal.count %}manager-queue-chip-count-danger{% endif %}">{{ signal.count }}</span>
-            </div>
+        {% for view in saved_views %}
+          <a href="{% url 'manager_portal:deal_list' %}{% if view.query_string %}?{{ view.query_string }}{% endif %}" class="block rounded-2xl border border-slate-800 px-4 py-3 hover:bg-slate-900/70">
+            <p class="font-medium text-white">{{ view.name }}</p>
+            {% if view.description %}<p class="mt-1 text-sm text-slate-400">{{ view.description }}</p>{% endif %}
           </a>
+        {% empty %}
+          <p class="text-sm text-slate-400">Сохраненных видов пока нет.</p>
         {% endfor %}
       </div>
     </section>
@@ -719,6 +595,7 @@
     <div class="flex items-start justify-between gap-4">
       <div>
         <h3 class="text-2xl font-semibold">Сохранить вид</h3>
+        <p class="mt-2 text-sm text-slate-400">Зафиксируйте текущий набор фильтров как рабочую подборку.</p>
       </div>
       <button type="button" data-drawer-close class="rounded-full border border-slate-700 px-3 py-1 text-sm">Закрыть</button>
     </div>

@@ -1,41 +1,24 @@
 import csv
-import importlib
-from io import BytesIO
 import json
 import tempfile
 from datetime import timedelta
 from decimal import Decimal
-from types import SimpleNamespace
-from urllib.parse import parse_qs
 from unittest.mock import patch
 
-from django import forms
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
 from django.core.management import call_command
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.template import Context, Template
-from django.test import Client, SimpleTestCase, TestCase, override_settings
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
-from openpyxl import load_workbook
 
 from accounts.models import CommercialProposalContact, Profile
 from catalog.models import Category, City, PickupPoint, Product, ProductStock, ProductVariant
 from orders.models import Order, OrderItem
 
-from .forms import (
-    CargoFilterForm,
-    ContractDocumentForm,
-    FinancePeriodForm,
-    InventoryReceiptForm,
-    ManualOrderForm,
-    PurchaseFilterForm,
-    ReservationFilterForm,
-    ShipmentFilterForm,
-    StyledFormMixin,
-)
+from .forms import InventoryReceiptForm
 from .access import FINANCE_ADMIN_GROUP, FINANCE_OPERATOR_GROUP
 from .models import (
     Cargo,
@@ -53,7 +36,6 @@ from .models import (
     InventoryBalance,
     InventoryMovement,
     LegacyImportBatch,
-    DealSavedView,
     ManagerDeal,
     ManagerDealParticipant,
     ManagerClient,
@@ -64,11 +46,11 @@ from .models import (
     ReservationItem,
     Shipment,
     ShipmentItem,
-    TradeInItem,
     TransportLeg,
     Warehouse,
 )
 from .services import (
+    apply_deal_next_step_override,
     build_finance_report_zip,
     create_or_update_reservation_movements,
     create_or_update_shipment_for_order,
@@ -82,7 +64,6 @@ from .services import (
     receive_cargo_item,
     recompute_deal_workflow,
     receipt_inventory,
-    set_manager_deal_paid_amount,
     shipments_grouped_by_reservation,
     shipments_rows,
     split_cargo,
@@ -91,7 +72,6 @@ from .services import (
     validate_reservation_availability,
 )
 from .legacy_imports import import_manager_tabular_sales
-from .templatetags.manager_portal_tags import manager_user_label
 from .views import _manager_proposal_contact_data
 
 User = get_user_model()
@@ -101,144 +81,6 @@ TEST_GIF = (
     b"\xff\xff\xff!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00"
     b"\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;"
 )
-
-
-class ManagerTableTemplateTagTests(SimpleTestCase):
-    def test_manager_table_renders_hover_variant_by_default(self):
-        rendered = Template(
-            '{% load manager_portal_tags %}'
-            '{% manager_table table_class="w-full" wrapper_class="mt-5" %}'
-            '<tbody><tr><td>Row</td></tr></tbody>'
-            '{% endmanager_table %}'
-        ).render(Context())
-
-        self.assertIn('manager-table-shell overflow-x-auto mt-5', rendered)
-        self.assertIn('manager-table manager-table--hover w-full', rendered)
-
-    def test_manager_table_supports_zebra_variant(self):
-        rendered = Template(
-            '{% load manager_portal_tags %}'
-            '{% manager_table variant="zebra" %}'
-            '<tbody><tr><td>Row</td></tr></tbody>'
-            '{% endmanager_table %}'
-        ).render(Context())
-
-        self.assertIn('manager-table manager-table--zebra', rendered)
-
-
-class ManagerUserLabelTemplateTagTests(SimpleTestCase):
-    def test_manager_user_label_prefers_profile_name_before_email(self):
-        user = SimpleNamespace(
-            get_full_name=lambda: '',
-            email='manager@example.com',
-            username='user_0b117b937e',
-            profile=SimpleNamespace(contact_name='Иван Петров'),
-        )
-
-        self.assertEqual(manager_user_label(user), 'Иван Петров')
-
-    def test_manager_user_label_falls_back_to_email_when_name_missing(self):
-        user = SimpleNamespace(
-            get_full_name=lambda: '',
-            email='manager@example.com',
-            username='user_0b117b937e',
-        )
-
-        self.assertEqual(manager_user_label(user), 'manager@example.com')
-
-
-class ManagerDealPaymentMigrationTests(SimpleTestCase):
-    def test_backfill_prefers_latest_payment_state_activity(self):
-        migration = importlib.import_module('manager_portal.migrations.0014_managerdeal_last_payment_at')
-        updated_at = timezone.now()
-        payment_activity_at = updated_at - timedelta(hours=2)
-
-        last_payment_at = migration.estimate_last_payment_at_for_backfill(
-            SimpleNamespace(prepayment_amount=Decimal('5000.00'), updated_at=updated_at),
-            [
-                SimpleNamespace(
-                    event_type='workflow.recomputed',
-                    payload={'payment_state': {'old': 'unpaid', 'new': 'partial'}},
-                    created_at=payment_activity_at,
-                ),
-                SimpleNamespace(
-                    event_type='comment.added',
-                    payload={'comment': 'ignored'},
-                    created_at=updated_at - timedelta(hours=1),
-                ),
-            ],
-        )
-
-        self.assertEqual(last_payment_at, payment_activity_at)
-
-    def test_backfill_falls_back_to_updated_at_for_paid_deal_without_activity(self):
-        migration = importlib.import_module('manager_portal.migrations.0014_managerdeal_last_payment_at')
-        updated_at = timezone.now()
-
-        last_payment_at = migration.estimate_last_payment_at_for_backfill(
-            SimpleNamespace(prepayment_amount=Decimal('5000.00'), updated_at=updated_at),
-            [],
-        )
-
-        self.assertEqual(last_payment_at, updated_at)
-
-
-class FinancePeriodFormTests(SimpleTestCase):
-    def test_period_field_prefills_from_initial_year_and_month(self):
-        form = FinancePeriodForm(initial={'year': 2026, 'month': 3})
-
-        self.assertEqual(form['period'].value(), '2026-03')
-
-    def test_period_field_accepts_legacy_year_and_month_query_params(self):
-        form = FinancePeriodForm(data={'year': '2026', 'month': '0'})
-
-        self.assertTrue(form.is_valid())
-        self.assertEqual(form.cleaned_data['period'], '2026-00')
-        self.assertEqual(form.cleaned_data['year'], 2026)
-        self.assertEqual(form.cleaned_data['month'], 0)
-
-
-class ManagerFormRenderingTests(SimpleTestCase):
-    def test_shared_form_field_partial_renders_status_helper_and_error(self):
-        class DemoForm(StyledFormMixin, forms.Form):
-            amount = forms.DecimalField(label='Сумма')
-
-            field_metadata = {
-                'amount': {
-                    'placeholder': 'Например: 15000',
-                    'help_text': 'Укажите сумму сделки в рублях.',
-                    'autofill_note': 'Поле можно скорректировать позже.',
-                }
-            }
-
-        form = DemoForm(data={'amount': ''})
-        self.assertFalse(form.is_valid())
-
-        rendered = Template(
-            '{% include "manager_portal/_form_field.html" with field=form.amount compact=False %}'
-        ).render(Context({'form': form}))
-
-        self.assertIn('Обязательно', rendered)
-        self.assertIn('Укажите сумму сделки в рублях.', rendered)
-        self.assertIn('Поле можно скорректировать позже.', rendered)
-        self.assertIn('Обязательное поле.', rendered)
-
-    def test_manual_order_form_exposes_mask_and_helper_metadata(self):
-        form = ManualOrderForm()
-
-        self.assertEqual(form.fields['individual_phone'].widget.attrs['data-manager-mask'], 'phone')
-        self.assertEqual(form.fields['business_email'].widget.attrs['data-manager-mask'], 'email')
-        self.assertEqual(form.fields['customer_deadline'].widget.attrs['data-manager-date-picker'], 'true')
-        self.assertEqual(form.fields['individual_messenger'].widget.attrs['data-manager-mask'], 'telegram-loose')
-        self.assertIn('Подтянется автоматически текущим менеджером', form.fields['responsible_manager'].manager_autofill_note)
-
-    def test_contract_document_form_exposes_autofill_metadata(self):
-        form = ContractDocumentForm()
-
-        self.assertEqual(form.fields['counterparty_phone'].widget.attrs['data-manager-mask'], 'phone')
-        self.assertEqual(form.fields['counterparty_email'].widget.attrs['data-manager-mask'], 'email')
-        self.assertIn('Подтянется автоматически', form.fields['template'].manager_autofill_note)
-        self.assertIn('Внутренняя заметка', form.fields['notes'].manager_helper_text)
 
 
 @override_settings(
@@ -362,73 +204,6 @@ class ManagerPortalBaseTestCase(TestCase):
     def login_staff(self):
         self.client.force_login(self.staff_user)
 
-    def assert_sidebar_labels(self, response):
-        self.assertEqual(
-            [item['label'] for item in response.context['manager_sidebar_items']],
-            [
-                'Сделки',
-                'Клиенты',
-                'Коммерческие предложения',
-                'Склады',
-                'Остатки',
-                'Бронирования',
-                'Грузы',
-                'Отгрузки',
-                'Финансы',
-                'Договоры',
-                'Закупки',
-            ],
-        )
-        self.assertEqual(
-            [(group['label'], [item['label'] for item in group['items']]) for group in response.context['manager_sidebar_groups']],
-            [
-                ('Продажи', ['Сделки', 'Клиенты', 'Коммерческие предложения']),
-                ('Склад и логистика', ['Склады', 'Остатки', 'Бронирования', 'Грузы', 'Отгрузки']),
-                ('Финансы и документы', ['Финансы', 'Договоры', 'Закупки']),
-            ],
-        )
-        self.assertContains(response, 'Продажи')
-        self.assertContains(response, 'Склад и логистика')
-        self.assertContains(response, 'Финансы и документы')
-
-    def test_entry_shell_uses_email_when_name_missing(self):
-        self.staff_user.username = 'user_0b117b937e8db4'
-        self.staff_user.email = 'staff@example.com'
-        self.staff_user.first_name = ''
-        self.staff_user.last_name = ''
-        self.staff_user.save(update_fields=['username', 'email', 'first_name', 'last_name'])
-        self.login_staff()
-
-        response = self.client.get(reverse('manager_portal:entry'), follow=True)
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'staff@example.com')
-        self.assertContains(response, 'title="staff@example.com"', html=False)
-
-    def test_deal_list_uses_scrollable_kpi_grid_markup(self):
-        self.login_staff()
-
-        response = self.client.get(reverse('manager_portal:deal_list'))
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'manager-deals-kpi-scroller')
-        self.assertNotContains(response, 'md:grid-cols-3')
-
-    def test_client_detail_shows_linked_user_email_instead_of_generated_username(self):
-        linked_user = User.objects.create_user(
-            username='user_0b117b937e8db4',
-            email='client-owner@example.com',
-            password='pass1234',
-        )
-        self.manager_client.user = linked_user
-        self.manager_client.save(update_fields=['user'])
-        self.login_staff()
-
-        response = self.client.get(reverse('manager_portal:client_detail', kwargs={'pk': self.manager_client.pk}))
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, '>client-owner@example.com<', html=False)
-
     def create_order(
         self,
         *,
@@ -501,15 +276,9 @@ class ManagerPortalBaseTestCase(TestCase):
             'business_legal_address': 'Екатеринбург, Ленина, 1',
             'business_contact_person': 'Иван Петров',
             'business_phone': '+7 912 000 10 10',
-            'business_telegram': '@vision_finance',
-            'business_whatsapp': '+7 912 000 10 11',
             'business_email': 'sale@vision.test',
             'business_city': 'Екатеринбург',
             'business_delivery_address': 'ПВЗ СДЭК, Малышева, 10',
-            'business_checking_account': '40702810900000000001',
-            'business_bank_name': 'ПАО Сбербанк',
-            'business_bik': '046577674',
-            'business_correspondent_account': '30101810500000000674',
             'business_comment': 'Работают по безналу',
             'customer_request': '',
             'customer_deadline': '',
@@ -569,6 +338,25 @@ class ManagerPortalBaseTestCase(TestCase):
             'tradein-0-final_estimate': '',
         }
 
+    def quick_deal_payload(self):
+        return {
+            'creation_mode': 'quick',
+            'client': str(self.manager_client.pk),
+            'deal_type': ManagerDeal.DEAL_SALE_FROM_STOCK,
+            'customer_source': ManagerDeal.SOURCE_REPEAT,
+            'responsible_manager': self.staff_user.pk,
+            'next_step_code': ManagerDeal.NEXT_STEP_NEEDS_PAYMENT,
+            'items-TOTAL_FORMS': '1',
+            'items-INITIAL_FORMS': '0',
+            'items-MIN_NUM_FORMS': '0',
+            'items-MAX_NUM_FORMS': '1000',
+            'items-0-product': str(self.product.pk),
+            'items-0-configuration': '128 GB',
+            'items-0-quantity': '1',
+            'items-0-sale_price': '97000.00',
+            'items-0-comment': 'Быстрый старт из списка сделок',
+        }
+
 
 class ManagerPortalAccessTests(ManagerPortalBaseTestCase):
     def test_anonymous_redirected_to_login_from_entry(self):
@@ -603,17 +391,6 @@ class ManagerPortalAccessTests(ManagerPortalBaseTestCase):
         self.assertEqual(response.status_code, 403)
         self.assertTemplateUsed(response, '403.html')
 
-    def test_entry_renders_theme_toggle_with_light_default(self):
-        self.client.force_login(self.user)
-
-        response = self.client.get(reverse('manager_portal:entry'))
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, '<html lang="ru" data-manager-theme="light">', html=False)
-        self.assertContains(response, 'data-manager-theme-option="light"')
-        self.assertContains(response, 'data-manager-theme-option="dark"')
-        self.assertContains(response, "window.managerPortalTheme = {")
-
     def test_finance_operator_can_open_finance_only_routes(self):
         finance_group, _ = Group.objects.get_or_create(name=FINANCE_OPERATOR_GROUP)
         finance_user = User.objects.create_user(username='finance-operator', password='pass1234')
@@ -638,20 +415,13 @@ class ManagerPortalAccessTests(ManagerPortalBaseTestCase):
         self.assertEqual(entry_response.status_code, 200)
         self.assertTrue(entry_response.context['entry_has_finance_access'])
         self.assertFalse(entry_response.context['entry_has_staff_access'])
-        self.assert_sidebar_labels(entry_response)
         self.assertContains(entry_response, 'Финансы')
         self.assertNotContains(entry_response, '/manager/deals/')
-        self.assertNotContains(entry_response, '/manager/contracts/')
-        enabled_sidebar_items = [item['key'] for item in entry_response.context['manager_sidebar_items'] if item['enabled']]
-        self.assertEqual(enabled_sidebar_items, ['finance'])
+        self.assertNotContains(entry_response, 'Договоры')
 
         self.assertEqual(finance_response.status_code, 200)
-        self.assert_sidebar_labels(finance_response)
         self.assertContains(finance_response, 'Финансовый обзор')
-        self.assertContains(finance_response, 'Финансовый контур')
-        finance_item = next(item for item in finance_response.context['manager_sidebar_items'] if item['key'] == 'finance')
-        self.assertTrue(finance_item['active'])
-        self.assertTrue(finance_item['enabled'])
+        self.assertContains(finance_response, 'Finance Workspace')
 
         self.assertEqual(finance_settings_get.status_code, 200)
         self.assertContains(finance_settings_get, 'finance-admin')
@@ -659,22 +429,6 @@ class ManagerPortalAccessTests(ManagerPortalBaseTestCase):
 
         self.assertEqual(dashboard_response.status_code, 403)
         self.assertEqual(contracts_response.status_code, 403)
-
-    def test_finance_only_mobile_bottom_nav_is_not_rendered_for_single_destination(self):
-        finance_group, _ = Group.objects.get_or_create(name=FINANCE_OPERATOR_GROUP)
-        finance_user = User.objects.create_user(username='finance-operator-mobile', password='pass1234')
-        finance_user.groups.add(finance_group)
-        self.client.force_login(finance_user)
-
-        response = self.client.get(reverse('manager_portal:finance'))
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            [item['key'] for item in response.context['manager_mobile_primary_nav_items']],
-            ['finance'],
-        )
-        self.assertEqual(response.context['manager_mobile_more_nav_items'], [])
-        self.assertFalse(response.context['manager_mobile_bottom_nav_visible'])
 
     def test_finance_admin_can_update_finance_settings_without_staff_access(self):
         finance_group, _ = Group.objects.get_or_create(name=FINANCE_ADMIN_GROUP)
@@ -709,55 +463,15 @@ class ManagerPortalAccessTests(ManagerPortalBaseTestCase):
 
         self.assertRedirects(response, f"{reverse('manager_portal:deal_list')}?only_problematic=1")
 
-    def test_staff_mobile_bottom_nav_uses_role_priority_order(self):
-        self.login_staff()
-        ensure_manager_deal_for_order(self.order)
-
-        response = self.client.get(reverse('manager_portal:deal_list'))
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            [item['key'] for item in response.context['manager_mobile_primary_nav_items']],
-            ['deals', 'clients', 'warehouses', 'inventory', 'finance'],
-        )
-        self.assertEqual(
-            [item['key'] for item in response.context['manager_mobile_more_nav_items']],
-            ['contracts', 'purchases', 'reservations', 'shipments', 'cargos', 'commercial_proposals'],
-        )
-        self.assertTrue(response.context['manager_mobile_bottom_nav_visible'])
-
-    def test_staff_mobile_bottom_nav_promotes_active_secondary_section(self):
-        self.login_staff()
-
-        response = self.client.get(reverse('manager_portal:contracts_documents'))
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            [item['key'] for item in response.context['manager_mobile_primary_nav_items']],
-            ['deals', 'clients', 'warehouses', 'inventory', 'contracts'],
-        )
-        self.assertEqual(
-            [item['key'] for item in response.context['manager_mobile_more_nav_items']],
-            ['finance', 'purchases', 'reservations', 'shipments', 'cargos', 'commercial_proposals'],
-        )
-        self.assertFalse(response.context['manager_mobile_more_active'])
-
     def test_staff_can_open_commercial_proposals_module(self):
         self.login_staff()
 
         response = self.client.get(reverse('manager_portal:commercial_proposals'))
 
         self.assertEqual(response.status_code, 200)
-        self.assert_sidebar_labels(response)
         self.assertContains(response, 'Генератор КП')
-        self.assertContains(response, 'Поиск товара')
-        self.assertContains(response, 'Результаты')
-        self.assertContains(response, 'Добавленные товары')
-        self.assertContains(response, 'Сгенерировать КП')
-        self.assertContains(response, 'Сохранить черновик')
+        self.assertContains(response, 'Скачать PDF')
         self.assertContains(response, 'id="commercial-proposal-form" hx-boost="false"', html=False)
-        active_sidebar_item = next(item for item in response.context['manager_sidebar_items'] if item['active'])
-        self.assertEqual(active_sidebar_item['key'], 'commercial_proposals')
 
     def test_staff_can_open_contracts_module_routes(self):
         self.login_staff()
@@ -776,9 +490,8 @@ class ManagerPortalAccessTests(ManagerPortalBaseTestCase):
         self.assertContains(finance_response, 'Финансовый обзор')
         self.assertContains(finance_response, 'Finance Workspace')
         self.assertEqual(contracts_response.status_code, 200)
-        self.assertContains(contracts_response, 'Панель управления документами')
-        self.assertContains(contracts_response, 'class="manager-secondary-action"', html=False)
-        self.assertNotContains(contracts_response, 'Внутренний кабинет договоров')
+        self.assertContains(contracts_response, 'Внутренний кабинет договоров')
+        self.assertContains(contracts_response, 'PostgreSQL-базу')
         self.assertContains(contracts_response, self.contract_document.number)
         self.assertEqual(contracts_documents_response.status_code, 200)
         self.assertContains(contracts_documents_response, 'Реестр документов')
@@ -791,7 +504,6 @@ class ManagerPortalAccessTests(ManagerPortalBaseTestCase):
         self.assertContains(contracts_create_response, 'Предпросмотр')
         self.assertContains(contracts_create_response, 'Создать документ')
         self.assertContains(contracts_create_response, 'Показать предпросмотр')
-        self.assertContains(contracts_create_response, 'Здесь менеджер видит, какие реквизиты обязательны сразу')
         self.assertEqual(contracts_templates_response.status_code, 200)
         self.assertContains(contracts_templates_response, self.contract_template.name)
         self.assertEqual(contracts_settings_response.status_code, 200)
@@ -799,29 +511,7 @@ class ManagerPortalAccessTests(ManagerPortalBaseTestCase):
         self.assertEqual(contracts_app_response.status_code, 302)
         self.assertEqual(contracts_app_response.url, reverse('manager_portal:contracts'))
         self.assertEqual(contracts_api_response.status_code, 410)
-        self.assertContains(contracts_api_response, 'Внешний API договоров недоступен.', status_code=410)
-        self.assertNotContains(contracts_api_response, 'внутренний кабинет', status_code=410)
-
-    def test_staff_can_open_finance_subsection_routes(self):
-        self.login_staff()
-
-        finance_dashboard_response = self.client.get(reverse('manager_portal:finance'))
-        finance_deals_response = self.client.get(reverse('manager_portal:finance_deal_list'))
-        finance_expenses_response = self.client.get(reverse('manager_portal:finance_expense_list'))
-        finance_payouts_response = self.client.get(reverse('manager_portal:finance_payout_list'))
-        finance_archive_response = self.client.get(reverse('manager_portal:finance_archive'))
-
-        self.assertEqual(finance_dashboard_response.status_code, 200)
-        self.assertContains(finance_dashboard_response, 'Кассовая лента')
-        self.assertContains(finance_dashboard_response, 'Распределение по типам сделок')
-        self.assertEqual(finance_deals_response.status_code, 200)
-        self.assertContains(finance_deals_response, 'Финансовые кейсы')
-        self.assertEqual(finance_expenses_response.status_code, 200)
-        self.assertContains(finance_expenses_response, 'Наши расходы')
-        self.assertEqual(finance_payouts_response.status_code, 200)
-        self.assertContains(finance_payouts_response, 'Журнал выплат')
-        self.assertEqual(finance_archive_response.status_code, 200)
-        self.assertContains(finance_archive_response, 'Архив операций')
+        self.assertContains(contracts_api_response, 'внутренний кабинет', status_code=410)
 
     def test_staff_can_create_contract_document_from_internal_cabinet(self):
         self.login_staff()
@@ -934,24 +624,6 @@ class ManagerPortalAccessTests(ManagerPortalBaseTestCase):
 
 
 class ManagerPortalModelAndFormTests(ManagerPortalBaseTestCase):
-    def test_manager_filter_forms_use_flatpickr_date_widget(self):
-        form_classes = (
-            PurchaseFilterForm,
-            CargoFilterForm,
-            ReservationFilterForm,
-            ShipmentFilterForm,
-        )
-
-        for form_class in form_classes:
-            form = form_class()
-            for field_name in ('date_from', 'date_to'):
-                with self.subTest(form=form_class.__name__, field=field_name):
-                    field = form.fields[field_name]
-                    self.assertEqual(field.widget.attrs['data-manager-date-picker'], 'true')
-                    self.assertEqual(field.widget.attrs['placeholder'], 'ДД.ММ.ГГГГ')
-                    self.assertIn('bg-slate-800', field.widget.attrs['class'])
-                    self.assertIn('%d.%m.%Y', field.input_formats)
-
     def test_inventory_receipt_form_rejects_foreign_variant(self):
         form = InventoryReceiptForm(
             data={
@@ -1022,6 +694,145 @@ class ManagerPortalModelAndFormTests(ManagerPortalBaseTestCase):
 
 
 class ManagerPortalServiceTests(ManagerPortalBaseTestCase):
+    def test_recompute_deal_workflow_sets_next_step_to_availability_confirmation(self):
+        deal = ensure_manager_deal_for_order(self.order)
+        receipt_inventory(warehouse=self.warehouse, product=self.product, quantity=3, author=self.staff_user)
+        deal.case_status = ManagerDeal.CASE_STATUS_CONFIRMED
+        deal.stock_warehouse = None
+        deal.save(update_fields=['case_status', 'stock_warehouse', 'updated_at'])
+        Order.objects.filter(pk=deal.order_id).update(
+            status=Order.STATUS_CONFIRMED,
+            payment_status=Order.PAYMENT_STATUS_PAID,
+            delivery_type=Order.DELIVERY_PICKUP,
+        )
+        deal.order.refresh_from_db()
+
+        recompute_deal_workflow(deal)
+        deal.refresh_from_db()
+
+        self.assertEqual(deal.next_step_code, ManagerDeal.NEXT_STEP_NEEDS_AVAILABILITY_CONFIRMATION)
+
+    def test_recompute_deal_workflow_sets_next_step_to_reservation_after_stock_confirmed(self):
+        deal = ensure_manager_deal_for_order(self.order)
+        receipt_inventory(warehouse=self.warehouse, product=self.product, quantity=3, author=self.staff_user)
+        deal.case_status = ManagerDeal.CASE_STATUS_CONFIRMED
+        deal.stock_warehouse = self.warehouse
+        deal.save(update_fields=['case_status', 'stock_warehouse', 'updated_at'])
+        Order.objects.filter(pk=deal.order_id).update(
+            status=Order.STATUS_CONFIRMED,
+            payment_status=Order.PAYMENT_STATUS_PAID,
+            delivery_type=Order.DELIVERY_PICKUP,
+        )
+        deal.order.refresh_from_db()
+
+        recompute_deal_workflow(deal)
+        deal.refresh_from_db()
+
+        self.assertEqual(deal.next_step_code, ManagerDeal.NEXT_STEP_NEEDS_RESERVATION)
+
+    def test_recompute_deal_workflow_sets_document_dispatch_for_complete_draft(self):
+        deal = ensure_manager_deal_for_order(self.order)
+        deal.buyer_type = ManagerDeal.BUYER_BUSINESS
+        deal.business_company_name = 'ООО Документы'
+        deal.business_phone = '+7 999 555 44 33'
+        deal.stock_warehouse = self.warehouse
+        deal.case_status = ManagerDeal.CASE_STATUS_CONFIRMED
+        deal.save(
+            update_fields=[
+                'buyer_type',
+                'business_company_name',
+                'business_phone',
+                'stock_warehouse',
+                'case_status',
+                'updated_at',
+            ]
+        )
+        self.contract_document.status = ContractDocument.STATUS_DRAFT
+        self.contract_document.counterparty_ogrn = '1234567890123'
+        self.contract_document.save(update_fields=['status', 'counterparty_ogrn', 'updated_at'])
+        Order.objects.filter(pk=deal.order_id).update(status=Order.STATUS_CONFIRMED, payment_status=Order.PAYMENT_STATUS_PAID)
+        deal.order.refresh_from_db()
+
+        recompute_deal_workflow(deal)
+        deal.refresh_from_db()
+
+        self.assertEqual(deal.next_step_code, ManagerDeal.NEXT_STEP_NEEDS_DOCUMENT_DISPATCH)
+
+    def test_recompute_deal_workflow_returns_to_payment_after_document_sent(self):
+        deal = ensure_manager_deal_for_order(self.order)
+        deal.buyer_type = ManagerDeal.BUYER_BUSINESS
+        deal.business_company_name = 'ООО Оплата'
+        deal.business_phone = '+7 999 111 22 33'
+        deal.stock_warehouse = self.warehouse
+        deal.case_status = ManagerDeal.CASE_STATUS_CONFIRMED
+        deal.save(
+            update_fields=[
+                'buyer_type',
+                'business_company_name',
+                'business_phone',
+                'stock_warehouse',
+                'case_status',
+                'updated_at',
+            ]
+        )
+        self.contract_document.status = ContractDocument.STATUS_SENT
+        self.contract_document.counterparty_ogrn = '1234567890123'
+        self.contract_document.save(update_fields=['status', 'counterparty_ogrn', 'updated_at'])
+        Order.objects.filter(pk=deal.order_id).update(status=Order.STATUS_CONFIRMED, payment_status=Order.PAYMENT_STATUS_UNPAID)
+        deal.order.refresh_from_db()
+
+        recompute_deal_workflow(deal)
+        deal.refresh_from_db()
+
+        self.assertEqual(deal.next_step_code, ManagerDeal.NEXT_STEP_NEEDS_PAYMENT)
+
+    def test_recompute_deal_workflow_sets_and_clears_contact_payment_and_stale_flags(self):
+        deal = ensure_manager_deal_for_order(self.order)
+        deal.case_status = ManagerDeal.CASE_STATUS_CONFIRMED
+        deal.individual_phone = ''
+        deal.individual_messenger = ''
+        deal.last_activity_at = timezone.now() - timedelta(hours=48, minutes=1)
+        deal.save(update_fields=['case_status', 'individual_phone', 'individual_messenger', 'last_activity_at', 'updated_at'])
+        Order.objects.filter(pk=deal.order_id).update(status=Order.STATUS_CONFIRMED, phone='', email='', payment_status=Order.PAYMENT_STATUS_UNPAID)
+        deal.order.refresh_from_db()
+
+        recompute_deal_workflow(deal)
+        deal.refresh_from_db()
+
+        self.assertIn(ManagerDeal.PROBLEM_FLAG_MISSING_CONTACTS, deal.problem_flags)
+        self.assertIn(ManagerDeal.PROBLEM_FLAG_MISSING_PAYMENT, deal.problem_flags)
+        self.assertIn(ManagerDeal.PROBLEM_FLAG_STALE_UPDATES, deal.problem_flags)
+
+        deal.individual_phone = '+7 999 111 22 44'
+        deal.last_activity_at = timezone.now()
+        deal.save(update_fields=['individual_phone', 'last_activity_at', 'updated_at'])
+        Order.objects.filter(pk=deal.order_id).update(phone='+7 999 111 22 44', email='client@example.com', payment_status=Order.PAYMENT_STATUS_PAID)
+        deal.order.refresh_from_db()
+
+        recompute_deal_workflow(deal)
+        deal.refresh_from_db()
+
+        self.assertNotIn(ManagerDeal.PROBLEM_FLAG_MISSING_CONTACTS, deal.problem_flags)
+        self.assertNotIn(ManagerDeal.PROBLEM_FLAG_MISSING_PAYMENT, deal.problem_flags)
+        self.assertNotIn(ManagerDeal.PROBLEM_FLAG_STALE_UPDATES, deal.problem_flags)
+
+    def test_recompute_deal_workflow_marks_stale_only_after_48_hours(self):
+        deal = ensure_manager_deal_for_order(self.order)
+        deal.case_status = ManagerDeal.CASE_STATUS_CONFIRMED
+        deal.last_activity_at = timezone.now() - timedelta(hours=47, minutes=59)
+        deal.save(update_fields=['case_status', 'last_activity_at', 'updated_at'])
+
+        recompute_deal_workflow(deal)
+        deal.refresh_from_db()
+        self.assertNotIn(ManagerDeal.PROBLEM_FLAG_STALE_UPDATES, deal.problem_flags)
+
+        deal.last_activity_at = timezone.now() - timedelta(hours=48, minutes=1)
+        deal.save(update_fields=['last_activity_at', 'updated_at'])
+        recompute_deal_workflow(deal)
+        deal.refresh_from_db()
+
+        self.assertIn(ManagerDeal.PROBLEM_FLAG_STALE_UPDATES, deal.problem_flags)
+
     def test_manager_proposal_contact_data_prefers_cp_contact_over_profile(self):
         self.staff_user.first_name = 'Ярослав'
         self.staff_user.last_name = 'Едигарьев'
@@ -1042,16 +853,7 @@ class ManagerPortalServiceTests(ManagerPortalBaseTestCase):
         self.assertEqual(contact_data['manager_email'], 'cp@example.com')
 
     def test_finance_dashboard_data_calculates_partner_metrics(self):
-        manager_deal = ensure_manager_deal_for_order(self.order)
-        manager_deal.prepayment_amount = Decimal('250.00')
-        manager_deal.payment_state = ManagerDeal.PAYMENT_STATE_PARTIAL
-        manager_deal.next_step_code = ManagerDeal.NEXT_STEP_NEEDS_PAYMENT
-        manager_deal.problem_flags = [ManagerDeal.PROBLEM_FLAG_SLA_OVERDUE]
-        manager_deal.save(
-            update_fields=['prepayment_amount', 'payment_state', 'next_step_code', 'problem_flags', 'updated_at']
-        )
         finance_deal = FinanceDeal.objects.create(
-            manager_deal=manager_deal,
             date=timezone.localdate(),
             contract_number='BF-002',
             deal_type=self.finance_deal_type,
@@ -1084,11 +886,6 @@ class ManagerPortalServiceTests(ManagerPortalBaseTestCase):
         self.assertEqual(data['total_opex'], Decimal('50.00'))
         self.assertEqual(data['partner_paid_physically'], Decimal('20.00'))
         self.assertEqual(data['already_paid'], Decimal('80.00'))
-        self.assertEqual(data['paid_total'], Decimal('250.00'))
-        self.assertEqual(data['receivables_total'], Decimal('750.00'))
-        self.assertEqual(data['overdue_total'], Decimal('750.00'))
-        self.assertEqual(data['cash_balance'], Decimal('120.00'))
-        self.assertTrue(data['has_cashflow_activity'])
         self.assertEqual(data['partner_profit'].as_tuple().exponent, -2)
         self.assertEqual(data['final_payout'].as_tuple().exponent, -2)
         self.assertTrue(data['partner_profit'] > 0)
@@ -1379,101 +1176,6 @@ class ManagerPortalServiceTests(ManagerPortalBaseTestCase):
 
 
 class ManagerPortalViewTests(ManagerPortalBaseTestCase):
-    def test_purchase_list_filters_by_russian_date_range(self):
-        self.login_staff()
-        old_purchase = Purchase.objects.create(
-            date=timezone.localdate() - timedelta(days=20),
-            supplier_name='Старый поставщик',
-        )
-        matching_purchase = Purchase.objects.create(
-            date=timezone.localdate() - timedelta(days=4),
-            supplier_name='Новый поставщик',
-        )
-
-        response = self.client.get(
-            reverse('manager_portal:purchase_list'),
-            {
-                'date_from': (timezone.localdate() - timedelta(days=10)).strftime('%d.%m.%Y'),
-                'date_to': timezone.localdate().strftime('%d.%m.%Y'),
-            },
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(matching_purchase, response.context['purchases'])
-        self.assertNotIn(old_purchase, response.context['purchases'])
-
-    def test_cargo_list_filters_by_eta_date_range(self):
-        self.login_staff()
-        old_cargo = Cargo.objects.create(
-            destination_warehouse=self.warehouse,
-            eta=timezone.localdate() - timedelta(days=12),
-        )
-        matching_cargo = Cargo.objects.create(
-            destination_warehouse=self.warehouse,
-            eta=timezone.localdate() - timedelta(days=2),
-        )
-
-        response = self.client.get(
-            reverse('manager_portal:cargo_list'),
-            {'date_from': (timezone.localdate() - timedelta(days=7)).strftime('%d.%m.%Y')},
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(matching_cargo, response.context['cargos'])
-        self.assertNotIn(old_cargo, response.context['cargos'])
-
-    def test_reservation_list_filters_by_created_at_date_range(self):
-        self.login_staff()
-        old_reservation = self.create_reservation(source_warehouse=self.warehouse)
-        matching_reservation = self.create_reservation(source_warehouse=self.warehouse)
-        Reservation.objects.filter(pk=old_reservation.pk).update(created_at=timezone.now() - timedelta(days=14))
-        Reservation.objects.filter(pk=matching_reservation.pk).update(created_at=timezone.now() - timedelta(days=2))
-        old_reservation.refresh_from_db()
-        matching_reservation.refresh_from_db()
-
-        response = self.client.get(
-            reverse('manager_portal:reservation_list'),
-            {'date_from': (timezone.localdate() - timedelta(days=7)).strftime('%d.%m.%Y')},
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(matching_reservation, response.context['reservations'])
-        self.assertNotIn(old_reservation, response.context['reservations'])
-
-    def test_shipments_view_filters_by_created_at_date_range(self):
-        self.login_staff()
-        old_reservation = self.create_reservation(
-            client=self.manager_client,
-            source_warehouse=self.warehouse,
-            target_warehouse=self.other_warehouse,
-        )
-        ReservationItem.objects.create(reservation=old_reservation, product=self.product, quantity=1)
-        matching_reservation = self.create_reservation(
-            client=self.manager_client,
-            source_warehouse=self.warehouse,
-            target_warehouse=self.other_warehouse,
-        )
-        ReservationItem.objects.create(reservation=matching_reservation, product=self.product, quantity=1)
-        Reservation.objects.filter(pk=old_reservation.pk).update(created_at=timezone.now() - timedelta(days=14))
-        Reservation.objects.filter(pk=matching_reservation.pk).update(created_at=timezone.now() - timedelta(days=1))
-        old_shipment = Shipment.objects.create(order=self.order, client=self.manager_client, source_warehouse=self.warehouse)
-        matching_shipment = Shipment.objects.create(order=self.order, client=self.manager_client, source_warehouse=self.warehouse)
-        Shipment.objects.filter(pk=old_shipment.pk).update(created_at=timezone.now() - timedelta(days=14))
-        Shipment.objects.filter(pk=matching_shipment.pk).update(created_at=timezone.now() - timedelta(days=1))
-        old_shipment.refresh_from_db()
-        matching_shipment.refresh_from_db()
-
-        response = self.client.get(
-            reverse('manager_portal:shipments'),
-            {'date_from': (timezone.localdate() - timedelta(days=7)).strftime('%d.%m.%Y')},
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertIn(matching_shipment, response.context['shipments'])
-        self.assertNotIn(old_shipment, response.context['shipments'])
-        self.assertEqual(len(response.context['grouped_rows']), 1)
-        self.assertEqual(response.context['grouped_rows'][0]['reservation'], matching_reservation)
-
     def test_commercial_proposals_search_returns_empty_list_for_short_query(self):
         self.login_staff()
 
@@ -1600,23 +1302,10 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         response = self.client.get(reverse('manager_portal:deal_list'))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'id="bulk-toolbar"', html=False)
-        self.assertContains(response, 'class="manager-bulk-toolbar"', html=False)
+        self.assertContains(response, 'id="bulk-toolbar" class="manager-bulk-toolbar" hidden', html=False)
         self.assertContains(response, 'Снять выделение')
         self.assertContains(response, '>Экспорт</button>', html=False)
         self.assertNotContains(response, 'Экспорт selection')
-
-    def test_manager_pages_include_navigation_progress_assets(self):
-        self.login_staff()
-        ensure_manager_deal_for_order(self.order)
-
-        response = self.client.get(reverse('manager_portal:deal_list'))
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'https://unpkg.com/nprogress@0.2.0/nprogress.css', html=False)
-        self.assertContains(response, 'https://unpkg.com/nprogress@0.2.0/nprogress.js', html=False)
-        self.assertContains(response, 'manager-portal:navigation-pending', html=False)
-        self.assertContains(response, 'showSpinner: false', html=False)
 
     def test_deal_list_bulk_assign_updates_responsible_manager(self):
         self.login_staff()
@@ -1689,10 +1378,10 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
 
         response = self.client.get(reverse('manager_portal:deal_list'), {'view': 'kanban'})
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Сделки / Заказы')
-        self.assertContains(response, 'Канбан')
+        self.assertContains(response, 'Сделки Avito')
         self.assertContains(response, regular_deal.customer_name)
         self.assertNotContains(response, avito_deal.customer_name)
+        self.assertContains(response, 'Avito остаётся в отдельной таблице')
 
         avito_response = self.client.get(
             reverse('manager_portal:deal_list'),
@@ -1700,11 +1389,7 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         )
         self.assertEqual(avito_response.status_code, 200)
         self.assertNotContains(avito_response, 'data-manager-deal-board', html=False)
-        self.assertContains(avito_response, '>Avito<', html=False)
-        self.assertEqual(
-            [stat['label'] for stat in avito_response.context['page_header_stats']],
-            ['Найдено', 'Страница'],
-        )
+        self.assertContains(avito_response, 'Avito вынесен из канбана')
         self.assertContains(avito_response, avito_deal.customer_name)
         self.assertNotContains(avito_response, regular_deal.customer_name)
 
@@ -1788,6 +1473,42 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(list(response.context['deals'].values_list('pk', flat=True)), [deal_two.pk, deal.pk])
 
+    def test_deal_list_renders_action_blockers_and_health_columns(self):
+        self.login_staff()
+        deal = ensure_manager_deal_for_order(self.order)
+        deal.problem_flags = [ManagerDeal.PROBLEM_FLAG_MISSING_CONTACTS]
+        deal.next_step_reason_snapshot = 'Нужно срочно подтвердить наличие и закрыть следующий шаг.'
+        deal.last_activity_at = timezone.now() - timedelta(hours=49)
+        deal.sla_due_at = timezone.now() - timedelta(hours=3)
+        deal.save(update_fields=['problem_flags', 'next_step_reason_snapshot', 'last_activity_at', 'sla_due_at', 'updated_at'])
+
+        response = self.client.get(reverse('manager_portal:deal_list'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Следующее действие')
+        self.assertContains(response, 'Блокеры')
+        self.assertContains(response, 'SLA / активность')
+        self.assertContains(response, 'Нет контактов')
+        self.assertContains(response, 'следующий шаг просрочен')
+
+    def test_deal_list_problem_views_support_stale_and_missing_contacts(self):
+        self.login_staff()
+        deal = ensure_manager_deal_for_order(self.order)
+        deal.case_status = ManagerDeal.CASE_STATUS_CONFIRMED
+        deal.individual_phone = ''
+        deal.last_activity_at = timezone.now() - timedelta(hours=49)
+        deal.save(update_fields=['case_status', 'individual_phone', 'last_activity_at', 'updated_at'])
+        Order.objects.filter(pk=deal.order_id).update(status=Order.STATUS_CONFIRMED, phone='', email='')
+        deal.order.refresh_from_db()
+        recompute_deal_workflow(deal)
+        deal.refresh_from_db()
+
+        stale_response = self.client.get(reverse('manager_portal:deal_list'), {'problem_view': 'stale_updates'})
+        contacts_response = self.client.get(reverse('manager_portal:deal_list'), {'problem_view': 'missing_contacts'})
+
+        self.assertEqual(list(stale_response.context['deals'].values_list('pk', flat=True)), [deal.pk])
+        self.assertEqual(list(contacts_response.context['deals'].values_list('pk', flat=True)), [deal.pk])
+
     def test_deal_list_filters_unassigned_problematic_and_action_today(self):
         self.login_staff()
         deal = ensure_manager_deal_for_order(self.order)
@@ -1847,7 +1568,7 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(list(response.context['deals'].values_list('pk', flat=True)), [deal.pk])
-        self.assertContains(response, 'Активные фильтры')
+        self.assertContains(response, 'Очередь сделок')
 
     def test_deal_list_overview_separates_kpis_queues_and_signals(self):
         self.login_staff()
@@ -1857,123 +1578,15 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             [metric['label'] for metric in response.context['deal_kpis']],
-            ['Новые', 'Подтверждены', 'В работе', 'Ждут клиента', 'Готовы к отправке'],
-        )
-        self.assertEqual(
-            [metric['query_string'] for metric in response.context['deal_kpis']],
-            [
-                'case_status=new',
-                'case_status=confirmed',
-                'case_status=in_progress',
-                'case_status=waiting_client',
-                'case_status=ready_to_ship',
-            ],
+            ['В работе', 'Проблемные', 'Требуют действия сегодня', 'Без ответственного'],
         )
         self.assertEqual(
             [chip['label'] for chip in response.context['queue_chips']],
             ['В работе', 'Без ответственного', 'Ждут оплату', 'Ждут резерв', 'Ждут документы', 'Готовы к отгрузке', 'Проблемные'],
         )
-        self.assertEqual(
-            [stat['label'] for stat in response.context['page_header_stats']],
-            ['Найдено', 'Страница'],
-        )
-        self.assertEqual(response.context['active_filter_chips'], [])
         self.assertFalse(response.context['problem_views_expanded'])
-        self.assertContains(response, 'Очереди')
-        self.assertContains(response, 'Фильтры')
-
-    def test_deal_list_header_exposes_saved_views_and_filter_search(self):
-        self.login_staff()
-        ensure_manager_deal_for_order(self.order)
-        DealSavedView.objects.create(
-            owner=self.staff_user,
-            name='Ждут оплату',
-            query_string='queue=needs_payment',
-        )
-
-        response = self.client.get(reverse('manager_portal:deal_list'))
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Компактная строка по этапам')
-        self.assertContains(response, 'Быстрый поиск по фильтрам')
-        self.assertContains(response, 'data-filter-search-input', html=False)
-        self.assertContains(response, 'data-scroll-fade', html=False)
-        self.assertContains(response, 'Ждут оплату')
-        self.assertContains(response, 'queue=needs_payment', html=False)
-        self.assertContains(response, 'manager-deals-saved-views-trigger', html=False)
-        self.assertFalse(response.context['deal_kpi_panel_open'])
-
-    def test_deal_list_status_kpis_show_weekly_trend_and_filter_by_case_status(self):
-        self.login_staff()
-        ensure_manager_deal_for_order(self.order)
-        previous_order = self.create_order(
-            phone='+7 999 310 00 11',
-            email='previous-new@example.com',
-            first_name='Прошлый',
-            status=Order.STATUS_NEW,
-            payment_status=Order.PAYMENT_STATUS_UNPAID,
-            delivery_type=Order.DELIVERY_COURIER,
-            created_at=timezone.now() - timedelta(days=10),
-        )
-        extra_recent_order = self.create_order(
-            phone='+7 999 310 00 22',
-            email='recent-new@example.com',
-            first_name='Текущий',
-            status=Order.STATUS_NEW,
-            payment_status=Order.PAYMENT_STATUS_UNPAID,
-            delivery_type=Order.DELIVERY_COURIER,
-            created_at=timezone.now() - timedelta(days=1),
-        )
-        confirmed_order = self.create_order(
-            phone='+7 999 310 00 33',
-            email='confirmed@example.com',
-            first_name='Подтвержденный',
-            status=Order.STATUS_CONFIRMED,
-            payment_status=Order.PAYMENT_STATUS_UNPAID,
-            delivery_type=Order.DELIVERY_COURIER,
-            created_at=timezone.now() - timedelta(days=2),
-        )
-        ensure_manager_deal_for_order(previous_order)
-        ensure_manager_deal_for_order(extra_recent_order)
-        confirmed_deal = ensure_manager_deal_for_order(confirmed_order)
-
-        response = self.client.get(reverse('manager_portal:deal_list'))
-
-        self.assertEqual(response.status_code, 200)
-        metrics = {metric['status']: metric for metric in response.context['deal_kpis']}
-        new_metric = metrics[ManagerDeal.CASE_STATUS_NEW]
-        confirmed_metric = metrics[ManagerDeal.CASE_STATUS_CONFIRMED]
-        self.assertEqual(new_metric['count'], 3)
-        self.assertEqual(new_metric['query_string'], 'case_status=new')
-        self.assertEqual(new_metric['trend']['direction'], 'up')
-        self.assertEqual(new_metric['trend']['text'], '+100% к прошлой неделе')
-        self.assertEqual(new_metric['trend']['current_period_count'], 2)
-        self.assertEqual(new_metric['trend']['previous_period_count'], 1)
-        self.assertFalse(confirmed_metric['is_active'])
-        self.assertContains(response, '+100% к прошлой неделе')
-
-        filtered_response = self.client.get(
-            reverse('manager_portal:deal_list'),
-            {'case_status': ManagerDeal.CASE_STATUS_CONFIRMED},
-        )
-
-        self.assertEqual(filtered_response.status_code, 200)
-        self.assertEqual(list(filtered_response.context['deals'].values_list('pk', flat=True)), [confirmed_deal.pk])
-        filtered_metrics = {metric['status']: metric for metric in filtered_response.context['deal_kpis']}
-        self.assertTrue(filtered_metrics[ManagerDeal.CASE_STATUS_CONFIRMED]['is_active'])
-        self.assertTrue(filtered_response.context['deal_kpi_panel_open'])
-
-    def test_deal_list_kanban_cards_show_context_without_opening_detail(self):
-        self.login_staff()
-        deal = ensure_manager_deal_for_order(self.order)
-
-        response = self.client.get(reverse('manager_portal:deal_list'), {'view': 'kanban'})
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'draggable="true"', html=False)
-        self.assertContains(response, self.product.name)
-        self.assertContains(response, deal.get_payment_state_display())
-        self.assertContains(response, deal.get_fulfillment_status_display())
+        self.assertContains(response, 'Очередь сделок')
+        self.assertContains(response, 'Фильтры и виды')
 
     def test_deal_list_collapsible_panels_are_closed_without_active_filters(self):
         self.login_staff()
@@ -1995,44 +1608,25 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
             ['В работе', 'Без ответственного', 'Ждут оплату', 'Ждут резерв', 'Ждут документы', 'Готовы к отгрузке', 'Проблемные'],
         )
         self.assertContains(response, 'Сделки / Заказы')
-        self.assertContains(response, 'Очереди')
+        self.assertContains(response, 'Очередь сделок')
         self.assertEqual(response.context['active_queue_chip'], 'all')
-
-    def test_deal_list_wraps_status_kpis_in_mobile_scroller(self):
-        self.login_staff()
-        ensure_manager_deal_for_order(self.order)
-
-        response = self.client.get(reverse('manager_portal:deal_list'))
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'manager-deals-kpi-scroller', html=False)
-        self.assertContains(response, 'manager-deals-kpi-grid', html=False)
 
     def test_deal_list_renders_compact_rows_with_expandable_preview(self):
         self.login_staff()
         deal = ensure_manager_deal_for_order(self.order)
-        payment_changed_at = timezone.now() - timedelta(hours=3)
-        set_manager_deal_paid_amount(
-            deal,
-            paid_amount=Decimal('25000.00'),
-            changed_at=payment_changed_at,
-        )
 
         response = self.client.get(reverse('manager_portal:deal_list'))
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'id="deal-compact-list"', html=False)
         self.assertContains(response, 'Сделка')
-        self.assertContains(response, 'Клиент / Контекст')
-        self.assertContains(response, 'Primary status')
-        self.assertContains(response, 'Secondary status')
-        self.assertContains(response, 'Риск')
-        self.assertContains(response, 'Оплата')
-        self.assertContains(response, 'Ответственный')
+        self.assertContains(response, 'Следующий шаг')
+        self.assertContains(response, 'Обеспечение')
+        self.assertContains(response, 'SLA')
         self.assertContains(response, 'Действия')
         self.assertContains(response, 'Контекст сделки')
         self.assertContains(response, 'Следующий шаг и блокеры')
-        self.assertContains(response, 'Комментарии и логистика')
+        self.assertContains(response, 'Второстепенные поля')
         self.assertContains(response, 'Канал')
         self.assertContains(response, 'Доставка')
         self.assertContains(response, 'Комментарии')
@@ -2041,105 +1635,8 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         self.assertContains(response, deal.code)
         self.assertContains(response, deal.short_label)
         self.assertContains(response, 'Развернуть строку сделки')
-        self.assertContains(response, 'Частично оплачено')
-        self.assertContains(response, 'Оплачено')
-        self.assertContains(response, 'К оплате')
-        self.assertContains(response, 'Последний платеж')
-        self.assertContains(response, 'manager-deal-payment-value', html=False)
-        self.assertContains(response, 'manager-mobile-deal-payment-card-partial', html=False)
         self.assertNotContains(response, '>Activity<', html=False)
         self.assertNotContains(response, '>Blockers<', html=False)
-
-    def test_set_manager_deal_paid_amount_updates_and_clears_last_payment_at(self):
-        deal = ensure_manager_deal_for_order(self.order)
-        first_payment_at = timezone.now() - timedelta(hours=4)
-        second_payment_at = first_payment_at + timedelta(hours=2)
-
-        set_manager_deal_paid_amount(
-            deal,
-            paid_amount=Decimal('1000.00'),
-            changed_at=first_payment_at,
-        )
-        deal.refresh_from_db()
-        self.assertEqual(deal.prepayment_amount, Decimal('1000.00'))
-        self.assertEqual(deal.last_payment_at, first_payment_at)
-
-        set_manager_deal_paid_amount(
-            deal,
-            paid_amount=Decimal('2500.00'),
-            changed_at=second_payment_at,
-        )
-        deal.refresh_from_db()
-        self.assertEqual(deal.prepayment_amount, Decimal('2500.00'))
-        self.assertEqual(deal.last_payment_at, second_payment_at)
-
-        set_manager_deal_paid_amount(
-            deal,
-            paid_amount=Decimal('0.00'),
-            changed_at=timezone.now(),
-        )
-        deal.refresh_from_db()
-        self.assertEqual(deal.prepayment_amount, Decimal('0.00'))
-        self.assertIsNone(deal.last_payment_at)
-
-    def test_ensure_manager_deal_for_order_sets_last_payment_at_for_paid_site_order(self):
-        paid_order = self.create_order(
-            phone='+7 999 555 11 22',
-            email='paid-sync@example.com',
-            first_name='Оплаченный',
-            status=Order.STATUS_CONFIRMED,
-            payment_status=Order.PAYMENT_STATUS_PAID,
-            delivery_type=Order.DELIVERY_COURIER,
-        )
-        paid_timestamp = timezone.now() - timedelta(hours=1)
-        Order.objects.filter(pk=paid_order.pk).update(updated_at=paid_timestamp)
-        paid_order.refresh_from_db()
-
-        deal = ensure_manager_deal_for_order(paid_order)
-
-        self.assertEqual(deal.prepayment_amount, paid_order.total_with_delivery)
-        self.assertEqual(deal.last_payment_at, paid_timestamp)
-
-    def test_order_state_update_sets_last_payment_at_from_paid_amount(self):
-        self.login_staff()
-        manual_order = self.create_order(
-            phone='+7 999 123 00 00',
-            email='payment-update@example.com',
-            first_name='Мария',
-            status=Order.STATUS_NEW,
-            payment_status=Order.PAYMENT_STATUS_UNPAID,
-            delivery_type=Order.DELIVERY_CDEK_PVZ,
-        )
-        deal = ManagerDeal.objects.create(
-            order=manual_order,
-            responsible_manager=self.staff_user,
-            deal_type=ManagerDeal.DEAL_SALE_FROM_STOCK,
-            deal_status=ManagerDeal.DEAL_STATUS_RESERVED,
-            buyer_type=ManagerDeal.BUYER_INDIVIDUAL,
-            customer_source=ManagerDeal.SOURCE_WEBSITE,
-            individual_full_name='Мария Тест',
-            individual_phone='+7 999 123 00 00',
-            individual_city='Екатеринбург',
-            customer_request='Quest 3 128 GB',
-            delivery_method=ManagerDeal.DELIVERY_CDEK_PVZ,
-            delivery_pickup_address='ПВЗ',
-        )
-
-        response = self.client.post(
-            reverse('manager_portal:order_state_update', kwargs={'pk': manual_order.pk}),
-            {
-                'deal_status': ManagerDeal.DEAL_STATUS_RESERVED,
-                'payment_status': Order.PAYMENT_STATUS_UNPAID,
-                'paid_amount': '3500.00',
-                'tracking_number': '',
-            },
-            follow=True,
-        )
-
-        deal.refresh_from_db()
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(deal.prepayment_amount, Decimal('3500.00'))
-        self.assertIsNotNone(deal.last_payment_at)
 
     def test_deal_list_defaults_to_all_queue_chip_without_active_filters(self):
         self.login_staff()
@@ -2218,72 +1715,8 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         self.assertEqual(response.context['deals_page'].number, 2)
         self.assertEqual(response.context['deals_page'].paginator.num_pages, 2)
         self.assertEqual(len(response.context['deals_page'].object_list), 2)
-        self.assertEqual(response.context['page_header_stats'][1]['label'], 'Страница')
-        self.assertEqual(response.context['page_header_stats'][1]['value'], '2 / 2')
-        self.assertContains(response, '2 / 2')
+        self.assertContains(response, 'Страница <strong>2</strong> / 2')
         self.assertContains(response, 'Назад')
-
-    def test_deal_list_active_filter_chips_clear_single_filter(self):
-        self.login_staff()
-
-        response = self.client.get(
-            reverse('manager_portal:deal_list'),
-            {
-                'q': 'Quest',
-                'queue': ManagerDeal.NEXT_STEP_NEEDS_PAYMENT,
-                'only_problematic': '1',
-            },
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            [chip['label'] for chip in response.context['active_filter_chips']],
-            ['Поиск: Quest', 'Только проблемные'],
-        )
-        self.assertContains(response, 'Сбросить всё')
-        search_chip, problem_chip = response.context['active_filter_chips']
-        self.assertEqual(parse_qs(search_chip['clear_query_string']), {'queue': [ManagerDeal.NEXT_STEP_NEEDS_PAYMENT], 'only_problematic': ['1']})
-        self.assertEqual(parse_qs(problem_chip['clear_query_string']), {'q': ['Quest'], 'queue': [ManagerDeal.NEXT_STEP_NEEDS_PAYMENT]})
-
-    def test_deal_list_view_switch_links_preserve_queue_and_filters(self):
-        self.login_staff()
-
-        response = self.client.get(
-            reverse('manager_portal:deal_list'),
-            {
-                'q': 'Quest',
-                'queue': ManagerDeal.NEXT_STEP_NEEDS_PAYMENT,
-                'only_problematic': '1',
-            },
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            parse_qs(response.context['kanban_view_query_string']),
-            {
-                'q': ['Quest'],
-                'queue': [ManagerDeal.NEXT_STEP_NEEDS_PAYMENT],
-                'only_problematic': ['1'],
-                'view': ['kanban'],
-            },
-        )
-        self.assertEqual(
-            parse_qs(response.context['avito_view_query_string']),
-            {
-                'q': ['Quest'],
-                'queue': [ManagerDeal.NEXT_STEP_NEEDS_PAYMENT],
-                'only_problematic': ['1'],
-                'scope': ['avito'],
-            },
-        )
-        self.assertEqual(
-            parse_qs(response.context['list_view_query_string']),
-            {
-                'q': ['Quest'],
-                'queue': [ManagerDeal.NEXT_STEP_NEEDS_PAYMENT],
-                'only_problematic': ['1'],
-            },
-        )
 
     def test_global_search_results_find_variant_sku(self):
         self.login_staff()
@@ -2324,7 +1757,7 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         response = self.client.get(reverse('manager_portal:deal_search'), follow=True)
 
         self.assertRedirects(response, reverse('manager_portal:deal_list'))
-        self.assertContains(response, 'Глобальный поиск открывается по / или Cmd+K.')
+        self.assertContains(response, 'Глобальный поиск перенесен в верхнюю панель shell')
 
     def test_legacy_deal_search_route_preserves_query_in_deal_list_redirect(self):
         self.login_staff()
@@ -2332,7 +1765,7 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         response = self.client.get(reverse('manager_portal:deal_search'), {'q': 'Quest'}, follow=True)
 
         self.assertRedirects(response, f"{reverse('manager_portal:deal_list')}?q=Quest")
-        self.assertContains(response, 'Глобальный поиск открывается по / или Cmd+K.')
+        self.assertContains(response, 'Глобальный поиск перенесен в верхнюю панель shell')
 
     def test_staff_can_open_manual_order_create_page(self):
         self.login_staff()
@@ -2340,29 +1773,47 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         response = self.client.get(reverse('manager_portal:order_create'))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Ручное создание заказа')
-        self.assertContains(response, 'Что хочет клиент')
+        self.assertContains(response, 'Полное создание сделки')
         self.assertContains(response, 'Товары в заказе')
-        self.assertContains(response, 'Логистика, резервы и сценарные детали заполняются уже в карточке сделки.')
-        self.assertContains(response, 'data-manager-mask="phone"', html=False)
-        self.assertContains(response, 'data-manager-date-picker="true"', html=False)
-        self.assertContains(response, '@client_username или WhatsApp', html=False)
         self.assertContains(response, 'manual-order-product-catalog', html=False)
         self.assertContains(response, 'manual-order-product-names', html=False)
-        self.assertNotContains(response, 'Логистика заказа')
-        self.assertNotContains(response, 'Продажа под заказ')
-        self.assertNotContains(response, 'Продажа из наличия')
-        self.assertNotContains(response, 'Трейд-ин')
-        self.assertNotContains(response, 'Продажа Avito')
+
+    def test_staff_can_open_quick_deal_create_page(self):
+        self.login_staff()
+
+        response = self.client.get(reverse('manager_portal:deal_create'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Быстрое создание сделки')
+        self.assertContains(response, 'Только обязательное')
+        self.assertContains(response, 'Создать и открыть сделку')
+
+    def test_client_lookup_endpoint_finds_active_clients(self):
+        self.login_staff()
+
+        response = self.client.get(reverse('manager_portal:client_lookup'), {'q': 'Тест', 'mode': 'quick'})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual([item['id'] for item in payload], [self.manager_client.pk])
+        self.assertIn(reverse('manager_portal:deal_create'), payload[0]['select_url'])
+
+        phone_response = self.client.get(reverse('manager_portal:client_lookup'), {'q': '912 000', 'mode': 'full'})
+
+        self.assertEqual(phone_response.status_code, 200)
+        phone_payload = phone_response.json()
+        self.assertEqual([item['id'] for item in phone_payload], [self.manager_client.pk])
+        self.assertIn(reverse('manager_portal:order_create'), phone_payload[0]['select_url'])
 
     def test_order_create_prefills_client_profile_and_latest_items(self):
         self.login_staff()
+        previous_manager = User.objects.create_user(username='79990009999', password='pass1234', is_staff=True)
         deal = ensure_manager_deal_for_order(self.order)
         deal.buyer_type = ManagerDeal.BUYER_BUSINESS
         deal.deal_type = ManagerDeal.DEAL_SALE_FROM_STOCK
         deal.deal_status = ManagerDeal.DEAL_STATUS_RESERVED
         deal.customer_source = ManagerDeal.SOURCE_TELEGRAM
-        deal.responsible_manager = self.staff_user
+        deal.responsible_manager = previous_manager
         deal.delivery_method = ManagerDeal.DELIVERY_CITY
         deal.delivery_payer = ManagerDeal.DELIVERY_PAYER_INCLUDED
         deal.delivery_from_city = 'Екатеринбург'
@@ -2371,6 +1822,8 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         deal.shipping_comment = 'Позвонить за час'
         deal.stock_warehouse = self.warehouse
         deal.business_contact_person = 'Иван Петров'
+        deal.customer_request = 'Нужен комплект для демонстрации Quest 3'
+        deal.customer_request_comment = 'Хочет согласовать поставку на этой неделе'
         deal.business_inn = '6677001122'
         deal.business_kpp = '667701001'
         deal.business_ogrn = '1234567890123'
@@ -2388,30 +1841,24 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['form']['buyer_type'].value(), ManagerDeal.BUYER_BUSINESS)
-        self.assertEqual(response.context['form']['customer_source'].value(), ManagerDeal.SOURCE_TELEGRAM)
+        self.assertEqual(response.context['form']['customer_source'].value(), ManagerDeal.SOURCE_WEBSITE)
+        self.assertEqual(str(response.context['form']['responsible_manager'].value()), str(self.staff_user.pk))
+        self.assertEqual(str(response.context['form']['stock_warehouse'].value()), str(self.warehouse.pk))
+        self.assertEqual(
+            response.context['form']['customer_request'].value(),
+            'Нужен комплект для демонстрации Quest 3',
+        )
         first_item_form = response.context['formset'].forms[0]
         self.assertEqual(first_item_form.initial['product_name'], self.product.name)
         self.assertEqual(first_item_form.initial['product'], self.product.pk)
         self.assertEqual(first_item_form.initial['quantity'], 1)
         self.assertEqual(first_item_form.initial['purchase_price'], Decimal('65000.00'))
         self.assertContains(response, 'Последняя сделка')
-        self.assertNotContains(response, 'Доставка')
-        self.assertNotContains(response, 'Trade-in')
-
-    def test_order_create_renders_short_initial_flow_without_logistics_and_scenario_blocks(self):
-        self.login_staff()
-
-        response = self.client.get(reverse('manager_portal:order_create'))
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Сценарий заказа')
-        self.assertContains(response, 'Общие данные')
-        self.assertContains(response, 'Что хочет клиент')
-        self.assertNotContains(response, 'Логистика заказа')
-        self.assertNotContains(response, 'data-deal-section="trade_in"', html=False)
-        self.assertNotContains(response, 'data-deal-section="sale_on_request"', html=False)
-        self.assertNotContains(response, 'data-deal-section="sale_from_stock"', html=False)
-        self.assertNotContains(response, 'data-deal-section="avito_sale"', html=False)
+        self.assertContains(response, 'Прошлый источник')
+        self.assertContains(response, 'Telegram')
+        self.assertContains(response, 'Прошлый ответственный')
+        self.assertContains(response, previous_manager.username)
+        self.assertContains(response, 'Нужен комплект для демонстрации Quest 3')
 
     def test_staff_can_create_manual_business_order(self):
         self.login_staff()
@@ -2420,11 +1867,14 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         response = self.client.post(reverse('manager_portal:order_create'), self.manual_business_order_payload())
 
         manual_order = Order.objects.exclude(pk__in=[self.order.pk, self.order_two.pk]).get()
-        self.assertRedirects(response, reverse('manager_portal:deal_detail', kwargs={'pk': manual_order.manager_deal.pk}))
+        self.assertRedirects(
+            response,
+            f"{reverse('manager_portal:deal_detail', kwargs={'pk': manual_order.manager_deal.pk})}?created=1",
+        )
         self.assertEqual(manual_order.payment_method, Order.PAYMENT_METHOD_MANAGER_PAYMENT)
         self.assertEqual(manual_order.delivery_type, ManagerDeal.DELIVERY_CDEK_PVZ)
         self.assertEqual(manual_order.total, Decimal('180000.00'))
-        self.assertEqual(manual_order.delivery_cost, Decimal('0.00'))
+        self.assertEqual(manual_order.delivery_cost, Decimal('1500.00'))
         self.assertEqual(manual_order.recipient_name, 'ООО Вижн')
 
         line = manual_order.items.get()
@@ -2433,6 +1883,17 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         self.assertEqual(line.purchase_price, Decimal('70000.00'))
         self.assertEqual(line.discount_amount, Decimal('5000.00'))
         self.assertEqual(line.subtotal, Decimal('180000.00'))
+
+        deal = manual_order.manager_deal
+        self.assertEqual(deal.responsible_manager, self.staff_user)
+        self.assertEqual(deal.customer_source, ManagerDeal.SOURCE_AVITO)
+        self.assertEqual(deal.business_company_name, 'ООО Вижн')
+        self.assertEqual(deal.deal_status, ManagerDeal.DEAL_STATUS_NEW)
+        self.assertEqual(deal.prepayment_amount, Decimal('30000.00'))
+        self.assertEqual(deal.stock_warehouse, self.warehouse)
+        self.assertIsNotNone(deal.reservation)
+        self.assertEqual(deal.grand_total, Decimal('181500.00'))
+        self.assertEqual(deal.balance_due, Decimal('151500.00'))
 
     def test_staff_can_create_manual_order_item_from_name_without_hidden_product(self):
         self.login_staff()
@@ -2446,7 +1907,10 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         manual_order = Order.objects.exclude(pk__in=[self.order.pk, self.order_two.pk]).latest('pk')
         line = manual_order.items.get()
 
-        self.assertRedirects(response, reverse('manager_portal:deal_detail', kwargs={'pk': manual_order.manager_deal.pk}))
+        self.assertRedirects(
+            response,
+            f"{reverse('manager_portal:deal_detail', kwargs={'pk': manual_order.manager_deal.pk})}?created=1",
+        )
         self.assertEqual(line.product, self.product)
         self.assertEqual(line.product_name, self.product.name)
         self.assertEqual(line.price, self.product.price)
@@ -2466,57 +1930,37 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         manual_order = Order.objects.exclude(pk__in=[self.order.pk, self.order_two.pk]).latest('pk')
         line = manual_order.items.get()
 
-        self.assertRedirects(response, reverse('manager_portal:deal_detail', kwargs={'pk': manual_order.manager_deal.pk}))
+        self.assertRedirects(
+            response,
+            f"{reverse('manager_portal:deal_detail', kwargs={'pk': manual_order.manager_deal.pk})}?created=1",
+        )
         self.assertIsNone(line.product)
         self.assertEqual(line.product_name, 'Индивидуальный комплект клиента')
         self.assertEqual(line.price, Decimal('12345.00'))
         self.assertEqual(line.subtotal, Decimal('36000.00'))
 
-        deal = manual_order.manager_deal
-        self.assertEqual(deal.responsible_manager, self.staff_user)
-        self.assertEqual(deal.customer_source, ManagerDeal.SOURCE_AVITO)
-        self.assertEqual(deal.business_company_name, 'ООО Вижн')
-        self.assertEqual(deal.business_checking_account, '40702810900000000001')
-        self.assertEqual(deal.business_bank_name, 'ПАО Сбербанк')
-        self.assertEqual(deal.business_bik, '046577674')
-        self.assertEqual(deal.business_correspondent_account, '30101810500000000674')
-        self.assertEqual(deal.business_telegram, '@vision_finance')
-        self.assertEqual(deal.business_whatsapp, '+7 912 000 10 11')
-        self.assertEqual(deal.deal_status, ManagerDeal.DEAL_STATUS_NEW)
-        self.assertEqual(deal.prepayment_amount, Decimal('30000.00'))
-        self.assertIsNone(deal.stock_warehouse)
-        self.assertIsNone(deal.reservation)
-        self.assertEqual(deal.grand_total, Decimal('180000.00'))
-        self.assertEqual(deal.balance_due, Decimal('150000.00'))
-
-    def test_staff_can_create_sale_from_stock_with_stray_trade_in_payload_ignored(self):
+    def test_staff_can_create_quick_deal_without_filling_delivery_and_reservation(self):
         self.login_staff()
-        InventoryBalance.objects.create(warehouse=self.warehouse, product=self.product, quantity=5)
-        payload = self.manual_business_order_payload()
-        payload.update(
-            {
-                'customer_source': ManagerDeal.SOURCE_WEBSITE,
-                'tradein-0-device_type': 'VR шлем',
-                'tradein-0-model_name': 'Meta Quest 2',
-                'tradein-0-version': '128 GB',
-                'tradein-0-kit_description': 'Шлем и контроллеры',
-                'tradein-0-condition': 'б/у',
-                'tradein-0-defects': 'Потёртости',
-                'tradein-0-preliminary_estimate': '30000.00',
-                'tradein-0-final_estimate': '25000.00',
-            }
+
+        response = self.client.post(reverse('manager_portal:deal_create'), self.quick_deal_payload())
+
+        quick_order = Order.objects.exclude(pk__in=[self.order.pk, self.order_two.pk]).latest('pk')
+        self.assertRedirects(
+            response,
+            f"{reverse('manager_portal:deal_detail', kwargs={'pk': quick_order.manager_deal.pk})}?created=1",
         )
+        self.assertEqual(quick_order.total, Decimal('97000.00'))
+        self.assertEqual(quick_order.delivery_type, ManagerDeal.DELIVERY_PICKUP)
+        self.assertEqual(quick_order.payment_status, Order.PAYMENT_STATUS_UNPAID)
 
-        response = self.client.post(reverse('manager_portal:order_create'), payload)
-
-        manual_order = Order.objects.exclude(pk__in=[self.order.pk, self.order_two.pk]).latest('pk')
-        deal = manual_order.manager_deal
-        self.assertRedirects(response, reverse('manager_portal:deal_detail', kwargs={'pk': deal.pk}))
-        self.assertEqual(deal.deal_type, ManagerDeal.DEAL_SALE_FROM_STOCK)
-        self.assertEqual(deal.deal_status, ManagerDeal.DEAL_STATUS_NEW)
-        self.assertFalse(deal.trade_in_items.exists())
-        self.assertEqual(deal.grand_total, Decimal('180000.00'))
-        self.assertEqual(deal.balance_due, Decimal('150000.00'))
+        deal = quick_order.manager_deal
+        self.assertEqual(deal.deal_status, ManagerDeal.DEAL_STATUS_AWAITING_PAYMENT)
+        self.assertEqual(deal.case_status, ManagerDeal.CASE_STATUS_NEW)
+        self.assertEqual(deal.next_step_source, ManagerDeal.NEXT_STEP_SOURCE_MANUAL)
+        self.assertEqual(deal.next_step_code, ManagerDeal.NEXT_STEP_NEEDS_PAYMENT)
+        self.assertIsNone(deal.primary_reservation)
+        self.assertIsNone(deal.stock_warehouse)
+        self.assertEqual(deal.business_company_name, '')
 
     def test_staff_can_create_manual_business_order_via_htmx_redirect(self):
         self.login_staff()
@@ -2533,119 +1977,21 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         self.assertEqual(response.status_code, 204)
         self.assertEqual(
             response['HX-Redirect'],
-            reverse('manager_portal:deal_detail', kwargs={'pk': manual_order.manager_deal.pk}),
+            f"{reverse('manager_portal:deal_detail', kwargs={'pk': manual_order.manager_deal.pk})}?created=1",
         )
 
-    def test_deal_list_create_cta_links_to_create_page(self):
+    def test_deal_list_create_cta_uses_remote_drawer(self):
         self.login_staff()
 
         response = self.client.get(reverse('manager_portal:deal_list'))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Новая сделка', count=1)
-        self.assertContains(response, f'href="{reverse("manager_portal:deal_create")}"', html=False)
-        self.assertNotContains(response, 'data-drawer-target="#manager-remote-drawer"', html=False)
-        self.assertNotContains(response, f'hx-get="{reverse("manager_portal:deal_create")}"', html=False)
-
-    def test_registry_create_pages_render_without_drawer_markup(self):
-        self.login_staff()
-
-        for url_name, heading in (
-            ('client_create', 'Новый клиент'),
-            ('warehouse_create', 'Новый склад'),
-            ('purchase_create', 'Новая закупка'),
-            ('cargo_create', 'Новый груз'),
-            ('reservation_create', 'Новая бронь'),
-        ):
-            with self.subTest(url_name=url_name):
-                response = self.client.get(reverse(f'manager_portal:{url_name}'))
-
-                self.assertEqual(response.status_code, 200)
-                self.assertContains(response, heading)
-                self.assertNotContains(response, 'data-drawer-target="#manager-remote-drawer"', html=False)
-                if url_name != 'client_create':
-                    self.assertNotContains(response, 'aria-label="Шаги формы клиента"', html=False)
-
-    def test_client_create_renders_four_sections_with_stepper(self):
-        self.login_staff()
-
-        response = self.client.get(reverse('manager_portal:client_create'))
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'aria-label="Шаги формы клиента"', html=False)
-        self.assertContains(response, '4 секции в порядке работы менеджера')
-        for heading, count in (
-            ('Основное', 2),
-            ('Контакты', 2),
-            ('Адрес и комментарий', 2),
-            ('Связанные заказы', 3),
-        ):
-            self.assertContains(response, heading, count=count)
-
-        content = response.content.decode('utf-8')
-        self.assertLess(content.index('>Имя / компания<'), content.index('>Статус<'))
-        self.assertLess(content.index('>Статус<'), content.index('>Пользователь сайта<'))
-        self.assertLess(content.index('>Телефон<'), content.index('>Email<'))
-        self.assertLess(content.index('>Email<'), content.index('>Telegram<'))
-        self.assertLess(content.index('>Адрес<'), content.index('>Комментарий<'))
-        self.assertLess(content.index('>Комментарий<'), content.index('>Связанные заказы<', content.index('>Комментарий<')))
-        self.assertNotContains(response, '<details class="manager-collapsible-panel', html=False)
-
-    def test_client_create_invalid_post_keeps_section_layout_and_field_errors(self):
-        self.login_staff()
-
-        response = self.client.post(
-            reverse('manager_portal:client_create'),
-            {
-                'user': '',
-                'name': '',
-                'email': 'not-an-email',
-                'phone': '+7 900 123 45 67',
-                'telegram': '@vip',
-                'address': 'Екатеринбург',
-                'comments': 'Проверка',
-                'status': ManagerClient.STATUS_ACTIVE,
-                'orders': [self.order.pk],
-            },
+        self.assertContains(response, 'data-drawer-target="#manager-remote-drawer"', html=False)
+        self.assertContains(
+            response,
+            f'hx-get="{reverse("manager_portal:deal_create")}"',
+            html=False,
         )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'aria-label="Шаги формы клиента"', html=False)
-        self.assertContains(response, 'Обязательное поле.')
-        self.assertContains(response, 'Введите правильный адрес электронной почты.')
-        for section_id in (
-            'client-step-basic',
-            'client-step-contacts',
-            'client-step-address',
-            'client-step-orders',
-        ):
-            self.assertContains(response, f'id="{section_id}"', html=False)
-
-    def test_deal_list_renders_page_context_stats_and_inline_shell_search(self):
-        self.login_staff()
-
-        response = self.client.get(reverse('manager_portal:deal_list'))
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'SLA просрочен')
-        self.assertContains(response, 'Без ответственного')
-        self.assertContains(response, 'Последняя синхронизация')
-        self.assertContains(response, 'manager-unified-topbar', html=False)
-        self.assertNotContains(response, 'Операционный контур')
-        self.assertContains(response, 'id="manager-global-search-input-inline"', html=False)
-        self.assertNotContains(response, 'data-global-search-open', html=False)
-        self.assertNotContains(response, 'Операционный shell: поиск, быстрые действия, сигналы и общий PostgreSQL всегда наверху.')
-
-    def test_warehouse_list_does_not_render_deal_only_shell_metrics(self):
-        self.login_staff()
-
-        response = self.client.get(reverse('manager_portal:warehouse_list'))
-
-        self.assertEqual(response.status_code, 200)
-        self.assertNotContains(response, 'SLA просрочен')
-        self.assertNotContains(response, 'Без ответственного')
-        self.assertNotContains(response, 'Последняя синхронизация')
-        self.assertNotContains(response, 'Операционный shell: поиск, быстрые действия, сигналы и общий PostgreSQL всегда наверху.')
 
     def test_deal_detail_exposes_related_clients_and_reservations(self):
         self.login_staff()
@@ -2665,8 +2011,12 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context['deal_client'], self.manager_client)
         self.assertEqual(response.context['client_comment'], 'VIP клиент, предпочитает Telegram')
+        self.assertEqual(response.context['client_summary']['display_name'], self.manager_client.name)
+        self.assertEqual(response.context['client_summary']['client_type_label'], deal.get_buyer_type_display())
+        self.assertEqual(response.context['client_summary']['channel_label'], deal.get_customer_source_display())
         self.assertContains(response, 'Клиент')
-        self.assertContains(response, 'Изменить вручную')
+        self.assertContains(response, 'История взаимодействия')
+        self.assertContains(response, 'Открыть клиента')
         self.assertContains(response, reverse('manager_portal:client_detail', kwargs={'pk': self.manager_client.pk}))
         self.assertEqual(list(response.context['reservations']), [reservation])
 
@@ -2735,10 +2085,11 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         self.assertEqual(response.context['order_items'][0]['position_status'], 'В отгрузке')
         self.assertEqual(response.context['order_items'][0]['next_step'], 'Контролировать доставку')
         self.assertEqual(response.context['order_items'][0]['quick_actions'][0]['label'], 'Отгрузка')
-        self.assertContains(response, 'Обеспечение и поставка')
+        self.assertContains(response, 'Склад и логистика')
         self.assertContains(response, 'Ближайший ETA')
         self.assertContains(response, 'Источник проблемы')
         self.assertContains(response, 'Главное действие')
+        self.assertContains(response, 'Наличие и покрытие')
         self.assertContains(response, purchase_item.purchase.code)
         self.assertContains(response, shipment.code)
         self.assertContains(response, 'SKU не заполнен')
@@ -2782,33 +2133,245 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         response = self.client.get(reverse('manager_portal:deal_detail', kwargs={'pk': deal.pk}))
 
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['deal_header']['customer_name'], self.manager_client.name)
+        self.assertEqual(response.context['deal_header']['customer_type'], deal.get_buyer_type_display())
+        self.assertEqual(response.context['deal_header']['source'], deal.get_customer_source_display())
+        self.assertEqual(response.context['operational_summary']['status_label'], deal.get_deal_status_display())
+        self.assertEqual(response.context['operational_summary']['stage_label'], deal.get_case_status_display())
+        self.assertNotIn('priority', response.context['operational_summary'])
+        self.assertEqual(response.context['client_summary']['display_name'], self.manager_client.name)
+        self.assertEqual(response.context['subject_summary']['positions_count'], 1)
         self.assertContains(response, deal.code)
         self.assertContains(response, deal.short_label)
+        self.assertContains(response, 'Статус сделки')
+        self.assertContains(response, 'Следующий шаг')
+        self.assertContains(response, 'Дедлайн')
+        self.assertContains(response, 'Риск')
+        self.assertContains(response, 'Ответственный')
+        self.assertContains(response, 'Что блокирует')
         self.assertContains(response, 'Следующий шаг')
         self.assertContains(response, 'Сделка')
-        self.assertContains(response, 'Риски')
-        self.assertContains(response, 'Дедлайн')
-        self.assertContains(response, 'Изменить вручную')
-        self.assertContains(response, 'Еще действия')
+        self.assertContains(response, deal.get_buyer_type_display())
+        self.assertContains(response, deal.get_customer_source_display())
+        self.assertContains(response, deal.get_case_status_display())
+        self.assertContains(response, deal.get_deal_status_display())
+        self.assertContains(response, 'Клиент')
+        self.assertContains(response, 'Предмет сделки')
+        self.assertContains(response, 'Что продаём')
+        self.assertContains(response, 'Дедлайн шага')
+        self.assertContains(response, 'Проверки по маршруту')
+        self.assertContains(response, 'Подготовить следующее')
+        self.assertContains(response, 'Открыть оплату')
+        self.assertContains(response, 'Подготовить документы')
+        self.assertContains(response, 'Создать бронь')
         self.assertContains(response, 'Обзор')
-        self.assertContains(response, 'Снабжение')
+        self.assertContains(response, 'Склад и логистика')
+        self.assertContains(response, 'Документы')
         self.assertContains(response, 'Финансы')
         self.assertContains(response, 'История')
         self.assertContains(response, 'Полная история')
-        self.assertContains(response, 'Товары заказа')
         self.assertContains(response, 'Короткая финансовая сводка')
         self.assertContains(response, 'Статус позиции')
         self.assertContains(response, 'Обеспечение')
         self.assertContains(response, 'Действия')
         self.assertContains(response, 'Сумма')
-        self.assertContains(response, 'Оплачено')
-        self.assertContains(response, 'Себестоимость')
-        self.assertContains(response, 'Расходы')
-        self.assertContains(response, 'Маржа')
-        self.assertContains(response, 'Открыть остатки')
-        self.assertContains(response, 'Открыть клиента')
-        self.assertContains(response, 'Телефон')
-        self.assertContains(response, 'Последнее событие')
+        self.assertContains(response, 'Навигация по сделке')
+        self.assertNotContains(response, 'Приоритет')
+        self.assertEqual(
+            [item['title'] for item in response.context['guided_flow']['support_actions']],
+            ['Оплата', 'Обеспечение', 'Документы', 'Отгрузка', 'История'],
+        )
+
+    def test_deal_detail_guided_flow_shows_created_banner_only_for_created_mode(self):
+        self.login_staff()
+        deal = ensure_manager_deal_for_order(self.order)
+
+        regular_response = self.client.get(reverse('manager_portal:deal_detail', kwargs={'pk': deal.pk}))
+        created_response = self.client.get(reverse('manager_portal:deal_detail', kwargs={'pk': deal.pk}), {'created': '1'})
+
+        self.assertEqual(regular_response.status_code, 200)
+        self.assertFalse(regular_response.context['guided_flow']['is_just_created'])
+        self.assertNotContains(regular_response, 'Сделка создана и сразу переведена в рабочий маршрут.')
+
+        self.assertEqual(created_response.status_code, 200)
+        self.assertTrue(created_response.context['guided_flow']['is_just_created'])
+        self.assertContains(created_response, 'Сделка создана и сразу переведена в рабочий маршрут.')
+
+    def test_deal_detail_guided_flow_uses_next_step_as_primary_route(self):
+        self.login_staff()
+        deal = ensure_manager_deal_for_order(self.order)
+
+        response = self.client.get(reverse('manager_portal:deal_detail', kwargs={'pk': deal.pk}))
+        guided_flow = response.context['guided_flow']
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(guided_flow['primary_step']['label'], deal.next_step_label)
+        self.assertEqual(guided_flow['primary_step']['reason'], deal.next_step_reason_snapshot)
+        self.assertEqual(guided_flow['checks'][0]['title'], 'Назначь следующий шаг')
+        self.assertEqual(guided_flow['checks'][1]['title'], 'Проверь наличие')
+        self.assertEqual(guided_flow['checks'][2]['title'], 'Подготовь следующее')
+
+    def test_deal_detail_guided_flow_marks_unpaid_scenario(self):
+        self.login_staff()
+        InventoryBalance.objects.create(warehouse=self.warehouse, product=self.product, quantity=3)
+        deal = ensure_manager_deal_for_order(self.order)
+        deal.case_status = ManagerDeal.CASE_STATUS_CONFIRMED
+        deal.stock_warehouse = self.warehouse
+        deal.next_step_source = ManagerDeal.NEXT_STEP_SOURCE_SYSTEM
+        deal.next_step_code = ''
+        deal.next_step_reason_snapshot = ''
+        deal.save(
+            update_fields=[
+                'case_status',
+                'stock_warehouse',
+                'next_step_source',
+                'next_step_code',
+                'next_step_reason_snapshot',
+                'updated_at',
+            ]
+        )
+        deal.order.status = Order.STATUS_CONFIRMED
+        deal.order.payment_status = Order.PAYMENT_STATUS_UNPAID
+        deal.order.save(update_fields=['status', 'payment_status', 'updated_at'])
+        recompute_deal_workflow(deal)
+        deal.refresh_from_db()
+
+        response = self.client.get(reverse('manager_portal:deal_detail', kwargs={'pk': deal.pk}))
+
+        self.assertEqual(response.context['guided_flow']['primary_step']['label'], ManagerDeal.next_step_label_for(ManagerDeal.NEXT_STEP_NEEDS_PAYMENT))
+        self.assertEqual(response.context['guided_flow']['support_actions'][0]['title'], 'Оплата')
+
+    def test_deal_detail_guided_flow_marks_missing_reservation_scenario(self):
+        self.login_staff()
+        InventoryBalance.objects.create(warehouse=self.warehouse, product=self.product, quantity=3)
+        deal = ensure_manager_deal_for_order(self.order)
+        deal.case_status = ManagerDeal.CASE_STATUS_CONFIRMED
+        deal.stock_warehouse = self.warehouse
+        deal.next_step_source = ManagerDeal.NEXT_STEP_SOURCE_SYSTEM
+        deal.next_step_code = ''
+        deal.next_step_reason_snapshot = ''
+        deal.save(
+            update_fields=[
+                'case_status',
+                'stock_warehouse',
+                'next_step_source',
+                'next_step_code',
+                'next_step_reason_snapshot',
+                'updated_at',
+            ]
+        )
+        deal.order.status = Order.STATUS_CONFIRMED
+        deal.order.payment_status = Order.PAYMENT_STATUS_PAID
+        deal.order.delivery_type = Order.DELIVERY_PICKUP
+        deal.order.save(update_fields=['status', 'payment_status', 'delivery_type', 'updated_at'])
+        recompute_deal_workflow(deal)
+        deal.refresh_from_db()
+
+        response = self.client.get(reverse('manager_portal:deal_detail', kwargs={'pk': deal.pk}))
+
+        self.assertEqual(response.context['guided_flow']['primary_step']['label'], ManagerDeal.next_step_label_for(ManagerDeal.NEXT_STEP_NEEDS_RESERVATION))
+        self.assertContains(response, 'Создать бронь')
+
+    def test_deal_detail_guided_flow_marks_availability_confirmation_scenario(self):
+        self.login_staff()
+        InventoryBalance.objects.create(warehouse=self.warehouse, product=self.product, quantity=3)
+        deal = ensure_manager_deal_for_order(self.order)
+        deal.case_status = ManagerDeal.CASE_STATUS_CONFIRMED
+        deal.stock_warehouse = None
+        deal.next_step_source = ManagerDeal.NEXT_STEP_SOURCE_SYSTEM
+        deal.next_step_code = ''
+        deal.next_step_reason_snapshot = ''
+        deal.save(
+            update_fields=[
+                'case_status',
+                'stock_warehouse',
+                'next_step_source',
+                'next_step_code',
+                'next_step_reason_snapshot',
+                'updated_at',
+            ]
+        )
+        Order.objects.filter(pk=deal.order_id).update(
+            status=Order.STATUS_CONFIRMED,
+            payment_status=Order.PAYMENT_STATUS_PAID,
+            delivery_type=Order.DELIVERY_PICKUP,
+        )
+        deal.order.refresh_from_db()
+        recompute_deal_workflow(deal)
+        deal.refresh_from_db()
+
+        response = self.client.get(reverse('manager_portal:deal_detail', kwargs={'pk': deal.pk}))
+
+        self.assertEqual(
+            response.context['guided_flow']['primary_step']['label'],
+            ManagerDeal.next_step_label_for(ManagerDeal.NEXT_STEP_NEEDS_AVAILABILITY_CONFIRMATION),
+        )
+        self.assertContains(response, 'Подтвердить наличие')
+
+    def test_deal_detail_guided_flow_marks_documents_procurement_and_manual_override(self):
+        self.login_staff()
+        deal = ensure_manager_deal_for_order(self.order)
+        deal.buyer_type = ManagerDeal.BUYER_BUSINESS
+        deal.deal_type = ManagerDeal.DEAL_SALE_ON_REQUEST
+        deal.business_company_name = 'ООО Документы'
+        deal.business_phone = '+7 999 555 44 33'
+        deal.case_status = ManagerDeal.CASE_STATUS_CONFIRMED
+        deal.next_step_source = ManagerDeal.NEXT_STEP_SOURCE_SYSTEM
+        deal.next_step_code = ''
+        deal.next_step_reason_snapshot = ''
+        deal.save(
+            update_fields=[
+                'buyer_type',
+                'deal_type',
+                'business_company_name',
+                'business_phone',
+                'case_status',
+                'next_step_source',
+                'next_step_code',
+                'next_step_reason_snapshot',
+                'updated_at',
+            ]
+        )
+        deal.order.status = Order.STATUS_CONFIRMED
+        deal.order.payment_status = Order.PAYMENT_STATUS_PAID
+        deal.order.save(update_fields=['status', 'payment_status', 'updated_at'])
+        self.contract_document.delete()
+        recompute_deal_workflow(deal)
+        deal.refresh_from_db()
+
+        documents_response = self.client.get(reverse('manager_portal:deal_detail', kwargs={'pk': deal.pk}))
+        self.assertEqual(
+            documents_response.context['guided_flow']['primary_step']['label'],
+            ManagerDeal.next_step_label_for(ManagerDeal.NEXT_STEP_NEEDS_DOCUMENTS),
+        )
+
+        order_item = deal.order.items.get()
+        order_item.is_on_request = True
+        order_item.save(update_fields=['is_on_request'])
+        deal.buyer_type = ManagerDeal.BUYER_INDIVIDUAL
+        deal.save(update_fields=['buyer_type', 'updated_at'])
+        recompute_deal_workflow(deal)
+        deal.refresh_from_db()
+
+        procurement_response = self.client.get(reverse('manager_portal:deal_detail', kwargs={'pk': deal.pk}))
+        self.assertEqual(
+            procurement_response.context['guided_flow']['primary_step']['label'],
+            ManagerDeal.next_step_label_for(ManagerDeal.NEXT_STEP_NEEDS_PROCUREMENT),
+        )
+        self.assertContains(procurement_response, 'Открыть снабжение')
+
+        apply_deal_next_step_override(
+            deal,
+            next_step_code=ManagerDeal.NEXT_STEP_NEEDS_PAYMENT,
+            reason='Проверить вручную оплату до остальных действий.',
+            actor=self.staff_user,
+        )
+        deal.refresh_from_db()
+
+        manual_response = self.client.get(reverse('manager_portal:deal_detail', kwargs={'pk': deal.pk}))
+        self.assertEqual(manual_response.context['guided_flow']['primary_step']['label'], ManagerDeal.next_step_label_for(ManagerDeal.NEXT_STEP_NEEDS_PAYMENT))
+        self.assertContains(manual_response, 'Ручной сценарий')
+        self.assertContains(manual_response, 'Последнее событие')
 
     def test_deal_detail_shows_row_status_and_quick_actions_for_available_stock(self):
         self.login_staff()
@@ -2870,6 +2433,133 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         self.assertContains(response, 'Документ переведен в черновик')
         self.assertContains(response, self.staff_user.get_username())
 
+    def test_deal_detail_client_summary_stays_within_current_deal_history(self):
+        self.login_staff()
+        deal = ensure_manager_deal_for_order(self.order)
+        deal.buyer_type = ManagerDeal.BUYER_BUSINESS
+        deal.business_company_name = 'ООО Тест'
+        deal.business_contact_person = 'Анна Смирнова'
+        deal.business_email = 'procurement@example.com'
+        deal.save(
+            update_fields=[
+                'buyer_type',
+                'business_company_name',
+                'business_contact_person',
+                'business_email',
+                'updated_at',
+            ]
+        )
+        record_deal_activity(
+            deal,
+            event_type='comment.added',
+            source='user',
+            actor=self.staff_user,
+            payload={'comment': 'Текущая история сделки'},
+        )
+
+        another_order = self.create_order(
+            phone='+7 999 333 22 11',
+            email='other-client@example.com',
+            first_name='Другой',
+            status=Order.STATUS_NEW,
+            payment_status=Order.PAYMENT_STATUS_UNPAID,
+            delivery_type=Order.DELIVERY_COURIER,
+        )
+        self.manager_client.orders.add(another_order)
+        another_deal = ensure_manager_deal_for_order(another_order)
+        record_deal_activity(
+            another_deal,
+            event_type='comment.added',
+            source='user',
+            actor=self.staff_user,
+            payload={'comment': 'Чужая история клиента'},
+        )
+
+        response = self.client.get(reverse('manager_portal:deal_detail', kwargs={'pk': deal.pk}))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Текущая история сделки')
+        self.assertNotContains(response, 'Чужая история клиента')
+        self.assertEqual(response.context['client_summary']['display_name'], 'ООО Тест')
+        self.assertEqual(response.context['client_summary']['contact_name'], 'Анна Смирнова')
+        self.assertEqual(response.context['client_summary']['client_type_label'], deal.get_buyer_type_display())
+        self.assertIn(
+            {'label': 'Email', 'value': self.manager_client.email},
+            response.context['client_summary']['contacts'],
+        )
+
+    def test_deal_detail_client_summary_renders_individual_fields(self):
+        self.login_staff()
+        order = self.create_order(
+            phone='+7 999 444 55 66',
+            email='individual@example.com',
+            first_name='Мария',
+            status=Order.STATUS_NEW,
+            payment_status=Order.PAYMENT_STATUS_UNPAID,
+            delivery_type=Order.DELIVERY_COURIER,
+        )
+        deal = ensure_manager_deal_for_order(order)
+        deal.buyer_type = ManagerDeal.BUYER_INDIVIDUAL
+        deal.individual_full_name = 'Мария Тестова'
+        deal.individual_phone = '+7 999 444 55 66'
+        deal.individual_additional_phone = '+7 999 111 22 33'
+        deal.individual_messenger = '@maria_test'
+        deal.individual_delivery_address = 'Екатеринбург, Мира, 12'
+        deal.customer_source = ManagerDeal.SOURCE_TELEGRAM
+        deal.save(
+            update_fields=[
+                'buyer_type',
+                'individual_full_name',
+                'individual_phone',
+                'individual_additional_phone',
+                'individual_messenger',
+                'individual_delivery_address',
+                'customer_source',
+                'updated_at',
+            ]
+        )
+
+        response = self.client.get(reverse('manager_portal:deal_detail', kwargs={'pk': deal.pk}))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['client_summary']['display_name'], 'Мария Тестова')
+        self.assertEqual(response.context['client_summary']['client_type_label'], deal.get_buyer_type_display())
+        self.assertEqual(response.context['client_summary']['channel_label'], deal.get_customer_source_display())
+        self.assertContains(response, 'Мария Тестова')
+        self.assertContains(response, '+7 999 111 22 33')
+        self.assertContains(response, '@maria_test')
+        self.assertContains(response, 'Екатеринбург, Мира, 12')
+
+    def test_deal_detail_subject_summary_uses_order_items_and_discounts(self):
+        self.login_staff()
+        deal = ensure_manager_deal_for_order(self.order)
+        first_item = deal.order.items.get()
+        first_item.variant = self.variant
+        first_item.variant_name = self.variant.name
+        first_item.discount_amount = Decimal('1000.00')
+        first_item.comment = 'Основная позиция'
+        first_item.save(update_fields=['variant', 'variant_name', 'discount_amount', 'comment'])
+        second_item = deal.order.items.create(
+            product=self.product_two,
+            quantity=2,
+            price=Decimal('5000.00'),
+            discount_amount=Decimal('500.00'),
+        )
+
+        response = self.client.get(reverse('manager_portal:deal_detail', kwargs={'pk': deal.pk}))
+
+        self.assertEqual(response.status_code, 200)
+        subject_summary = response.context['subject_summary']
+        self.assertEqual(subject_summary['positions_count'], 2)
+        self.assertEqual(subject_summary['total_quantity'], 3)
+        self.assertEqual(subject_summary['discount_total'], Decimal('2000.00'))
+        self.assertEqual(subject_summary['rows'][0]['sku'], '—')
+        self.assertEqual(subject_summary['rows'][0]['configuration'], self.variant.name)
+        self.assertEqual(subject_summary['rows'][1]['title'], second_item.product.name)
+        self.assertContains(response, 'Основная позиция')
+        self.assertContains(response, self.product_two.name)
+        self.assertContains(response, 'SKU не заполнен')
+
     def test_deal_detail_documents_and_finance_tabs_show_operational_summary(self):
         self.login_staff()
         deal = ensure_manager_deal_for_order(self.order)
@@ -2903,17 +2593,30 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
             comment='Выплата партнеру',
             created_by=self.staff_user,
         )
+        payment = deal.order.payments.create(
+            external_id='payment-1',
+            price_amount=Decimal('150000.00'),
+            status='finished',
+        )
 
         response = self.client.get(reverse('manager_portal:deal_detail', kwargs={'pk': deal.pk}))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Требуется')
+        self.assertEqual(response.context['finance_summary']['status_label'], 'ОК')
+        self.assertEqual(response.context['finance_summary']['last_payment_amount'], payment.price_amount)
+        self.assertEqual(
+            response.context['finance_summary_compact']['payment_status_label'],
+            deal.order.get_payment_status_display(),
+        )
         self.assertContains(response, 'Шаблон поставки')
         self.assertContains(response, 'Последний редактор')
         self.assertContains(response, 'Открыть последний документ')
         self.assertContains(response, 'Последние документы')
         self.assertContains(response, 'DOG-2026-0001')
         self.assertContains(response, 'Статус: ОК')
+        self.assertContains(response, 'Дата последней оплаты')
+        self.assertContains(response, 'Сумма последней оплаты')
+        self.assertContains(response, 'Статус оплаты в workflow')
         self.assertContains(response, '100000')
         self.assertContains(response, '90000')
         self.assertContains(response, '5000')
@@ -2922,6 +2625,35 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         self.assertContains(response, '1200')
         self.assertContains(response, '51800')
         self.assertContains(response, reverse('manager_portal:finance_payout_list'))
+
+    def test_deal_detail_finance_compact_and_full_work_without_finance_case(self):
+        self.login_staff()
+        deal = ensure_manager_deal_for_order(self.order)
+
+        response = self.client.get(reverse('manager_portal:deal_detail', kwargs={'pk': deal.pk}))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['finance_summary']['status_label'], 'Не создан')
+        self.assertEqual(response.context['finance_summary_compact']['status_label'], 'Не создан')
+        self.assertIn('Нет кейса', response.context['finance_summary']['missing_items'])
+        self.assertContains(response, 'Короткая финансовая сводка')
+        self.assertContains(response, 'Статус: Не создан')
+
+    def test_deal_detail_documents_and_logistics_show_empty_states(self):
+        self.login_staff()
+        deal = ensure_manager_deal_for_order(self.order)
+        self.contract_document.delete()
+
+        response = self.client.get(reverse('manager_portal:deal_detail', kwargs={'pk': deal.pk}))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['logistics_summary']['reservation_status'], 'Не создана')
+        self.assertEqual(response.context['logistics_summary']['shipment_status'], 'Не создана')
+        self.assertEqual(response.context['documents_summary']['document_slots'][0]['status'], 'Не подготовлен')
+        self.assertContains(response, 'Без трека')
+        self.assertContains(response, 'Резерв под сделку ещё не создан.')
+        self.assertContains(response, 'Отправление по сделке ещё не создано.')
+        self.assertContains(response, 'Документ ещё не создан.')
 
     def test_deal_detail_uses_tab_query_string_for_initial_panel(self):
         self.login_staff()
@@ -3059,7 +2791,84 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         self.assertEqual(str(response.context['contract_form']['company_profile'].value()), str(self.contract_profile.pk))
         self.assertEqual(str(response.context['contract_form']['responsible_manager'].value()), str(self.staff_user.pk))
         self.assertContains(response, 'Автозаполнение')
-        self.assertContains(response, 'Подтянется автоматически')
+
+    def test_contracts_create_uses_recommended_document_type_and_template_without_explicit_override(self):
+        self.login_staff()
+        invoice_template = ContractTemplate.objects.create(
+            name='Шаблон счёта клиента',
+            document_type=ContractTemplate.DOC_TYPE_INVOICE,
+            version='2.0',
+            is_active=True,
+        )
+        older_template = ContractTemplate.objects.create(
+            name='Старый шаблон счёта',
+            document_type=ContractTemplate.DOC_TYPE_INVOICE,
+            version='1.0',
+            is_active=True,
+            sort_order=-1,
+        )
+        deal = ensure_manager_deal_for_order(self.order)
+        deal.deal_type = ManagerDeal.DEAL_SALE_FROM_STOCK
+        deal.responsible_manager = self.staff_user
+        deal.save(update_fields=['deal_type', 'responsible_manager', 'updated_at'])
+        ContractDocument.objects.create(
+            manager_deal=deal,
+            template=invoice_template,
+            company_profile=self.contract_profile,
+            manager_client=self.manager_client,
+            linked_order=self.order,
+            responsible_manager=self.staff_user,
+            created_by=self.staff_user,
+            document_type=ContractTemplate.DOC_TYPE_INVOICE,
+            status=ContractDocument.STATUS_SENT,
+            title='Счёт клиенту',
+        )
+
+        response = self.client.get(reverse('manager_portal:contracts_create'), {'createFromDeal': deal.pk})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.context['contract_form']['document_type'].value(),
+            ContractTemplate.DOC_TYPE_INVOICE,
+        )
+        self.assertEqual(str(response.context['contract_form']['template'].value()), str(invoice_template.pk))
+        self.assertNotEqual(str(response.context['contract_form']['template'].value()), str(older_template.pk))
+
+    def test_contracts_create_keeps_explicit_document_type_override(self):
+        self.login_staff()
+        invoice_template = ContractTemplate.objects.create(
+            name='Шаблон счёта клиента',
+            document_type=ContractTemplate.DOC_TYPE_INVOICE,
+            version='2.0',
+            is_active=True,
+        )
+        deal = ensure_manager_deal_for_order(self.order)
+        deal.deal_type = ManagerDeal.DEAL_SALE_FROM_STOCK
+        deal.save(update_fields=['deal_type', 'updated_at'])
+        ContractDocument.objects.create(
+            manager_deal=deal,
+            template=invoice_template,
+            company_profile=self.contract_profile,
+            manager_client=self.manager_client,
+            linked_order=self.order,
+            responsible_manager=self.staff_user,
+            created_by=self.staff_user,
+            document_type=ContractTemplate.DOC_TYPE_INVOICE,
+            status=ContractDocument.STATUS_SENT,
+            title='Счёт клиенту',
+        )
+
+        response = self.client.get(
+            reverse('manager_portal:contracts_create'),
+            {'createFromDeal': deal.pk, 'document_type': ContractTemplate.DOC_TYPE_CONTRACT},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.context['contract_form']['document_type'].value(),
+            ContractTemplate.DOC_TYPE_CONTRACT,
+        )
+        self.assertEqual(str(response.context['contract_form']['template'].value()), str(self.contract_template.pk))
 
     def test_finance_deal_list_prefills_hints_from_deal(self):
         self.login_staff()
@@ -3123,40 +2932,6 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         messages = list(response.context['messages'])
         self.assertTrue(any('Нельзя запускать закупку без суммы предоплаты' in str(message) for message in messages))
 
-    def test_staff_can_create_sale_on_request_with_stray_trade_in_payload_ignored(self):
-        self.login_staff()
-        payload = self.manual_business_order_payload()
-        payload.update(
-            {
-                'deal_type': ManagerDeal.DEAL_SALE_ON_REQUEST,
-                'deal_status': ManagerDeal.DEAL_STATUS_NEW_REQUEST,
-                'customer_source': ManagerDeal.SOURCE_WEBSITE,
-                'stock_warehouse': '',
-                'customer_request': 'Quest 3 512 GB',
-                'procurement_origin': 'Склад партнёра',
-                'supplier_agent': 'ИП Поставка',
-                'supplier_name': '',
-                'tradein-0-device_type': 'VR шлем',
-                'tradein-0-model_name': 'Meta Quest 2',
-                'tradein-0-version': '128 GB',
-                'tradein-0-kit_description': 'Шлем и контроллеры',
-                'tradein-0-condition': 'б/у',
-                'tradein-0-defects': 'Потёртости',
-                'tradein-0-preliminary_estimate': '30000.00',
-                'tradein-0-final_estimate': '25000.00',
-            }
-        )
-
-        response = self.client.post(reverse('manager_portal:order_create'), payload)
-
-        manual_order = Order.objects.exclude(pk__in=[self.order.pk, self.order_two.pk]).latest('pk')
-        deal = manual_order.manager_deal
-        self.assertRedirects(response, reverse('manager_portal:deal_detail', kwargs={'pk': deal.pk}))
-        self.assertEqual(deal.deal_type, ManagerDeal.DEAL_SALE_ON_REQUEST)
-        self.assertFalse(deal.trade_in_items.exists())
-        self.assertEqual(deal.grand_total, Decimal('180000.00'))
-        self.assertEqual(deal.balance_due, Decimal('150000.00'))
-
     def test_avito_status_choices_are_compact(self):
         self.assertEqual(
             [code for code, _label in ManagerDeal.allowed_status_choices(ManagerDeal.DEAL_AVITO)],
@@ -3179,7 +2954,7 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
             ],
         )
 
-    def test_staff_can_create_avito_source_order_with_participants(self):
+    def test_staff_can_create_avito_source_order_without_customer_name_and_with_participants(self):
         self.login_staff()
         InventoryBalance.objects.create(warehouse=self.warehouse, product=self.product, quantity=5)
         answered_alias = ManagerPersonAlias.objects.create(display_name='Эрика', slug='erika')
@@ -3188,10 +2963,12 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         payload.update(
             {
                 'buyer_type': ManagerDeal.BUYER_INDIVIDUAL,
-                'individual_full_name': 'Иван Avito',
+                'individual_full_name': '',
                 'individual_phone': '+7 912 000 10 10',
                 'individual_additional_phone': '',
                 'individual_city': 'Екатеринбург',
+                'individual_pickup_address': 'ПВЗ СДЭК, Малышева, 10',
+                'individual_delivery_address': 'Тюмень, Республики, 5',
                 'individual_messenger': '@avito',
                 'individual_comment': '',
                 'business_company_name': '',
@@ -3203,6 +2980,7 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
                 'business_phone': '',
                 'business_email': '',
                 'business_city': '',
+                'business_delivery_address': '',
                 'business_comment': '',
                 'answered_person_alias': answered_alias.pk,
                 'shipped_person_alias': shipped_alias.pk,
@@ -3215,7 +2993,7 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         deal = manual_order.manager_deal
         self.assertRedirects(response, reverse('manager_portal:deal_detail', kwargs={'pk': deal.pk}))
         self.assertEqual(deal.customer_source, ManagerDeal.SOURCE_AVITO)
-        self.assertEqual(deal.individual_full_name, 'Иван Avito')
+        self.assertEqual(deal.individual_full_name, '')
         self.assertEqual(deal.deal_status, ManagerDeal.DEAL_STATUS_NEW)
         self.assertTrue(
             ManagerDealParticipant.objects.filter(
@@ -3383,7 +3161,7 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
             ).exists()
         )
 
-    def test_trade_in_creation_uses_short_form_without_incoming_device_items(self):
+    def test_trade_in_creation_stores_incoming_device_and_financials(self):
         self.login_staff()
 
         response = self.client.post(
@@ -3400,12 +3178,41 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
                 'individual_phone': '+7 900 100 20 30',
                 'individual_additional_phone': '',
                 'individual_city': 'Тюмень',
+                'individual_pickup_address': 'ПВЗ СДЭК',
+                'individual_delivery_address': 'Тюмень, Ленина, 15',
                 'individual_messenger': '@ivan',
                 'individual_comment': '',
                 'customer_request': 'Обменять старый шлем на новый',
+                'customer_deadline': '',
                 'customer_request_comment': 'Клиент готов отправить завтра',
+                'delivery_method': ManagerDeal.DELIVERY_CDEK_COURIER,
+                'delivery_from_city': 'Екатеринбург',
+                'delivery_to_city': 'Тюмень',
+                'delivery_pickup_address': '',
+                'delivery_full_address': 'Тюмень, Ленина, 15',
+                'delivery_cost': '1000.00',
+                'delivery_payer': ManagerDeal.DELIVERY_PAYER_CLIENT,
+                'tracking_number': '',
+                'shipping_comment': '',
+                'shipment_status': ManagerDeal.SHIPMENT_DRAFT,
+                'shipped_at': '',
+                'planned_receipt_at': '',
                 'prepayment_required_amount': '0',
                 'prepayment_amount': '5000.00',
+                'stock_warehouse': '',
+                'procurement_origin': '',
+                'supplier_name': '',
+                'supplier_agent': '',
+                'planned_purchase_date': '',
+                'expected_arrival_date': '',
+                'expected_customer_ship_date': '',
+                'avito_listing_url': '',
+                'avito_listing_id': '',
+                'avito_listing_title': '',
+                'avito_contact_channel': '',
+                'avito_list_price': '',
+                'avito_final_price': '',
+                'avito_commission': '',
                 'items-TOTAL_FORMS': '1',
                 'items-INITIAL_FORMS': '0',
                 'items-MIN_NUM_FORMS': '0',
@@ -3418,94 +3225,36 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
                 'items-0-sale_price': '100000.00',
                 'items-0-discount_amount': '0',
                 'items-0-comment': '',
-            },
-        )
-
-        trade_order = Order.objects.exclude(pk__in=[self.order.pk, self.order_two.pk]).latest('pk')
-        self.assertRedirects(response, reverse('manager_portal:deal_detail', kwargs={'pk': trade_order.manager_deal.pk}))
-        deal = trade_order.manager_deal
-        self.assertEqual(deal.deal_type, ManagerDeal.DEAL_TRADE_IN)
-        self.assertFalse(deal.trade_in_items.exists())
-        self.assertEqual(deal.trade_in_value, Decimal('0.00'))
-        self.assertEqual(deal.grand_total, Decimal('100000.00'))
-        self.assertEqual(deal.balance_due, Decimal('95000.00'))
-
-    def test_non_trade_in_submission_ignores_prefilled_trade_in_values_from_latest_client_deal(self):
-        self.login_staff()
-        InventoryBalance.objects.create(warehouse=self.warehouse, product=self.product, quantity=5)
-        previous_order = self.create_order(
-            phone=self.manager_client.phone,
-            email=self.manager_client.email,
-            first_name='Клиент',
-            status=Order.STATUS_NEW,
-            payment_status=Order.PAYMENT_STATUS_UNPAID,
-            delivery_type=Order.DELIVERY_CDEK_COURIER,
-        )
-        self.manager_client.orders.add(previous_order)
-        previous_deal = ManagerDeal.objects.create(
-            order=previous_order,
-            responsible_manager=self.staff_user,
-            deal_type=ManagerDeal.DEAL_TRADE_IN,
-            deal_status=ManagerDeal.DEAL_STATUS_AWAITING_EVALUATION,
-            buyer_type=ManagerDeal.BUYER_BUSINESS,
-            customer_source=ManagerDeal.SOURCE_TELEGRAM,
-            business_company_name=self.manager_client.name,
-            business_contact_person='Иван Петров',
-            business_phone=self.manager_client.phone,
-            business_email=self.manager_client.email,
-            business_city='Екатеринбург',
-            delivery_method=ManagerDeal.DELIVERY_CDEK_COURIER,
-            delivery_from_city='Екатеринбург',
-            delivery_to_city='Тюмень',
-            delivery_full_address='Тюмень, Ленина, 15',
-            delivery_payer=ManagerDeal.DELIVERY_PAYER_CLIENT,
-            shipment_status=ManagerDeal.SHIPMENT_DRAFT,
-        )
-        TradeInItem.objects.create(
-            deal=previous_deal,
-            device_type='VR шлем',
-            model_name='Meta Quest 2',
-            version='128 GB',
-            kit_description='Шлем, контроллеры, ремешок',
-            condition='б/у',
-            defects='Мелкие потертости',
-            preliminary_estimate=Decimal('30000.00'),
-            final_estimate=Decimal('28000.00'),
-        )
-
-        response = self.client.get(reverse('manager_portal:order_create'), {'client': self.manager_client.pk})
-
-        self.assertEqual(response.status_code, 200)
-        self.assertNotContains(response, 'Принимаемая позиция')
-        self.assertNotContains(response, 'Meta Quest 2')
-
-        payload = self.manual_business_order_payload()
-        payload.update(
-            {
-                'deal_type': ManagerDeal.DEAL_SALE_FROM_STOCK,
-                'customer_source': ManagerDeal.SOURCE_WEBSITE,
-                'business_company_name': self.manager_client.name,
-                'business_phone': self.manager_client.phone,
-                'business_email': self.manager_client.email,
+                'tradein-TOTAL_FORMS': '1',
+                'tradein-INITIAL_FORMS': '0',
+                'tradein-MIN_NUM_FORMS': '0',
+                'tradein-MAX_NUM_FORMS': '1000',
                 'tradein-0-device_type': 'VR шлем',
                 'tradein-0-model_name': 'Meta Quest 2',
                 'tradein-0-version': '128 GB',
                 'tradein-0-kit_description': 'Шлем, контроллеры, ремешок',
                 'tradein-0-condition': 'б/у',
+                'tradein-0-is_working': 'on',
+                'tradein-0-has_box': 'on',
+                'tradein-0-has_controllers': 'on',
+                'tradein-0-has_accessories': 'on',
                 'tradein-0-defects': 'Мелкие потертости',
                 'tradein-0-preliminary_estimate': '30000.00',
                 'tradein-0-final_estimate': '28000.00',
-            }
+            },
         )
 
-        post_response = self.client.post(reverse('manager_portal:order_create'), payload)
-
-        new_order = Order.objects.exclude(pk__in=[self.order.pk, self.order_two.pk, previous_order.pk]).latest('pk')
-        new_deal = new_order.manager_deal
-        self.assertRedirects(post_response, reverse('manager_portal:deal_detail', kwargs={'pk': new_deal.pk}))
-        self.assertEqual(new_deal.deal_type, ManagerDeal.DEAL_SALE_FROM_STOCK)
-        self.assertFalse(new_deal.trade_in_items.exists())
-        self.assertEqual(new_deal.grand_total, Decimal('180000.00'))
+        trade_order = Order.objects.exclude(pk__in=[self.order.pk, self.order_two.pk]).latest('pk')
+        self.assertRedirects(
+            response,
+            f"{reverse('manager_portal:deal_detail', kwargs={'pk': trade_order.manager_deal.pk})}?created=1",
+        )
+        deal = trade_order.manager_deal
+        self.assertEqual(deal.deal_type, ManagerDeal.DEAL_TRADE_IN)
+        self.assertEqual(deal.trade_in_items.count(), 1)
+        self.assertEqual(deal.trade_in_value, Decimal('28000.00'))
+        self.assertEqual(deal.grand_total, Decimal('73000.00'))
+        self.assertEqual(deal.balance_due, Decimal('68000.00'))
 
     def test_client_list_filters_by_orders_and_status(self):
         self.login_staff()
@@ -3555,229 +3304,6 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         self.assertEqual(response.context['highlighted_client'].pk, self.manager_client.pk)
         self.assertEqual(response.context['highlighted_client'].crm_source_label, 'Avito')
 
-    def test_client_list_renders_collapsed_desktop_filters_with_count(self):
-        self.login_staff()
-
-        response = self.client.get(reverse('manager_portal:client_list'), {'q': self.manager_client.name})
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context['client_filters_count'], 1)
-        self.assertContains(response, 'data-client-filters-root')
-        self.assertContains(response, 'data-client-filters-open="false"')
-        self.assertContains(response, 'data-client-filters-toggle')
-        self.assertContains(response, 'aria-expanded="false"')
-        self.assertContains(response, 'data-client-filters-count')
-        self.assertContains(response, 'Активных фильтров: 1')
-
-    def test_client_list_uses_dense_scan_fields_in_directory_and_mobile_card(self):
-        self.login_staff()
-        self.manager_client.user = self.user
-        self.manager_client.comments = 'Просит счёт на юрлицо'
-        self.manager_client.save(update_fields=['user', 'comments', 'updated_at'])
-
-        response = self.client.get(
-            reverse('manager_portal:client_list'),
-            {'client': self.manager_client.pk},
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context['highlighted_client'].pk, self.manager_client.pk)
-        client = response.context['clients'][0]
-        self.assertEqual(client.crm_summary_tags, ['Аккаунт', 'Есть комментарий'])
-        self.assertEqual(client.list_last_order_label, f'Заказ #{self.order.pk} · {timezone.localtime(self.order.created_at).strftime("%d.%m.%Y")}')
-        self.assertContains(response, 'Имя / компания')
-        self.assertContains(response, 'Следующее действие')
-        self.assertContains(response, 'data-client-row-mobile')
-        self.assertNotContains(response, 'manager-client-directory-summary-text')
-        self.assertNotContains(response, 'Заказы: 1 · Брони: 0 · Документы: 1')
-
-    def test_client_list_exposes_row_targets_without_inline_actions(self):
-        self.login_staff()
-        self.manager_client.telegram = '@bizon_client'
-        self.manager_client.save(update_fields=['telegram', 'updated_at'])
-        deal = ensure_manager_deal_for_order(self.order, responsible_manager=self.staff_user)
-
-        response = self.client.get(reverse('manager_portal:client_list'))
-
-        self.assertEqual(response.status_code, 200)
-        client = next(item for item in response.context['clients'] if item.pk == self.manager_client.pk)
-        self.assertEqual(client.detail_url, reverse('manager_portal:client_detail', kwargs={'pk': self.manager_client.pk}))
-        self.assertEqual(client.phone_href, 'tel:+79120000000')
-        self.assertEqual(client.telegram_url, 'https://t.me/bizon_client')
-        self.assertTrue(client.can_assign_responsible)
-        self.assertEqual(client.latest_deal_id, deal.pk)
-        self.assertContains(response, f'data-client-row-desktop="{self.manager_client.pk}"')
-        self.assertContains(response, f'data-client-row-mobile="{self.manager_client.pk}"')
-        self.assertContains(response, f'href="{client.select_url}"', html=False)
-        self.assertContains(response, f'href="{client.detail_url}"', html=False)
-        self.assertNotContains(response, 'data-copy-text=')
-        self.assertNotContains(response, reverse('manager_portal:client_quick_comment', kwargs={'pk': self.manager_client.pk}))
-        self.assertNotContains(response, reverse('manager_portal:client_quick_assign', kwargs={'pk': self.manager_client.pk}))
-        self.assertNotContains(response, 'manager-client-directory-actions-cell', html=False)
-
-    def test_client_list_hides_missing_contact_action_text_in_dense_mode(self):
-        self.login_staff()
-        lead = ManagerClient.objects.create(name='Без контактов', status=ManagerClient.STATUS_ACTIVE)
-
-        response = self.client.get(reverse('manager_portal:client_list'), {'q': lead.name})
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Без контактов')
-        self.assertNotContains(response, 'Телефон не указан')
-        self.assertNotContains(response, 'Telegram не указан')
-        self.assertNotContains(response, 'Нет сделки для назначения')
-
-    def test_client_list_hides_empty_preview_column_when_no_rows_match(self):
-        self.login_staff()
-
-        response = self.client.get(reverse('manager_portal:client_list'), {'q': 'несуществующий клиент'})
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(list(response.context['clients']), [])
-        self.assertIsNone(response.context['highlighted_client'])
-        self.assertEqual(response.context['client_filters_count'], 1)
-        self.assertContains(response, 'По текущему фильтру клиенты не найдены.')
-        self.assertNotContains(response, 'Добавьте клиента или ослабьте фильтры, чтобы увидеть preview и быстрые действия.')
-        self.assertNotContains(response, 'Карточка клиента')
-
-    def test_client_list_preview_uses_contract_cta_for_document_step(self):
-        self.login_staff()
-        self.manager_client.comments = 'Нужно быстро подготовить документы и подтвердить реквизиты.'
-        self.manager_client.save(update_fields=['comments'])
-        deal = ManagerDeal.objects.create(
-            order=self.order,
-            responsible_manager=None,
-            deal_type=ManagerDeal.DEAL_SALE_FROM_STOCK,
-            deal_status=ManagerDeal.DEAL_STATUS_NEW,
-            case_status=ManagerDeal.CASE_STATUS_CONFIRMED,
-            buyer_type=ManagerDeal.BUYER_BUSINESS,
-            customer_source=ManagerDeal.SOURCE_REPEAT,
-            business_company_name=self.manager_client.name,
-            business_contact_person='Иван',
-            business_phone=self.manager_client.phone,
-            business_email=self.manager_client.email,
-            business_city='Екатеринбург',
-            next_step_code=ManagerDeal.NEXT_STEP_NEEDS_DOCUMENTS,
-            next_step_reason_snapshot='Для заказа требуется договорный пакет.',
-            prepayment_amount=Decimal('30000.00'),
-            last_activity_at=timezone.now(),
-            problem_flags=['documents_missing'],
-        )
-
-        response = self.client.get(reverse('manager_portal:client_list'), {'client': self.manager_client.pk})
-
-        self.assertEqual(response.status_code, 200)
-        highlighted_client = response.context['highlighted_client']
-        self.assertEqual(highlighted_client.preview_primary_action['label'], 'Подготовить договор')
-        self.assertEqual(highlighted_client.preview_finance['sum_total'], deal.grand_total)
-        self.assertEqual(highlighted_client.preview_finance['amount_paid'], deal.amount_paid)
-        self.assertEqual(highlighted_client.preview_finance['balance_due'], deal.balance_due)
-        self.assertEqual(highlighted_client.preview_finance['payment_status_label'], self.order.get_payment_status_display())
-        self.assertIn('Назначить себя', [action['label'] for action in highlighted_client.preview_secondary_actions])
-        self.assertContains(response, 'Основное')
-        self.assertContains(response, 'Активная сделка')
-        self.assertContains(response, 'Финансы')
-        self.assertContains(response, 'Последние действия')
-        self.assertContains(response, 'Документы и брони')
-
-    def test_client_list_preview_uses_open_deal_cta_for_existing_deal(self):
-        self.login_staff()
-        ManagerDeal.objects.create(
-            order=self.order,
-            responsible_manager=self.staff_user,
-            deal_type=ManagerDeal.DEAL_SALE_FROM_STOCK,
-            deal_status=ManagerDeal.DEAL_STATUS_RESERVED,
-            case_status=ManagerDeal.CASE_STATUS_CONFIRMED,
-            buyer_type=ManagerDeal.BUYER_BUSINESS,
-            customer_source=ManagerDeal.SOURCE_AVITO,
-            business_company_name=self.manager_client.name,
-            business_contact_person='Иван',
-            business_phone=self.manager_client.phone,
-            business_email=self.manager_client.email,
-            business_city='Екатеринбург',
-            next_step_code=ManagerDeal.NEXT_STEP_NEEDS_PAYMENT,
-            next_step_reason_snapshot='Ждем оплату от клиента.',
-            last_activity_at=timezone.now(),
-        )
-
-        response = self.client.get(reverse('manager_portal:client_list'), {'client': self.manager_client.pk})
-
-        self.assertEqual(response.status_code, 200)
-        highlighted_client = response.context['highlighted_client']
-        secondary_labels = [action['label'] for action in highlighted_client.preview_secondary_actions]
-        self.assertEqual(highlighted_client.preview_primary_action['label'], 'Открыть сделку')
-        self.assertIn('Запросить оплату', secondary_labels)
-        self.assertNotIn('Открыть сделку', secondary_labels)
-
-    def test_client_list_preview_uses_create_order_cta_without_deal(self):
-        self.login_staff()
-        client_without_deal = ManagerClient.objects.create(
-            name='Клиент без сделки',
-            email='new@example.com',
-            phone='+7 912 555 44 33',
-            comments='Ждет первый заказ.',
-            status=ManagerClient.STATUS_ACTIVE,
-        )
-        client_without_deal.orders.add(self.order_two)
-
-        response = self.client.get(reverse('manager_portal:client_list'), {'client': client_without_deal.pk})
-
-        self.assertEqual(response.status_code, 200)
-        highlighted_client = response.context['highlighted_client']
-        self.assertEqual(highlighted_client.preview_primary_action['label'], 'Создать заказ')
-        self.assertEqual(highlighted_client.preview_finance['sum_total'], self.order_two.total_to_pay)
-        self.assertIsNone(highlighted_client.preview_finance['amount_paid'])
-        self.assertIsNone(highlighted_client.preview_finance['balance_due'])
-        self.assertEqual(highlighted_client.preview_finance['payment_status_label'], self.order_two.get_payment_status_display())
-
-    def test_client_list_renders_compact_scan_fields_and_row_targets(self):
-        self.login_staff()
-        ManagerDeal.objects.create(
-            order=self.order,
-            responsible_manager=self.staff_user,
-            deal_type=ManagerDeal.DEAL_SALE_FROM_STOCK,
-            deal_status=ManagerDeal.DEAL_STATUS_AWAITING_PAYMENT,
-            case_status=ManagerDeal.CASE_STATUS_CONFIRMED,
-            buyer_type=ManagerDeal.BUYER_BUSINESS,
-            customer_source=ManagerDeal.SOURCE_AVITO,
-            next_step_code=ManagerDeal.NEXT_STEP_NEEDS_PAYMENT,
-            problem_flags=[ManagerDeal.PROBLEM_FLAG_PAYMENT_BLOCKED],
-            business_company_name=self.manager_client.name,
-            business_contact_person='Иван',
-            business_phone=self.manager_client.phone,
-            business_email=self.manager_client.email,
-            business_city='Екатеринбург',
-            last_activity_at=timezone.now(),
-        )
-
-        response = self.client.get(reverse('manager_portal:client_list'), {'client': self.manager_client.pk})
-
-        self.assertEqual(response.status_code, 200)
-        client = response.context['clients'][0]
-        self.assertEqual(client.list_client_type_label, 'Юр. лицо')
-        self.assertEqual(client.list_main_status_label, 'Ожидает оплату')
-        self.assertEqual(client.list_responsible_label, self.staff_user.username)
-        self.assertEqual(client.list_next_action_label, 'Получить оплату')
-        self.assertEqual(client.list_risk_label, 'Блокировка оплаты')
-        self.assertTrue(client.list_last_order_label.startswith(f'Заказ #{self.order.pk}'))
-        self.assertContains(response, 'Имя / компания')
-        self.assertContains(response, f'data-client-row-desktop="{self.manager_client.pk}"')
-        self.assertContains(response, f'data-client-row-mobile="{self.manager_client.pk}"')
-        self.assertContains(response, 'Блокировка оплаты')
-
-    def test_client_list_uses_fallback_values_when_client_has_no_deals(self):
-        self.login_staff()
-
-        response = self.client.get(reverse('manager_portal:client_list'), {'status': ManagerClient.STATUS_ARCHIVED})
-
-        self.assertEqual(response.status_code, 200)
-        client = response.context['clients'][0]
-        self.assertEqual(client, self.archived_client)
-        self.assertEqual(client.list_main_status_label, 'Архив')
-        self.assertEqual(client.list_last_order_label, 'Без заказов')
-        self.assertEqual(client.list_next_action_label, 'Нет действия')
-        self.assertEqual(client.list_risk_label, '—')
-
     def test_deal_create_prefills_from_client_query(self):
         self.login_staff()
         ManagerDeal.objects.create(
@@ -3799,10 +3325,30 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         response = self.client.get(reverse('manager_portal:deal_create'), {'client': self.manager_client.pk})
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context['form']['buyer_type'].value(), ManagerDeal.BUYER_BUSINESS)
-        self.assertEqual(response.context['form']['customer_source'].value(), ManagerDeal.SOURCE_REPEAT)
-        self.assertEqual(response.context['form']['business_company_name'].value(), self.manager_client.name)
-        self.assertEqual(response.context['form']['business_phone'].value(), self.manager_client.phone)
+        self.assertEqual(str(response.context['form']['client'].value()), str(self.manager_client.pk))
+        self.assertEqual(response.context['form']['deal_type'].value(), ManagerDeal.DEAL_SALE_FROM_STOCK)
+        self.assertEqual(response.context['form']['customer_source'].value(), ManagerDeal.SOURCE_WEBSITE)
+        self.assertEqual(str(response.context['form']['responsible_manager'].value()), str(self.staff_user.pk))
+        self.assertContains(response, 'Повторный клиент')
+
+    def test_order_create_recommends_document_type_by_deal_type(self):
+        self.login_staff()
+        deal = ensure_manager_deal_for_order(self.order)
+        scenarios = [
+            (ManagerDeal.DEAL_SALE_ON_REQUEST, ContractTemplate.DOC_TYPE_CONTRACT),
+            (ManagerDeal.DEAL_SALE_FROM_STOCK, ContractTemplate.DOC_TYPE_INVOICE),
+            (ManagerDeal.DEAL_TRADE_IN, ContractTemplate.DOC_TYPE_APPENDIX),
+            (ManagerDeal.DEAL_AVITO, ''),
+        ]
+
+        for deal_type, expected_document_type in scenarios:
+            deal.deal_type = deal_type
+            deal.save(update_fields=['deal_type', 'updated_at'])
+
+            response = self.client.get(reverse('manager_portal:order_create'), {'client': self.manager_client.pk})
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.context['document_recommendation']['document_type'], expected_document_type)
 
     def test_client_detail_post_updates_client(self):
         self.login_staff()
@@ -3827,66 +3373,6 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         self.assertEqual(self.manager_client.name, 'ООО Обновлено')
         self.assertEqual(set(self.manager_client.orders.values_list('pk', flat=True)), {self.order.pk, self.order_two.pk})
 
-    def test_client_quick_comment_appends_note_and_redirects_to_next(self):
-        self.login_staff()
-        self.manager_client.comments = 'Старый комментарий'
-        self.manager_client.save(update_fields=['comments', 'updated_at'])
-        next_url = f"{reverse('manager_portal:client_list')}?client={self.manager_client.pk}"
-
-        response = self.client.post(
-            reverse('manager_portal:client_quick_comment', kwargs={'pk': self.manager_client.pk}),
-            {
-                'comment': 'Новый комментарий',
-                'next': next_url,
-            },
-        )
-
-        self.assertRedirects(response, next_url)
-        self.manager_client.refresh_from_db()
-        self.assertIn('Новый комментарий', self.manager_client.comments)
-        self.assertIn('Старый комментарий', self.manager_client.comments)
-        self.assertTrue(self.manager_client.comments.index('Новый комментарий') < self.manager_client.comments.index('Старый комментарий'))
-
-    def test_client_quick_assign_updates_latest_deal_manager(self):
-        self.login_staff()
-        deal = ensure_manager_deal_for_order(self.order)
-        second_manager = User.objects.create_user(username='79990001144', password='pass1234', is_staff=True)
-        next_url = f"{reverse('manager_portal:client_list')}?client={self.manager_client.pk}"
-
-        response = self.client.post(
-            reverse('manager_portal:client_quick_assign', kwargs={'pk': self.manager_client.pk}),
-            {
-                'responsible_manager': second_manager.pk,
-                'next': next_url,
-            },
-        )
-
-        self.assertRedirects(response, next_url)
-        deal.refresh_from_db()
-        self.assertEqual(deal.responsible_manager, second_manager)
-
-    def test_client_quick_assign_without_deal_renders_fallback_and_does_not_assign(self):
-        self.login_staff()
-        lead = ManagerClient.objects.create(name='Без сделки', status=ManagerClient.STATUS_ACTIVE)
-        next_url = f"{reverse('manager_portal:client_list')}?client={lead.pk}"
-
-        response = self.client.get(reverse('manager_portal:client_quick_assign', kwargs={'pk': lead.pk}))
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Быстрое назначение работает только через последнюю сделку клиента.')
-        self.assertContains(response, f"{reverse('manager_portal:deal_create')}?client={lead.pk}", html=False)
-
-        response = self.client.post(
-            reverse('manager_portal:client_quick_assign', kwargs={'pk': lead.pk}),
-            {
-                'responsible_manager': self.staff_user.pk,
-                'next': next_url,
-            },
-        )
-
-        self.assertRedirects(response, next_url)
-        self.assertFalse(ManagerDeal.objects.filter(order__manager_client_links=lead).exists())
-
     def test_warehouse_list_filters_by_status_and_public_link(self):
         self.login_staff()
         self.unlinked_warehouse.is_active = False
@@ -3910,12 +3396,6 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         reservation = self.create_reservation(source_warehouse=self.warehouse)
         ReservationItem.objects.create(reservation=reservation, product=self.product, quantity=2)
 
-        response = self.client.get(reverse('manager_portal:warehouse_list'))
-
-        self.assertContains(response, 'data-warehouse-summary-filter="only_missing_address"', html=False)
-        self.assertContains(response, f'data-warehouse-actions="{self.warehouse.pk}"', html=False)
-        self.assertContains(response, 'title="Остаток на сайте еще не синхронизирован"', html=False)
-
         response = self.client.get(reverse('manager_portal:warehouse_list'), {'only_unlinked': '1'})
 
         self.assertEqual(response.status_code, 200)
@@ -3923,13 +3403,6 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         self.assertEqual(response.context['warehouse_summary']['total'], 1)
         self.assertEqual(response.context['warehouse_summary']['unlinked_count'], 1)
         self.assertEqual(response.context['warehouse_summary']['missing_address_count'], 1)
-        self.assertTrue(next(badge['active'] for badge in response.context['summary_badges'] if badge['key'] == 'only_unlinked'))
-
-        response = self.client.get(reverse('manager_portal:warehouse_list'), {'only_missing_address': '1'})
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual([card['instance'] for card in response.context['warehouses']], [self.unlinked_warehouse])
-        self.assertTrue(next(badge['active'] for badge in response.context['summary_badges'] if badge['key'] == 'only_missing_address'))
 
         response = self.client.get(reverse('manager_portal:warehouse_list'), {'only_problematic': '1'})
 
@@ -3977,49 +3450,20 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         self.assertEqual(len(response.context['inventory_rows']), 1)
         self.assertEqual(response.context['inventory_rows'][0]['available'], -1)
 
-    def test_inventory_receipt_page_prefills_selected_warehouse(self):
+    def test_inventory_view_prefills_receipt_form_for_selected_warehouse(self):
         self.login_staff()
-
-        response = self.client.get(
-            reverse('manager_portal:inventory_receipt'),
-            {
-                'warehouse': self.warehouse.pk,
-            },
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context['form'].initial['warehouse'], self.warehouse)
-        self.assertContains(response, 'Ручной приход')
-        self.assertContains(response, self.warehouse.name)
-
-    def test_inventory_view_keeps_advanced_filters_collapsed_by_default(self):
-        self.login_staff()
-
-        response = self.client.get(reverse('manager_portal:inventory'))
-
-        self.assertEqual(response.status_code, 200)
-        self.assertFalse(response.context['inventory_filters_open'])
-        self.assertEqual(response.context['inventory_advanced_filter_count'], 0)
-        self.assertFalse(response.context['inventory_problem_filters_open'])
-
-    def test_inventory_view_supports_quick_product_search(self):
-        self.login_staff()
-        receipt_inventory(warehouse=self.warehouse, product=self.product, quantity=2, author=self.staff_user)
-        receipt_inventory(warehouse=self.other_warehouse, product=self.product_two, quantity=3, author=self.staff_user)
 
         response = self.client.get(
             reverse('manager_portal:inventory'),
             {
-                'product_q': 'quest 3',
+                'warehouse': self.warehouse.pk,
+                'open_receipt': '1',
             },
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.context['inventory_rows']), 1)
-        self.assertEqual(response.context['inventory_rows'][0]['product_id'], self.product.pk)
-        self.assertEqual(response.context['product_search'], 'quest 3')
-        self.assertFalse(response.context['inventory_filters_open'])
-        self.assertEqual(response.context['inventory_advanced_filter_count'], 0)
+        self.assertEqual(response.context['receipt_form'].initial['warehouse'], self.warehouse)
+        self.assertTrue(response.context['open_receipt_drawer'])
 
     def test_inventory_view_supports_precise_problem_filters_and_summary(self):
         self.login_staff()
@@ -4048,9 +3492,6 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         self.assertEqual(response.context['inventory_summary']['below_min_stock_count'], 1)
         self.assertEqual(response.context['inventory_summary']['negative_available_count'], 0)
         self.assertEqual(response.context['inventory_summary']['public_mismatch_count'], 1)
-        self.assertTrue(response.context['inventory_filters_open'])
-        self.assertTrue(response.context['inventory_problem_filters_open'])
-        self.assertEqual(response.context['inventory_advanced_filter_count'], 1)
 
     def test_inventory_view_rows_include_operational_details(self):
         self.login_staff()
@@ -4096,65 +3537,6 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         self.assertEqual(row['promise_capacity'], 7)
         self.assertGreaterEqual(len(row['detail_reasons']), 3)
 
-    def test_inventory_view_highlights_low_stock_rows(self):
-        self.login_staff()
-        InventoryBalance.objects.create(warehouse=self.warehouse, product=self.product, quantity=2, min_stock=5)
-
-        response = self.client.get(reverse('manager_portal:inventory'))
-
-        self.assertEqual(response.status_code, 200)
-        row = response.context['inventory_rows'][0]
-        self.assertContains(response, 'manager-risk-block-attention')
-        self.assertTrue(row['is_low_stock'])
-        self.assertEqual(row['row_status']['tone'], 'attention')
-        self.assertEqual(row['risk_summary']['tone'], 'attention')
-
-    def test_inventory_view_exports_csv_for_current_slice(self):
-        self.login_staff()
-        receipt_inventory(warehouse=self.warehouse, product=self.product, quantity=2, author=self.staff_user)
-        receipt_inventory(warehouse=self.other_warehouse, product=self.product_two, quantity=3, author=self.staff_user)
-
-        response = self.client.get(
-            reverse('manager_portal:inventory'),
-            {
-                'product_q': 'quest',
-                'export': 'csv',
-            },
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response['Content-Type'], 'text/csv; charset=utf-8')
-        self.assertIn('attachment; filename="inventory-', response['Content-Disposition'])
-        decoded = response.content.decode('utf-8-sig')
-        rows = list(csv.reader(decoded.splitlines()))
-        self.assertEqual(rows[0][0], 'Склад')
-        self.assertEqual(len(rows), 2)
-        self.assertEqual(rows[1][1], self.product.name)
-
-    def test_inventory_view_exports_excel_for_current_slice(self):
-        self.login_staff()
-        receipt_inventory(warehouse=self.warehouse, product=self.product, quantity=2, author=self.staff_user)
-
-        response = self.client.get(
-            reverse('manager_portal:inventory'),
-            {
-                'product_q': 'quest',
-                'export': 'excel',
-            },
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            response['Content-Type'],
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        )
-        self.assertIn('.xlsx"', response['Content-Disposition'])
-        workbook = load_workbook(BytesIO(response.content))
-        sheet = workbook.active
-        self.assertEqual(sheet.title, 'Inventory')
-        self.assertEqual(sheet['A1'].value, 'Склад')
-        self.assertEqual(sheet['B2'].value, self.product.name)
-
     def test_inventory_receipt_view_creates_balance_and_movement(self):
         self.login_staff()
 
@@ -4169,18 +3551,18 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
             },
         )
 
-        self.assertRedirects(response, f"{reverse('manager_portal:inventory')}?warehouse={self.warehouse.pk}")
+        self.assertRedirects(response, reverse('manager_portal:inventory'))
         balance = InventoryBalance.objects.get(warehouse=self.warehouse, product=self.product, variant__isnull=True)
         movement = InventoryMovement.objects.get(warehouse=self.warehouse, product=self.product)
         self.assertEqual(balance.quantity, 5)
         self.assertEqual(movement.movement_type, InventoryMovement.TYPE_RECEIPT)
         self.assertEqual(movement.comment, 'Ручной приход')
 
-    def test_purchase_create_view_creates_purchase(self):
+    def test_purchase_list_post_creates_purchase(self):
         self.login_staff()
 
         response = self.client.post(
-            reverse('manager_portal:purchase_create'),
+            reverse('manager_portal:purchase_list'),
             {
                 'date': timezone.localdate().isoformat(),
                 'supplier_name': 'Shenzhen Supplier',
@@ -4194,94 +3576,6 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
 
         purchase = Purchase.objects.get(supplier_name='Shenzhen Supplier')
         self.assertRedirects(response, reverse('manager_portal:purchase_detail', kwargs={'pk': purchase.pk}))
-
-    def test_purchase_list_hides_filter_reset_without_active_filters(self):
-        self.login_staff()
-
-        response = self.client.get(reverse('manager_portal:purchase_list'))
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context['active_filter_count'], 0)
-        self.assertEqual(response.context['active_filter_chips'], [])
-        self.assertFalse(response.context['show_filter_panel'])
-        self.assertContains(response, 'Создать первую закупку')
-        self.assertNotContains(response, 'Сбросить все фильтры')
-
-    def test_purchase_list_shows_active_filter_indicators(self):
-        self.login_staff()
-        purchase_date = timezone.localdate()
-        Purchase.objects.create(
-            date=purchase_date,
-            supplier_name='Shenzhen Supplier',
-            status=Purchase.STATUS_ORDERED,
-        )
-
-        response = self.client.get(
-            reverse('manager_portal:purchase_list'),
-            {
-                'q': 'Shenzhen',
-                'status': Purchase.STATUS_ORDERED,
-                'date_from': purchase_date.isoformat(),
-                'date_to': purchase_date.isoformat(),
-            },
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context['active_filter_count'], 4)
-        self.assertEqual(
-            [chip['label'] for chip in response.context['active_filter_chips']],
-            [
-                'Поиск: Shenzhen',
-                'Статус: Заказано',
-                f'Дата от: {purchase_date:%d.%m.%Y}',
-                f'Дата до: {purchase_date:%d.%m.%Y}',
-            ],
-        )
-        self.assertEqual(response.context['clear_all_filters_url'], reverse('manager_portal:purchase_list'))
-        self.assertContains(response, 'Фильтры (4)')
-        self.assertContains(response, 'Сбросить все фильтры')
-        self.assertContains(response, 'Поиск: Shenzhen')
-        self.assertContains(response, 'Статус: Заказано')
-
-    def test_registry_pages_show_empty_cta_instead_of_filters_without_records(self):
-        self.login_staff()
-
-        responses = [
-            self.client.get(reverse('manager_portal:purchase_list')),
-            self.client.get(reverse('manager_portal:cargo_list')),
-            self.client.get(reverse('manager_portal:reservation_list')),
-            self.client.get(reverse('manager_portal:shipments')),
-        ]
-
-        for response in responses:
-            self.assertEqual(response.status_code, 200)
-            self.assertFalse(response.context['show_filter_panel'])
-            self.assertNotContains(response, 'Фильтры')
-
-        self.assertContains(responses[0], 'Создать первую закупку')
-        self.assertContains(responses[1], 'Создать первый груз')
-        self.assertContains(responses[2], 'Создать первую бронь')
-        self.assertContains(responses[3], 'Открыть бронирования')
-
-    def test_purchase_list_keeps_filters_visible_for_empty_filtered_slice(self):
-        self.login_staff()
-
-        response = self.client.get(reverse('manager_portal:purchase_list'), {'q': 'nothing'})
-
-        self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.context['show_filter_panel'])
-        self.assertContains(response, 'Фильтры (1)')
-        self.assertContains(response, 'Закупки не найдены')
-
-    def test_purchase_list_renders_calendar_trigger_for_filter_dates(self):
-        self.login_staff()
-        Purchase.objects.create(date=timezone.localdate(), supplier_name='Supplier')
-
-        response = self.client.get(reverse('manager_portal:purchase_list'))
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'data-manager-date-picker-trigger')
-        self.assertContains(response, 'manager-date-picker-shell')
 
     def test_purchase_add_item_view_creates_item(self):
         self.login_staff()
@@ -4329,13 +3623,6 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(list(response.context['cargos']), [matching_cargo])
         self.assertEqual(response.context['overdue_count'], 1)
-        self.assertEqual(response.context['active_filter_count'], 2)
-        self.assertEqual(
-            [chip['label'] for chip in response.context['active_filter_chips']],
-            ['Просрочен по ETA', 'Есть брони'],
-        )
-        self.assertContains(response, 'Фильтры (2)')
-        self.assertContains(response, 'Сбросить все фильтры')
 
     def test_cargo_add_item_view_creates_item(self):
         self.login_staff()
@@ -4471,61 +3758,15 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         self.assertEqual(list(response.context['reservations']), [matching_reservation])
         self.assertEqual(str(response.context['form']['client'].value()), str(self.manager_client.pk))
         self.assertNotIn(other_reservation, response.context['reservations'])
-        self.assertEqual(response.context['active_filter_count'], 1)
-        self.assertEqual(
-            [chip['label'] for chip in response.context['active_filter_chips']],
-            [f'Клиент: {self.manager_client.name}'],
-        )
-        self.assertEqual(
-            response.context['clear_all_filters_url'],
-            f'{reverse("manager_portal:reservation_list")}?createFromClient={self.manager_client.pk}',
-        )
-        self.assertContains(response, 'Фильтры (1)')
-        self.assertContains(response, 'Сбросить все фильтры')
 
-    def test_reservation_list_collapses_advanced_filters_without_secondary_values(self):
-        self.login_staff()
-        self.create_reservation(client=self.manager_client, source_warehouse=self.warehouse)
-
-        response = self.client.get(reverse('manager_portal:reservation_list'))
-
-        self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.context['show_filter_panel'])
-        self.assertFalse(response.context['reservation_advanced_filters_open'])
-        self.assertContains(response, 'По умолчанию оставлены только поиск и статус.')
-        self.assertNotContains(response, '<details class="manager-collapsible-panel" open>', html=False)
-
-    def test_reservation_list_opens_advanced_filters_when_secondary_filter_is_active(self):
-        self.login_staff()
-        matching_reservation = self.create_reservation(
-            client=self.manager_client,
-            source_warehouse=self.warehouse,
-            target_warehouse=self.other_warehouse,
-        )
-        self.create_reservation(
-            client=self.manager_client,
-            source_warehouse=self.warehouse,
-            target_warehouse=self.warehouse,
-        )
-
-        response = self.client.get(
-            reverse('manager_portal:reservation_list'),
-            {'target_warehouse': self.other_warehouse.pk},
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(list(response.context['reservations']), [matching_reservation])
-        self.assertTrue(response.context['reservation_advanced_filters_open'])
-        self.assertEqual(response.context['reservation_advanced_filter_count'], 1)
-        self.assertContains(response, '<details class="manager-collapsible-panel" open>', html=False)
-
-    def test_reservation_create_view_prefills_from_deal(self):
+    def test_reservation_list_prefills_from_deal(self):
         self.login_staff()
         deal = ensure_manager_deal_for_order(self.order)
 
-        response = self.client.get(reverse('manager_portal:reservation_create'), {'createFromDeal': deal.pk})
+        response = self.client.get(reverse('manager_portal:reservation_list'), {'createFromDeal': deal.pk})
 
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['reservation_prefill_deal'], deal)
         self.assertEqual(str(response.context['form']['linked_order'].value()), str(deal.order.pk))
         self.assertEqual(str(response.context['form']['client'].value()), str(self.manager_client.pk))
         self.assertContains(response, f'Новая бронь будет связана со сделкой #{deal.order_id}.')
@@ -4538,7 +3779,7 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         deal.save(update_fields=['stock_warehouse', 'updated_at'])
 
         response = self.client.post(
-            reverse('manager_portal:reservation_create'),
+            reverse('manager_portal:reservation_list'),
             {
                 'createFromDeal': deal.pk,
                 'client': self.manager_client.pk,
@@ -4689,74 +3930,6 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         self.assertEqual(response.context['view_mode'], 'items')
         self.assertEqual(len(response.context['rows']), 1)
         self.assertEqual(response.context['rows'][0]['reservation'], reservation)
-        self.assertEqual(response.context['active_filter_count'], 3)
-        self.assertEqual(
-            [chip['label'] for chip in response.context['active_filter_chips']],
-            [
-                f'Склад-источник: {self.warehouse.name}',
-                f'Клиент: {self.manager_client.name}',
-                'Режим: По позициям',
-            ],
-        )
-        self.assertContains(response, 'Фильтры (3)')
-        self.assertContains(response, 'Сбросить все фильтры')
-        self.assertContains(response, 'Режим: По позициям')
-
-    def test_registry_pages_render_desktop_tables_and_mobile_cards(self):
-        self.login_staff()
-        purchase = Purchase.objects.create(
-            date=timezone.localdate(),
-            supplier_name='Shenzhen Supplier',
-            agent='Ирина',
-            status=Purchase.STATUS_ORDERED,
-            currency='CNY',
-            total_amount=Decimal('1000.00'),
-        )
-        PurchaseItem.objects.create(
-            purchase=purchase,
-            product=self.product,
-            variant=self.variant,
-            quantity=2,
-            price=Decimal('500.00'),
-        )
-        cargo = Cargo.objects.create(
-            cargo_number='CG-RESP-1',
-            purchase=purchase,
-            status=Cargo.STATUS_IN_TRANSIT,
-            destination_warehouse=self.warehouse,
-            eta=timezone.localdate() + timedelta(days=3),
-        )
-        CargoItem.objects.create(cargo=cargo, product=self.product, quantity=2)
-        reservation = self.create_reservation(
-            client=self.manager_client,
-            source_warehouse=self.warehouse,
-            target_warehouse=self.other_warehouse,
-        )
-        ReservationItem.objects.create(reservation=reservation, product=self.product, quantity=1)
-        shipment = Shipment.objects.create(
-            order=self.order,
-            client=self.manager_client,
-            reservation=reservation,
-            source_warehouse=self.warehouse,
-            target_warehouse=self.other_warehouse,
-            tracking_number='TRACK-RESP-1',
-            status=Shipment.STATUS_PENDING,
-        )
-        ShipmentItem.objects.create(shipment=shipment, order_item=self.order.items.get(), product=self.product, quantity=1)
-        receipt_inventory(warehouse=self.warehouse, product=self.product, quantity=5, author=self.staff_user)
-
-        responses = [
-            self.client.get(reverse('manager_portal:purchase_list')),
-            self.client.get(reverse('manager_portal:cargo_list')),
-            self.client.get(reverse('manager_portal:reservation_list')),
-            self.client.get(reverse('manager_portal:shipments'), {'view_mode': 'items'}),
-            self.client.get(reverse('manager_portal:inventory')),
-        ]
-
-        for response in responses:
-            self.assertEqual(response.status_code, 200)
-            self.assertContains(response, 'manager-responsive-card')
-            self.assertContains(response, 'md:table')
 
     def test_shipment_detail_page_renders_document(self):
         self.login_staff()
@@ -4777,7 +3950,6 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
             date=timezone.localdate(),
             contract_number='BF-TURNOVER',
             deal_type=self.finance_deal_type,
-            payment_state='paid',
             revenue=Decimal('1761718.00'),
             cost_price=Decimal('1456431.00'),
             direct_expenses=Decimal('2300.00'),
@@ -4800,11 +3972,6 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         )
 
         self.assertEqual(dashboard_response.status_code, 200)
-        self.assertContains(dashboard_response, 'Баланс')
-        self.assertContains(dashboard_response, 'Задолженность')
-        self.assertContains(dashboard_response, 'Оплачено')
-        self.assertContains(dashboard_response, 'Просрочено')
-        self.assertContains(dashboard_response, 'data-finance-cashflow-chart', html=False)
         self.assertContains(dashboard_response, '1 761 718,00')
         self.assertContains(dashboard_response, '302 887,00')
         self.assertEqual(report_response.status_code, 200)

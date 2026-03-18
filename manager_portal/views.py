@@ -1,10 +1,9 @@
 import csv
 from collections import defaultdict
 from decimal import Decimal
-from io import BytesIO
 from urllib.parse import urlencode
 
-from django import forms as django_forms
+from django import forms
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -18,17 +17,14 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
-from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.csrf import csrf_exempt
-from openpyxl import Workbook
-from openpyxl.styles import Font
-from openpyxl.utils import get_column_letter
 
 from catalog.admin.proposal_html import build_commercial_proposal_html
 from catalog.models import Product, ProductStock
 from catalog.stock import public_stock_status
 from config.formatting import format_currency_amount
 from orders.models import Order, OrderItem, resolve_order_item_image_url
+from payments.models import Payment
 
 from .access import (
     finance_admin_required,
@@ -67,8 +63,6 @@ from .forms import (
     GlobalSearchForm,
     InventoryReceiptForm,
     ManagerClientForm,
-    ManagerClientQuickAssignForm,
-    ManagerClientQuickCommentForm,
     ManagerDealStateForm,
     ManualOrderForm,
     ManualOrderItemFormSet,
@@ -77,11 +71,14 @@ from .forms import (
     PurchaseForm,
     PurchaseFilterForm,
     PurchaseItemForm,
+    QuickDealForm,
+    QuickOrderItemFormSet,
     ReservationForm,
     ReservationFilterForm,
     ReservationItemForm,
     ReservationStatusForm,
     ShipmentFilterForm,
+    TradeInItemFormSet,
     TransportLegForm,
     WarehouseFilterForm,
     WarehouseForm,
@@ -138,6 +135,7 @@ from .services import (
     inventory_snapshot_for_warehouse,
     inventory_summary,
     manager_portal_now,
+    manager_portal_stale_after,
     prefill_contract_document_from_manager_deal,
     prefill_finance_deal_from_manager_deal,
     create_or_update_shipment_for_order,
@@ -158,34 +156,22 @@ from .services import (
     sync_public_stock_for_warehouse,
     record_deal_activity,
     recompute_deal_workflow,
-    set_manager_deal_paid_amount,
     update_order_state,
     validate_reservation_availability,
     create_or_update_reservation_movements,
     ensure_manager_client_for_order,
 )
-from .status_system import (
-    SEMANTIC_TONE_ACTIVE,
-    SEMANTIC_TONE_ATTENTION,
-    SEMANTIC_TONE_COMPLETE,
-    SEMANTIC_TONE_CRITICAL,
-    SEMANTIC_TONE_UNKNOWN,
-    build_semantic_status,
-    cargo_status as semantic_cargo_status,
-    contract_document_status,
-    deal_primary_status,
-    deal_problem_tone,
-    deal_risk_summary,
-    deal_secondary_status,
-    manager_client_status,
-    reservation_status as semantic_reservation_status,
-    shipment_status as semantic_shipment_status,
-)
 
+
+CREATE_MODE_QUICK = 'quick'
+CREATE_MODE_FULL = 'full'
+CLIENT_LOOKUP_RESULT_LIMIT = 8
 
 DEAL_PROBLEM_VIEW_SLA_OVERDUE = 'sla_overdue'
+DEAL_PROBLEM_VIEW_STALE_UPDATES = 'stale_updates'
 DEAL_PROBLEM_VIEW_ETA_OVERDUE = 'eta_overdue'
 DEAL_PROBLEM_VIEW_STOCK_CONFLICT = 'stock_conflict'
+DEAL_PROBLEM_VIEW_MISSING_CONTACTS = 'missing_contacts'
 DEAL_PROBLEM_VIEW_NO_ASSIGNEE = 'no_assignee'
 DEAL_PROBLEM_VIEW_RESERVATIONS_EXPIRING = 'reservations_expiring'
 DEAL_PROBLEM_VIEW_MISSING_B2B_DOCUMENTS = 'missing_b2b_documents'
@@ -198,73 +184,10 @@ DEAL_VIEW_CHOICES = {DEAL_VIEW_LIST, DEAL_VIEW_KANBAN}
 DEAL_SCOPE_CORE = 'core'
 DEAL_SCOPE_AVITO = 'avito'
 DEAL_SCOPE_CHOICES = {DEAL_SCOPE_CORE, DEAL_SCOPE_AVITO}
-DEAL_KPI_WINDOW_DAYS = 7
-DEAL_KPI_CASE_STATUSES = (
-    ManagerDeal.CASE_STATUS_NEW,
-    ManagerDeal.CASE_STATUS_CONFIRMED,
-    ManagerDeal.CASE_STATUS_IN_PROGRESS,
-    ManagerDeal.CASE_STATUS_WAITING_CLIENT,
-    ManagerDeal.CASE_STATUS_READY_TO_SHIP,
-)
-DEAL_KPI_LABELS = {
-    ManagerDeal.CASE_STATUS_NEW: 'Новые',
-    ManagerDeal.CASE_STATUS_CONFIRMED: 'Подтверждены',
-    ManagerDeal.CASE_STATUS_IN_PROGRESS: 'В работе',
-    ManagerDeal.CASE_STATUS_WAITING_CLIENT: 'Ждут клиента',
-    ManagerDeal.CASE_STATUS_READY_TO_SHIP: 'Готовы к отправке',
-}
-DEAL_KPI_TONES = {
-    ManagerDeal.CASE_STATUS_NEW: SEMANTIC_TONE_ACTIVE,
-    ManagerDeal.CASE_STATUS_CONFIRMED: SEMANTIC_TONE_ACTIVE,
-    ManagerDeal.CASE_STATUS_IN_PROGRESS: SEMANTIC_TONE_ACTIVE,
-    ManagerDeal.CASE_STATUS_WAITING_CLIENT: SEMANTIC_TONE_ATTENTION,
-    ManagerDeal.CASE_STATUS_READY_TO_SHIP: SEMANTIC_TONE_COMPLETE,
-}
-DEAL_FILTER_FIELDS = (
-    'q',
-    'sort',
-    'queue',
-    'overlay',
-    'problem_view',
-    'case_status',
-    'payment_state',
-    'fulfillment_status',
-    'documents_status',
-    'deal_type',
-    'sla_status',
-    'responsible_manager',
-    'mine',
-    'only_unassigned',
-    'only_problematic',
-    'action_today',
-)
-DEAL_ACTIVE_FILTER_FIELDS = tuple(field for field in DEAL_FILTER_FIELDS if field != 'queue')
-INVENTORY_EXPORT_COLUMNS = (
-    ('warehouse_name', 'Склад'),
-    ('product_name', 'Товар'),
-    ('variant_name', 'Вариант'),
-    ('sku', 'SKU'),
-    ('row_status_label', 'Статус'),
-    ('on_hand', 'На руках'),
-    ('reserved_on_hand', 'В резерве'),
-    ('available', 'Свободно'),
-    ('min_stock', 'Порог'),
-    ('inbound', 'В пути'),
-    ('inbound_available', 'В пути свободно'),
-    ('promise_capacity', 'Можно обещать'),
-    ('public_sync_status_label', 'Сайт'),
-    ('public_published_qty', 'Сайт опубликовано'),
-    ('public_expected_qty', 'Сайт ожидается'),
-    ('problem_labels', 'Проблемы'),
-)
 INVENTORY_BUSINESS_VIEW_DEAL_RISK = 'deal_risk'
 INVENTORY_BUSINESS_VIEW_REPLENISHMENT = 'replenishment'
 INVENTORY_BUSINESS_VIEW_OVERSOLD = 'oversold'
 INVENTORY_BUSINESS_VIEW_SITE_MISMATCH = 'site_mismatch'
-LIST_FILTER_LABEL_OVERRIDES = {
-    'source_type': 'Источник',
-    'view_mode': 'Режим',
-}
 
 INVENTORY_BUSINESS_VIEW_DEFINITIONS = (
     {
@@ -296,6 +219,11 @@ DEAL_PROBLEM_VIEW_DEFINITIONS = (
         'description': 'Заказы с просроченным операционным сроком.',
     },
     {
+        'code': DEAL_PROBLEM_VIEW_STALE_UPDATES,
+        'label': 'Нет обновлений 48 ч',
+        'description': 'По сделке давно не было активности менеджера.',
+    },
+    {
         'code': DEAL_PROBLEM_VIEW_ETA_OVERDUE,
         'label': 'ETA просрочен',
         'description': 'Ожидаемая поставка или отправка уже сорвана.',
@@ -304,6 +232,11 @@ DEAL_PROBLEM_VIEW_DEFINITIONS = (
         'code': DEAL_PROBLEM_VIEW_STOCK_CONFLICT,
         'label': 'Конфликт по остаткам',
         'description': 'Текущий остаток не покрывает заказ без закупки.',
+    },
+    {
+        'code': DEAL_PROBLEM_VIEW_MISSING_CONTACTS,
+        'label': 'Нет контактов',
+        'description': 'У сделки нет рабочего канала связи с клиентом.',
     },
     {
         'code': DEAL_PROBLEM_VIEW_RESERVATIONS_EXPIRING,
@@ -323,231 +256,125 @@ DEAL_PROBLEM_VIEW_DEFINITIONS = (
 )
 
 
-def _tab_sidebar_key(active_tab):
-    if active_tab in {'deals', 'dashboard', 'orders'}:
-        return 'deals'
-    if active_tab in {'finance_dashboard', 'finance_deals', 'finance_expenses', 'finance_payouts', 'finance_report', 'finance_archive', 'finance_settings'}:
-        return 'finance'
-    if active_tab in {'contracts_dashboard', 'contracts_documents', 'contracts_create', 'contracts_templates', 'contracts_settings'}:
-        return 'contracts'
-    if active_tab == 'proposals':
-        return 'commercial_proposals'
-    if active_tab in {'clients', 'warehouses', 'inventory', 'purchases', 'cargos', 'reservations', 'shipments'}:
-        return active_tab
-    return ''
-
-
-def _active_tab_label(active_tab):
-    labels = {
-        'entry': 'Модули',
-        'deals': 'Сделки',
-        'dashboard': 'Сделки',
-        'orders': 'Сделки',
-        'clients': 'Клиенты',
-        'warehouses': 'Склады',
-        'inventory': 'Остатки',
-        'finance_dashboard': 'Финансы',
-        'finance_deals': 'Сделки',
-        'finance_expenses': 'Расходы',
-        'finance_payouts': 'Выплаты',
-        'finance_report': 'Отчет',
-        'finance_archive': 'Архив',
-        'finance_settings': 'Настройки',
-        'contracts_dashboard': 'Панель управления документами',
-        'contracts_documents': 'Реестр документов',
-        'contracts_create': 'Новый документ',
-        'contracts_templates': 'Шаблоны',
-        'contracts_settings': 'Настройки',
-        'proposals': 'Коммерческие предложения',
-        'purchases': 'Закупки',
-        'cargos': 'Грузы',
-        'reservations': 'Бронирования',
-        'shipments': 'Отгрузки',
-    }
-    return labels.get(active_tab, active_tab)
-
-
-_MANAGER_MOBILE_NAV_PRIMARY_LIMIT = 5
-_MANAGER_MOBILE_NAV_MOBILE_LABELS = {
-    'deals': 'Заказы',
-    'clients': 'Клиенты',
-    'commercial_proposals': 'КП',
-    'warehouses': 'Склады',
-    'inventory': 'Остатки',
-    'reservations': 'Бронь',
-    'cargos': 'Грузы',
-    'shipments': 'Отгрузки',
-    'finance': 'Финансы',
-    'contracts': 'Договоры',
-    'purchases': 'Закупки',
-}
-_MANAGER_MOBILE_NAV_PRIORITY = {
-    'staff_finance': [
-        'deals',
-        'clients',
-        'warehouses',
-        'inventory',
-        'finance',
-        'contracts',
-        'purchases',
-        'reservations',
-        'shipments',
-        'cargos',
-        'commercial_proposals',
-    ],
-    'staff': [
-        'deals',
-        'clients',
-        'warehouses',
-        'inventory',
-        'purchases',
-        'reservations',
-        'shipments',
-        'cargos',
-        'contracts',
-        'commercial_proposals',
-    ],
-    'finance': ['finance'],
-}
-
-
-def _sidebar_groups_with_state(user, active_tab):
-    has_staff_access = has_manager_portal_access(user)
-    has_finance_access = has_finance_portal_access(user)
-    can_use_proposals = _can_use_commercial_proposals(user)
-    active_key = _tab_sidebar_key(active_tab)
-    group_specs = [
-        {
-            'key': 'sales',
-            'label': 'Продажи',
-            'items': [
-                ('deals', 'Сделки', 'manager_portal:deal_list', 'handshake', has_staff_access),
-                ('clients', 'Клиенты', 'manager_portal:client_list', 'users', has_staff_access),
-                (
-                    'commercial_proposals',
-                    'Коммерческие предложения',
-                    'manager_portal:commercial_proposals',
-                    'file-text',
-                    can_use_proposals,
-                ),
-            ],
-        },
-        {
-            'key': 'logistics',
-            'label': 'Склад и логистика',
-            'items': [
-                ('warehouses', 'Склады', 'manager_portal:warehouse_list', 'building-2', has_staff_access),
-                ('inventory', 'Остатки', 'manager_portal:inventory', 'package', has_staff_access),
-                ('reservations', 'Бронирования', 'manager_portal:reservation_list', 'calendar', has_staff_access),
-                ('cargos', 'Грузы', 'manager_portal:cargo_list', 'package-2', has_staff_access),
-                ('shipments', 'Отгрузки', 'manager_portal:shipments', 'truck', has_staff_access),
-            ],
-        },
-        {
-            'key': 'finance_documents',
-            'label': 'Финансы и документы',
-            'items': [
-                ('finance', 'Финансы', 'manager_portal:finance', 'trending-up', has_finance_access),
-                ('contracts', 'Договоры', 'manager_portal:contracts', 'scroll-text', has_staff_access),
-                ('purchases', 'Закупки', 'manager_portal:purchase_list', 'shopping-cart', has_staff_access),
-            ],
-        },
-    ]
+def _nav_groups(user):
+    if not has_any_manager_portal_access(user):
+        return [
+            {
+                'key': 'entry',
+                'label': 'Модули',
+                'url_name': 'manager_portal:entry',
+                'children': [],
+            },
+        ]
 
     groups = []
-    for group in group_specs:
-        items = [
-            {
-                'key': key,
-                'label': label,
-                'url_name': url_name,
-                'icon': icon,
-                'enabled': enabled,
-                'active': key == active_key,
-                'group_key': group['key'],
-                'group_label': group['label'],
-                'mobile_label': _MANAGER_MOBILE_NAV_MOBILE_LABELS.get(key, label),
-            }
-            for key, label, url_name, icon, enabled in group['items']
-        ]
+    if has_manager_portal_access(user):
         groups.append(
             {
-                'key': group['key'],
-                'label': group['label'],
-                'items': items,
-                'has_enabled_items': any(item['enabled'] for item in items),
+                'key': 'deals',
+                'label': 'Заказы',
+                'url_name': 'manager_portal:deal_list',
+                'children': [
+                    ('deals', 'Очереди', 'manager_portal:deal_list'),
+                    ('clients', 'Клиенты', 'manager_portal:client_list'),
+                    ('warehouses', 'Склады', 'manager_portal:warehouse_list'),
+                    ('inventory', 'Остатки', 'manager_portal:inventory'),
+                    ('purchases', 'Закупки', 'manager_portal:purchase_list'),
+                    ('cargos', 'Грузы', 'manager_portal:cargo_list'),
+                    ('reservations', 'Брони', 'manager_portal:reservation_list'),
+                    ('shipments', 'Отгрузки', 'manager_portal:shipments'),
+                ],
+            }
+        )
+    if has_finance_portal_access(user):
+        finance_children = [
+            ('finance_dashboard', 'Обзор', 'manager_portal:finance'),
+            ('finance_deals', 'Сделки', 'manager_portal:finance_deal_list'),
+            ('finance_expenses', 'Расходы', 'manager_portal:finance_expense_list'),
+            ('finance_payouts', 'Выплаты', 'manager_portal:finance_payout_list'),
+            ('finance_report', 'Отчет', 'manager_portal:finance_report'),
+            ('finance_archive', 'Архив', 'manager_portal:finance_archive'),
+        ]
+        if has_finance_admin_access(user):
+            finance_children.append(('finance_settings', 'Настройки', 'manager_portal:finance_settings'))
+        groups.append(
+            {
+                'key': 'finance',
+                'label': 'Финансы',
+                'url_name': 'manager_portal:finance',
+                'children': finance_children,
+            }
+        )
+    if _can_use_commercial_proposals(user):
+        groups.append(
+            {
+                'key': 'proposals',
+                'label': 'Генератор КП',
+                'url_name': 'manager_portal:commercial_proposals',
+                'children': [],
+            }
+        )
+    if has_manager_portal_access(user):
+        groups.append(
+            {
+                'key': 'contracts',
+                'label': 'Документы',
+                'url_name': 'manager_portal:contracts',
+                'children': [
+                    ('contracts_dashboard', 'Обзор', 'manager_portal:contracts'),
+                    ('contracts_documents', 'Реестр', 'manager_portal:contracts_documents'),
+                    ('contracts_create', 'Создать новый', 'manager_portal:contracts_create'),
+                    ('contracts_templates', 'Шаблоны', 'manager_portal:contracts_templates'),
+                    ('contracts_settings', 'Настройки', 'manager_portal:contracts_settings'),
+                ],
             }
         )
     return groups
 
 
-def _sidebar_items_with_state(user, active_tab):
-    groups = _sidebar_groups_with_state(user, active_tab)
-    return [item for group in groups for item in group['items']]
+def _tab_module_key(active_tab):
+    if active_tab in {'deals', 'dashboard', 'orders', 'clients', 'warehouses', 'inventory', 'purchases', 'cargos', 'reservations', 'shipments'}:
+        return 'deals'
+    if active_tab in {'finance_dashboard', 'finance_deals', 'finance_expenses', 'finance_payouts', 'finance_report', 'finance_archive', 'finance_settings'}:
+        return 'finance'
+    if active_tab in {'contracts_dashboard', 'contracts_documents', 'contracts_create', 'contracts_templates', 'contracts_settings'}:
+        return 'contracts'
+    return active_tab
 
 
-def _mobile_nav_priority_for_user(user):
-    has_staff_access = has_manager_portal_access(user)
-    has_finance_access = has_finance_portal_access(user)
-    if has_staff_access and has_finance_access:
-        return _MANAGER_MOBILE_NAV_PRIORITY['staff_finance']
-    if has_staff_access:
-        return _MANAGER_MOBILE_NAV_PRIORITY['staff']
-    if has_finance_access:
-        return _MANAGER_MOBILE_NAV_PRIORITY['finance']
-    return []
+def _nav_items(user):
+    items = []
+    for group in _nav_groups(user):
+        items.append((group['key'], group['label'], group['url_name']))
+        items.extend(group['children'])
+    return items
 
 
-def _mobile_bottom_nav_state(user, active_tab):
-    enabled_items = [item for item in _sidebar_items_with_state(user, active_tab) if item['enabled']]
-    if not enabled_items:
-        return {
-            'primary_items': [],
-            'more_items': [],
-            'is_more_active': False,
-            'should_render': False,
-        }
-
-    items_by_key = {item['key']: item for item in enabled_items}
-    ordered_items = []
-    for key in _mobile_nav_priority_for_user(user):
-        item = items_by_key.get(key)
-        if item and item not in ordered_items:
-            ordered_items.append(item)
-    for item in enabled_items:
-        if item not in ordered_items:
-            ordered_items.append(item)
-
-    primary_items = ordered_items[:_MANAGER_MOBILE_NAV_PRIMARY_LIMIT]
-    active_item = next((item for item in ordered_items if item['active']), None)
-    if active_item and active_item not in primary_items and primary_items:
-        replacement_index = max(len(primary_items) - 1, 0)
-        primary_items[replacement_index] = active_item
-        deduped_primary = []
-        seen_keys = set()
-        for item in primary_items:
-            if item['key'] in seen_keys:
-                continue
-            deduped_primary.append(item)
-            seen_keys.add(item['key'])
-        for item in ordered_items:
-            if len(deduped_primary) >= _MANAGER_MOBILE_NAV_PRIMARY_LIMIT:
-                break
-            if item['key'] in seen_keys:
-                continue
-            deduped_primary.append(item)
-            seen_keys.add(item['key'])
-        primary_items = deduped_primary[:_MANAGER_MOBILE_NAV_PRIMARY_LIMIT]
-
-    primary_keys = {item['key'] for item in primary_items}
-    more_items = [item for item in ordered_items if item['key'] not in primary_keys]
-    total_mobile_actions = len(primary_items) + (1 if more_items else 0)
-    return {
-        'primary_items': primary_items,
-        'more_items': more_items,
-        'is_more_active': bool(active_item and active_item['key'] not in primary_keys),
-        'should_render': total_mobile_actions > 1,
-    }
+def _nav_groups_with_state(user, active_tab):
+    active_module_key = _tab_module_key(active_tab)
+    groups = []
+    for group in _nav_groups(user):
+        group_active = group['key'] == active_module_key
+        children = [
+            {
+                'key': key,
+                'label': label,
+                'url_name': url_name,
+                'active': key == active_tab,
+            }
+            for key, label, url_name in group['children']
+        ]
+        groups.append(
+            {
+                'key': group['key'],
+                'label': group['label'],
+                'url_name': group['url_name'],
+                'active': group_active,
+                'expanded': group_active and bool(children),
+                'children': children,
+            }
+        )
+    return groups
 
 
 def _can_use_commercial_proposals(user):
@@ -558,24 +385,11 @@ def _selected_deal_ids(raw_value):
     return [int(value) for value in (raw_value or '').split(',') if value.strip().isdigit()]
 
 
-def _active_manager_deals_queryset():
-    return ManagerDeal.objects.exclude(
+def _staff_topbar_context():
+    active_deals = ManagerDeal.objects.exclude(
         case_status__in=[ManagerDeal.CASE_STATUS_COMPLETED, ManagerDeal.CASE_STATUS_CANCELLED]
     )
-
-
-def _staff_shell_context():
-    active_deals = _active_manager_deals_queryset()
     problem_count = active_deals.exclude(problem_flags=[]).count()
-    return {
-        'problem_count': problem_count,
-        'problem_url': f'{reverse("manager_portal:deal_list")}?{urlencode({"only_problematic": "1"})}',
-        'quick_create_url': reverse('manager_portal:deal_create'),
-    }
-
-
-def _deal_page_context_stats():
-    active_deals = _active_manager_deals_queryset()
     overdue_count = active_deals.filter(problem_flags__contains=[ManagerDeal.PROBLEM_FLAG_SLA_OVERDUE]).count()
     unassigned_count = active_deals.filter(responsible_manager__isnull=True).count()
     latest_sync_at = (
@@ -584,40 +398,16 @@ def _deal_page_context_stats():
         .values_list('created_at', flat=True)
         .first()
     )
-    if latest_sync_at:
-        diff_minutes = int((timezone.now() - latest_sync_at).total_seconds() / 60)
-        if diff_minutes < 1:
-            latest_sync_label = 'только что'
-        elif diff_minutes < 60:
-            latest_sync_label = f'{diff_minutes} мин. назад'
-        elif diff_minutes < 1440:
-            latest_sync_label = f'{diff_minutes // 60} ч. назад'
-        else:
-            latest_sync_label = timezone.localtime(latest_sync_at).strftime('%d.%m %H:%M')
-        sync_tone = SEMANTIC_TONE_UNKNOWN
-    else:
-        latest_sync_label = 'Нет данных'
-        sync_tone = SEMANTIC_TONE_ATTENTION
-    return (
-        {
-            'label': 'SLA просрочен',
-            'value': overdue_count,
-            'tone': SEMANTIC_TONE_CRITICAL,
-            'url': f'{reverse("manager_portal:deal_list")}?{urlencode({"overlay": ManagerDeal.PROBLEM_FLAG_SLA_OVERDUE})}',
-        },
-        {
-            'label': 'Без ответственного',
-            'value': unassigned_count,
-            'tone': SEMANTIC_TONE_ATTENTION,
-            'url': f'{reverse("manager_portal:deal_list")}?{urlencode({"only_unassigned": "1"})}',
-        },
-        {
-            'label': 'Последняя синхронизация',
-            'value': latest_sync_label,
-            'tone': sync_tone,
-            'url': '',
-        },
-    )
+    return {
+        'problem_count': problem_count,
+        'overdue_count': overdue_count,
+        'unassigned_count': unassigned_count,
+        'latest_sync_at': latest_sync_at,
+        'problem_url': f'{reverse("manager_portal:deal_list")}?{urlencode({"only_problematic": "1"})}',
+        'overdue_url': f'{reverse("manager_portal:deal_list")}?{urlencode({"overlay": ManagerDeal.PROBLEM_FLAG_SLA_OVERDUE})}',
+        'unassigned_url': f'{reverse("manager_portal:deal_list")}?{urlencode({"only_unassigned": "1"})}',
+        'quick_create_url': reverse('manager_portal:deal_create'),
+    }
 
 
 def _deal_activity_title(activity):
@@ -814,14 +604,7 @@ def _deal_request_target(request, *, query_param='createFromDeal'):
 
 
 def _deal_reservation_prefill_url(deal):
-    return f"{reverse('manager_portal:reservation_create')}?{urlencode({'createFromDeal': deal.pk})}"
-
-
-def _inventory_url(*, warehouse=None):
-    if warehouse is None:
-        return reverse('manager_portal:inventory')
-    warehouse_id = warehouse.pk if hasattr(warehouse, 'pk') else warehouse
-    return f"{reverse('manager_portal:inventory')}?{urlencode({'warehouse': warehouse_id})}"
+    return f"{reverse('manager_portal:reservation_list')}?{urlencode({'createFromDeal': deal.pk, 'openDrawer': 'reservation-create-drawer'})}"
 
 
 def _deal_document_prefill_url(deal, *, document_type='contract'):
@@ -874,6 +657,12 @@ def _deal_next_step_action(deal, *, scope, return_query='', finance_deal=None):
         }
     if deal.next_step_code == ManagerDeal.NEXT_STEP_NEEDS_CONFIRMATION:
         return _deal_confirm_action(deal, scope=scope, return_query=return_query)
+    if deal.next_step_code == ManagerDeal.NEXT_STEP_NEEDS_AVAILABILITY_CONFIRMATION:
+        return {
+            'label': 'Подтвердить наличие',
+            'kind': 'link',
+            'url': f'{reverse("manager_portal:deal_detail", kwargs={"pk": deal.pk})}?tab=supply#goods',
+        }
     if deal.next_step_code == ManagerDeal.NEXT_STEP_NEEDS_PAYMENT:
         if finance_deal is not None:
             return {
@@ -895,6 +684,12 @@ def _deal_next_step_action(deal, *, scope, return_query='', finance_deal=None):
     if deal.next_step_code == ManagerDeal.NEXT_STEP_NEEDS_DOCUMENTS:
         return {
             'label': 'Подготовить договор',
+            'kind': 'link',
+            'url': _deal_document_prefill_url(deal, document_type='contract'),
+        }
+    if deal.next_step_code == ManagerDeal.NEXT_STEP_NEEDS_DOCUMENT_DISPATCH:
+        return {
+            'label': 'Отправить документы',
             'kind': 'link',
             'url': _deal_document_prefill_url(deal, document_type='contract'),
         }
@@ -933,18 +728,121 @@ def _deal_secondary_ctas(deal, *, deal_client=None):
     actions = []
     if deal.avito_return_pending:
         actions.append({'label': 'Остатки', 'url': reverse('manager_portal:inventory')})
+    elif deal.next_step_code == ManagerDeal.NEXT_STEP_NEEDS_AVAILABILITY_CONFIRMATION:
+        actions.append({'label': 'Склад', 'url': '#goods'})
     elif deal.next_step_code == ManagerDeal.NEXT_STEP_NEEDS_PAYMENT:
         actions.append({'label': 'Счёт', 'url': _deal_document_prefill_url(deal, document_type='invoice')})
     elif deal.next_step_code == ManagerDeal.NEXT_STEP_NEEDS_RESERVATION:
         actions.append({'label': 'Остатки', 'url': reverse('manager_portal:inventory')})
     elif deal.next_step_code == ManagerDeal.NEXT_STEP_NEEDS_DOCUMENTS:
         actions.append({'label': 'Условия', 'url': '#deal-workflow'})
+    elif deal.next_step_code == ManagerDeal.NEXT_STEP_NEEDS_DOCUMENT_DISPATCH:
+        actions.append({'label': 'Документы', 'url': '#process-documents'})
     elif deal.next_step_code in {ManagerDeal.NEXT_STEP_READY_TO_SHIP, ManagerDeal.NEXT_STEP_SHIPPED}:
         actions.append({'label': 'Бронь', 'url': '#reservation'})
     else:
         actions.append({'label': 'Управление', 'url': '#deal-workflow'})
     actions.append({'label': 'История', 'url': '#deal-history'})
     return actions[:2]
+
+
+def _format_duration_compact(delta):
+    total_seconds = max(int(delta.total_seconds()), 0)
+    total_hours = total_seconds // 3600
+    days, hours = divmod(total_hours, 24)
+    if days and hours:
+        return f'{days} дн {hours} ч'
+    if days:
+        return f'{days} дн'
+    return f'{max(total_hours, 0)} ч'
+
+
+def _deal_sla_health_block(deal):
+    if not deal.sla_due_at:
+        return {
+            'text': 'SLA не задан',
+            'detail': 'Для следующего шага пока нет дедлайна.',
+            'tone': 'neutral',
+            'is_overdue': False,
+        }
+    due_at = timezone.localtime(deal.sla_due_at)
+    if deal.sla_breached_at or deal.sla_due_at <= timezone.now():
+        overdue_for = timezone.now() - deal.sla_due_at
+        return {
+            'text': f'следующий шаг просрочен на {_format_duration_compact(overdue_for)}',
+            'detail': f'Дедлайн был {due_at:%d.%m %H:%M}.',
+            'tone': 'danger',
+            'is_overdue': True,
+        }
+    return {
+        'text': f'следующий шаг до {due_at:%d.%m %H:%M}',
+        'detail': 'Дедлайн следующего шага ещё не нарушен.',
+        'tone': 'neutral',
+        'is_overdue': False,
+    }
+
+
+def _deal_activity_health_block(deal):
+    last_activity_at = deal.last_activity_at or deal.deal_created_at or deal.created_at
+    if not last_activity_at:
+        return {
+            'text': 'Активность не зафиксирована',
+            'detail': 'Сделка пока без событий.',
+            'tone': 'neutral',
+            'is_stale': False,
+        }
+    age = timezone.now() - last_activity_at
+    local_activity = timezone.localtime(last_activity_at)
+    if age >= manager_portal_stale_after():
+        return {
+            'text': f'нет обновлений {_format_duration_compact(age)}',
+            'detail': f'Последняя активность {local_activity:%d.%m %H:%M}.',
+            'tone': 'danger',
+            'is_stale': True,
+        }
+    return {
+        'text': f'обновлено {local_activity:%d.%m %H:%M}',
+        'detail': 'Активность в допустимом окне.',
+        'tone': 'positive',
+        'is_stale': False,
+    }
+
+
+def _deal_action_block(deal, *, scope, finance_deal=None, deal_client=None, return_query=''):
+    return {
+        'title': 'Следующее действие',
+        'label': deal.next_step_label,
+        'reason': deal.next_step_reason_snapshot or 'Система пока не дала пояснение для следующего шага.',
+        'source_label': 'Ручной сценарий' if deal.next_step_source == ManagerDeal.NEXT_STEP_SOURCE_MANUAL else 'Системный сценарий',
+        'primary_action': _deal_primary_cta(
+            deal,
+            scope=scope,
+            return_query=return_query,
+            finance_deal=finance_deal,
+        ),
+        'secondary_actions': _deal_secondary_ctas(deal, deal_client=deal_client),
+    }
+
+
+def _deal_blocker_block(blockers):
+    return {
+        'title': 'Блокеры',
+        'items': blockers[:2],
+        'extra_count': max(len(blockers) - 2, 0),
+        'is_blocked': bool(blockers),
+        'summary': blockers[0]['text'] if blockers else 'Без блокеров',
+    }
+
+
+def _deal_health_block(deal):
+    sla = _deal_sla_health_block(deal)
+    activity = _deal_activity_health_block(deal)
+    return {
+        'title': 'SLA / активность',
+        'sla': sla,
+        'activity': activity,
+        'has_attention': sla['is_overdue'] or activity['is_stale'],
+    }
 
 
 def _deal_next_step_panel(deal, *, finance_deal=None, deal_client=None):
@@ -955,6 +853,7 @@ def _deal_next_step_panel(deal, *, finance_deal=None, deal_client=None):
         'source_label': 'Ручной сценарий' if deal.next_step_source == ManagerDeal.NEXT_STEP_SOURCE_MANUAL else 'Системный сценарий',
         'primary_action': _deal_primary_cta(deal, scope='detail', finance_deal=finance_deal),
         'secondary_actions': _deal_secondary_ctas(deal),
+        'health': _deal_health_block(deal),
     }
     return panel
 
@@ -988,34 +887,427 @@ def _deal_operation_actions(deal, *, finance_deal=None):
     return _unique_actions(actions)
 
 
+def _deal_header_primary_actions(deal, *, reservations, shipments):
+    document_type = (
+        'invoice'
+        if deal.next_step_code == ManagerDeal.NEXT_STEP_NEEDS_PAYMENT
+        else 'contract'
+    )
+    prefer_shipment = (
+        deal.delivery_status != ManagerDeal.DELIVERY_STATUS_NOT_REQUIRED
+        and (
+            bool(shipments)
+            or bool(reservations)
+            or deal.next_step_code in {
+                ManagerDeal.NEXT_STEP_READY_TO_SHIP,
+                ManagerDeal.NEXT_STEP_SHIPPED,
+            }
+            or deal.delivery_status in {
+                ManagerDeal.DELIVERY_STATUS_PREPARING,
+                ManagerDeal.DELIVERY_STATUS_READY,
+                ManagerDeal.DELIVERY_STATUS_SHIPPED,
+                ManagerDeal.DELIVERY_STATUS_DELIVERED,
+            }
+        )
+    )
+    return [
+        {
+            'label': 'Изменить статус',
+            'kind': 'drawer',
+            'target': '#deal-management-drawer',
+        },
+        {
+            'label': 'Добавить оплату',
+            'kind': 'link',
+            'url': reverse('manager_portal:deal_finance_action', kwargs={'pk': deal.pk}),
+        },
+        {
+            'label': 'Создать документ',
+            'kind': 'link',
+            'url': reverse(
+                'manager_portal:deal_document_action',
+                kwargs={'pk': deal.pk, 'document_type': document_type},
+            ),
+        },
+        {
+            'label': 'Создать отгрузку' if prefer_shipment else 'Создать бронь',
+            'kind': 'link',
+            'url': reverse(
+                'manager_portal:deal_shipment_action' if prefer_shipment else 'manager_portal:deal_reservation_action',
+                kwargs={'pk': deal.pk},
+            ),
+        },
+    ]
+
+
+def _deal_header_summary(
+    deal,
+    *,
+    deal_client,
+    blockers,
+    next_step_panel,
+    order_item_rows,
+    reservations,
+    shipments,
+    finance_deal=None,
+):
+    customer_name = getattr(deal_client, 'name', '') or _deal_customer_label(deal)
+    main_product_label = deal.main_product_label() or (
+        order_item_rows[0]['item'].resolved_product_name
+        if order_item_rows
+        else 'Позиции не добавлены'
+    )
+    return {
+        'identity': deal.code or deal.order_id,
+        'customer_name': customer_name or 'Клиент не указан',
+        'customer_type': deal.get_buyer_type_display(),
+        'current_stage': deal.get_case_status_display(),
+        'current_status': deal.get_deal_status_display(),
+        'amount': deal.grand_total,
+        'created_at': deal.deal_created_at,
+        'responsible_manager': str(deal.responsible_manager) if deal.responsible_manager else 'Не назначен',
+        'source': deal.get_customer_source_display(),
+        'next_step_deadline': next_step_panel['sla_due_at'],
+        'next_step_label': next_step_panel['label'],
+        'next_step_reason': next_step_panel['reason'],
+        'action_block': _deal_action_block(deal, scope='detail', finance_deal=finance_deal, deal_client=deal_client),
+        'product_label': main_product_label,
+        'positions_count': len(order_item_rows),
+        'total_quantity': sum(row['item'].quantity for row in order_item_rows),
+        'blockers': blockers[:2],
+        'blockers_count': len(blockers),
+        'blocker_block': _deal_blocker_block(blockers),
+        'health_block': _deal_health_block(deal),
+        'primary_actions': _deal_header_primary_actions(
+            deal,
+            reservations=reservations,
+            shipments=shipments,
+        ),
+    }
+
+
+def _deal_detail_url(deal, *, created=False, tab=''):
+    url = reverse('manager_portal:deal_detail', kwargs={'pk': deal.pk})
+    params = {}
+    if created:
+        params['created'] = '1'
+    if tab:
+        params['tab'] = tab
+    if params:
+        url = f'{url}?{urlencode(params)}'
+    return url
+
+
+def _deal_remote_action_urls(deal):
+    return {
+        reverse('manager_portal:deal_reservation_action', kwargs={'pk': deal.pk}),
+        reverse('manager_portal:deal_document_action', kwargs={'pk': deal.pk, 'document_type': 'contract'}),
+        reverse('manager_portal:deal_document_action', kwargs={'pk': deal.pk, 'document_type': 'invoice'}),
+        reverse('manager_portal:deal_shipment_action', kwargs={'pk': deal.pk}),
+        reverse('manager_portal:deal_finance_action', kwargs={'pk': deal.pk}),
+    }
+
+
+def _normalize_guided_action(action, *, detail_url, remote_urls):
+    if not action:
+        return None
+    resolved = dict(action)
+    kind = resolved.get('kind') or 'link'
+    resolved['kind'] = kind
+    if kind == 'link':
+        url = resolved.get('url') or detail_url
+        if url.startswith('#'):
+            url = f'{detail_url}{url}'
+        resolved['url'] = url
+        resolved['is_remote'] = url in remote_urls
+    else:
+        resolved['is_remote'] = False
+    return resolved
+
+
+def _guided_check(title, *, status, detail, tone, action=None):
+    return {
+        'title': title,
+        'status': status,
+        'detail': detail,
+        'tone': tone,
+        'action': action,
+    }
+
+
+def _guided_support_action(title, *, status, detail, action, tone):
+    return {
+        'title': title,
+        'status': status,
+        'detail': detail,
+        'action': action,
+        'tone': tone,
+    }
+
+
+def _deal_guided_flow(
+    deal,
+    *,
+    next_step_panel,
+    workflow_strip,
+    blockers,
+    activities,
+    reservations,
+    shipments,
+    documents,
+    finance_deal,
+    supply_summary,
+):
+    detail_url = _deal_detail_url(deal)
+    supply_url = _deal_detail_url(deal, tab='supply')
+    documents_url = _deal_detail_url(deal, tab='documents')
+    finance_url = _deal_detail_url(deal, tab='finance')
+    history_url = f'{detail_url}#deal-history'
+    remote_urls = _deal_remote_action_urls(deal)
+    latest_event = _deal_latest_event_summary(activities)
+    strip_by_label = {item['label']: item for item in workflow_strip}
+
+    created = False
+    next_step_action = _normalize_guided_action(next_step_panel['primary_action'], detail_url=detail_url, remote_urls=remote_urls)
+    primary_step = {
+        'title': 'Что делать сейчас',
+        'label': next_step_panel['label'],
+        'reason': next_step_panel['reason'],
+        'deadline': next_step_panel['sla_due_at'],
+        'source_label': next_step_panel['source_label'],
+        'action': next_step_action,
+    }
+
+    if deal.responsible_manager_id is None:
+        assignment_status = 'Назначить ответственного'
+        assignment_detail = 'Сделка ещё не взята в работу. Сначала закрепите менеджера, чтобы маршрут не потерялся.'
+        assignment_tone = 'blocked'
+        assignment_action = _deal_assign_self_action(deal, scope='detail')
+    elif deal.next_step_code == ManagerDeal.NEXT_STEP_NEEDS_CONFIRMATION:
+        assignment_status = 'Подтвердить сделку'
+        assignment_detail = (
+            f'Ответственный уже назначен: {deal.responsible_manager}. '
+            'Следующий шаг пока не начнётся, пока заказ не подтверждён.'
+        )
+        assignment_tone = 'working'
+        assignment_action = _deal_confirm_action(deal, scope='detail')
+    else:
+        assignment_status = 'Под контролем'
+        assignment_detail = (
+            f'Сделку ведёт {deal.responsible_manager}. '
+            f'Текущий этап: {deal.get_case_status_display()}.'
+        )
+        assignment_tone = 'ready'
+        assignment_action = {
+            'label': 'Изменить статус',
+            'kind': 'drawer',
+            'target': '#deal-management-drawer',
+        }
+
+    if deal.fulfillment_status == ManagerDeal.FULFILLMENT_STATUS_PROCUREMENT_REQUIRED:
+        supply_status = 'Нужна закупка'
+        supply_detail = (
+            'Текущего покрытия по позициям недостаточно. '
+            f'{supply_summary["risk_label"]}.'
+        )
+        supply_tone = 'working'
+        supply_action = {'label': 'Открыть снабжение', 'url': f'{supply_url}#supply'}
+    elif deal.fulfillment_status == ManagerDeal.FULFILLMENT_STATUS_NOT_RESERVED:
+        supply_status = 'Собрать покрытие'
+        supply_detail = 'Резерв под сделку ещё не создан. Проверьте остатки и зафиксируйте бронь.'
+        supply_tone = 'blocked'
+        supply_action = {'label': 'Создать бронь', 'url': reverse('manager_portal:deal_reservation_action', kwargs={'pk': deal.pk})}
+    elif supply_summary['risk_tone'] == 'working':
+        supply_status = supply_summary['risk_label']
+        supply_detail = (
+            f'Резервов: {supply_summary["reservation_count"]}. '
+            f'Закупок: {supply_summary["purchase_count"]}. '
+            f'Грузов: {supply_summary["cargo_count"]}.'
+        )
+        supply_tone = 'working'
+        supply_action = supply_summary['primary_cta']
+    else:
+        reserve_source = supply_summary['reserve_source_label'] or 'источник покрытия уже определён'
+        supply_status = deal.get_fulfillment_status_display()
+        supply_detail = f'Обеспечение собрано: {reserve_source}.'
+        supply_tone = 'ready'
+        supply_action = {'label': 'Проверить обеспечение', 'url': f'{supply_url}#reservation'}
+
+    downstream_parts = []
+    downstream_tone = 'ready'
+    downstream_action = {'label': 'Открыть историю', 'url': history_url}
+    if deal.balance_due > 0:
+        downstream_parts.append(f'оплата: {deal.get_payment_state_display().lower()}')
+        downstream_tone = 'working'
+        downstream_action = next_step_panel['primary_action'] if deal.next_step_code == ManagerDeal.NEXT_STEP_NEEDS_PAYMENT else {
+            'label': 'Открыть оплату',
+            'url': reverse('manager_portal:deal_finance_action', kwargs={'pk': deal.pk}),
+        }
+    if deal.documents_status not in {
+        ManagerDeal.DOCUMENTS_STATUS_NOT_REQUIRED,
+        ManagerDeal.DOCUMENTS_STATUS_SIGNED,
+    }:
+        downstream_parts.append(f'документы: {deal.get_documents_status_display().lower()}')
+        if downstream_tone == 'ready':
+            downstream_tone = 'working'
+            downstream_action = {
+                'label': 'Подготовить документы',
+                'url': reverse('manager_portal:deal_document_action', kwargs={'pk': deal.pk, 'document_type': 'contract'}),
+            }
+    shipment_needed = deal.delivery_status != ManagerDeal.DELIVERY_STATUS_NOT_REQUIRED
+    if shipment_needed and deal.delivery_status not in {
+        ManagerDeal.DELIVERY_STATUS_READY,
+        ManagerDeal.DELIVERY_STATUS_SHIPPED,
+        ManagerDeal.DELIVERY_STATUS_DELIVERED,
+    }:
+        downstream_parts.append(f'отгрузка: {deal.get_delivery_status_display().lower()}')
+        if downstream_tone == 'ready':
+            downstream_tone = 'working'
+            downstream_action = {
+                'label': 'Подготовить отправление',
+                'url': reverse('manager_portal:deal_shipment_action', kwargs={'pk': deal.pk}),
+            }
+    if downstream_parts:
+        downstream_status = 'Следующий контур ждёт подготовки'
+        downstream_detail = 'Дальше по сделке: ' + '; '.join(downstream_parts) + '.'
+    else:
+        downstream_status = 'Контур готов'
+        downstream_detail = 'Оплата, документы и отгрузка не блокируют дальнейшее движение сделки.'
+
+    payment_action = next_step_panel['primary_action'] if deal.next_step_code == ManagerDeal.NEXT_STEP_NEEDS_PAYMENT else (
+        {
+            'label': 'Открыть оплату',
+            'url': reverse('manager_portal:finance_deal_detail', kwargs={'pk': finance_deal.pk}),
+        }
+        if finance_deal is not None
+        else {
+            'label': 'Открыть финансы',
+            'url': reverse('manager_portal:deal_finance_action', kwargs={'pk': deal.pk}),
+        }
+    )
+    payment_detail = (
+        f'Оплачено {format_currency_amount(deal.amount_paid)}'
+        f' · Остаток {format_currency_amount(deal.balance_due)}'
+    )
+
+    if deal.fulfillment_status == ManagerDeal.FULFILLMENT_STATUS_PROCUREMENT_REQUIRED:
+        supply_support_action = {'label': 'Открыть снабжение', 'url': f'{supply_url}#supply'}
+    elif deal.fulfillment_status == ManagerDeal.FULFILLMENT_STATUS_NOT_RESERVED:
+        supply_support_action = {'label': 'Создать бронь', 'url': reverse('manager_portal:deal_reservation_action', kwargs={'pk': deal.pk})}
+    else:
+        supply_support_action = {'label': 'Проверить обеспечение', 'url': f'{supply_url}#reservation'}
+
+    document_action = {
+        'label': 'Подготовить документы',
+        'url': reverse(
+            'manager_portal:deal_document_action',
+            kwargs={
+                'pk': deal.pk,
+                'document_type': 'invoice' if deal.next_step_code == ManagerDeal.NEXT_STEP_NEEDS_PAYMENT else 'contract',
+            },
+        ),
+    }
+
+    shipment_action = (
+        {'label': 'Подготовить отправление', 'url': reverse('manager_portal:deal_shipment_action', kwargs={'pk': deal.pk})}
+        if shipment_needed
+        else {'label': 'Проверить доставку', 'url': f'{supply_url}#process-shipment'}
+    )
+
+    support_actions = [
+        _guided_support_action(
+            'Оплата',
+            status=strip_by_label['Оплата']['status'],
+            detail=payment_detail,
+            action=_normalize_guided_action(payment_action, detail_url=detail_url, remote_urls=remote_urls),
+            tone=strip_by_label['Оплата']['tone'],
+        ),
+        _guided_support_action(
+            'Обеспечение',
+            status=strip_by_label['Снабжение']['status'],
+            detail=supply_detail,
+            action=_normalize_guided_action(supply_support_action, detail_url=detail_url, remote_urls=remote_urls),
+            tone=strip_by_label['Снабжение']['tone'],
+        ),
+        _guided_support_action(
+            'Документы',
+            status=strip_by_label['Документы']['status'],
+            detail='Документов в работе: '
+            + (
+                str(len(documents))
+                if documents
+                else '0'
+            ),
+            action=_normalize_guided_action(document_action, detail_url=detail_url, remote_urls=remote_urls),
+            tone=strip_by_label['Документы']['tone'],
+        ),
+        _guided_support_action(
+            'Отгрузка',
+            status=strip_by_label['Отгрузка']['status'],
+            detail=(
+                'Доставка не требуется.'
+                if not shipment_needed
+                else f'Создано отправлений: {len(shipments)}.'
+            ),
+            action=_normalize_guided_action(shipment_action, detail_url=detail_url, remote_urls=remote_urls),
+            tone=strip_by_label['Отгрузка']['tone'],
+        ),
+        _guided_support_action(
+            'История',
+            status=latest_event['title'] if latest_event else 'Событий пока нет',
+            detail=(
+                f'{latest_event["timestamp"]:%d.%m.%Y %H:%M} · {latest_event["meta"]}'
+                if latest_event
+                else 'Откройте таймлайн, чтобы добавить комментарий или сверить последние действия.'
+            ),
+            action=_normalize_guided_action({'label': 'Открыть историю', 'url': history_url}, detail_url=detail_url, remote_urls=remote_urls),
+            tone='neutral',
+        ),
+    ]
+
+    return {
+        'is_just_created': created,
+        'headline': 'Сделка создана' if created else 'Сделка в работе',
+        'summary': (
+            'Система уже собрала ближайший маршрут: начните с главного шага, затем проверьте обеспечение и смежные процессы.'
+            if created
+            else 'Карточка продолжает вести менеджера по следующему шагу и смежным процессам без лишних переключений.'
+        ),
+        'primary_step': primary_step,
+        'checks': [
+            _guided_check(
+                'Назначь следующий шаг',
+                status=assignment_status,
+                detail=assignment_detail,
+                tone=assignment_tone,
+                action=_normalize_guided_action(assignment_action, detail_url=detail_url, remote_urls=remote_urls),
+            ),
+            _guided_check(
+                'Проверь наличие',
+                status=supply_status,
+                detail=supply_detail,
+                tone=supply_tone,
+                action=_normalize_guided_action(supply_action, detail_url=detail_url, remote_urls=remote_urls),
+            ),
+            _guided_check(
+                'Подготовь следующее',
+                status=downstream_status,
+                detail=downstream_detail,
+                tone=downstream_tone,
+                action=_normalize_guided_action(downstream_action, detail_url=detail_url, remote_urls=remote_urls),
+            ),
+        ],
+        'support_actions': support_actions,
+        'blockers': blockers[:3],
+    }
+
+
 def _deal_list_actions(deal, *, current_user):
     detail_url = reverse('manager_portal:deal_detail', kwargs={'pk': deal.pk})
     return {
         'primary_action': _deal_primary_cta(deal, scope='list'),
         'detail_url': detail_url,
     }
-
-
-def _deal_list_blockers(deal):
-    blockers = []
-    seen = set()
-
-    def add(text, *, tone):
-        if text in seen:
-            return
-        blockers.append({'text': text, 'tone': tone})
-        seen.add(text)
-
-    for flag, label in zip(deal.problem_flags or [], deal.problem_flag_labels):
-        add(label, tone=deal_problem_tone(flag))
-
-    if deal.responsible_manager_id is None:
-        add('Без ответственного', tone=SEMANTIC_TONE_ATTENTION)
-
-    if deal.customer_deadline and deal.customer_deadline < timezone.localdate():
-        add(f'Дедлайн клиента истек {deal.customer_deadline:%d.%m.%Y}', tone=SEMANTIC_TONE_ATTENTION)
-
-    return blockers
 
 
 def _deal_list_readiness(deal):
@@ -1041,15 +1333,6 @@ def _deal_list_readiness(deal):
     )
 
 
-def _deal_visible_statuses(deal, *, blockers=None):
-    blockers = blockers if blockers is not None else _deal_list_blockers(deal)
-    return {
-        'primary_status': deal_primary_status(deal),
-        'secondary_status': deal_secondary_status(deal),
-        'risk_summary': deal_risk_summary(deal, blockers=blockers),
-    }
-
-
 def _resolve_deal_scoped_actions(actions, *, detail_url):
     resolved = []
     for action in actions:
@@ -1058,129 +1341,6 @@ def _resolve_deal_scoped_actions(actions, *, detail_url):
             url = f'{detail_url}{url}'
         resolved.append({**action, 'url': url})
     return resolved
-
-
-def _normalize_preview_action(action):
-    if not action:
-        return None
-    kind = action.get('kind') or 'link'
-    normalized = {
-        'label': action.get('label', ''),
-        'kind': kind,
-        'url': action.get('url', ''),
-    }
-    if kind == 'form':
-        normalized['fields'] = action.get('fields') or {}
-    return normalized
-
-
-def _client_preview_primary_action(client):
-    if client.active_deal is not None and client.active_deal.next_step_code == ManagerDeal.NEXT_STEP_NEEDS_DOCUMENTS:
-        return {
-            'label': 'Подготовить договор',
-            'kind': 'link',
-            'url': _deal_document_prefill_url(client.active_deal, document_type='contract'),
-        }
-    deal_id = client.active_deal.pk if client.active_deal is not None else client.latest_deal_id
-    if deal_id:
-        return {
-            'label': 'Открыть сделку',
-            'kind': 'link',
-            'url': reverse('manager_portal:deal_detail', kwargs={'pk': deal_id}),
-        }
-    return {
-        'label': 'Создать заказ',
-        'kind': 'link',
-        'url': f'{reverse("manager_portal:deal_create")}?{urlencode({"client": client.pk})}',
-    }
-
-
-def _client_preview_secondary_actions(client, *, primary_action):
-    actions = [
-        {
-            'label': 'Открыть карточку',
-            'kind': 'link',
-            'url': reverse('manager_portal:client_detail', kwargs={'pk': client.pk}),
-        },
-        {
-            'label': 'Добавить комментарий',
-            'kind': 'link',
-            'url': (
-                f'{reverse("manager_portal:deal_detail", kwargs={"pk": client.latest_deal_id})}#deal-timeline'
-                if client.latest_deal_id
-                else f'{reverse("manager_portal:client_detail", kwargs={"pk": client.pk})}#client-comments'
-            ),
-        },
-        {
-            'label': 'Создать бронь',
-            'kind': 'link',
-            'url': f'{reverse("manager_portal:reservation_create")}?{urlencode({"createFromClient": client.pk})}',
-        },
-    ]
-    if client.active_deal is not None:
-        detail_url = reverse('manager_portal:deal_detail', kwargs={'pk': client.active_deal.pk})
-        actions.extend(
-            _resolve_deal_scoped_actions(
-                _deal_secondary_ctas(client.active_deal, deal_client=client),
-                detail_url=detail_url,
-            )
-        )
-        legacy_primary_action = _deal_primary_cta(client.active_deal, scope='detail')
-        if legacy_primary_action and legacy_primary_action['label'] not in {
-            'Подготовить договор',
-            'Создать заказ',
-            'Открыть сделку',
-        }:
-            actions.insert(0, legacy_primary_action)
-    normalized_actions = [_normalize_preview_action(action) for action in actions]
-    normalized_actions = _unique_actions(action for action in normalized_actions if action is not None)
-    primary_identity = _action_identity(primary_action)
-    return [action for action in normalized_actions if _action_identity(action) != primary_identity]
-
-
-def _client_preview_finance(client):
-    if client.active_deal is not None:
-        return {
-            'source_label': 'По активной сделке',
-            'sum_total': client.active_deal.grand_total,
-            'amount_paid': client.active_deal.amount_paid,
-            'balance_due': client.active_deal.balance_due,
-            'payment_status_label': client.active_deal.order.get_payment_status_display(),
-        }
-    if client.latest_order is not None:
-        return {
-            'source_label': 'По последнему заказу',
-            'sum_total': client.latest_order.total_to_pay,
-            'amount_paid': None,
-            'balance_due': None,
-            'payment_status_label': client.latest_order.get_payment_status_display(),
-        }
-    return {
-        'source_label': 'Платежей пока нет',
-        'sum_total': None,
-        'amount_paid': None,
-        'balance_due': None,
-        'payment_status_label': 'Нет данных',
-    }
-
-
-def _client_preview_last_activity(client):
-    comments = (client.comments or '').strip()
-    return {
-        'latest_order': client.latest_order,
-        'changed_at': client.last_activity_at,
-        'comments': comments,
-        'has_comments': bool(comments),
-    }
-
-
-def _client_preview_documents_and_reservations(client):
-    return {
-        'documents': list(getattr(client, 'preview_documents', []))[:2],
-        'documents_count': client.documents_count,
-        'reservations': list(getattr(client, 'preview_reservations', []))[:2],
-        'reservations_count': client.active_reservations_count,
-    }
 
 
 def _deal_list_commentaries(deal, *, deal_client=None):
@@ -1257,36 +1417,16 @@ def _deal_list_product_summary(deal):
     return summary
 
 
-def _deal_payment_ui_summary(deal):
-    paid_total = max(Decimal(deal.amount_paid or 0), Decimal('0'))
-    due_total = max(Decimal(deal.balance_due or 0), Decimal('0'))
-    if paid_total > 0 and due_total <= 0:
-        state_code = 'paid'
-        state_label = 'Оплачено'
-    elif paid_total > 0 and due_total > 0:
-        state_code = 'partial'
-        state_label = 'Частично оплачено'
-    else:
-        state_code = 'unpaid'
-        state_label = 'Не оплачено'
-    return {
-        'state_code': state_code,
-        'state_label': state_label,
-        'paid_total': paid_total,
-        'due_total': due_total,
-        'last_date': deal.last_payment_at,
-    }
-
-
 def _decorate_deal_list_rows(deals, *, finance_map, current_user, return_query):
     for deal in deals:
         deal.work_queue_client = deal_manager_client(deal)
+        finance_deal = finance_map.get(deal.pk)
         deal.list_actions = _deal_list_actions(deal, current_user=current_user)
         deal.list_actions['primary_action'] = _deal_primary_cta(
             deal,
             scope='list',
             return_query=return_query,
-            finance_deal=finance_map.get(deal.pk),
+            finance_deal=finance_deal,
         )
         deal.list_actions['secondary_actions'] = _resolve_deal_scoped_actions(
             _deal_secondary_ctas(deal, deal_client=deal.work_queue_client),
@@ -1298,18 +1438,29 @@ def _decorate_deal_list_rows(deals, *, finance_map, current_user, return_query):
         deal.list_product_summary = _deal_list_product_summary(deal)
         deal.list_channel_summary = _deal_list_channel_summary(deal)
         deal.list_delivery_summary = _deal_list_delivery_summary(deal)
-        deal.list_payment_summary = _deal_payment_ui_summary(deal)
         deal.list_comments = _deal_list_commentaries(deal, deal_client=deal.work_queue_client)
         deal.list_fulfillment_detail = _deal_list_fulfillment_detail(deal)
         deal.list_documents_detail = _deal_list_documents_detail(deal)
         deal.list_sla_is_overdue = bool(
             deal.sla_due_at and (deal.sla_breached_at or deal.sla_due_at <= timezone.now())
         )
-        deal.list_blockers = _deal_list_blockers(deal)
-        visible_statuses = _deal_visible_statuses(deal, blockers=deal.list_blockers)
-        deal.primary_status = visible_statuses['primary_status']
-        deal.secondary_status = visible_statuses['secondary_status']
-        deal.risk_summary = visible_statuses['risk_summary']
+        deal.action_block = _deal_action_block(
+            deal,
+            scope='list',
+            finance_deal=finance_deal,
+            deal_client=deal.work_queue_client,
+            return_query=return_query,
+        )
+        deal.blocker_block = _deal_blocker_block(_deal_blockers(
+            deal,
+            documents=list(getattr(deal, 'contract_documents').all()),
+            reservations=list(getattr(deal, 'reservations').all()),
+            shipments=list(getattr(deal, 'shipments').all()),
+            finance_deal=finance_deal,
+            purchase_items=[],
+            cargo_items=[],
+        ))
+        deal.health_block = _deal_health_block(deal)
     return deals
 
 
@@ -1319,16 +1470,208 @@ def _decorate_deal_kanban_rows(deals):
         deal.list_problem_labels = list(deal.problem_flag_labels[:3])
         deal.list_product_summary = _deal_list_product_summary(deal)
         deal.list_delivery_summary = _deal_list_delivery_summary(deal)
-        deal.list_payment_summary = _deal_payment_ui_summary(deal)
         deal.list_sla_is_overdue = bool(
             deal.sla_due_at and (deal.sla_breached_at or deal.sla_due_at <= timezone.now())
         )
-        deal.list_blockers = _deal_list_blockers(deal)
-        visible_statuses = _deal_visible_statuses(deal, blockers=deal.list_blockers)
-        deal.primary_status = visible_statuses['primary_status']
-        deal.secondary_status = visible_statuses['secondary_status']
-        deal.risk_summary = visible_statuses['risk_summary']
+        deal.action_block = _deal_action_block(deal, scope='detail')
+        deal.blocker_block = _deal_blocker_block(_deal_blockers(
+            deal,
+            documents=list(getattr(deal, 'contract_documents').all()),
+            reservations=[],
+            shipments=[],
+            finance_deal=None,
+            purchase_items=[],
+            cargo_items=[],
+        ))
+        deal.health_block = _deal_health_block(deal)
     return deals
+
+
+def _sidebar_module_map():
+    return {
+        'entry': {
+            'eyebrow': 'Навигатор',
+            'title': 'Каталог модулей',
+            'description': 'Единая точка входа в сайт, админку и внутренние рабочие модули по доступам аккаунта.',
+            'status': 'Маршрутизация',
+            'chips': ['Сайт', 'Admin', 'Модули'],
+        },
+        'deals': {
+            'eyebrow': 'Рабочий центр',
+            'title': 'Заказы',
+            'description': 'Ежедневная работа менеджера: очереди заказов по следующему шагу, SLA, контекстные действия и единая карточка исполнения.',
+            'status': 'Основной поток',
+            'chips': ['Очереди', 'Следующий шаг', 'SLA'],
+        },
+        'dashboard': {
+            'eyebrow': 'Сигналы',
+            'title': 'Операционный обзор',
+            'description': 'Просроченные SLA, проблемные заказы, ETA и операционные риски, собранные поверх рабочих очередей.',
+            'status': 'Вторичный контур',
+            'chips': ['Сигналы', 'SLA', 'Риск'],
+        },
+        'finance': {
+            'eyebrow': 'Модуль',
+            'title': 'Финансы',
+            'description': 'Управленческий учет по сделкам, расходам, выплатам и расчетам с партнером.',
+            'status': 'Готово',
+            'chips': ['Платежи', 'P&L', 'Отчеты'],
+        },
+        'finance_dashboard': {
+            'eyebrow': 'Раздел',
+            'title': 'Финансовый обзор',
+            'description': 'Сводка периода: выручка, маржа, OPEX, доля партнера и остаток к выплате.',
+            'status': 'Рабочий',
+            'chips': ['KPI', 'OPEX', 'Payout'],
+        },
+        'finance_deals': {
+            'eyebrow': 'Раздел',
+            'title': 'Сделки',
+            'description': 'Реестр сделок с расчетом маржи, партнерской доли и расходами по сделке.',
+            'status': 'Рабочий',
+            'chips': ['Revenue', 'Margin', 'Deals'],
+        },
+        'finance_expenses': {
+            'eyebrow': 'Раздел',
+            'title': 'Расходы',
+            'description': 'Операционные расходы компании и партнера вне привязки к отдельной сделке.',
+            'status': 'Рабочий',
+            'chips': ['OPEX', 'Costs', 'Categories'],
+        },
+        'finance_payouts': {
+            'eyebrow': 'Раздел',
+            'title': 'Выплаты',
+            'description': 'Фиксация выплаченных сумм партнеру для управленческого расчета периода.',
+            'status': 'Рабочий',
+            'chips': ['Cashflow', 'Settlements', 'Ledger'],
+        },
+        'finance_report': {
+            'eyebrow': 'Раздел',
+            'title': 'Отчет',
+            'description': 'Выгрузка сводки периода и реестров по сделкам, расходам и выплатам.',
+            'status': 'Рабочий',
+            'chips': ['Export', 'CSV', 'Archive'],
+        },
+        'finance_archive': {
+            'eyebrow': 'Раздел',
+            'title': 'Архив',
+            'description': 'Полная история сделок, расходов и выплат финансового модуля.',
+            'status': 'Рабочий',
+            'chips': ['History', 'Deals', 'Payouts'],
+        },
+        'finance_settings': {
+            'eyebrow': 'Раздел',
+            'title': 'Настройки',
+            'description': 'Справочники типов сделок и категорий расходов для новых операций.',
+            'status': 'Рабочий',
+            'chips': ['Setup', 'Types', 'Categories'],
+        },
+        'contracts': {
+            'eyebrow': 'Модуль',
+            'title': 'Договоры',
+            'description': 'Внутренний кабинет менеджеров для договоров, счетов, шаблонов и реквизитов на общей базе сайта.',
+            'status': 'Внутренний кабинет',
+            'chips': ['Shared DB', 'Docs', 'B2B'],
+        },
+        'contracts_dashboard': {
+            'eyebrow': 'Подмодуль',
+            'title': 'Дашборд документов',
+            'description': 'Сводка по внутреннему кабинету договоров: статусы, суммы, связанные заказы и активность менеджеров.',
+            'status': 'Рабочий',
+            'chips': ['Dashboard', 'Contracts', 'Invoices'],
+        },
+        'contracts_documents': {
+            'eyebrow': 'Подмодуль',
+            'title': 'Документы',
+            'description': 'Реестр договоров и счетов с привязкой к клиентам, менеджерам и заказам сайта.',
+            'status': 'Рабочий',
+            'chips': ['Documents', 'Invoices', 'Counterparties'],
+        },
+        'contracts_create': {
+            'eyebrow': 'Подмодуль',
+            'title': 'Создать новый',
+            'description': 'Запуск мастера создания нового договора и связанных документов.',
+            'status': 'Рабочий',
+            'chips': ['Wizard', 'Create', 'Flow'],
+        },
+        'contracts_templates': {
+            'eyebrow': 'Подмодуль',
+            'title': 'Шаблоны',
+            'description': 'Редактирование HTML-шаблонов документов для внутреннего кабинета менеджеров.',
+            'status': 'Рабочий',
+            'chips': ['Templates', 'Editor', 'Variables'],
+        },
+        'contracts_settings': {
+            'eyebrow': 'Подмодуль',
+            'title': 'Настройки',
+            'description': 'Профили компании и реквизиты, которые используются при генерации документов внутри сайта.',
+            'status': 'Рабочий',
+            'chips': ['Settings', 'Company', 'Profiles'],
+        },
+        'proposals': {
+            'eyebrow': 'Модуль',
+            'title': 'Генератор КП',
+            'description': 'Подбор товаров и выпуск коммерческого предложения в PDF или HTML без admin-flow.',
+            'status': 'Готово',
+            'chips': ['Products', 'PDF', 'HTML'],
+        },
+        'orders': {
+            'eyebrow': 'Раздел',
+            'title': 'Legacy alias',
+            'description': 'Старый URL-алиас, ведущий в процессный центр заказов.',
+            'status': 'Compatibility',
+            'chips': ['Legacy', 'Redirect'],
+        },
+        'clients': {
+            'eyebrow': 'Раздел',
+            'title': 'Клиенты',
+            'description': 'Внутренняя CRM-база клиентов, контактов, заказов и броней.',
+            'status': 'Рабочий',
+            'chips': ['CRM', 'Contacts', 'Reservations'],
+        },
+        'warehouses': {
+            'eyebrow': 'Раздел',
+            'title': 'Склады',
+            'description': 'Состояние складов и их связь с публичными точками выдачи сайта.',
+            'status': 'Рабочий',
+            'chips': ['Stock', 'Pickup', 'Sync'],
+        },
+        'inventory': {
+            'eyebrow': 'Раздел',
+            'title': 'Остатки',
+            'description': 'Матрица on-hand, reserve и incoming по складам и товарным позициям.',
+            'status': 'Рабочий',
+            'chips': ['On-hand', 'Reserve', 'Incoming'],
+        },
+        'purchases': {
+            'eyebrow': 'Раздел',
+            'title': 'Закупки',
+            'description': 'Закупочные документы, поставщики и состав будущих поставок.',
+            'status': 'Рабочий',
+            'chips': ['Suppliers', 'Items', 'Cargo'],
+        },
+        'cargos': {
+            'eyebrow': 'Раздел',
+            'title': 'Грузы',
+            'description': 'ETA, приемка, split, транспортные этапы и связанные расходы.',
+            'status': 'Рабочий',
+            'chips': ['ETA', 'Receipt', 'Split'],
+        },
+        'reservations': {
+            'eyebrow': 'Раздел',
+            'title': 'Бронирования',
+            'description': 'Резерв товара со склада или incoming под клиента и заказ.',
+            'status': 'Рабочий',
+            'chips': ['Reserve', 'Warehouse', 'Incoming'],
+        },
+        'shipments': {
+            'eyebrow': 'Раздел',
+            'title': 'Отгрузки',
+            'description': 'Диспетчерский экран по активным броням, готовым к выдаче и отправке.',
+            'status': 'Рабочий',
+            'chips': ['Queue', 'Dispatch', 'Reserve'],
+        },
+    }
 
 
 def _entry_sections(request):
@@ -1343,7 +1686,6 @@ def _entry_sections(request):
                     'url': reverse('home'),
                     'badge': 'Система',
                     'status': 'Готово',
-                    'semantic_status': build_semantic_status('Готово', tone=SEMANTIC_TONE_COMPLETE),
                     'accent': 'primary',
                 },
                 {
@@ -1356,7 +1698,6 @@ def _entry_sections(request):
                     'url': reverse('admin:index') if request.user.is_staff else reverse('accounts:profile'),
                     'badge': 'Система',
                     'status': 'Готово',
-                    'semantic_status': build_semantic_status('Готово', tone=SEMANTIC_TONE_COMPLETE),
                 },
             ],
         },
@@ -1373,16 +1714,14 @@ def _entry_sections(request):
                         'url': reverse('manager_portal:deal_list'),
                         'badge': 'Модуль',
                         'status': 'Готово',
-                        'semantic_status': build_semantic_status('Готово', tone=SEMANTIC_TONE_COMPLETE),
                         'accent': 'primary',
                     },
                     {
                         'title': 'Договоры',
-                        'description': 'Подготовка договоров, счетов и шаблонов документов для клиентов.',
+                        'description': 'Внутренний кабинет менеджеров для работы с договорами и счетами на общей базе с сайтом.',
                         'url': reverse('manager_portal:contracts'),
                         'badge': 'Модуль',
                         'status': 'Готово',
-                        'semantic_status': build_semantic_status('Готово', tone=SEMANTIC_TONE_COMPLETE),
                     },
                 ]
             )
@@ -1394,7 +1733,6 @@ def _entry_sections(request):
                     'url': reverse('manager_portal:finance'),
                     'badge': 'Модуль',
                     'status': 'Готово',
-                    'semantic_status': build_semantic_status('Готово', tone=SEMANTIC_TONE_COMPLETE),
                 }
             )
         if _can_use_commercial_proposals(request.user):
@@ -1405,7 +1743,6 @@ def _entry_sections(request):
                     'url': reverse('manager_portal:commercial_proposals'),
                     'badge': 'Модуль',
                     'status': 'Готово',
-                    'semantic_status': build_semantic_status('Готово', tone=SEMANTIC_TONE_COMPLETE),
                 }
             )
         sections.insert(
@@ -1420,24 +1757,31 @@ def _entry_sections(request):
 
 
 def _base_context(request, *, active_tab, **extra):
-    active_label = _active_tab_label(active_tab)
-    sidebar_groups = _sidebar_groups_with_state(request.user, active_tab)
-    mobile_nav = _mobile_bottom_nav_state(request.user, active_tab)
+    nav_items = _nav_items(request.user)
+    active_label = next((label for key, label, _ in nav_items if key == active_tab), active_tab)
+    nav_groups = _nav_groups_with_state(request.user, active_tab)
+    sidebar_module = _sidebar_module_map().get(
+        active_tab,
+        {
+            'eyebrow': 'Раздел',
+            'title': active_label,
+            'description': 'Рабочий раздел manager-портала.',
+            'status': 'Активен',
+            'chips': [],
+        },
+    )
     context = {
-        'manager_sidebar_groups': sidebar_groups,
-        'manager_sidebar_items': [item for group in sidebar_groups for item in group['items']],
+        'manager_nav_items': nav_items,
+        'manager_nav_groups': nav_groups,
         'manager_active_tab': active_tab,
         'manager_active_label': active_label,
         'manager_has_staff_access': has_manager_portal_access(request.user),
         'manager_has_finance_access': has_finance_portal_access(request.user),
         'manager_has_internal_access': has_any_manager_portal_access(request.user),
         'manager_can_access_admin': bool(request.user.is_authenticated and request.user.is_staff),
+        'manager_sidebar_module': sidebar_module,
         'manager_global_search_url': reverse('manager_portal:global_search_results') if has_manager_portal_access(request.user) else '',
-        'manager_shell': _staff_shell_context() if has_manager_portal_access(request.user) else None,
-        'manager_mobile_primary_nav_items': mobile_nav['primary_items'],
-        'manager_mobile_more_nav_items': mobile_nav['more_items'],
-        'manager_mobile_more_active': mobile_nav['is_more_active'],
-        'manager_mobile_bottom_nav_visible': mobile_nav['should_render'],
+        'manager_topbar': _staff_topbar_context() if has_manager_portal_access(request.user) else None,
     }
     context.update(extra)
     return context
@@ -1445,94 +1789,6 @@ def _base_context(request, *, active_tab, **extra):
 
 def _render(request, template_name, *, active_tab, **context):
     return render(request, template_name, _base_context(request, active_tab=active_tab, **context))
-
-
-def _render_registry_create_page(
-    request,
-    *,
-    active_tab,
-    form,
-    page_title,
-    back_url,
-    submit_label,
-    page_kicker='',
-    page_description='',
-    page_pills=None,
-    hidden_fields=None,
-    prefill_note='',
-    prefill_items=None,
-    prefill_items_title='',
-    prefill_empty_message='',
-    form_sections=None,
-    secondary_field_names=None,
-    secondary_fields=None,
-    secondary_section_title='',
-    secondary_section_description='',
-    secondary_section_open=False,
-):
-    return _render(
-        request,
-        'manager_portal/create_form.html',
-        active_tab=active_tab,
-        form=form,
-        page_title=page_title,
-        back_url=back_url,
-        submit_label=submit_label,
-        page_kicker=page_kicker,
-        page_description=page_description,
-        page_pills=page_pills or [],
-        hidden_fields=hidden_fields or [],
-        prefill_note=prefill_note,
-        prefill_items=prefill_items,
-        show_prefill_items=prefill_items is not None,
-        prefill_items_title=prefill_items_title,
-        prefill_empty_message=prefill_empty_message,
-        form_sections=form_sections or [],
-        secondary_field_names=secondary_field_names or [],
-        secondary_fields=secondary_fields or [],
-        secondary_section_title=secondary_section_title,
-        secondary_section_description=secondary_section_description,
-        secondary_section_open=secondary_section_open,
-    )
-
-
-def _build_client_create_sections(form):
-    section_specs = [
-        (
-            'client-step-basic',
-            'Основное',
-            'Кто клиент и в каком статусе вести карточку.',
-            ('name', 'status', 'user'),
-        ),
-        (
-            'client-step-contacts',
-            'Контакты',
-            'Основные каналы связи для менеджера.',
-            ('phone', 'email', 'telegram'),
-        ),
-        (
-            'client-step-address',
-            'Адрес и комментарий',
-            'Куда везти и что важно помнить по клиенту.',
-            ('address', 'comments'),
-        ),
-        (
-            'client-step-orders',
-            'Связанные заказы',
-            'Необязательная привязка заказов сайта к клиенту.',
-            ('orders',),
-        ),
-    ]
-    return [
-        {
-            'id': section_id,
-            'title': title,
-            'description': description,
-            'step_label': f'Шаг {index}',
-            'fields': [form[field_name] for field_name in field_names],
-        }
-        for index, (section_id, title, description, field_names) in enumerate(section_specs, start=1)
-    ]
 
 
 def _is_htmx_request(request):
@@ -1602,7 +1858,7 @@ def finance_view(request):
         active_tab='finance_dashboard',
         finance_period_form=finance_period_form,
         finance_data=finance_data,
-        finance_recent_cashflow_rows=finance_data['cashflow_activity_rows'][-8:],
+        finance_recent_daily_rows=finance_data['daily_rows'][-14:],
         finance_has_setup=FinanceDealType.objects.exists() and FinanceExpenseCategory.objects.exists(),
     )
 
@@ -1819,25 +2075,10 @@ def finance_settings_view(request):
     finance_settings_readonly = not has_finance_admin_access(request.user)
     finance_deal_type_form = FinanceDealTypeForm(prefix='deal-type')
     finance_expense_category_form = FinanceExpenseCategoryForm(prefix='expense-category')
-    invalid_deal_type_update_form = None
-    invalid_expense_category_update_form = None
-    update_action = ''
-    update_object_id = ''
-
-    def _set_form_readonly(form):
-        for field in form.fields.values():
-            widget = field.widget
-            if isinstance(widget, (django_forms.CheckboxInput, django_forms.Select)):
-                widget.attrs['disabled'] = 'disabled'
-            else:
-                widget.attrs['readonly'] = 'readonly'
-
     if request.method == 'POST':
         if finance_settings_readonly:
             raise PermissionDenied
         action = request.POST.get('action')
-        update_action = action or ''
-        update_object_id = str(request.POST.get('deal_type_id') or request.POST.get('category_id') or '')
         if action == 'create_deal_type':
             finance_deal_type_form = FinanceDealTypeForm(request.POST, prefix='deal-type')
             if finance_deal_type_form.is_valid():
@@ -1847,12 +2088,11 @@ def finance_settings_view(request):
             messages.error(request, 'Не удалось добавить тип сделки.')
         elif action == 'update_deal_type':
             deal_type = get_object_or_404(FinanceDealType, pk=request.POST.get('deal_type_id'))
-            form = FinanceDealTypeForm(request.POST, instance=deal_type, prefix=f'deal-type-{deal_type.pk}')
+            form = FinanceDealTypeForm(request.POST, instance=deal_type)
             if form.is_valid():
                 form.save()
                 messages.success(request, 'Тип сделки обновлен.')
                 return redirect('manager_portal:finance_settings')
-            invalid_deal_type_update_form = form
             messages.error(request, 'Не удалось обновить тип сделки.')
         elif action == 'delete_deal_type':
             deal_type = get_object_or_404(FinanceDealType, pk=request.POST.get('deal_type_id'))
@@ -1871,16 +2111,11 @@ def finance_settings_view(request):
             messages.error(request, 'Не удалось добавить категорию расхода.')
         elif action == 'update_expense_category':
             category = get_object_or_404(FinanceExpenseCategory, pk=request.POST.get('category_id'))
-            form = FinanceExpenseCategoryForm(
-                request.POST,
-                instance=category,
-                prefix=f'expense-category-{category.pk}',
-            )
+            form = FinanceExpenseCategoryForm(request.POST, instance=category)
             if form.is_valid():
                 form.save()
                 messages.success(request, 'Категория расхода обновлена.')
                 return redirect('manager_portal:finance_settings')
-            invalid_expense_category_update_form = form
             messages.error(request, 'Не удалось обновить категорию расхода.')
         elif action == 'delete_expense_category':
             category = get_object_or_404(FinanceExpenseCategory, pk=request.POST.get('category_id'))
@@ -1890,42 +2125,6 @@ def finance_settings_view(request):
             except Exception:
                 messages.error(request, 'Категория используется в операциях и не может быть удалена.')
             return redirect('manager_portal:finance_settings')
-    finance_deal_types = list(FinanceDealType.objects.order_by('name'))
-    finance_our_categories = list(
-        FinanceExpenseCategory.objects.filter(expense_side=FinanceExpenseCategory.SIDE_OURS).order_by('name')
-    )
-    finance_partner_categories = list(
-        FinanceExpenseCategory.objects.filter(expense_side=FinanceExpenseCategory.SIDE_PARTNER).order_by('name')
-    )
-    finance_deal_type_rows = []
-    for item in finance_deal_types:
-        prefix = f'deal-type-{item.pk}'
-        form = invalid_deal_type_update_form if update_action == 'update_deal_type' and update_object_id == str(item.pk) else None
-        if form is None:
-            form = FinanceDealTypeForm(instance=item, prefix=prefix)
-        if finance_settings_readonly:
-            _set_form_readonly(form)
-        finance_deal_type_rows.append({'item': item, 'form': form})
-
-    finance_our_category_rows = []
-    finance_partner_category_rows = []
-    for item in [*finance_our_categories, *finance_partner_categories]:
-        prefix = f'expense-category-{item.pk}'
-        form = invalid_expense_category_update_form if update_action == 'update_expense_category' and update_object_id == str(item.pk) else None
-        if form is None:
-            form = FinanceExpenseCategoryForm(instance=item, prefix=prefix)
-        if finance_settings_readonly:
-            _set_form_readonly(form)
-        row = {'item': item, 'form': form}
-        if item.expense_side == FinanceExpenseCategory.SIDE_OURS:
-            finance_our_category_rows.append(row)
-        else:
-            finance_partner_category_rows.append(row)
-
-    if finance_settings_readonly:
-        _set_form_readonly(finance_deal_type_form)
-        _set_form_readonly(finance_expense_category_form)
-
     return _render(
         request,
         'manager_portal/finance_settings.html',
@@ -1933,9 +2132,9 @@ def finance_settings_view(request):
         finance_settings_readonly=finance_settings_readonly,
         finance_deal_type_form=finance_deal_type_form,
         finance_expense_category_form=finance_expense_category_form,
-        finance_deal_type_rows=finance_deal_type_rows,
-        finance_our_category_rows=finance_our_category_rows,
-        finance_partner_category_rows=finance_partner_category_rows,
+        finance_deal_types=FinanceDealType.objects.order_by('name'),
+        finance_our_categories=FinanceExpenseCategory.objects.filter(expense_side=FinanceExpenseCategory.SIDE_OURS).order_by('name'),
+        finance_partner_categories=FinanceExpenseCategory.objects.filter(expense_side=FinanceExpenseCategory.SIDE_PARTNER).order_by('name'),
     )
 
 def _contract_profile_initial():
@@ -2060,7 +2259,10 @@ def contracts_asset_view(request, asset_path):
 def contracts_api_proxy_view(request, api_path=''):
     return JsonResponse(
         {
-            'error': 'Внешний API договоров недоступен. Откройте раздел "Договоры" в панели управления документами.'
+            'error': (
+                'Внешний contracts API отключен. '
+                'Модуль работает как внутренний кабинет manager_portal на общей базе сайта.'
+            )
         },
         status=410,
         json_dumps_params={'ensure_ascii': False},
@@ -2143,13 +2345,20 @@ def contracts_create_view(request):
     contract_prefill_note = ''
     contract_prefill_missing_fields = []
     if create_from_deal is not None:
-        requested_type = (request.POST.get('document_type') or request.GET.get('document_type') or ContractTemplate.DOC_TYPE_CONTRACT).strip()
+        requested_type = (request.POST.get('document_type') or request.GET.get('document_type') or '').strip()
+        recommendation = _deal_document_recommendation(
+            client=deal_manager_client(create_from_deal),
+            deal_type=create_from_deal.deal_type,
+        )
+        if not requested_type:
+            requested_type = recommendation['document_type'] or ContractTemplate.DOC_TYPE_CONTRACT
         document = prefill_contract_document_from_manager_deal(
             ContractDocument(
                 manager_deal=create_from_deal,
                 created_by=request.user,
                 responsible_manager=create_from_deal.responsible_manager or request.user,
                 document_type=requested_type,
+                template=recommendation['template'] if requested_type == recommendation['document_type'] else None,
                 status=ContractDocument.STATUS_DRAFT,
                 title=f'{dict(ContractTemplate.DOCUMENT_TYPE_CHOICES).get(requested_type, "Документ")} по сделке #{create_from_deal.order_id}',
             ),
@@ -2379,6 +2588,45 @@ def commercial_proposals_search_view(request):
 
 
 @staff_required
+def client_lookup_view(request):
+    q = (request.GET.get('q') or '').strip()
+    mode = request.GET.get('mode')
+    if mode not in {CREATE_MODE_QUICK, CREATE_MODE_FULL}:
+        mode = CREATE_MODE_QUICK
+    if len(q) < 2:
+        return JsonResponse([], safe=False, json_dumps_params={'ensure_ascii': False})
+    clients = (
+        _manager_client_queryset()
+        .filter(status=ManagerClient.STATUS_ACTIVE)
+        .filter(
+            Q(name__icontains=q)
+            | Q(phone__icontains=q)
+            | Q(email__icontains=q)
+            | Q(telegram__icontains=q)
+        )[:CLIENT_LOOKUP_RESULT_LIMIT]
+    )
+    clients = _decorate_manager_clients(list(clients))
+    url_name = 'manager_portal:deal_create' if mode == CREATE_MODE_QUICK else 'manager_portal:order_create'
+    return JsonResponse(
+        [
+            {
+                'id': client.pk,
+                'name': client.name,
+                'phone': client.phone,
+                'email': client.email,
+                'buyer_type': client.crm_buyer_type_label,
+                'source': client.crm_source_label,
+                'responsible': client.crm_responsible_label,
+                'select_url': f"{reverse(url_name)}?{urlencode({'client': client.pk})}",
+            }
+            for client in clients
+        ],
+        safe=False,
+        json_dumps_params={'ensure_ascii': False},
+    )
+
+
+@staff_required
 def commercial_proposals_view(request):
     if not _can_use_commercial_proposals(request.user):
         raise PermissionDenied
@@ -2444,19 +2692,99 @@ def _split_full_name(full_name):
     return parts[0], ' '.join(parts[1:])
 
 
-def _manual_order_product_catalog():
-    products = Product.objects.filter(is_active=True).prefetch_related('variants', 'images').order_by('name')
-    catalog = []
-    for product in products:
-        catalog.append(
-            {
-                'id': product.pk,
-                'name': product.name,
-                'price': str(product.price),
-                'image_url': resolve_order_item_image_url(product=product),
-            }
+def _resolve_deal_creation_mode(request):
+    mode = request.POST.get('creation_mode') or request.GET.get('mode')
+    if mode in {CREATE_MODE_QUICK, CREATE_MODE_FULL}:
+        return mode
+    if getattr(request, 'resolver_match', None) and request.resolver_match.url_name == 'order_create':
+        return CREATE_MODE_FULL
+    return CREATE_MODE_QUICK
+
+
+def _default_deal_status_for_creation(deal_type, customer_source=''):
+    allowed_statuses = ManagerDeal.allowed_status_choices(deal_type, customer_source)
+    return allowed_statuses[0][0] if allowed_statuses else ManagerDeal.DEAL_STATUS_NEW
+
+
+def _deal_creation_switch_urls(*, selected_client=None):
+    query_string = urlencode({'client': selected_client.pk}) if selected_client is not None else ''
+    quick_url = reverse('manager_portal:deal_create')
+    full_url = reverse('manager_portal:order_create')
+    if query_string:
+        quick_url = f'{quick_url}?{query_string}'
+        full_url = f'{full_url}?{query_string}'
+    return {
+        'quick_create_url': quick_url,
+        'full_create_url': full_url,
+    }
+
+
+def _default_deal_creation_initial(*, user):
+    return {
+        'deal_type': ManagerDeal.DEAL_SALE_FROM_STOCK,
+        'deal_status': ManagerDeal.DEAL_STATUS_NEW,
+        'buyer_type': ManagerDeal.BUYER_INDIVIDUAL,
+        'responsible_manager': user.pk,
+        'customer_source': ManagerDeal.SOURCE_WEBSITE,
+        'delivery_method': ManagerDeal.DELIVERY_CDEK_PVZ,
+        'delivery_payer': ManagerDeal.DELIVERY_PAYER_CLIENT,
+        'shipment_status': ManagerDeal.SHIPMENT_DRAFT,
+    }
+
+
+def _deal_document_type_for_deal_type(deal_type):
+    mapping = {
+        ManagerDeal.DEAL_SALE_ON_REQUEST: ContractTemplate.DOC_TYPE_CONTRACT,
+        ManagerDeal.DEAL_SALE_FROM_STOCK: ContractTemplate.DOC_TYPE_INVOICE,
+        ManagerDeal.DEAL_TRADE_IN: ContractTemplate.DOC_TYPE_APPENDIX,
+        ManagerDeal.DEAL_AVITO: '',
+    }
+    return mapping.get(deal_type, '')
+
+
+def _recommended_contract_template_for_client(*, client, document_type):
+    if not document_type:
+        return None
+    if client is not None:
+        latest_document = (
+            client.contract_documents.select_related('template')
+            .filter(document_type=document_type)
+            .exclude(status=ContractDocument.STATUS_ARCHIVED)
+            .order_by('-issue_date', '-id')
+            .first()
         )
-    return catalog
+        if (
+            latest_document is not None
+            and latest_document.template_id
+            and latest_document.template is not None
+            and latest_document.template.is_active
+            and latest_document.template.document_type == document_type
+        ):
+            return latest_document.template
+    return (
+        ContractTemplate.objects.filter(is_active=True, document_type=document_type)
+        .order_by('sort_order', 'name')
+        .first()
+    )
+
+
+def _deal_document_recommendation(*, client, deal_type):
+    document_type = _deal_document_type_for_deal_type(deal_type)
+    template = _recommended_contract_template_for_client(client=client, document_type=document_type)
+    labels = dict(ContractTemplate.DOCUMENT_TYPE_CHOICES)
+    if not document_type:
+        return {
+            'document_type': '',
+            'document_type_label': 'Не требуется',
+            'template': None,
+            'description': 'Для этого типа сделки документ по умолчанию не рекомендуем.',
+        }
+    return {
+        'document_type': document_type,
+        'document_type_label': labels.get(document_type, document_type),
+        'template': template,
+        'description': 'Черновик документа не создаётся автоматически. Рекомендация подставится при переходе в создание документа.',
+    }
 
 
 def _manual_order_item_payloads(formset):
@@ -2472,7 +2800,7 @@ def _manual_order_item_payloads(formset):
             'product_image_url': resolve_order_item_image_url(product=product, variant=variant) if product else '',
             'variant': variant if product else None,
             'configuration': (form.cleaned_data.get('configuration') or '').strip(),
-            'condition': form.cleaned_data['condition'],
+            'condition': form.cleaned_data.get('condition') or OrderItem.CONDITION_NEW,
             'quantity': form.cleaned_data['quantity'],
             'purchase_price': form.cleaned_data.get('purchase_price') or Decimal('0'),
             'sale_price': form.cleaned_data.get('sale_price') or Decimal('0'),
@@ -2541,14 +2869,12 @@ def _get_or_create_manager_client_for_order(cleaned_data, order):
         name = (cleaned_data.get('business_company_name') or '').strip()
         phone = (cleaned_data.get('business_phone') or '').strip()
         email = (cleaned_data.get('business_email') or '').strip().lower()
-        telegram = (cleaned_data.get('business_telegram') or '').strip()
         address = (cleaned_data.get('business_delivery_address') or cleaned_data.get('business_legal_address') or '').strip()
         comments = (cleaned_data.get('business_comment') or '').strip()
     else:
         name = (cleaned_data.get('individual_full_name') or '').strip()
         phone = (cleaned_data.get('individual_phone') or '').strip()
         email = ''
-        telegram = (cleaned_data.get('individual_messenger') or '').strip()
         address = (cleaned_data.get('individual_delivery_address') or cleaned_data.get('individual_pickup_address') or '').strip()
         comments = (cleaned_data.get('individual_comment') or '').strip()
     return resolve_manager_client(
@@ -2556,22 +2882,349 @@ def _get_or_create_manager_client_for_order(cleaned_data, order):
         phone=phone,
         email=email,
         address=address,
-        telegram=telegram,
         comments=comments,
         order=order,
     )
 
 
-def _manual_order_prefill_for_client(*, client, user):
-    initial = {
-        'deal_type': ManagerDeal.DEAL_SALE_FROM_STOCK,
-        'deal_status': ManagerDeal.DEAL_STATUS_NEW,
-        'buyer_type': ManagerDeal.BUYER_INDIVIDUAL,
-        'responsible_manager': user.pk,
-        'customer_source': ManagerDeal.SOURCE_WEBSITE,
+def _guess_buyer_type_for_client(*, client, initial):
+    buyer_type = initial.get('buyer_type')
+    if buyer_type in {ManagerDeal.BUYER_BUSINESS, ManagerDeal.BUYER_INDIVIDUAL}:
+        return buyer_type
+    normalized_name = (client.name or '').strip().lower()
+    company_markers = ('ооо', 'ип', 'зао', 'ао', 'пао', 'ooo', 'llc')
+    if any(normalized_name.startswith(marker) for marker in company_markers):
+        return ManagerDeal.BUYER_BUSINESS
+    return ManagerDeal.BUYER_INDIVIDUAL
+
+
+def _quick_deal_cleaned_data(*, form, initial):
+    client = form.cleaned_data['client']
+    buyer_type = _guess_buyer_type_for_client(client=client, initial=initial)
+    cleaned_data = {
+        'deal_type': form.cleaned_data['deal_type'],
+        'deal_status': _default_deal_status_for_creation(
+            form.cleaned_data['deal_type'],
+            form.cleaned_data['customer_source'],
+        ),
+        'buyer_type': buyer_type,
+        'responsible_manager': form.cleaned_data['responsible_manager'],
+        'deal_created_at': timezone.localtime().replace(second=0, microsecond=0),
+        'customer_source': form.cleaned_data['customer_source'],
+        'deal_comment': '',
+        'delivery_method': ManagerDeal.DELIVERY_PICKUP,
+        'delivery_from_city': '',
+        'delivery_to_city': initial.get('delivery_to_city') or '',
+        'delivery_pickup_address': '',
+        'delivery_full_address': '',
+        'delivery_cost': Decimal('0'),
+        'delivery_payer': ManagerDeal.DELIVERY_PAYER_CLIENT,
+        'tracking_number': '',
+        'shipping_comment': '',
+        'shipment_status': ManagerDeal.SHIPMENT_DRAFT,
+        'shipped_at': None,
+        'planned_receipt_at': None,
         'prepayment_required_amount': Decimal('0'),
         'prepayment_amount': Decimal('0'),
+        'stock_warehouse': (
+            Warehouse.objects.filter(pk=initial.get('stock_warehouse')).first()
+            if form.cleaned_data['deal_type'] == ManagerDeal.DEAL_SALE_FROM_STOCK and initial.get('stock_warehouse')
+            else None
+        ),
+        'procurement_origin': '',
+        'supplier_name': '',
+        'supplier_agent': '',
+        'planned_purchase_date': None,
+        'expected_arrival_date': None,
+        'expected_customer_ship_date': None,
+        'avito_listing_url': '',
+        'avito_listing_id': '',
+        'avito_listing_title': '',
+        'avito_contact_channel': '',
+        'avito_list_price': Decimal('0'),
+        'avito_final_price': Decimal('0'),
+        'avito_commission': Decimal('0'),
+        'customer_request': initial.get('customer_request') or '',
+        'customer_deadline': None,
+        'customer_request_comment': initial.get('customer_request_comment') or '',
+        'answered_person_alias': None,
+        'shipped_person_alias': None,
+        'individual_full_name': '',
+        'individual_phone': '',
+        'individual_additional_phone': '',
+        'individual_city': '',
+        'individual_pickup_address': '',
+        'individual_delivery_address': '',
+        'individual_messenger': client.telegram or '',
+        'individual_comment': client.comments or '',
+        'business_company_name': '',
+        'business_inn': '',
+        'business_kpp': '',
+        'business_ogrn': '',
+        'business_legal_address': '',
+        'business_contact_person': '',
+        'business_phone': '',
+        'business_email': '',
+        'business_city': '',
+        'business_delivery_address': '',
+        'business_comment': client.comments or '',
     }
+    if buyer_type == ManagerDeal.BUYER_BUSINESS:
+        cleaned_data.update(
+            {
+                'business_company_name': client.name,
+                'business_contact_person': initial.get('business_contact_person') or '',
+                'business_phone': client.phone or '',
+                'business_email': client.email or '',
+                'business_city': initial.get('business_city') or '',
+                'business_legal_address': initial.get('business_legal_address') or client.address or '',
+                'business_delivery_address': initial.get('business_delivery_address') or client.address or '',
+                'business_inn': initial.get('business_inn') or '',
+                'business_kpp': initial.get('business_kpp') or '',
+                'business_ogrn': initial.get('business_ogrn') or '',
+            }
+        )
+    else:
+        cleaned_data.update(
+            {
+                'individual_full_name': client.name,
+                'individual_phone': client.phone or '',
+                'individual_additional_phone': initial.get('individual_additional_phone') or '',
+                'individual_city': initial.get('individual_city') or '',
+                'individual_pickup_address': initial.get('individual_pickup_address') or client.address or '',
+                'individual_delivery_address': initial.get('individual_delivery_address') or client.address or '',
+            }
+        )
+    return cleaned_data
+
+
+def _create_manual_deal(
+    *,
+    cleaned_data,
+    item_payloads,
+    tradein_payloads,
+    actor,
+    creation_mode,
+    next_step_code='',
+    auto_reserve=False,
+    promote_stock_sale=False,
+):
+    contact = _manual_order_contact_snapshot(cleaned_data)
+    delivery_address = (
+        (cleaned_data.get('delivery_pickup_address') or '').strip()
+        if cleaned_data['delivery_method'] == ManagerDeal.DELIVERY_CDEK_PVZ
+        else (cleaned_data.get('delivery_full_address') or '').strip()
+    )
+    goods_total = sum(
+        (
+            max(item['sale_price'] - item['discount_amount'], Decimal('0')) * item['quantity']
+            for item in item_payloads
+        ),
+        Decimal('0'),
+    )
+    tradein_credit = sum(
+        (
+            item['final_estimate'] if item['final_estimate'] > 0 else item['preliminary_estimate']
+            for item in tradein_payloads
+        ),
+        Decimal('0'),
+    )
+    client_total = goods_total - tradein_credit + (cleaned_data.get('delivery_cost') or Decimal('0'))
+    payment_status = _manual_order_payment_status(
+        gross_total=client_total,
+        paid_amount=cleaned_data.get('prepayment_amount') or Decimal('0'),
+    )
+    with transaction.atomic():
+        order = Order.objects.create(
+            user=None,
+            status=ManagerDeal.order_status_for_deal_status(cleaned_data['deal_status']),
+            total=goods_total,
+            promo_discount=Decimal('0'),
+            payment_method=Order.PAYMENT_METHOD_MANAGER_PAYMENT,
+            payment_status=payment_status,
+            delivery_type=cleaned_data['delivery_method'],
+            phone=contact['phone'],
+            email=contact['email'],
+            first_name=contact['first_name'],
+            last_name=contact['last_name'],
+            recipient_name=contact['recipient_name'],
+            recipient_phone=contact['phone'],
+            recipient_is_customer=True,
+            country='Россия',
+            city_text=(cleaned_data.get('delivery_to_city') or contact['city']).strip(),
+            address_line=delivery_address,
+            address=delivery_address,
+            delivery_comment='',
+            delivery_cost=cleaned_data.get('delivery_cost') or Decimal('0'),
+            comment=(cleaned_data.get('deal_comment') or '').strip(),
+        )
+        Order.objects.filter(pk=order.pk).update(created_at=cleaned_data['deal_created_at'])
+        order.refresh_from_db()
+        OrderItem.objects.bulk_create(
+            [
+                OrderItem(
+                    order=order,
+                    product=item['product'],
+                    product_name=item['product_name'],
+                    product_image_url=item['product_image_url'],
+                    variant=item['variant'],
+                    quantity=item['quantity'],
+                    price=item['sale_price'],
+                    variant_name=item['configuration'] or (item['variant'].name if item['variant'] else ''),
+                    condition=item['condition'] or OrderItem.CONDITION_NEW,
+                    purchase_price=item['purchase_price'],
+                    discount_amount=item['discount_amount'],
+                    comment=item['comment'],
+                    is_on_request=cleaned_data['deal_type'] == ManagerDeal.DEAL_SALE_ON_REQUEST,
+                )
+                for item in item_payloads
+            ]
+        )
+        deal_status = cleaned_data['deal_status']
+        is_avito_workflow = ManagerDeal.uses_avito_workflow(
+            cleaned_data['deal_type'],
+            cleaned_data['customer_source'],
+        )
+        if (
+            promote_stock_sale
+            and cleaned_data['deal_type'] == ManagerDeal.DEAL_SALE_FROM_STOCK
+            and not is_avito_workflow
+            and deal_status == ManagerDeal.DEAL_STATUS_NEW
+        ):
+            deal_status = ManagerDeal.DEAL_STATUS_RESERVED
+            Order.objects.filter(pk=order.pk).update(status=ManagerDeal.order_status_for_deal_status(deal_status))
+            order.refresh_from_db()
+        case_status = (
+            ManagerDeal.CASE_STATUS_NEW
+            if creation_mode == CREATE_MODE_QUICK
+            else ManagerDeal.CASE_STATUS_CONFIRMED if deal_status != ManagerDeal.DEAL_STATUS_NEW else ManagerDeal.CASE_STATUS_NEW
+        )
+        deal = ManagerDeal.objects.create(
+            order=order,
+            responsible_manager=cleaned_data['responsible_manager'],
+            assigned_at=timezone.now(),
+            assigned_by=actor,
+            deal_type=cleaned_data['deal_type'],
+            deal_status=deal_status,
+            case_status=case_status,
+            buyer_type=cleaned_data['buyer_type'],
+            customer_source=cleaned_data['customer_source'],
+            deal_created_at=cleaned_data['deal_created_at'],
+            individual_full_name=(cleaned_data.get('individual_full_name') or '').strip(),
+            individual_phone=(cleaned_data.get('individual_phone') or '').strip(),
+            individual_additional_phone=(cleaned_data.get('individual_additional_phone') or '').strip(),
+            individual_city=(cleaned_data.get('individual_city') or '').strip(),
+            individual_pickup_address=(cleaned_data.get('individual_pickup_address') or '').strip(),
+            individual_delivery_address=(cleaned_data.get('individual_delivery_address') or '').strip(),
+            individual_messenger=(cleaned_data.get('individual_messenger') or '').strip(),
+            individual_comment=(cleaned_data.get('individual_comment') or '').strip(),
+            business_company_name=(cleaned_data.get('business_company_name') or '').strip(),
+            business_inn=(cleaned_data.get('business_inn') or '').strip(),
+            business_kpp=(cleaned_data.get('business_kpp') or '').strip(),
+            business_ogrn=(cleaned_data.get('business_ogrn') or '').strip(),
+            business_legal_address=(cleaned_data.get('business_legal_address') or '').strip(),
+            business_contact_person=(cleaned_data.get('business_contact_person') or '').strip(),
+            business_phone=(cleaned_data.get('business_phone') or '').strip(),
+            business_email=(cleaned_data.get('business_email') or '').strip(),
+            business_city=(cleaned_data.get('business_city') or '').strip(),
+            business_delivery_address=(cleaned_data.get('business_delivery_address') or '').strip(),
+            business_comment=(cleaned_data.get('business_comment') or '').strip(),
+            customer_request=(cleaned_data.get('customer_request') or '').strip(),
+            customer_deadline=None if is_avito_workflow else cleaned_data.get('customer_deadline'),
+            customer_request_comment=(cleaned_data.get('customer_request_comment') or '').strip(),
+            delivery_method=cleaned_data['delivery_method'],
+            delivery_from_city=(cleaned_data.get('delivery_from_city') or '').strip(),
+            delivery_to_city=(cleaned_data.get('delivery_to_city') or '').strip(),
+            delivery_pickup_address=(cleaned_data.get('delivery_pickup_address') or '').strip(),
+            delivery_full_address=(cleaned_data.get('delivery_full_address') or '').strip(),
+            delivery_payer=cleaned_data['delivery_payer'],
+            tracking_number=(cleaned_data.get('tracking_number') or '').strip(),
+            shipping_comment=(cleaned_data.get('shipping_comment') or '').strip(),
+            shipment_status=cleaned_data['shipment_status'],
+            shipped_at=cleaned_data.get('shipped_at'),
+            planned_receipt_at=cleaned_data.get('planned_receipt_at'),
+            prepayment_required_amount=cleaned_data.get('prepayment_required_amount') or Decimal('0'),
+            prepayment_amount=cleaned_data.get('prepayment_amount') or Decimal('0'),
+            stock_warehouse=cleaned_data.get('stock_warehouse'),
+            procurement_origin=(cleaned_data.get('procurement_origin') or '').strip(),
+            supplier_name=(cleaned_data.get('supplier_name') or '').strip(),
+            supplier_agent=(cleaned_data.get('supplier_agent') or '').strip(),
+            planned_purchase_date=cleaned_data.get('planned_purchase_date'),
+            expected_arrival_date=cleaned_data.get('expected_arrival_date'),
+            expected_customer_ship_date=cleaned_data.get('expected_customer_ship_date'),
+            avito_listing_url=(cleaned_data.get('avito_listing_url') or '').strip(),
+            avito_listing_id=(cleaned_data.get('avito_listing_id') or '').strip(),
+            avito_listing_title=(cleaned_data.get('avito_listing_title') or '').strip(),
+            avito_contact_channel=(cleaned_data.get('avito_contact_channel') or '').strip(),
+            avito_list_price=cleaned_data.get('avito_list_price') or Decimal('0'),
+            avito_final_price=cleaned_data.get('avito_final_price') or Decimal('0'),
+            avito_commission=cleaned_data.get('avito_commission') or Decimal('0'),
+        )
+        _sync_deal_participants(
+            deal=deal,
+            answered_person_alias=cleaned_data.get('answered_person_alias'),
+            shipped_person_alias=cleaned_data.get('shipped_person_alias'),
+            actor=actor,
+        )
+        client_resolution = _get_or_create_manager_client_for_order(cleaned_data, order)
+        client = client_resolution['client']
+        if auto_reserve and cleaned_data['deal_type'] == ManagerDeal.DEAL_SALE_FROM_STOCK and cleaned_data.get('stock_warehouse'):
+            order.refresh_from_db()
+            reservation = _create_reservation_for_sale_from_stock(
+                deal=deal,
+                item_payloads=item_payloads,
+                client=client,
+                author=actor,
+            )
+            if reservation is not None:
+                deal.reservation = reservation
+                deal.reserve_created_at = timezone.now()
+                deal.save(update_fields=['primary_reservation', 'reserve_created_at', 'updated_at'])
+        if tradein_payloads:
+            TradeInItem.objects.bulk_create(
+                [
+                    TradeInItem(
+                        deal=deal,
+                        device_type=item['device_type'],
+                        model_name=item['model_name'],
+                        version=item['version'],
+                        kit_description=item['kit_description'],
+                        condition=item['condition'],
+                        is_working=item['is_working'],
+                        has_box=item['has_box'],
+                        has_controllers=item['has_controllers'],
+                        has_accessories=item['has_accessories'],
+                        defects=item['defects'],
+                        preliminary_estimate=item['preliminary_estimate'],
+                        final_estimate=item['final_estimate'],
+                    )
+                    for item in tradein_payloads
+                ]
+            )
+        record_deal_activity(
+            deal,
+            event_type='deal.created',
+            source='user',
+            actor=actor,
+            payload={'order_id': order.id, 'manual': True, 'creation_mode': creation_mode},
+        )
+        if next_step_code:
+            apply_deal_next_step_override(
+                deal,
+                next_step_code=next_step_code,
+                reason='',
+                actor=actor,
+            )
+        recompute_deal_workflow(deal, actor=actor)
+    return {
+        'order': order,
+        'deal': deal,
+        'client_resolution': client_resolution,
+    }
+
+
+def _manual_order_prefill_for_client(*, client, user):
+    initial = _default_deal_creation_initial(user=user)
     latest_deal = (
         ManagerDeal.objects.filter(order__manager_client_links=client)
         .select_related('responsible_manager')
@@ -2583,11 +3236,36 @@ def _manual_order_prefill_for_client(*, client, user):
         initial['deal_type'] = latest_deal.deal_type
         initial['deal_status'] = latest_deal.deal_status
         initial['buyer_type'] = latest_deal.buyer_type
-        initial['customer_source'] = latest_deal.customer_source
+        initial['delivery_method'] = latest_deal.delivery_method
+        initial['delivery_payer'] = latest_deal.delivery_payer
+        initial['delivery_from_city'] = latest_deal.delivery_from_city
+        initial['delivery_to_city'] = latest_deal.delivery_to_city
+        initial['delivery_pickup_address'] = latest_deal.delivery_pickup_address or client.address
+        initial['delivery_full_address'] = latest_deal.delivery_full_address or client.address
+        initial['delivery_cost'] = latest_deal.order.delivery_cost
+        initial['shipping_comment'] = latest_deal.shipping_comment
+        initial['shipment_status'] = latest_deal.shipment_status
+        initial['planned_receipt_at'] = latest_deal.planned_receipt_at
+        initial['stock_warehouse'] = latest_deal.stock_warehouse_id
+        if not latest_deal.is_avito:
+            initial['customer_deadline'] = latest_deal.customer_deadline
         initial['prepayment_required_amount'] = latest_deal.prepayment_required_amount
         initial['prepayment_amount'] = latest_deal.prepayment_amount
         initial['customer_request'] = latest_deal.customer_request
         initial['customer_request_comment'] = latest_deal.customer_request_comment
+        initial['procurement_origin'] = latest_deal.procurement_origin
+        initial['supplier_name'] = latest_deal.supplier_name
+        initial['supplier_agent'] = latest_deal.supplier_agent
+        initial['planned_purchase_date'] = latest_deal.planned_purchase_date
+        initial['expected_arrival_date'] = latest_deal.expected_arrival_date
+        initial['expected_customer_ship_date'] = latest_deal.expected_customer_ship_date
+        initial['avito_listing_url'] = latest_deal.avito_listing_url
+        initial['avito_listing_id'] = latest_deal.avito_listing_id
+        initial['avito_listing_title'] = latest_deal.avito_listing_title
+        initial['avito_contact_channel'] = latest_deal.avito_contact_channel
+        initial['avito_list_price'] = latest_deal.avito_list_price
+        initial['avito_final_price'] = latest_deal.avito_final_price
+        initial['avito_commission'] = latest_deal.avito_commission
         answered_participant = latest_deal.participants.filter(
             role=ManagerDealParticipant.ROLE_ANSWERED,
             order_item__isnull=True,
@@ -2600,41 +3278,40 @@ def _manual_order_prefill_for_client(*, client, user):
             initial['answered_person_alias'] = answered_participant.person_alias_id
         if shipped_participant is not None:
             initial['shipped_person_alias'] = shipped_participant.person_alias_id
-        if latest_deal.responsible_manager_id:
-            initial['responsible_manager'] = latest_deal.responsible_manager_id
     if initial['buyer_type'] == ManagerDeal.BUYER_BUSINESS:
         initial.update(
             {
-                'business_company_name': client.name,
+                'business_company_name': latest_deal.business_company_name if latest_deal else client.name,
                 'business_contact_person': latest_deal.business_contact_person if latest_deal else '',
                 'business_inn': latest_deal.business_inn if latest_deal else '',
                 'business_kpp': latest_deal.business_kpp if latest_deal else '',
                 'business_ogrn': latest_deal.business_ogrn if latest_deal else '',
-                'business_phone': client.phone,
-                'business_telegram': latest_deal.business_telegram if latest_deal else client.telegram,
-                'business_whatsapp': latest_deal.business_whatsapp if latest_deal else '',
-                'business_email': client.email,
-                'business_comment': client.comments,
+                'business_phone': latest_deal.business_phone if latest_deal and latest_deal.business_phone else client.phone,
+                'business_email': latest_deal.business_email if latest_deal and latest_deal.business_email else client.email,
+                'business_comment': latest_deal.business_comment if latest_deal and latest_deal.business_comment else client.comments,
                 'business_city': latest_deal.business_city if latest_deal else '',
                 'business_legal_address': latest_deal.business_legal_address if latest_deal else client.address,
-                'business_checking_account': latest_deal.business_checking_account if latest_deal else '',
-                'business_bank_name': latest_deal.business_bank_name if latest_deal else '',
-                'business_bik': latest_deal.business_bik if latest_deal else '',
-                'business_correspondent_account': latest_deal.business_correspondent_account if latest_deal else '',
+                'business_delivery_address': latest_deal.business_delivery_address if latest_deal else client.address,
             }
         )
     else:
         initial.update(
             {
-                'individual_full_name': client.name,
-                'individual_phone': client.phone,
+                'individual_full_name': latest_deal.individual_full_name if latest_deal and latest_deal.individual_full_name else client.name,
+                'individual_phone': latest_deal.individual_phone if latest_deal and latest_deal.individual_phone else client.phone,
                 'individual_additional_phone': latest_deal.individual_additional_phone if latest_deal else '',
                 'individual_city': latest_deal.individual_city if latest_deal else '',
-                'individual_messenger': client.telegram,
-                'individual_comment': client.comments,
+                'individual_pickup_address': latest_deal.individual_pickup_address if latest_deal else client.address,
+                'individual_messenger': latest_deal.individual_messenger if latest_deal and latest_deal.individual_messenger else client.telegram,
+                'individual_comment': latest_deal.individual_comment if latest_deal and latest_deal.individual_comment else client.comments,
+                'individual_delivery_address': latest_deal.individual_delivery_address if latest_deal and latest_deal.individual_delivery_address else client.address,
             }
         )
+    if client.address:
+        initial['delivery_pickup_address'] = initial.get('delivery_pickup_address') or client.address
+        initial['delivery_full_address'] = initial.get('delivery_full_address') or client.address
     item_initial = []
+    tradein_initial = []
     summary = []
     if latest_deal is not None:
         item_initial = [
@@ -2652,15 +3329,57 @@ def _manual_order_prefill_for_client(*, client, user):
             }
             for item in latest_deal.order.items.select_related('variant').all()
         ]
+        tradein_initial = [
+            {
+                'device_type': item.device_type,
+                'model_name': item.model_name,
+                'version': item.version,
+                'kit_description': item.kit_description,
+                'condition': item.condition,
+                'is_working': item.is_working,
+                'has_box': item.has_box,
+                'has_controllers': item.has_controllers,
+                'has_accessories': item.has_accessories,
+                'defects': item.defects,
+                'preliminary_estimate': item.preliminary_estimate,
+                'final_estimate': item.final_estimate,
+            }
+            for item in latest_deal.trade_in_items.all()
+        ]
         summary = [
             {'label': 'Последняя сделка', 'value': f'#{latest_deal.order_id} · {latest_deal.get_deal_type_display()}'},
+            {'label': 'Доставка', 'value': latest_deal.get_delivery_method_display()},
             {'label': 'Позиции', 'value': f'{len(item_initial)} автоподставлено'},
         ]
+        if tradein_initial:
+            summary.append({'label': 'Trade-in', 'value': f'{len(tradein_initial)} поз.'})
+        if latest_deal.customer_request:
+            summary.append({'label': 'Интерес', 'value': latest_deal.customer_request[:80]})
+        if latest_deal.customer_request_comment:
+            summary.append({'label': 'Комментарий', 'value': latest_deal.customer_request_comment[:80]})
+        if latest_deal.customer_source:
+            summary.append({'label': 'Прошлый источник', 'value': latest_deal.get_customer_source_display()})
+        if latest_deal.responsible_manager_id:
+            summary.append(
+                {
+                    'label': 'Прошлый ответственный',
+                    'value': latest_deal.responsible_manager.get_username(),
+                }
+            )
+    document_recommendation = _deal_document_recommendation(client=client, deal_type=initial['deal_type'])
     return {
         'initial': initial,
         'item_initial': item_initial,
+        'tradein_initial': tradein_initial,
         'summary': summary,
         'latest_deal': latest_deal,
+        'history_hints': {
+            'customer_source': latest_deal.get_customer_source_display() if latest_deal and latest_deal.customer_source else '',
+            'responsible_manager': latest_deal.responsible_manager.get_username()
+            if latest_deal and latest_deal.responsible_manager_id
+            else '',
+        },
+        'document_recommendation': document_recommendation,
     }
 
 
@@ -2709,222 +3428,149 @@ def _validate_manager_deal_state_transition(deal, *, target_status, paid_amount,
 
 @staff_required
 def order_create_view(request):
-    selected_client = None
-    selected_client_prefill = None
-    if request.method == 'POST':
-        form = ManualOrderForm(request.POST)
-        formset = ManualOrderItemFormSet(request.POST, prefix='items')
-        form_valid = form.is_valid()
-        items_valid = formset.is_valid()
-        if form_valid and items_valid:
-            item_payloads = _manual_order_item_payloads(formset)
-            contact = _manual_order_contact_snapshot(form.cleaned_data)
-            goods_total = sum(
-                (
-                    max(item['sale_price'] - item['discount_amount'], Decimal('0')) * item['quantity']
-                    for item in item_payloads
-                ),
-                Decimal('0'),
-            )
-            client_total = goods_total
-            payment_status = _manual_order_payment_status(
-                gross_total=client_total,
-                paid_amount=form.cleaned_data.get('prepayment_amount') or Decimal('0'),
-            )
-            try:
-                with transaction.atomic():
-                    order = Order.objects.create(
-                        user=None,
-                        status=ManagerDeal.order_status_for_deal_status(form.cleaned_data['deal_status']),
-                        total=goods_total,
-                        promo_discount=Decimal('0'),
-                        payment_method=Order.PAYMENT_METHOD_MANAGER_PAYMENT,
-                        payment_status=payment_status,
-                        delivery_type=ManagerDeal.DELIVERY_CDEK_PVZ,
-                        phone=contact['phone'],
-                        email=contact['email'],
-                        first_name=contact['first_name'],
-                        last_name=contact['last_name'],
-                        recipient_name=contact['recipient_name'],
-                        recipient_phone=contact['phone'],
-                        recipient_is_customer=True,
-                        country='Россия',
-                        city_text=contact['city'],
-                        address_line='',
-                        address='',
-                        business_company_name=(form.cleaned_data.get('business_company_name') or '').strip(),
-                        business_inn=(form.cleaned_data.get('business_inn') or '').strip(),
-                        business_kpp=(form.cleaned_data.get('business_kpp') or '').strip(),
-                        business_checking_account=(form.cleaned_data.get('business_checking_account') or '').strip(),
-                        business_bank_name=(form.cleaned_data.get('business_bank_name') or '').strip(),
-                        business_bik=(form.cleaned_data.get('business_bik') or '').strip(),
-                        business_correspondent_account=(form.cleaned_data.get('business_correspondent_account') or '').strip(),
-                        business_phone=(form.cleaned_data.get('business_phone') or '').strip(),
-                        business_telegram=(form.cleaned_data.get('business_telegram') or '').strip(),
-                        business_whatsapp=(form.cleaned_data.get('business_whatsapp') or '').strip(),
-                        delivery_comment='',
-                        delivery_cost=Decimal('0'),
-                        comment=(form.cleaned_data.get('deal_comment') or '').strip(),
-                    )
-                    Order.objects.filter(pk=order.pk).update(created_at=form.cleaned_data['deal_created_at'])
-                    order.refresh_from_db()
-                    OrderItem.objects.bulk_create(
-                        [
-                            OrderItem(
-                                order=order,
-                                product=item['product'],
-                                product_name=item['product_name'],
-                                product_image_url=item['product_image_url'],
-                                variant=item['variant'],
-                                quantity=item['quantity'],
-                                price=item['sale_price'],
-                                variant_name=item['configuration'] or (item['variant'].name if item['variant'] else ''),
-                                condition=item['condition'],
-                                purchase_price=item['purchase_price'],
-                                discount_amount=item['discount_amount'],
-                                comment=item['comment'],
-                                is_on_request=form.cleaned_data['deal_type'] == ManagerDeal.DEAL_SALE_ON_REQUEST,
-                            )
-                            for item in item_payloads
-                        ]
-                    )
-                    deal_status = form.cleaned_data['deal_status']
-                    is_avito_workflow = ManagerDeal.uses_avito_workflow(
-                        form.cleaned_data['deal_type'],
-                        form.cleaned_data['customer_source'],
-                    )
-                    deal = ManagerDeal.objects.create(
-                        order=order,
-                        responsible_manager=form.cleaned_data['responsible_manager'],
-                        assigned_at=timezone.now(),
-                        assigned_by=request.user,
-                        deal_type=form.cleaned_data['deal_type'],
-                        deal_status=deal_status,
-                        case_status=ManagerDeal.CASE_STATUS_CONFIRMED if deal_status != ManagerDeal.DEAL_STATUS_NEW else ManagerDeal.CASE_STATUS_NEW,
-                        buyer_type=form.cleaned_data['buyer_type'],
-                        customer_source=form.cleaned_data['customer_source'],
-                        deal_created_at=form.cleaned_data['deal_created_at'],
-                        individual_full_name=(form.cleaned_data.get('individual_full_name') or '').strip(),
-                        individual_phone=(form.cleaned_data.get('individual_phone') or '').strip(),
-                        individual_additional_phone=(form.cleaned_data.get('individual_additional_phone') or '').strip(),
-                        individual_city=(form.cleaned_data.get('individual_city') or '').strip(),
-                        individual_pickup_address='',
-                        individual_delivery_address='',
-                        individual_messenger=(form.cleaned_data.get('individual_messenger') or '').strip(),
-                        individual_comment=(form.cleaned_data.get('individual_comment') or '').strip(),
-                        business_company_name=(form.cleaned_data.get('business_company_name') or '').strip(),
-                        business_inn=(form.cleaned_data.get('business_inn') or '').strip(),
-                        business_kpp=(form.cleaned_data.get('business_kpp') or '').strip(),
-                        business_ogrn=(form.cleaned_data.get('business_ogrn') or '').strip(),
-                        business_legal_address=(form.cleaned_data.get('business_legal_address') or '').strip(),
-                        business_contact_person=(form.cleaned_data.get('business_contact_person') or '').strip(),
-                        business_phone=(form.cleaned_data.get('business_phone') or '').strip(),
-                        business_telegram=(form.cleaned_data.get('business_telegram') or '').strip(),
-                        business_whatsapp=(form.cleaned_data.get('business_whatsapp') or '').strip(),
-                        business_email=(form.cleaned_data.get('business_email') or '').strip(),
-                        business_city=(form.cleaned_data.get('business_city') or '').strip(),
-                        business_delivery_address='',
-                        business_checking_account=(form.cleaned_data.get('business_checking_account') or '').strip(),
-                        business_bank_name=(form.cleaned_data.get('business_bank_name') or '').strip(),
-                        business_bik=(form.cleaned_data.get('business_bik') or '').strip(),
-                        business_correspondent_account=(form.cleaned_data.get('business_correspondent_account') or '').strip(),
-                        business_comment=(form.cleaned_data.get('business_comment') or '').strip(),
-                        customer_request=(form.cleaned_data.get('customer_request') or '').strip(),
-                        customer_deadline=None,
-                        customer_request_comment=(form.cleaned_data.get('customer_request_comment') or '').strip(),
-                        delivery_method=ManagerDeal.DELIVERY_CDEK_PVZ,
-                        delivery_from_city='',
-                        delivery_to_city='',
-                        delivery_pickup_address='',
-                        delivery_full_address='',
-                        delivery_payer=ManagerDeal.DELIVERY_PAYER_CLIENT,
-                        tracking_number='',
-                        shipping_comment='',
-                        shipment_status=ManagerDeal.SHIPMENT_DRAFT,
-                        shipped_at=None,
-                        planned_receipt_at=None,
-                        prepayment_required_amount=form.cleaned_data.get('prepayment_required_amount') or Decimal('0'),
-                        prepayment_amount=form.cleaned_data.get('prepayment_amount') or Decimal('0'),
-                        stock_warehouse=None,
-                        procurement_origin=(form.cleaned_data.get('procurement_origin') or '').strip(),
-                        supplier_name=(form.cleaned_data.get('supplier_name') or '').strip(),
-                        supplier_agent=(form.cleaned_data.get('supplier_agent') or '').strip(),
-                        planned_purchase_date=form.cleaned_data.get('planned_purchase_date'),
-                        expected_arrival_date=form.cleaned_data.get('expected_arrival_date'),
-                        expected_customer_ship_date=form.cleaned_data.get('expected_customer_ship_date'),
-                        avito_listing_url=(form.cleaned_data.get('avito_listing_url') or '').strip(),
-                        avito_listing_id=(form.cleaned_data.get('avito_listing_id') or '').strip(),
-                        avito_listing_title=(form.cleaned_data.get('avito_listing_title') or '').strip(),
-                        avito_contact_channel=(form.cleaned_data.get('avito_contact_channel') or '').strip(),
-                        avito_list_price=form.cleaned_data.get('avito_list_price') or Decimal('0'),
-                        avito_final_price=form.cleaned_data.get('avito_final_price') or Decimal('0'),
-                        avito_commission=form.cleaned_data.get('avito_commission') or Decimal('0'),
-                    )
-                    set_manager_deal_paid_amount(
-                        deal,
-                        paid_amount=form.cleaned_data.get('prepayment_amount') or Decimal('0'),
-                        changed_at=form.cleaned_data['deal_created_at'],
-                    )
-                    _sync_deal_participants(
-                        deal=deal,
-                        answered_person_alias=form.cleaned_data.get('answered_person_alias'),
-                        shipped_person_alias=form.cleaned_data.get('shipped_person_alias'),
+    creation_mode = _resolve_deal_creation_mode(request)
+    selected_client_id = request.POST.get('client') or request.GET.get('client', '')
+    selected_client = (
+        ManagerClient.objects.filter(pk=int(selected_client_id)).first()
+        if selected_client_id.isdigit()
+        else None
+    )
+    selected_client_prefill = (
+        _manual_order_prefill_for_client(client=selected_client, user=request.user)
+        if selected_client is not None
+        else None
+    )
+    default_initial = _default_deal_creation_initial(user=request.user)
+    initial = selected_client_prefill['initial'] if selected_client_prefill is not None else default_initial
+    tradein_formset = None
+
+    if creation_mode == CREATE_MODE_QUICK:
+        quick_initial = {
+            'client': selected_client.pk if selected_client is not None else '',
+            'deal_type': initial.get('deal_type', ManagerDeal.DEAL_SALE_FROM_STOCK),
+            'customer_source': initial.get('customer_source', ManagerDeal.SOURCE_WEBSITE),
+            'responsible_manager': initial.get('responsible_manager', request.user.pk),
+            'next_step_code': ManagerDeal.NEXT_STEP_NEEDS_CONFIRMATION,
+        }
+        if request.method == 'POST':
+            form = QuickDealForm(request.POST)
+            formset = QuickOrderItemFormSet(request.POST, prefix='items')
+            form_valid = form.is_valid()
+            items_valid = formset.is_valid()
+            if form_valid and items_valid:
+                item_payloads = _manual_order_item_payloads(formset)
+                quick_prefill = _manual_order_prefill_for_client(client=form.cleaned_data['client'], user=request.user)
+                cleaned_data = _quick_deal_cleaned_data(form=form, initial=quick_prefill['initial'])
+                try:
+                    creation_result = _create_manual_deal(
+                        cleaned_data=cleaned_data,
+                        item_payloads=item_payloads,
+                        tradein_payloads=[],
                         actor=request.user,
+                        creation_mode=CREATE_MODE_QUICK,
+                        next_step_code=form.cleaned_data['next_step_code'],
+                        auto_reserve=False,
+                        promote_stock_sale=False,
                     )
-                    client_resolution = _get_or_create_manager_client_for_order(form.cleaned_data, order)
-                    client = client_resolution['client']
-                    record_deal_activity(
-                        deal,
-                        event_type='deal.created',
-                        source='user',
-                        actor=request.user,
-                        payload={'order_id': order.id, 'manual': True},
-                    )
-                    recompute_deal_workflow(deal, actor=request.user)
-                client_state_message = {
-                    'created': 'клиент создан',
-                    'user': 'клиент найден по user',
-                    'phone': 'клиент найден по телефону',
-                    'email': 'клиент найден по email',
-                }.get(client_resolution['match_source'], 'клиент связан')
-                messages.success(request, f'Заказ #{order.pk} создан, {client_state_message}.')
-                if _is_htmx_request(request):
-                    response = HttpResponse(status=204)
-                    response['HX-Redirect'] = reverse('manager_portal:deal_detail', kwargs={'pk': deal.pk})
-                    return response
-                return redirect('manager_portal:deal_detail', pk=deal.pk)
-            except ValueError as exc:
-                form.add_error(None, str(exc))
-    else:
-        selected_client = (
-            ManagerClient.objects.filter(pk=int(request.GET['client'])).first()
-            if request.GET.get('client', '').isdigit()
-            else None
-        )
-        if selected_client is not None:
-            selected_client_prefill = _manual_order_prefill_for_client(client=selected_client, user=request.user)
-            initial = selected_client_prefill['initial']
+                    order = creation_result['order']
+                    deal = creation_result['deal']
+                    client_resolution = creation_result['client_resolution']
+                    client_state_message = {
+                        'created': 'клиент создан',
+                        'user': 'клиент найден по user',
+                        'phone': 'клиент найден по телефону',
+                        'email': 'клиент найден по email',
+                    }.get(client_resolution['match_source'], 'клиент связан')
+                    messages.success(request, f'Сделка создана, {client_state_message}.')
+                    created_url = _deal_detail_url(deal, created=True)
+                    if _is_htmx_request(request):
+                        response = HttpResponse(status=204)
+                        response['HX-Redirect'] = created_url
+                        return response
+                    return redirect(created_url)
+                except ValueError as exc:
+                    form.add_error(None, str(exc))
         else:
-            initial = {
-                'deal_type': ManagerDeal.DEAL_SALE_FROM_STOCK,
-                'deal_status': ManagerDeal.DEAL_STATUS_NEW,
-                'buyer_type': ManagerDeal.BUYER_INDIVIDUAL,
-                'responsible_manager': request.user.pk,
-                'customer_source': ManagerDeal.SOURCE_WEBSITE,
-                'prepayment_required_amount': Decimal('0'),
-                'prepayment_amount': Decimal('0'),
-            }
-        form = ManualOrderForm(initial=initial)
-        formset = ManualOrderItemFormSet(prefix='items', initial=(selected_client_prefill or {}).get('item_initial'))
+            form = QuickDealForm(initial=quick_initial)
+            formset = QuickOrderItemFormSet(prefix='items', initial=(selected_client_prefill or {}).get('item_initial'))
+        form.fields['client'].widget = forms.HiddenInput()
+    else:
+        if request.method == 'POST':
+            form = ManualOrderForm(request.POST)
+            formset = ManualOrderItemFormSet(request.POST, prefix='items')
+            tradein_formset = TradeInItemFormSet(request.POST, prefix='tradein')
+            form_valid = form.is_valid()
+            items_valid = formset.is_valid()
+            tradein_required = form_valid and form.cleaned_data.get('deal_type') == ManagerDeal.DEAL_TRADE_IN
+            tradein_valid = tradein_formset.is_valid() if tradein_required else True
+            if form_valid and items_valid and tradein_valid:
+                item_payloads = _manual_order_item_payloads(formset)
+                tradein_payloads = _manual_tradein_payloads(tradein_formset)
+                try:
+                    creation_result = _create_manual_deal(
+                        cleaned_data=form.cleaned_data,
+                        item_payloads=item_payloads,
+                        tradein_payloads=tradein_payloads,
+                        actor=request.user,
+                        creation_mode=CREATE_MODE_FULL,
+                        auto_reserve=True,
+                        promote_stock_sale=True,
+                    )
+                    order = creation_result['order']
+                    deal = creation_result['deal']
+                    client_resolution = creation_result['client_resolution']
+                    client_state_message = {
+                        'created': 'клиент создан',
+                        'user': 'клиент найден по user',
+                        'phone': 'клиент найден по телефону',
+                        'email': 'клиент найден по email',
+                    }.get(client_resolution['match_source'], 'клиент связан')
+                    messages.success(request, f'Заказ #{order.pk} создан, {client_state_message}.')
+                    created_url = _deal_detail_url(deal, created=True)
+                    if _is_htmx_request(request):
+                        response = HttpResponse(status=204)
+                        response['HX-Redirect'] = created_url
+                        return response
+                    return redirect(created_url)
+                except ValueError as exc:
+                    form.add_error(None, str(exc))
+        else:
+            form = ManualOrderForm(initial=initial)
+            formset = ManualOrderItemFormSet(prefix='items', initial=(selected_client_prefill or {}).get('item_initial'))
+            tradein_formset = TradeInItemFormSet(prefix='tradein', initial=(selected_client_prefill or {}).get('tradein_initial'))
+
+    switch_urls = _deal_creation_switch_urls(selected_client=selected_client)
+    current_deal_type = (
+        getattr(form, 'cleaned_data', {}).get('deal_type')
+        or form.data.get('deal_type')
+        or form.initial.get('deal_type')
+        or default_initial['deal_type']
+    )
+    document_recommendation = _deal_document_recommendation(client=selected_client, deal_type=current_deal_type)
     return _render(
         request,
         'manager_portal/order_create.html',
-        active_tab='orders',
+        active_tab='deals' if creation_mode == CREATE_MODE_QUICK else 'orders',
+        creation_mode=creation_mode,
         form=form,
         formset=formset,
-        product_catalog=_manual_order_product_catalog(),
+        tradein_formset=tradein_formset,
+        product_catalog=[
+            {
+                'id': product.pk,
+                'name': product.name,
+                'price': str(product.price),
+                'image_url': resolve_order_item_image_url(product=product),
+            }
+            for product in Product.objects.filter(is_active=True).prefetch_related('variants', 'images').order_by('name')
+        ],
+        inventory_rows=inventory_snapshot()[:100],
         selected_client=selected_client,
         selected_client_prefill=selected_client_prefill,
+        document_recommendation=document_recommendation,
+        client_lookup_url=reverse('manager_portal:client_lookup'),
+        quick_create_url=switch_urls['quick_create_url'],
+        full_create_url=switch_urls['full_create_url'],
     )
 
 
@@ -3043,12 +3689,16 @@ def _apply_deal_problem_view(deals, problem_view):
     today = timezone.localdate()
     if problem_view == DEAL_PROBLEM_VIEW_SLA_OVERDUE:
         return active_deals.filter(problem_flags__contains=[ManagerDeal.PROBLEM_FLAG_SLA_OVERDUE])
+    if problem_view == DEAL_PROBLEM_VIEW_STALE_UPDATES:
+        return active_deals.filter(problem_flags__contains=[ManagerDeal.PROBLEM_FLAG_STALE_UPDATES])
     if problem_view == DEAL_PROBLEM_VIEW_ETA_OVERDUE:
         return active_deals.filter(
             Q(expected_arrival_date__lt=today) | Q(expected_customer_ship_date__lt=today)
         )
     if problem_view == DEAL_PROBLEM_VIEW_STOCK_CONFLICT:
         return active_deals.filter(problem_flags__contains=[ManagerDeal.PROBLEM_FLAG_STOCK_CONFLICT])
+    if problem_view == DEAL_PROBLEM_VIEW_MISSING_CONTACTS:
+        return active_deals.filter(problem_flags__contains=[ManagerDeal.PROBLEM_FLAG_MISSING_CONTACTS])
     if problem_view == DEAL_PROBLEM_VIEW_NO_ASSIGNEE:
         return active_deals.filter(responsible_manager__isnull=True)
     if problem_view == DEAL_PROBLEM_VIEW_RESERVATIONS_EXPIRING:
@@ -3178,13 +3828,15 @@ def _deal_advanced_filter_state(form):
 
 def _deal_queue_views(base_queryset):
     tone_map = {
-        'all': SEMANTIC_TONE_UNKNOWN,
-        'unassigned': SEMANTIC_TONE_UNKNOWN,
-        ManagerDeal.NEXT_STEP_NEEDS_PAYMENT: SEMANTIC_TONE_UNKNOWN,
-        ManagerDeal.NEXT_STEP_NEEDS_RESERVATION: SEMANTIC_TONE_UNKNOWN,
-        ManagerDeal.NEXT_STEP_NEEDS_DOCUMENTS: SEMANTIC_TONE_UNKNOWN,
-        ManagerDeal.NEXT_STEP_READY_TO_SHIP: SEMANTIC_TONE_UNKNOWN,
-        'problematic': SEMANTIC_TONE_UNKNOWN,
+        'all': 'muted',
+        'unassigned': 'danger',
+        ManagerDeal.NEXT_STEP_NEEDS_AVAILABILITY_CONFIRMATION: 'warning',
+        ManagerDeal.NEXT_STEP_NEEDS_PAYMENT: 'warning',
+        ManagerDeal.NEXT_STEP_NEEDS_RESERVATION: 'warning',
+        ManagerDeal.NEXT_STEP_NEEDS_DOCUMENTS: 'warning',
+        ManagerDeal.NEXT_STEP_NEEDS_DOCUMENT_DISPATCH: 'warning',
+        ManagerDeal.NEXT_STEP_READY_TO_SHIP: 'success',
+        'problematic': 'danger',
     }
     compact_presets = (
         {
@@ -3196,6 +3848,11 @@ def _deal_queue_views(base_queryset):
             'key': 'unassigned',
             'label': 'Без ответственного',
             'params': {'only_unassigned': '1'},
+        },
+        {
+            'key': ManagerDeal.NEXT_STEP_NEEDS_AVAILABILITY_CONFIRMATION,
+            'label': 'Ждут наличие',
+            'params': {'queue': ManagerDeal.NEXT_STEP_NEEDS_AVAILABILITY_CONFIRMATION},
         },
         {
             'key': ManagerDeal.NEXT_STEP_NEEDS_PAYMENT,
@@ -3211,6 +3868,11 @@ def _deal_queue_views(base_queryset):
             'key': ManagerDeal.NEXT_STEP_NEEDS_DOCUMENTS,
             'label': 'Ждут документы',
             'params': {'queue': ManagerDeal.NEXT_STEP_NEEDS_DOCUMENTS},
+        },
+        {
+            'key': ManagerDeal.NEXT_STEP_NEEDS_DOCUMENT_DISPATCH,
+            'label': 'Отправить документы',
+            'params': {'queue': ManagerDeal.NEXT_STEP_NEEDS_DOCUMENT_DISPATCH},
         },
         {
             'key': ManagerDeal.NEXT_STEP_READY_TO_SHIP,
@@ -3256,71 +3918,29 @@ def _deal_signal_views(base_queryset):
     return signal_views
 
 
-def _deal_status_count_map(queryset):
-    return {
-        row['case_status']: row['count']
-        for row in queryset.order_by().values('case_status').annotate(count=Count('pk'))
-    }
-
-
-def _deal_metric_trend(current_period_count, previous_period_count):
-    delta = current_period_count - previous_period_count
-    if delta > 0:
-        direction = 'up'
-        icon = '↑'
-    elif delta < 0:
-        direction = 'down'
-        icon = '↓'
-    else:
-        direction = 'flat'
-        icon = '→'
-
-    if previous_period_count > 0:
-        percent_delta = max(1, round(abs(delta) * 100 / previous_period_count)) if delta else 0
-        prefix = '+' if delta > 0 else '-' if delta < 0 else ''
-        text = f'{prefix}{percent_delta}% к прошлой неделе'
-    elif current_period_count > 0:
-        text = f'+{current_period_count} за неделю'
-    else:
-        text = 'Без изменений за неделю'
-
-    return {
-        'direction': direction,
-        'icon': icon,
-        'text': text,
-        'current_period_count': current_period_count,
-        'previous_period_count': previous_period_count,
-    }
-
-
-def _deal_overview_metrics(scope, *, current_case_status=''):
-    now = manager_portal_now()
-    current_period_start = now - timezone.timedelta(days=DEAL_KPI_WINDOW_DAYS)
-    previous_period_start = current_period_start - timezone.timedelta(days=DEAL_KPI_WINDOW_DAYS)
-    total_counts = _deal_status_count_map(scope)
-    current_window_counts = _deal_status_count_map(
-        scope.filter(deal_created_at__gte=current_period_start, deal_created_at__lt=now)
-    )
-    previous_window_counts = _deal_status_count_map(
-        scope.filter(deal_created_at__gte=previous_period_start, deal_created_at__lt=current_period_start)
-    )
-    metrics = []
-    for case_status in DEAL_KPI_CASE_STATUSES:
-        metrics.append(
-            {
-                'status': case_status,
-                'label': DEAL_KPI_LABELS[case_status],
-                'count': total_counts.get(case_status, 0),
-                'query_string': urlencode({'case_status': case_status}),
-                'tone': DEAL_KPI_TONES[case_status],
-                'is_active': current_case_status == case_status,
-                'trend': _deal_metric_trend(
-                    current_window_counts.get(case_status, 0),
-                    previous_window_counts.get(case_status, 0),
-                ),
-            }
-        )
-    return metrics
+def _deal_overview_metrics(scope):
+    return [
+        {
+            'label': 'В работе',
+            'count': scope.count(),
+            'query_string': '',
+        },
+        {
+            'label': 'Проблемные',
+            'count': scope.exclude(problem_flags=[]).count(),
+            'query_string': urlencode({'only_problematic': '1'}),
+        },
+        {
+            'label': 'Требуют действия сегодня',
+            'count': scope.filter(sla_due_at__isnull=False, sla_due_at__lte=_today_action_cutoff()).count(),
+            'query_string': urlencode({'action_today': '1'}),
+        },
+        {
+            'label': 'Без ответственного',
+            'count': scope.filter(responsible_manager__isnull=True).count(),
+            'query_string': urlencode({'only_unassigned': '1'}),
+        },
+    ]
 
 
 def _deal_saved_views(user):
@@ -3339,7 +3959,7 @@ def _deal_query_string_without_page(query_params):
     return params.urlencode()
 
 
-def _query_string_with_updates(query_params, **updates):
+def _deal_query_string_with_updates(query_params, **updates):
     params = query_params.copy()
     for key, value in updates.items():
         if value in (None, ''):
@@ -3347,221 +3967,6 @@ def _query_string_with_updates(query_params, **updates):
         else:
             params[key] = value
     return params.urlencode()
-
-
-def _query_string_url(base_url, query_string):
-    return f'{base_url}?{query_string}' if query_string else base_url
-
-
-def _deal_query_string_with_updates(query_params, **updates):
-    return _query_string_with_updates(query_params, **updates)
-
-
-def _deal_query_string_without_filters(query_params, *, include_queue=False):
-    updates = {'page': None}
-    for field_name in DEAL_FILTER_FIELDS:
-        if not include_queue and field_name == 'queue':
-            continue
-        updates[field_name] = None
-    return _deal_query_string_with_updates(query_params, **updates)
-
-
-def _deal_filter_choice_label(field, value):
-    for choice_value, choice_label in field.choices:
-        if str(choice_value) == str(value):
-            return str(choice_label)
-    return str(value)
-
-
-def _list_filter_choice_label(field, value):
-    for choice_value, choice_label in field.choices:
-        if isinstance(choice_label, (list, tuple)):
-            for nested_value, nested_label in choice_label:
-                if str(nested_value) == str(value):
-                    return str(nested_label)
-            continue
-        if str(choice_value) == str(value):
-            return str(choice_label)
-    return str(value)
-
-
-def _list_filter_is_active(form, field_name, value):
-    field = form.fields[field_name]
-    if isinstance(field, django_forms.BooleanField):
-        return bool(value)
-    if isinstance(value, str):
-        value = value.strip()
-    if value in (None, ''):
-        return False
-    initial_value = form.initial.get(field_name, field.initial)
-    if initial_value not in (None, '') and str(value) == str(initial_value):
-        return False
-    return True
-
-
-def _list_filter_chip_label(form, field_name, value):
-    field = form.fields[field_name]
-    label_prefix = LIST_FILTER_LABEL_OVERRIDES.get(field_name) or field.label or field_name.replace('_', ' ')
-    if isinstance(field, django_forms.BooleanField):
-        return str(label_prefix)
-    if isinstance(field, django_forms.ModelChoiceField):
-        display_value = str(value)
-    elif isinstance(field, django_forms.ChoiceField):
-        display_value = _list_filter_choice_label(field, value)
-    elif isinstance(field, django_forms.DateField):
-        display_value = value.strftime('%d.%m.%Y')
-    else:
-        display_value = str(value).strip() if isinstance(value, str) else str(value)
-    return f'{label_prefix}: {display_value}'
-
-
-def _build_list_filter_context(query_params, form, *, base_url):
-    if not form.is_bound or not form.is_valid():
-        return {
-            'active_filter_chips': [],
-            'active_filter_count': 0,
-            'clear_all_filters_url': base_url,
-        }
-
-    active_filter_chips = []
-    for field_name in form.fields:
-        field_value = form.cleaned_data.get(field_name)
-        if not _list_filter_is_active(form, field_name, field_value):
-            continue
-        remove_query_string = _query_string_with_updates(
-            query_params,
-            page=None,
-            **{field_name: None},
-        )
-        active_filter_chips.append(
-            {
-                'label': _list_filter_chip_label(form, field_name, field_value),
-                'remove_url': _query_string_url(base_url, remove_query_string),
-            }
-        )
-
-    clear_all_query_string = _query_string_with_updates(
-        query_params,
-        page=None,
-        **{field_name: None for field_name in form.fields},
-    )
-    return {
-        'active_filter_chips': active_filter_chips,
-        'active_filter_count': len(active_filter_chips),
-        'clear_all_filters_url': _query_string_url(base_url, clear_all_query_string),
-    }
-
-
-def _list_filter_fields_present(query_params, field_names):
-    for field_name in field_names:
-        for value in query_params.getlist(field_name):
-            if str(value).strip():
-                return True
-    return False
-
-
-def _list_bound_fields(form, field_names):
-    return [form[field_name] for field_name in field_names if field_name in form.fields]
-
-
-def _list_active_filter_count(form, field_names):
-    if not form.is_bound or not form.is_valid():
-        return 0
-    return sum(
-        1
-        for field_name in field_names
-        if field_name in form.fields
-        and _list_filter_is_active(form, field_name, form.cleaned_data.get(field_name))
-    )
-
-
-def _registry_list_ui_state(*, has_records, has_filter_input, active_filter_count):
-    show_filter_panel = has_records or has_filter_input or active_filter_count > 0
-    return {
-        'show_filter_panel': show_filter_panel,
-        'show_empty_state_only': not show_filter_panel,
-    }
-
-
-def _deal_active_filter_chips(query_params, form):
-    if not form.is_valid():
-        return []
-
-    cleaned = form.cleaned_data
-    chips = []
-
-    def add_chip(label, *, remove_fields):
-        chips.append(
-            {
-                'label': label,
-                'clear_query_string': _deal_query_string_with_updates(
-                    query_params,
-                    page=None,
-                    **{field_name: None for field_name in remove_fields},
-                ),
-            }
-        )
-
-    search_query = (cleaned.get('q') or '').strip()
-    if search_query:
-        add_chip(f'Поиск: {search_query}', remove_fields=('q',))
-
-    sort_value = cleaned.get('sort') or ''
-    if sort_value and sort_value != (form.fields['sort'].initial or ''):
-        add_chip(
-            f'Сортировка: {_deal_filter_choice_label(form.fields["sort"], sort_value)}',
-            remove_fields=('sort',),
-        )
-
-    choice_field_prefixes = {
-        'problem_view': 'Срез',
-        'overlay': 'Сигнал',
-        'case_status': 'Этап',
-        'payment_state': 'Оплата',
-        'fulfillment_status': 'Исполнение',
-        'documents_status': 'Документы',
-        'deal_type': 'Тип',
-        'sla_status': 'SLA',
-    }
-    for field_name, prefix in choice_field_prefixes.items():
-        field_value = cleaned.get(field_name)
-        if field_value:
-            add_chip(
-                f'{prefix}: {_deal_filter_choice_label(form.fields[field_name], field_value)}',
-                remove_fields=(field_name,),
-            )
-
-    responsible_manager = cleaned.get('responsible_manager')
-    if responsible_manager is not None:
-        manager_label = (
-            responsible_manager.get_username()
-            if hasattr(responsible_manager, 'get_username')
-            else str(responsible_manager)
-        )
-        add_chip(f'Ответственный: {manager_label}', remove_fields=('responsible_manager',))
-
-    boolean_labels = {
-        'mine': 'Только мои',
-        'only_unassigned': 'Без ответственного',
-        'only_problematic': 'Только проблемные',
-        'action_today': 'Требуют действия сегодня',
-    }
-    for field_name, label in boolean_labels.items():
-        if cleaned.get(field_name):
-            add_chip(label, remove_fields=(field_name,))
-
-    return chips
-
-
-def _deal_page_header_stats(*, current_view_mode, total_deals, deals_page, deal_kanban_columns):
-    stats = [
-        {'label': 'Найдено', 'value': total_deals},
-    ]
-    if current_view_mode == DEAL_VIEW_KANBAN:
-        stats.append({'label': 'Колонки', 'value': len(deal_kanban_columns)})
-    elif deals_page is not None:
-        stats.append({'label': 'Страница', 'value': f'{deals_page.number} / {deals_page.paginator.num_pages}'})
-    return stats
 
 
 def _deal_view_mode(request):
@@ -3616,7 +4021,7 @@ def _deal_blockers(deal, *, documents, reservations, shipments, finance_deal, pu
         'target': '#deal-management-drawer',
     }
 
-    def add(key, text, tone=SEMANTIC_TONE_CRITICAL, action=None):
+    def add(key, text, tone='blocked', action=None):
         if key in seen:
             return
         blockers.append({'text': text, 'tone': tone, 'action': action})
@@ -3625,16 +4030,24 @@ def _deal_blockers(deal, *, documents, reservations, shipments, finance_deal, pu
     for flag, label in zip(deal.problem_flags or [], deal.problem_flag_labels):
         if flag == ManagerDeal.PROBLEM_FLAG_NO_ASSIGNEE:
             add(f'flag:{flag}', label, action=assign_self_action)
+        elif flag == ManagerDeal.PROBLEM_FLAG_MISSING_CONTACTS:
+            add(f'flag:{flag}', 'Нет контактов для связи с клиентом.', action=settings_action)
         elif flag == ManagerDeal.PROBLEM_FLAG_STOCK_CONFLICT:
             add(
                 f'flag:{flag}',
                 label,
                 action={'label': 'Открыть обеспечение', 'kind': 'link', 'url': f'{deal_supply_url}#goods'},
             )
+        elif flag == ManagerDeal.PROBLEM_FLAG_MISSING_PAYMENT:
+            add(
+                f'flag:{flag}',
+                'Нет оплаты по сделке.',
+                action={'label': 'Открыть финансы', 'kind': 'link', 'url': deal_finance_url},
+            )
         elif flag == ManagerDeal.PROBLEM_FLAG_MISSING_DOCUMENTS:
             add(
                 f'flag:{flag}',
-                label,
+                'Нет документа, готового к отправке клиенту.',
                 action={'label': 'Создать договор', 'kind': 'link', 'url': deal_contract_url},
             )
         elif flag == ManagerDeal.PROBLEM_FLAG_PAYMENT_BLOCKED:
@@ -3650,24 +4063,30 @@ def _deal_blockers(deal, *, documents, reservations, shipments, finance_deal, pu
                 action={'label': 'Создать отправление', 'kind': 'link', 'url': deal_shipment_url},
             )
         elif flag == ManagerDeal.PROBLEM_FLAG_SLA_OVERDUE:
-            add(f'flag:{flag}', label, tone=SEMANTIC_TONE_CRITICAL, action=settings_action)
+            add(f'flag:{flag}', label, tone='working', action=settings_action)
+        elif flag == ManagerDeal.PROBLEM_FLAG_STALE_UPDATES:
+            add(f'flag:{flag}', 'По сделке давно не было обновлений.', tone='working', action=settings_action)
         else:
-            add(f'flag:{flag}', label, tone=deal_problem_tone(flag))
+            add(f'flag:{flag}', label)
     if deal.responsible_manager_id is None:
-        add('manager', 'Не назначен ответственный менеджер.', tone=SEMANTIC_TONE_ATTENTION, action=assign_self_action)
+        add('manager', 'Не назначен ответственный менеджер.', action=assign_self_action)
     if not deal.is_avito and deal.customer_deadline and deal.customer_deadline < timezone.localdate():
         add(
             'deadline',
             f'Дедлайн клиента истек {deal.customer_deadline:%d.%m.%Y}.',
-            tone=SEMANTIC_TONE_ATTENTION,
+            tone='working',
             action=settings_action,
         )
     if deal.next_step_code == ManagerDeal.NEXT_STEP_NEEDS_PAYMENT and deal.balance_due > 0:
         add('payment', 'Сделка ждет оплату от клиента.', action={'label': 'Открыть финансы', 'kind': 'link', 'url': deal_finance_url})
         if finance_deal is None:
             add('finance', 'Финансовая сделка еще не создана.', action={'label': 'Открыть финансы', 'kind': 'link', 'url': deal_finance_url})
+    if deal.next_step_code == ManagerDeal.NEXT_STEP_NEEDS_AVAILABILITY_CONFIRMATION:
+        add('availability', 'Нужно подтвердить наличие и выбрать склад под бронь.', action={'label': 'Открыть обеспечение', 'kind': 'link', 'url': f'{deal_supply_url}#goods'})
     if deal.next_step_code == ManagerDeal.NEXT_STEP_NEEDS_DOCUMENTS and not documents:
         add('documents', 'Нет документа, который можно отправить клиенту.', action={'label': 'Создать договор', 'kind': 'link', 'url': deal_contract_url})
+    if deal.next_step_code == ManagerDeal.NEXT_STEP_NEEDS_DOCUMENT_DISPATCH:
+        add('document_dispatch', 'Документы готовы, но еще не отправлены клиенту.', action={'label': 'Открыть документы', 'kind': 'link', 'url': f'{deal_detail_url}?tab=documents#documents'})
     if deal.next_step_code == ManagerDeal.NEXT_STEP_NEEDS_RESERVATION and not reservations:
         add('reservation', 'Нет резерва под заказ.', action={'label': 'Открыть обеспечение', 'kind': 'link', 'url': f'{deal_supply_url}#reservation'})
     if deal.next_step_code == ManagerDeal.NEXT_STEP_READY_TO_SHIP and not shipments:
@@ -3678,7 +4097,7 @@ def _deal_blockers(deal, *, documents, reservations, shipments, finance_deal, pu
         add(
             'cargo',
             'Не весь входящий груз принят на склад.',
-            tone=SEMANTIC_TONE_ATTENTION,
+            tone='working',
             action={'label': 'Открыть поставку', 'kind': 'link', 'url': f'{deal_supply_url}#supply'},
         )
     return blockers
@@ -3691,11 +4110,10 @@ def _status_chip(label, *, tone, detail, url=''):
         'detail': detail,
         'url': url,
         'status_label': {
-            SEMANTIC_TONE_COMPLETE: 'Готово',
-            SEMANTIC_TONE_ACTIVE: 'В работе',
-            SEMANTIC_TONE_ATTENTION: 'Нужно проверить',
-            SEMANTIC_TONE_CRITICAL: 'Блокер',
-            SEMANTIC_TONE_UNKNOWN: 'Нет данных',
+            'ready': 'Готово',
+            'working': 'Нужно проверить',
+            'blocked': 'Не создано',
+            'neutral': 'Не требуется',
         }[tone],
     }
 
@@ -3706,48 +4124,48 @@ def _deal_linked_entities_strip(deal, *, documents, reservations, shipments, fin
     latest_shipment = shipments[0] if shipments else None
 
     if reservations and coverage['is_complete']:
-        reservation_chip = {'label': 'Бронь', 'tone': SEMANTIC_TONE_COMPLETE, 'status': 'Есть', 'url': '#reservation'}
+        reservation_chip = {'label': 'Бронь', 'tone': 'ready', 'status': 'Есть', 'url': '#reservation'}
     elif reservations:
-        reservation_chip = {'label': 'Бронь', 'tone': SEMANTIC_TONE_ATTENTION, 'status': 'Частично', 'url': '#reservation'}
+        reservation_chip = {'label': 'Бронь', 'tone': 'working', 'status': 'Частично', 'url': '#reservation'}
     else:
-        reservation_chip = {'label': 'Бронь', 'tone': SEMANTIC_TONE_CRITICAL, 'status': 'Нет', 'url': '#reservation'}
+        reservation_chip = {'label': 'Бронь', 'tone': 'blocked', 'status': 'Нет', 'url': '#reservation'}
 
     if latest_document:
         missing_document_fields = contract_document_missing_fields(latest_document)
         document_chip = {
             'label': 'Документы',
-            'tone': SEMANTIC_TONE_COMPLETE if not missing_document_fields else SEMANTIC_TONE_ATTENTION,
+            'tone': 'ready' if not missing_document_fields else 'working',
             'status': 'Готово' if not missing_document_fields else 'Черновик',
             'url': '#process-documents',
         }
     elif deal.documents_status == ManagerDeal.DOCUMENTS_STATUS_NOT_REQUIRED:
-        document_chip = {'label': 'Документы', 'tone': SEMANTIC_TONE_UNKNOWN, 'status': 'Не нужны', 'url': '#process-documents'}
+        document_chip = {'label': 'Документы', 'tone': 'neutral', 'status': 'Не нужны', 'url': '#process-documents'}
     else:
-        document_chip = {'label': 'Документы', 'tone': SEMANTIC_TONE_CRITICAL, 'status': 'Нет', 'url': '#process-documents'}
+        document_chip = {'label': 'Документы', 'tone': 'blocked', 'status': 'Нет', 'url': '#process-documents'}
 
     if latest_shipment:
         missing_shipment_fields = shipment_missing_fields(latest_shipment)
         shipment_chip = {
             'label': 'Отгрузка',
-            'tone': SEMANTIC_TONE_COMPLETE if not missing_shipment_fields else SEMANTIC_TONE_ATTENTION,
+            'tone': 'ready' if not missing_shipment_fields else 'working',
             'status': deal.get_delivery_status_display() if not missing_shipment_fields else 'Создана',
             'url': '#process-shipment',
         }
     elif deal.delivery_status == ManagerDeal.DELIVERY_STATUS_NOT_REQUIRED:
-        shipment_chip = {'label': 'Отгрузка', 'tone': SEMANTIC_TONE_UNKNOWN, 'status': 'Не нужна', 'url': '#process-shipment'}
+        shipment_chip = {'label': 'Отгрузка', 'tone': 'neutral', 'status': 'Не нужна', 'url': '#process-shipment'}
     else:
-        shipment_chip = {'label': 'Отгрузка', 'tone': SEMANTIC_TONE_CRITICAL, 'status': 'Не создана', 'url': '#process-shipment'}
+        shipment_chip = {'label': 'Отгрузка', 'tone': 'blocked', 'status': 'Не создана', 'url': '#process-shipment'}
 
     if finance_deal:
         missing_finance_fields = finance_case_missing_fields(finance_deal)
         finance_chip = {
             'label': 'Финансы',
-            'tone': SEMANTIC_TONE_COMPLETE if not missing_finance_fields else SEMANTIC_TONE_ATTENTION,
+            'tone': 'ready' if not missing_finance_fields else 'working',
             'status': 'ОК' if not missing_finance_fields else 'Частично',
             'url': '#process-finance',
         }
     else:
-        finance_chip = {'label': 'Финансы', 'tone': SEMANTIC_TONE_CRITICAL, 'status': 'Не заполнены', 'url': '#process-finance'}
+        finance_chip = {'label': 'Финансы', 'tone': 'blocked', 'status': 'Не заполнены', 'url': '#process-finance'}
 
     return [reservation_chip, shipment_chip, document_chip, finance_chip]
 
@@ -3763,17 +4181,17 @@ def _deal_supply_summary(deal, *, reservations, purchase_items, cargo_items):
     latest_cargo_item = cargo_items[0] if cargo_items else None
     latest_shipment = deal.shipments.order_by('-created_at', '-id').first()
     risk_label = 'Риск не выявлен'
-    risk_tone = SEMANTIC_TONE_COMPLETE
+    risk_tone = 'ready'
     problem_source = 'Обеспечение собрано'
     primary_cta = {'label': 'Открыть снабжение', 'url': reverse('manager_portal:purchase_list')}
     if cargo_items and cargo_received < cargo_quantity:
         risk_label = 'Есть груз, который не принят полностью'
-        risk_tone = SEMANTIC_TONE_ATTENTION
+        risk_tone = 'working'
         problem_source = 'Груз в пути'
         primary_cta = {'label': 'Принять груз', 'url': reverse('manager_portal:cargo_list')}
     elif purchase_items and purchase_received < purchase_quantity:
         risk_label = 'Закупка ещё не закрыта'
-        risk_tone = SEMANTIC_TONE_ATTENTION
+        risk_tone = 'working'
         problem_source = 'Закупка не оформлена'
         primary_cta = {'label': 'Создать закупку', 'url': reverse('manager_portal:purchase_list')}
     elif not reservations and deal.fulfillment_status not in {
@@ -3782,12 +4200,12 @@ def _deal_supply_summary(deal, *, reservations, purchase_items, cargo_items):
         ManagerDeal.FULFILLMENT_STATUS_RESERVED_INCOMING,
     }:
         risk_label = 'Резерв под сделку ещё не создан'
-        risk_tone = SEMANTIC_TONE_CRITICAL
+        risk_tone = 'blocked'
         problem_source = 'Нет резерва'
         primary_cta = {'label': 'Создать бронь', 'url': reverse('manager_portal:deal_reservation_action', kwargs={'pk': deal.pk})}
     elif latest_shipment and not latest_shipment.tracking_number:
         risk_label = 'Отгрузка без трека'
-        risk_tone = SEMANTIC_TONE_ATTENTION
+        risk_tone = 'working'
         problem_source = 'Отгрузка без трека'
         primary_cta = {'label': 'Добавить трек', 'url': reverse('manager_portal:deal_shipment_action', kwargs={'pk': deal.pk})}
     return {
@@ -3853,6 +4271,37 @@ def _deal_required_document_type(deal, *, latest_document=None):
     return ContractTemplate.DOC_TYPE_CONTRACT
 
 
+def _deal_document_slot(deal, *, documents, title, document_types, action_document_type, empty_label='Не подготовлен'):
+    document = next((item for item in documents if item.document_type in document_types), None)
+    if document is None:
+        return {
+            'title': title,
+            'status': empty_label,
+            'detail': 'Документ ещё не создан.',
+            'tone': 'blocked',
+            'open_url': '',
+            'action_url': reverse(
+                'manager_portal:deal_document_action',
+                kwargs={'pk': deal.pk, 'document_type': action_document_type},
+            ),
+        }
+    missing_fields = contract_document_missing_fields(document)
+    return {
+        'title': title,
+        'status': document.get_status_display(),
+        'detail': document.number or document.title or 'Без номера',
+        'tone': 'ready' if not missing_fields else 'working',
+        'open_url': (
+            f'{reverse("manager_portal:contracts_detail", kwargs={"pk": document.pk})}'
+            f'?deal={deal.pk}&return_anchor=documents'
+        ),
+        'action_url': reverse(
+            'manager_portal:deal_document_action',
+            kwargs={'pk': deal.pk, 'document_type': document.document_type},
+        ),
+    }
+
+
 def _deal_documents_summary(deal, *, documents):
     latest_document = documents[0] if documents else None
     required_document_type = _deal_required_document_type(deal, latest_document=latest_document)
@@ -3915,14 +4364,6 @@ def _deal_documents_summary(deal, *, documents):
         'last_editor': last_editor,
         'updated_at': updated_at,
         'status_label': status_label,
-        'semantic_status': (
-            contract_document_status(latest_document)
-            if latest_document is not None
-            else build_semantic_status(
-                status_label,
-                tone=SEMANTIC_TONE_UNKNOWN if deal.documents_status == ManagerDeal.DOCUMENTS_STATUS_NOT_REQUIRED else SEMANTIC_TONE_CRITICAL,
-            )
-        ),
         'primary_action': {
             'label': primary_action_label,
             'url': reverse(
@@ -3935,10 +4376,33 @@ def _deal_documents_summary(deal, *, documents):
             'url': open_latest_url,
         } if open_latest_url else None,
         'recent_documents': recent_documents,
+        'document_slots': [
+            _deal_document_slot(
+                deal,
+                documents=documents,
+                title='Договор',
+                document_types=[ContractTemplate.DOC_TYPE_CONTRACT],
+                action_document_type=ContractTemplate.DOC_TYPE_CONTRACT,
+            ),
+            _deal_document_slot(
+                deal,
+                documents=documents,
+                title='Счёт',
+                document_types=[ContractTemplate.DOC_TYPE_INVOICE],
+                action_document_type=ContractTemplate.DOC_TYPE_INVOICE,
+            ),
+            _deal_document_slot(
+                deal,
+                documents=documents,
+                title='УПД / акт',
+                document_types=[ContractTemplate.DOC_TYPE_APPENDIX, ContractTemplate.DOC_TYPE_ACT],
+                action_document_type=ContractTemplate.DOC_TYPE_ACT,
+            ),
+        ],
     }
 
 
-def _deal_finance_summary(deal, *, finance_deal, finance_expenses, finance_payouts, participant_summary):
+def _deal_finance_summary(deal, *, finance_deal, finance_expenses, finance_payouts, participant_summary, latest_payment=None):
     expenses_total = sum((expense.amount for expense in finance_expenses), Decimal('0'))
     payouts_total = sum((payout.amount for payout in finance_payouts), Decimal('0'))
     missing_items = []
@@ -3968,14 +4432,6 @@ def _deal_finance_summary(deal, *, finance_deal, finance_expenses, finance_payou
 
     return {
         'status_label': status_label,
-        'semantic_status': build_semantic_status(
-            status_label,
-            tone=(
-                SEMANTIC_TONE_CRITICAL if status_label == 'Не создан'
-                else SEMANTIC_TONE_ATTENTION if status_label == 'Частично'
-                else SEMANTIC_TONE_COMPLETE
-            ),
-        ),
         'missing_items': missing_items,
         'revenue': finance_deal.revenue if finance_deal is not None else None,
         'margin': finance_deal.margin if finance_deal is not None else None,
@@ -3990,6 +4446,11 @@ def _deal_finance_summary(deal, *, finance_deal, finance_expenses, finance_payou
         'balance': (finance_deal.margin - payouts_total) if finance_deal is not None else None,
         'updated_at': finance_deal.updated_at if finance_deal is not None else None,
         'uses_finance_case': finance_deal is not None,
+        'payment_method_label': deal.order.get_payment_method_display(),
+        'payment_status_label': deal.order.get_payment_status_display(),
+        'workflow_payment_status_label': deal.get_payment_state_display(),
+        'last_payment_at': latest_payment.created_at if latest_payment is not None else None,
+        'last_payment_amount': latest_payment.price_amount if latest_payment is not None else None,
         'case_action': {'label': 'Открыть кейс', 'url': finance_case_url},
         'expense_action': {
             'label': 'Добавить расход',
@@ -4003,13 +4464,28 @@ def _deal_finance_summary(deal, *, finance_deal, finance_expenses, finance_payou
     }
 
 
+def _deal_finance_summary_compact(finance_summary):
+    return {
+        'status_label': finance_summary['status_label'],
+        'sum_total': finance_summary['sum_total'],
+        'paid_total': finance_summary['paid_total'],
+        'remaining_total': finance_summary['remaining_total'],
+        'margin_total': finance_summary['margin_total'],
+        'payment_method_label': finance_summary['payment_method_label'],
+        'payment_status_label': finance_summary['payment_status_label'],
+        'workflow_payment_status_label': finance_summary['workflow_payment_status_label'],
+        'last_payment_at': finance_summary['last_payment_at'],
+        'last_payment_amount': finance_summary['last_payment_amount'],
+        'uses_finance_case': finance_summary['uses_finance_case'],
+    }
+
+
 def _workflow_strip_item(label, status, *, tone, href):
     symbol_map = {
-        SEMANTIC_TONE_COMPLETE: '✓',
-        SEMANTIC_TONE_ACTIVE: '•',
-        SEMANTIC_TONE_ATTENTION: '!',
-        SEMANTIC_TONE_CRITICAL: '×',
-        SEMANTIC_TONE_UNKNOWN: '–',
+        'ready': '✓',
+        'working': '!',
+        'neutral': '–',
+        'blocked': '○',
     }
     return {
         'label': label,
@@ -4033,59 +4509,59 @@ def _process_card(title, status, detail, *, tone, anchor_id, cta, secondary):
 
 
 def _deal_workflow_strip(deal, *, documents, shipments, finance_deal, purchase_items, cargo_items):
-    payment_tone = SEMANTIC_TONE_CRITICAL
+    payment_tone = 'blocked'
     if deal.payment_state in {ManagerDeal.PAYMENT_STATE_PAID, ManagerDeal.PAYMENT_STATE_REFUNDED} or deal.balance_due <= 0:
-        payment_tone = SEMANTIC_TONE_COMPLETE
+        payment_tone = 'ready'
     elif deal.payment_state == ManagerDeal.PAYMENT_STATE_PARTIAL or deal.amount_paid > 0:
-        payment_tone = SEMANTIC_TONE_ATTENTION
+        payment_tone = 'working'
 
-    fulfillment_tone = SEMANTIC_TONE_CRITICAL
+    fulfillment_tone = 'blocked'
     if deal.fulfillment_status in {
         ManagerDeal.FULFILLMENT_STATUS_FULFILLED,
         ManagerDeal.FULFILLMENT_STATUS_RESERVED_STOCK,
         ManagerDeal.FULFILLMENT_STATUS_RESERVED_INCOMING,
     }:
-        fulfillment_tone = SEMANTIC_TONE_COMPLETE
+        fulfillment_tone = 'ready'
     elif deal.fulfillment_status == ManagerDeal.FULFILLMENT_STATUS_PROCUREMENT_REQUIRED:
-        fulfillment_tone = SEMANTIC_TONE_ATTENTION
+        fulfillment_tone = 'working'
 
-    documents_tone = SEMANTIC_TONE_CRITICAL
+    documents_tone = 'blocked'
     documents_status = deal.get_documents_status_display()
     if deal.documents_status == ManagerDeal.DOCUMENTS_STATUS_NOT_REQUIRED:
-        documents_tone = SEMANTIC_TONE_UNKNOWN
+        documents_tone = 'neutral'
     elif deal.documents_status == ManagerDeal.DOCUMENTS_STATUS_SIGNED:
-        documents_tone = SEMANTIC_TONE_COMPLETE
+        documents_tone = 'ready'
     elif documents or deal.documents_status in {
         ManagerDeal.DOCUMENTS_STATUS_DRAFT,
         ManagerDeal.DOCUMENTS_STATUS_SENT,
     }:
-        documents_tone = SEMANTIC_TONE_ATTENTION
+        documents_tone = 'working'
 
-    shipment_tone = SEMANTIC_TONE_CRITICAL
+    shipment_tone = 'blocked'
     shipment_status = 'Не создана'
     if deal.delivery_status == ManagerDeal.DELIVERY_STATUS_NOT_REQUIRED:
-        shipment_tone = SEMANTIC_TONE_UNKNOWN
+        shipment_tone = 'neutral'
         shipment_status = deal.get_delivery_status_display()
     elif deal.delivery_status in {
         ManagerDeal.DELIVERY_STATUS_READY,
         ManagerDeal.DELIVERY_STATUS_SHIPPED,
         ManagerDeal.DELIVERY_STATUS_DELIVERED,
     }:
-        shipment_tone = SEMANTIC_TONE_COMPLETE
+        shipment_tone = 'ready'
         shipment_status = deal.get_delivery_status_display()
     elif shipments or deal.delivery_status == ManagerDeal.DELIVERY_STATUS_PREPARING:
-        shipment_tone = SEMANTIC_TONE_ATTENTION
+        shipment_tone = 'working'
         shipment_status = deal.get_delivery_status_display()
 
-    finance_tone = SEMANTIC_TONE_CRITICAL
+    finance_tone = 'blocked'
     finance_status = 'Не заполнены'
     if finance_deal is not None:
         missing_finance_fields = finance_case_missing_fields(finance_deal)
         if missing_finance_fields:
-            finance_tone = SEMANTIC_TONE_ATTENTION
+            finance_tone = 'working'
             finance_status = 'Нужно дозаполнить'
         else:
-            finance_tone = SEMANTIC_TONE_COMPLETE
+            finance_tone = 'ready'
             finance_status = 'Заполнены'
 
     return [
@@ -4100,7 +4576,6 @@ def _deal_workflow_strip(deal, *, documents, shipments, finance_deal, purchase_i
 def _deal_operation_hub(deal, *, next_step_panel, workflow_strip, blockers, activities, finance_deal=None):
     state_label_map = {'Снабжение': 'Обеспечение'}
     latest_event = _deal_latest_event_summary(activities)
-    visible_statuses = _deal_visible_statuses(deal, blockers=blockers)
     state_pills = [
         {
             'label': state_label_map.get(item['label'], item['label']),
@@ -4112,9 +4587,6 @@ def _deal_operation_hub(deal, *, next_step_panel, workflow_strip, blockers, acti
     ]
     return {
         'next_step': next_step_panel,
-        'primary_status': visible_statuses['primary_status'],
-        'secondary_status': visible_statuses['secondary_status'],
-        'risk_summary': visible_statuses['risk_summary'],
         'responsible_manager': str(deal.responsible_manager) if deal.responsible_manager else 'Не назначен',
         'actions': _deal_operation_actions(deal, finance_deal=finance_deal),
         'state_pills': state_pills,
@@ -4138,6 +4610,166 @@ def _deal_management_summary(deal, activities):
         ),
         'latest_comment': latest_comment_text or 'Комментария пока нет.',
         'has_manual_override': deal.next_step_source == ManagerDeal.NEXT_STEP_SOURCE_MANUAL,
+    }
+
+
+def _deal_operational_summary(deal, *, next_step_panel, blockers):
+    primary_blocker = blockers[0] if blockers else None
+    return {
+        'status_label': deal.get_deal_status_display(),
+        'stage_label': deal.get_case_status_display(),
+        'next_step_label': next_step_panel['label'],
+        'next_step_reason': next_step_panel['reason'],
+        'deadline': deal.customer_deadline,
+        'deadline_is_overdue': bool(deal.customer_deadline and deal.customer_deadline < timezone.localdate()),
+        'sla_due_at': next_step_panel['sla_due_at'],
+        'risk_label': primary_blocker['text'] if primary_blocker else 'Блокеров нет',
+        'risk_tone': primary_blocker['tone'] if primary_blocker else 'ready',
+        'risk_count': len(blockers),
+        'responsible_manager': str(deal.responsible_manager) if deal.responsible_manager else 'Не назначен',
+    }
+
+
+def _deal_client_summary(deal, *, deal_client, activities, client_comment):
+    phone = getattr(deal_client, 'phone', '') or deal.customer_phone or getattr(deal.order, 'shipping_phone', '') or deal.order.phone
+    email = getattr(deal_client, 'email', '') or deal.business_email or deal.order.email
+    additional_phone = deal.individual_additional_phone if deal.buyer_type == ManagerDeal.BUYER_INDIVIDUAL else ''
+    messenger = deal.individual_messenger if deal.buyer_type == ManagerDeal.BUYER_INDIVIDUAL else ''
+    address = (
+        deal.delivery_full_address
+        or deal.delivery_pickup_address
+        or deal.business_delivery_address
+        or deal.individual_delivery_address
+        or deal.individual_pickup_address
+        or deal.business_legal_address
+    )
+    contacts = []
+    for label, value in (
+        ('Телефон', phone),
+        ('Доп. телефон', additional_phone),
+        ('Email', email),
+        ('Telegram / WhatsApp', messenger),
+        ('Город', deal.customer_city or deal.delivery_to_city or deal.order.city_text),
+        ('Адрес', address),
+    ):
+        value = (value or '').strip()
+        if value:
+            contacts.append({'label': label, 'value': value})
+    history_entries = []
+    for activity in activities:
+        if activity.event_type == 'workflow.recomputed':
+            continue
+        history_entries.append(
+            {
+                'title': _deal_activity_title(activity),
+                'meta': activity.actor.get_username() if activity.actor else activity.get_source_display(),
+                'timestamp': activity.created_at,
+            }
+        )
+        if len(history_entries) == 4:
+            break
+    return {
+        'display_name': getattr(deal_client, 'name', '') or _deal_customer_label(deal),
+        'company_name': deal.business_company_name if deal.buyer_type == ManagerDeal.BUYER_BUSINESS else '',
+        'contact_name': deal.business_contact_person if deal.buyer_type == ManagerDeal.BUYER_BUSINESS else deal.individual_full_name,
+        'client_type_label': deal.get_buyer_type_display(),
+        'channel_label': deal.get_customer_source_display(),
+        'client_url': reverse('manager_portal:client_detail', kwargs={'pk': deal_client.pk}) if deal_client else '',
+        'contacts': contacts,
+        'history_entries': history_entries,
+        'comment': (client_comment or '').strip(),
+    }
+
+
+def _deal_subject_summary(deal, *, order_item_rows, finance_deal=None):
+    total_discount = sum((row['item'].discount_total for row in order_item_rows), Decimal('0')) + Decimal(deal.order.promo_discount or 0)
+    rows = []
+    for row in order_item_rows:
+        item = row['item']
+        rows.append(
+            {
+                'title': item.product.name,
+                'sku': row['sku'],
+                'quantity': item.quantity,
+                'configuration': item.resolved_variant_name,
+                'unit_price': item.unit_price,
+                'subtotal': item.subtotal,
+                'discount_total': item.discount_total,
+            }
+        )
+    return {
+        'title': deal.main_product_label() or 'Позиции не добавлены',
+        'positions_count': len(order_item_rows),
+        'total_quantity': sum(row['item'].quantity for row in order_item_rows),
+        'goods_total': deal.goods_total,
+        'discount_total': total_discount,
+        'delivery_total': deal.order.delivery_cost,
+        'grand_total': deal.grand_total,
+        'internal_margin': finance_deal.margin if finance_deal is not None else deal.expected_margin,
+        'margin_source': 'Финансовый кейс' if finance_deal is not None else 'Карточка сделки',
+        'rows': rows,
+    }
+
+
+def _deal_history_summary(deal, *, activities, timeline_entries):
+    latest_comment = next((activity for activity in activities if activity.event_type == 'comment.added'), None)
+    latest_status_change = next((activity for activity in activities if activity.event_type == 'case_status.changed'), None)
+    latest_deadline_change = next((activity for activity in activities if activity.event_type == 'deadline.changed'), None)
+    return {
+        'events_count': len(timeline_entries),
+        'comments_count': sum(1 for activity in activities if activity.event_type == 'comment.added'),
+        'status_changes_count': sum(1 for activity in activities if activity.event_type == 'case_status.changed'),
+        'latest_comment_at': latest_comment.created_at if latest_comment is not None else None,
+        'latest_status_change_at': latest_status_change.created_at if latest_status_change is not None else None,
+        'latest_deadline_change_at': latest_deadline_change.created_at if latest_deadline_change is not None else None,
+        'updated_at': deal.updated_at,
+    }
+
+
+def _deal_logistics_summary(deal, *, reservations, shipments, purchase_items, cargo_items, order_item_rows, supply_summary):
+    coverage = reservation_coverage_snapshot(deal.order)
+    latest_reservation = reservations[0] if reservations else None
+    latest_shipment = shipments[0] if shipments else None
+    latest_cargo_item = cargo_items[0] if cargo_items else None
+    latest_purchase_item = purchase_items[0] if purchase_items else None
+    tracking_number = getattr(latest_shipment, 'tracking_number', '') or deal.tracking_number
+    return {
+        'reservation_status': latest_reservation.get_status_display() if latest_reservation else 'Не создана',
+        'reservation_source': (
+            supply_summary['reserve_source_label']
+            or getattr(getattr(latest_reservation, 'source_warehouse', None), 'name', '')
+            or getattr(getattr(latest_reservation, 'source_cargo', None), 'cargo_number', '')
+            or 'Источник не определён'
+        ),
+        'warehouse_label': deal.stock_warehouse.name if deal.stock_warehouse else 'Склад не выбран',
+        'coverage_status': 'Полное покрытие' if coverage['is_complete'] else 'Нужно покрытие',
+        'coverage_detail': (
+            'Все строки заказа закрыты резервом или отгрузкой.'
+            if coverage['is_complete']
+            else f'Не покрыто строк: {len(coverage["missing_lines"])}.'
+        ),
+        'availability_rows': [
+            {
+                'title': row['item'].product.name,
+                'sku': row['sku'],
+                'quantity': row['item'].quantity,
+                'free_stock': row['free_stock'],
+                'coverage_label': row['coverage_label'],
+                'coverage_summary': row['coverage_summary'],
+            }
+            for row in order_item_rows
+        ],
+        'shipment_status': latest_shipment.get_status_display() if latest_shipment else 'Не создана',
+        'shipment_code': latest_shipment.code if latest_shipment else '',
+        'delivery_method_label': deal.get_delivery_method_display(),
+        'delivery_status_label': deal.get_delivery_status_display(),
+        'tracking_number': tracking_number,
+        'cargo_status': latest_cargo_item.cargo.get_status_display() if latest_cargo_item else 'Нет груза',
+        'cargo_code': latest_cargo_item.cargo.cargo_number if latest_cargo_item else '',
+        'earliest_eta': supply_summary['earliest_eta'],
+        'latest_eta': supply_summary['latest_eta'],
+        'purchase_status': latest_purchase_item.purchase.get_status_display() if latest_purchase_item else 'Нет закупки',
+        'purchase_code': latest_purchase_item.purchase.code if latest_purchase_item else '',
     }
 
 
@@ -4403,7 +5035,7 @@ def _deal_order_item_rows(order_items, *, deal, reservations, purchase_items, ca
                     'coverage_label': 'Ручная позиция',
                     'coverage_tone': 'neutral',
                     'position_status': 'Ручная',
-                    'position_status_detail': 'Для этой строки нет каталожного товара, поэтому бронь, склад и закупка не привязываются автоматически.',
+                    'position_status_detail': 'Для этой строки нет каталожного товара, поэтому бронь, склад и закупка не создаются автоматически.',
                     'position_status_tone': 'neutral',
                     'next_step': 'Проверить вручную',
                     'quick_actions': [],
@@ -4649,10 +5281,6 @@ def _deal_order_item_rows(order_items, *, deal, reservations, purchase_items, ca
 
 
 def _manager_client_queryset():
-    latest_order = (
-        Order.objects.filter(manager_client_links=OuterRef('pk'))
-        .order_by('-created_at', '-pk')
-    )
     latest_deal = (
         ManagerDeal.objects.filter(order__manager_client_links=OuterRef('pk'))
         .annotate(activity_sort=Coalesce('last_activity_at', 'deal_created_at'))
@@ -4669,18 +5297,15 @@ def _manager_client_queryset():
                 distinct=True,
             ),
             documents_count=Count('contract_documents', distinct=True),
-            latest_order_id=Subquery(latest_order.values('pk')[:1]),
-            latest_order_created_at=Subquery(latest_order.values('created_at')[:1], output_field=DateTimeField()),
+            latest_order_created_at=Max('orders__created_at'),
             latest_deal_activity_at=Max('orders__manager_deal__last_activity_at'),
             latest_reservation_updated_at=Max('reservations__updated_at'),
             latest_document_updated_at=Max('contract_documents__updated_at'),
             latest_deal_id=Subquery(latest_deal.values('pk')[:1]),
-            latest_deal_order_id=Subquery(latest_deal.values('order_id')[:1]),
             latest_buyer_type=Subquery(latest_deal.values('buyer_type')[:1]),
             latest_customer_source=Subquery(latest_deal.values('customer_source')[:1]),
             latest_responsible_manager_id=Subquery(latest_deal.values('responsible_manager_id')[:1]),
             latest_responsible_manager_name=Subquery(latest_deal.values('responsible_manager__username')[:1]),
-            latest_deal_status=Subquery(latest_deal.values('deal_status')[:1]),
             latest_deal_case_status=Subquery(latest_deal.values('case_status')[:1]),
             latest_deal_next_step_code=Subquery(latest_deal.values('next_step_code')[:1]),
             latest_deal_problem_flags=Subquery(latest_deal.values('problem_flags')[:1]),
@@ -4699,76 +5324,11 @@ def _manager_client_queryset():
     )
 
 
-def _manager_client_phone_href(phone):
-    normalized = ''.join(char for char in (phone or '').strip() if char.isdigit() or char == '+')
-    return f'tel:{normalized}' if normalized else ''
-
-
-def _manager_client_telegram_url(telegram_value):
-    value = (telegram_value or '').strip()
-    if not value:
-        return ''
-    if value.startswith(('http://', 'https://')):
-        return value
-    return f"https://t.me/{value.lstrip('@')}"
-
-
-def _manager_client_comment_entry(comment, *, actor, timestamp):
-    full_name = actor.get_full_name().strip() if hasattr(actor, 'get_full_name') else ''
-    actor_label = full_name or (actor.get_username() if hasattr(actor, 'get_username') else str(actor))
-    return f"[{timestamp.strftime('%d.%m.%Y %H:%M')}] {actor_label}\n{comment.strip()}"
-
-
-def _manager_portal_next_url(request, default):
-    candidate = (request.POST.get('next') or request.GET.get('next') or '').strip()
-    if candidate and url_has_allowed_host_and_scheme(
-        candidate,
-        allowed_hosts={request.get_host()},
-        require_https=request.is_secure(),
-    ):
-        return candidate
-    return default
-
-
-def _htmx_redirect_or_default(request, redirect_url):
-    if request.headers.get('HX-Request') == 'true':
-        response = HttpResponse(status=204)
-        response['HX-Redirect'] = redirect_url
-        return response
-    return redirect(redirect_url)
-
-
-def _latest_manager_deal_for_client(client):
-    return (
-        ManagerDeal.objects.filter(order__manager_client_links=client)
-        .annotate(activity_sort=Coalesce('last_activity_at', 'deal_created_at'))
-        .select_related('order', 'responsible_manager')
-        .order_by('-activity_sort', '-pk')
-        .first()
-    )
-
-
-def _decorate_manager_clients(clients, *, client_querystring=''):
+def _decorate_manager_clients(clients):
     buyer_type_labels = dict(ManagerDeal.BUYER_TYPE_CHOICES)
     source_labels = dict(ManagerDeal.CUSTOMER_SOURCE_CHOICES)
-    deal_status_labels = dict(ManagerDeal.DEAL_STATUS_CHOICES)
     case_status_labels = dict(ManagerDeal.CASE_STATUS_CHOICES)
-    client_status_labels = dict(ManagerClient.STATUS_CHOICES)
     for client in clients:
-        client.detail_url = reverse('manager_portal:client_detail', kwargs={'pk': client.pk})
-        client.select_url = reverse('manager_portal:client_list')
-        if client_querystring:
-            client.select_url = f'{client.select_url}?client={client.pk}&{client_querystring}'
-        else:
-            client.select_url = f'{client.select_url}?client={client.pk}'
-        client.deal_create_url = f"{reverse('manager_portal:deal_create')}?{urlencode({'client': client.pk})}"
-        client.quick_comment_url = reverse('manager_portal:client_quick_comment', kwargs={'pk': client.pk})
-        client.quick_assign_url = reverse('manager_portal:client_quick_assign', kwargs={'pk': client.pk})
-        client.phone_href = _manager_client_phone_href(client.phone)
-        client.phone_copy_value = (client.phone or '').strip()
-        client.telegram_url = _manager_client_telegram_url(client.telegram)
-        client.can_assign_responsible = bool(client.latest_deal_id)
-        client.semantic_status = manager_client_status(client)
         client.crm_buyer_type_label = buyer_type_labels.get(client.latest_buyer_type, 'Не указан')
         client.crm_source_label = source_labels.get(client.latest_customer_source, 'Не указан')
         client.crm_responsible_label = client.latest_responsible_manager_name or 'Не назначен'
@@ -4779,59 +5339,24 @@ def _decorate_manager_clients(clients, *, client_querystring=''):
             else 'Нет активного следующего шага'
         )
         client.crm_latest_deal_status_label = case_status_labels.get(client.latest_deal_case_status, '—')
-        if client.latest_deal_case_status == ManagerDeal.CASE_STATUS_CANCELLED:
-            latest_deal_tone = SEMANTIC_TONE_UNKNOWN
-        elif client.latest_deal_case_status in {ManagerDeal.CASE_STATUS_COMPLETED, ManagerDeal.CASE_STATUS_READY_TO_SHIP}:
-            latest_deal_tone = SEMANTIC_TONE_COMPLETE
-        elif client.latest_deal_case_status:
-            latest_deal_tone = SEMANTIC_TONE_ACTIVE
-        else:
-            latest_deal_tone = SEMANTIC_TONE_UNKNOWN
-        client.crm_latest_deal_status = build_semantic_status(client.crm_latest_deal_status_label, tone=latest_deal_tone)
         client.crm_latest_problem_labels = [
             ManagerDeal.PROBLEM_FLAG_LABELS.get(flag, flag)
             for flag in (client.latest_deal_problem_flags or [])
         ][:2]
-        if client.crm_latest_problem_labels:
-            risk_tones = [deal_problem_tone(flag) for flag in (client.latest_deal_problem_flags or [])]
-            risk_tone = SEMANTIC_TONE_CRITICAL if SEMANTIC_TONE_CRITICAL in risk_tones else SEMANTIC_TONE_ATTENTION
-            client.crm_latest_risk_summary = build_semantic_status(client.crm_latest_problem_labels[0], tone=risk_tone)
-        else:
-            client.crm_latest_risk_summary = build_semantic_status('Рисков нет', tone=SEMANTIC_TONE_COMPLETE)
-        client.list_client_type_label = client.crm_buyer_type_label
-        client.list_main_status_label = (
-            deal_status_labels.get(client.latest_deal_status)
-            or client_status_labels.get(client.status, '—')
-        )
-        if client.latest_order_id and client.latest_order_created_at:
-            order_date = timezone.localtime(client.latest_order_created_at).strftime('%d.%m.%Y')
-            client.list_last_order_label = f'Заказ #{client.latest_order_id} · {order_date}'
-        else:
-            client.list_last_order_label = 'Без заказов'
-        client.list_responsible_label = client.crm_responsible_label
-        client.list_next_action_label = (
-            ManagerDeal.next_step_label_for(client.latest_deal_next_step_code)
-            if client.latest_deal_next_step_code
-            else 'Нет действия'
-        )
-        list_risk_labels = [
-            ManagerDeal.PROBLEM_FLAG_LABELS.get(flag, flag)
-            for flag in (client.latest_deal_problem_flags or [])
-        ][:1]
-        client.list_risk_label = list_risk_labels[0] if list_risk_labels else '—'
-        client.list_has_risk = bool(list_risk_labels)
-        summary_tags = []
+        tags = []
         if client.user_id:
-            summary_tags.append('Аккаунт')
-        if client.comments:
-            summary_tags.append('Есть комментарий')
-        client.crm_summary_tags = summary_tags[:2]
-        client.crm_tags = client.crm_summary_tags
-        client.crm_directory_summary = (
-            f'Заказы: {client.orders_count} · '
-            f'Брони: {client.active_reservations_count} · '
-            f'Документы: {client.documents_count}'
-        )
+            tags.append('Аккаунт')
+        if client.latest_buyer_type:
+            tags.append(client.crm_buyer_type_label)
+        if client.latest_customer_source:
+            tags.append(client.crm_source_label)
+        if client.active_reservations_count:
+            tags.append(f'Активных броней {client.active_reservations_count}')
+        if client.documents_count:
+            tags.append(f'Документов {client.documents_count}')
+        elif client.comments:
+            tags.append('Есть комментарий')
+        client.crm_tags = tags[:4]
     return clients
 
 
@@ -4864,11 +5389,6 @@ def _decorate_highlighted_client_preview(client):
         if client.active_deal is not None
         else []
     )
-    if client.active_deal is not None:
-        active_deal_statuses = _deal_visible_statuses(client.active_deal)
-        client.active_deal_primary_status = active_deal_statuses['primary_status']
-        client.active_deal_secondary_status = active_deal_statuses['secondary_status']
-        client.active_deal_risk_summary = active_deal_statuses['risk_summary']
     client.active_deal_url = (
         reverse('manager_portal:deal_detail', kwargs={'pk': client.active_deal.pk})
         if client.active_deal is not None
@@ -4889,14 +5409,6 @@ def _decorate_highlighted_client_preview(client):
     )
     client.preview_reservations = preview_reservations
     client.preview_documents = preview_documents
-    client.preview_primary_action = _client_preview_primary_action(client)
-    client.preview_secondary_actions = _client_preview_secondary_actions(
-        client,
-        primary_action=client.preview_primary_action,
-    )
-    client.preview_finance = _client_preview_finance(client)
-    client.preview_last_activity = _client_preview_last_activity(client)
-    client.preview_documents_and_reservations = _client_preview_documents_and_reservations(client)
     return client
 
 
@@ -5125,18 +5637,6 @@ def deal_list_view(request):
         active_queue_chip = ''
     else:
         active_queue_chip = 'all'
-    primary_deal_kpis = _deal_overview_metrics(
-        active_scope,
-        current_case_status=(request.GET.get('case_status') or '').strip(),
-    )
-    active_filter_chips = _deal_active_filter_chips(request.GET, filter_form)
-    deal_kpi_panel_open = bool((request.GET.get('case_status') or '').strip())
-    page_header_stats = _deal_page_header_stats(
-        current_view_mode=current_view_mode,
-        total_deals=total_deals,
-        deals_page=deals_page,
-        deal_kanban_columns=deal_kanban_columns,
-    )
     return _render(
         request,
         'manager_portal/deals.html',
@@ -5152,15 +5652,10 @@ def deal_list_view(request):
         save_view_form=save_view_form,
         saved_views=_deal_saved_views(request.user),
         total_deals=total_deals,
-        deal_kpis=primary_deal_kpis,
-        primary_deal_kpis=primary_deal_kpis,
+        deal_kpis=_deal_overview_metrics(active_scope),
         queue_chips=queue_chips,
         signal_views=_deal_signal_views(active_scope),
         active_queue_chip=active_queue_chip,
-        active_filter_chips=active_filter_chips,
-        deal_kpi_panel_open=deal_kpi_panel_open,
-        page_header_stats=page_header_stats,
-        deal_page_context_stats=_deal_page_context_stats(),
         current_view_mode=current_view_mode,
         current_scope=current_scope,
         list_view_query_string=_deal_query_string_with_updates(request.GET, page=None, view=None, scope=None, kanban_scope=None),
@@ -5184,8 +5679,6 @@ def deal_list_view(request):
         problem_views_expanded=problem_views_expanded,
         current_query_string=request.GET.urlencode(),
         current_filter_query_string=current_filter_query_string,
-        clear_active_filters_query_string=_deal_query_string_without_filters(request.GET, include_queue=False),
-        clear_all_filters_query_string=_deal_query_string_without_filters(request.GET, include_queue=True),
     )
 
 
@@ -5230,7 +5723,7 @@ def deal_move_view(request, pk):
 
 @staff_required
 def deal_search_view(request):
-    messages.info(request, 'Глобальный поиск открывается по / или Cmd+K.')
+    messages.info(request, 'Глобальный поиск перенесен в верхнюю панель shell. Используйте / или Cmd+K.')
     query = (request.GET.get('q') or '').strip()
     if not query:
         return redirect('manager_portal:deal_list')
@@ -5258,6 +5751,7 @@ def deal_detail_view(request, pk):
         .prefetch_related(
             'order__items__product',
             'order__items__variant',
+            'order__payments',
             'trade_in_items',
             'contract_documents__template',
             'contract_documents__responsible_manager',
@@ -5274,6 +5768,7 @@ def deal_detail_view(request, pk):
     deal_tab_initial = request.GET.get('tab') or 'overview'
     if deal_tab_initial not in {'overview', 'supply', 'documents', 'finance', 'history'}:
         deal_tab_initial = 'overview'
+    is_just_created = request.GET.get('created') == '1'
     management_form = DealManagementForm(deal=deal)
     comment_form = DealCommentForm()
     comment_widget_class = comment_form.fields['comment'].widget.attrs.get('class', '')
@@ -5425,6 +5920,10 @@ def deal_detail_view(request, pk):
     activities = list(deal.activities.select_related('actor').order_by('-created_at', '-id')[:30])
     timeline_entries = _deal_timeline_entries(activities)
     next_step_panel = _deal_next_step_panel(deal, finance_deal=finance_deal, deal_client=deal_client)
+    payments = list(deal.order.payments.all())
+    latest_payment = next((payment for payment in payments if payment.status == Payment.STATUS_FINISHED), None)
+    if latest_payment is None and payments:
+        latest_payment = payments[0]
     workflow_strip = _deal_workflow_strip(
         deal,
         documents=documents,
@@ -5432,6 +5931,14 @@ def deal_detail_view(request, pk):
         finance_deal=finance_deal,
         purchase_items=purchase_items,
         cargo_items=cargo_items,
+    )
+    order_item_rows = _deal_order_item_rows(
+        list(deal.order.items.select_related('product', 'variant').all()),
+        deal=deal,
+        reservations=reservations,
+        purchase_items=purchase_items,
+        cargo_items=cargo_items,
+        shipments=shipments,
     )
     blockers = _deal_blockers(
         deal,
@@ -5442,6 +5949,33 @@ def deal_detail_view(request, pk):
         purchase_items=purchase_items,
         cargo_items=cargo_items,
     )
+    guided_flow = _deal_guided_flow(
+        deal,
+        next_step_panel=next_step_panel,
+        workflow_strip=workflow_strip,
+        blockers=blockers,
+        activities=activities,
+        reservations=reservations,
+        shipments=shipments,
+        documents=documents,
+        finance_deal=finance_deal,
+        supply_summary=supply_summary,
+    )
+    guided_flow['is_just_created'] = is_just_created
+    if is_just_created:
+        guided_flow['headline'] = 'Сделка создана'
+        guided_flow['summary'] = (
+            'Система уже собрала ближайший маршрут: начните с главного шага, затем проверьте обеспечение и смежные процессы.'
+        )
+    client_comment = (deal_client.comments if deal_client else '') or deal.customer_request_comment or deal.order.comment
+    finance_summary = _deal_finance_summary(
+        deal,
+        finance_deal=finance_deal,
+        finance_expenses=finance_expenses,
+        finance_payouts=finance_payouts,
+        participant_summary=participant_summary,
+        latest_payment=latest_payment,
+    )
     return _render(
         request,
         'manager_portal/deal_detail.html',
@@ -5449,6 +5983,7 @@ def deal_detail_view(request, pk):
         deal_tab_initial=deal_tab_initial,
         deal=deal,
         next_step_panel=next_step_panel,
+        guided_flow=guided_flow,
         operation_hub=_deal_operation_hub(
             deal,
             next_step_panel=next_step_panel,
@@ -5457,29 +5992,44 @@ def deal_detail_view(request, pk):
             activities=activities,
             finance_deal=finance_deal,
         ),
-        deal_client=deal_client,
-        client_comment=(deal_client.comments if deal_client else '') or deal.customer_request_comment or deal.order.comment,
-        management_form=management_form,
-        comment_form=comment_form,
-        order_items=_deal_order_item_rows(
-            list(deal.order.items.select_related('product', 'variant').all()),
-            deal=deal,
+        deal_header=_deal_header_summary(
+            deal,
+            deal_client=deal_client,
+            blockers=blockers,
+            next_step_panel=next_step_panel,
+            order_item_rows=order_item_rows,
             reservations=reservations,
+            shipments=shipments,
+            finance_deal=finance_deal,
+        ),
+        deal_client=deal_client,
+        client_comment=client_comment,
+        operational_summary=_deal_operational_summary(deal, next_step_panel=next_step_panel, blockers=blockers),
+        client_summary=_deal_client_summary(
+            deal,
+            deal_client=deal_client,
+            activities=activities,
+            client_comment=client_comment,
+        ),
+        subject_summary=_deal_subject_summary(deal, order_item_rows=order_item_rows, finance_deal=finance_deal),
+        logistics_summary=_deal_logistics_summary(
+            deal,
+            reservations=reservations,
+            shipments=shipments,
             purchase_items=purchase_items,
             cargo_items=cargo_items,
-            shipments=shipments,
+            order_item_rows=order_item_rows,
+            supply_summary=supply_summary,
         ),
+        management_form=management_form,
+        comment_form=comment_form,
+        order_items=order_item_rows,
         purchase_items=purchase_items,
         cargo_items=cargo_items,
         supply_summary=supply_summary,
         documents_summary=_deal_documents_summary(deal, documents=documents),
-        finance_summary=_deal_finance_summary(
-            deal,
-            finance_deal=finance_deal,
-            finance_expenses=finance_expenses,
-            finance_payouts=finance_payouts,
-            participant_summary=participant_summary,
-        ),
+        finance_summary=finance_summary,
+        finance_summary_compact=_deal_finance_summary_compact(finance_summary),
         linked_entities_strip=_deal_linked_entities_strip(
             deal,
             documents=documents,
@@ -5509,6 +6059,7 @@ def deal_detail_view(request, pk):
         activities=activities,
         timeline_entries=timeline_entries,
         timeline_preview=timeline_entries[:5],
+        history_summary=_deal_history_summary(deal, activities=activities, timeline_entries=timeline_entries),
         latest_event_summary=_deal_latest_event_summary(activities),
         management_summary=_deal_management_summary(deal, activities),
         customer_label=_deal_customer_label(deal),
@@ -5609,12 +6160,9 @@ def order_state_update_view(request, pk):
                     tracking_number=(form.cleaned_data.get('tracking_number') or '').strip(),
                 )
                 manager_deal.deal_status = form.cleaned_data['deal_status']
+                manager_deal.prepayment_amount = form.cleaned_data.get('paid_amount') or Decimal('0')
                 manager_deal.tracking_number = (form.cleaned_data.get('tracking_number') or '').strip()
-                manager_deal.save(update_fields=['deal_status', 'tracking_number', 'updated_at'])
-                set_manager_deal_paid_amount(
-                    manager_deal,
-                    paid_amount=form.cleaned_data.get('paid_amount') or Decimal('0'),
-                )
+                manager_deal.save(update_fields=['deal_status', 'prepayment_amount', 'tracking_number', 'updated_at'])
                 update_order_state(
                     order,
                     status=ManagerDeal.order_status_for_deal_status(manager_deal.deal_status),
@@ -5634,7 +6182,6 @@ def order_state_update_view(request, pk):
 def client_list_view(request):
     clients = _manager_client_queryset()
     filter_form = ClientFilterForm(request.GET or None)
-    client_filters_count = 0
     q = ''
     if filter_form.is_valid():
         q = (filter_form.cleaned_data.get('q') or '').strip()
@@ -5660,26 +6207,15 @@ def client_list_view(request):
         has_reservations = filter_form.cleaned_data.get('has_reservations')
         if has_reservations != '':
             clients = clients.filter(reservations_count__gt=0 if has_reservations else 0) if has_reservations else clients.filter(reservations_count=0)
-        client_filters_count = sum(
-            1
-            for value in (
-                q,
-                filter_form.cleaned_data.get('status'),
-                filter_form.cleaned_data.get('buyer_type'),
-                filter_form.cleaned_data.get('customer_source'),
-                filter_form.cleaned_data.get('responsible_manager'),
-            )
-            if value
-        )
-        client_filters_count += sum(
-            1
-            for field_name in ('has_orders', 'has_reservations')
-            if filter_form.cleaned_data.get(field_name) != ''
-        )
-    query_params_without_client = request.GET.copy()
-    query_params_without_client.pop('client', None)
-    client_querystring = query_params_without_client.urlencode()
-    clients = _decorate_manager_clients(list(clients), client_querystring=client_querystring)
+    if request.method == 'POST':
+        form = ManagerClientForm(request.POST)
+        if form.is_valid():
+            client = form.save()
+            messages.success(request, 'Клиент создан.')
+            return redirect('manager_portal:client_detail', pk=client.pk)
+    else:
+        form = ManagerClientForm()
+    clients = _decorate_manager_clients(list(clients))
     highlighted_client = None
     selected_client_id = request.GET.get('client')
     if selected_client_id and selected_client_id.isdigit():
@@ -5736,6 +6272,8 @@ def client_list_view(request):
         ):
             setattr(highlighted_client_detail, attr_name, getattr(highlighted_client, attr_name))
         highlighted_client_detail = _decorate_highlighted_client_preview(highlighted_client_detail)
+    query_params_without_client = request.GET.copy()
+    query_params_without_client.pop('client', None)
     client_metrics = {
         'total': len(clients),
         'active': sum(1 for client in clients if client.status == ManagerClient.STATUS_ACTIVE),
@@ -5749,35 +6287,12 @@ def client_list_view(request):
         'manager_portal/clients.html',
         active_tab='clients',
         clients=clients,
+        form=form,
         query=q,
         filter_form=filter_form,
         highlighted_client=highlighted_client_detail,
         client_metrics=client_metrics,
-        client_querystring=client_querystring,
-        client_filters_count=client_filters_count,
-    )
-
-
-@staff_required
-def client_create_view(request):
-    if request.method == 'POST':
-        form = ManagerClientForm(request.POST)
-        if form.is_valid():
-            client = form.save()
-            messages.success(request, 'Клиент создан.')
-            return redirect('manager_portal:client_detail', pk=client.pk)
-    else:
-        form = ManagerClientForm()
-    return _render_registry_create_page(
-        request,
-        active_tab='clients',
-        form=form,
-        form_sections=_build_client_create_sections(form),
-        page_kicker='Клиенты',
-        page_title='Новый клиент',
-        page_description='Создайте карточку клиента на отдельной странице, без выдвижной панели.',
-        back_url=reverse('manager_portal:client_list'),
-        submit_label='Создать клиента',
+        client_querystring=query_params_without_client.urlencode(),
     )
 
 
@@ -5805,79 +6320,6 @@ def client_detail_view(request, pk):
 
 
 @staff_required
-def client_quick_comment_view(request, pk):
-    client = get_object_or_404(ManagerClient, pk=pk)
-    next_url = _manager_portal_next_url(
-        request,
-        f"{reverse('manager_portal:client_list')}?{urlencode({'client': client.pk})}",
-    )
-    if request.method == 'POST':
-        form = ManagerClientQuickCommentForm(request.POST)
-        if form.is_valid():
-            entry = _manager_client_comment_entry(
-                form.cleaned_data['comment'],
-                actor=request.user,
-                timestamp=manager_portal_now(),
-            )
-            existing_comment = (client.comments or '').strip()
-            client.comments = f'{entry}\n\n---\n\n{existing_comment}' if existing_comment else entry
-            client.save(update_fields=['comments', 'updated_at'])
-            messages.success(request, 'Комментарий клиента добавлен.')
-            return _htmx_redirect_or_default(request, next_url)
-    else:
-        form = ManagerClientQuickCommentForm()
-    return render(
-        request,
-        'manager_portal/_client_quick_comment_drawer.html',
-        {
-            'client': client,
-            'form': form,
-            'next_url': next_url,
-        },
-    )
-
-
-@staff_required
-def client_quick_assign_view(request, pk):
-    client = get_object_or_404(ManagerClient, pk=pk)
-    latest_deal = _latest_manager_deal_for_client(client)
-    next_url = _manager_portal_next_url(
-        request,
-        f"{reverse('manager_portal:client_list')}?{urlencode({'client': client.pk})}",
-    )
-    if request.method == 'POST':
-        if latest_deal is None:
-            messages.error(request, 'Назначить ответственного можно только для клиента с активной сделкой.')
-            return _htmx_redirect_or_default(request, next_url)
-        form = ManagerClientQuickAssignForm(request.POST)
-        if form.is_valid():
-            apply_deal_assignment(
-                latest_deal,
-                responsible_manager=form.cleaned_data['responsible_manager'],
-                actor=request.user,
-            )
-            messages.success(request, f'Ответственный для сделки #{latest_deal.order_id} обновлен.')
-            return _htmx_redirect_or_default(request, next_url)
-    else:
-        form = ManagerClientQuickAssignForm(
-            initial={
-                'responsible_manager': latest_deal.responsible_manager_id if latest_deal is not None else None,
-            }
-        )
-    return render(
-        request,
-        'manager_portal/_client_quick_assign_drawer.html',
-        {
-            'client': client,
-            'form': form,
-            'latest_deal': latest_deal,
-            'next_url': next_url,
-            'deal_create_url': f"{reverse('manager_portal:deal_create')}?{urlencode({'client': client.pk})}",
-        },
-    )
-
-
-@staff_required
 def warehouse_list_view(request):
     def build_warehouse_row(warehouse):
         rows = inventory_snapshot_for_warehouse(warehouse)
@@ -5889,17 +6331,26 @@ def warehouse_list_view(request):
         )
         signals = []
         if inventory_problem_rows:
-            signals.append(build_semantic_status(f'{inventory_problem_rows} строк с отрицательным остатком', tone=SEMANTIC_TONE_CRITICAL))
+            signals.append({'label': f'{inventory_problem_rows} строк с отрицательным остатком', 'tone': 'danger'})
         if not warehouse.pickup_point_id:
-            signals.append(build_semantic_status('Нет связи с сайтом', tone=SEMANTIC_TONE_CRITICAL))
+            signals.append({'label': 'Нет связи с сайтом', 'tone': 'danger'})
         elif warehouse.public_stock_synced_at is None:
-            signals.append(build_semantic_status('Остаток на сайте еще не синхронизирован', tone=SEMANTIC_TONE_ATTENTION))
-        sync_status = build_semantic_status('Без связи', tone=SEMANTIC_TONE_CRITICAL)
+            signals.append({'label': 'Остаток на сайте еще не синхронизирован', 'tone': 'warning'})
+        sync_status = {
+            'label': 'Без связи',
+            'class_name': 'manager-status-danger',
+        }
         if warehouse.pickup_point_id:
             if warehouse.public_stock_synced_at:
-                sync_status = build_semantic_status('Синхронизирован', tone=SEMANTIC_TONE_COMPLETE)
+                sync_status = {
+                    'label': 'Синхронизирован',
+                    'class_name': 'manager-status-positive',
+                }
             else:
-                sync_status = build_semantic_status('Не синхронизирован', tone=SEMANTIC_TONE_ATTENTION)
+                sync_status = {
+                    'label': 'Не синхронизирован',
+                    'class_name': 'manager-status-danger',
+                }
         address_missing = not (warehouse.address or '').strip()
         inbound = sum(row['inbound'] for row in rows)
         detail_url = reverse('manager_portal:warehouse_detail', kwargs={'pk': warehouse.pk})
@@ -5920,10 +6371,8 @@ def warehouse_list_view(request):
             'signals': signals,
             'has_signals': bool(signals),
             'primary_signal': signals[0] if signals else None,
-            'semantic_status': build_semantic_status(
-                'Активен' if warehouse.is_active else 'Неактивен',
-                tone=SEMANTIC_TONE_ACTIVE if warehouse.is_active else SEMANTIC_TONE_UNKNOWN,
-            ),
+            'status_label': 'Активен' if warehouse.is_active else 'Неактивен',
+            'status_class': 'manager-status-positive' if warehouse.is_active else '',
             'is_unlinked': not warehouse.pickup_point_id,
             'address_missing': address_missing,
             'has_inbound': inbound > 0,
@@ -5931,26 +6380,15 @@ def warehouse_list_view(request):
             'site_connection_value': pickup_point_label,
             'sync_status': sync_status,
             'pickup_point_admin_url': pickup_point_admin_url,
-            'inventory_url': _inventory_url(warehouse=warehouse),
-            'inventory_receipt_url': f"{reverse('manager_portal:inventory_receipt')}?{urlencode({'warehouse': warehouse.pk})}",
+            'inventory_url': f"{reverse('manager_portal:inventory')}?{urlencode({'warehouse': warehouse.pk})}",
+            'inventory_receipt_url': f"{reverse('manager_portal:inventory')}?{urlencode({'warehouse': warehouse.pk, 'open_receipt': 1})}",
             'movements_url': f'{detail_url}#warehouse-movements',
         }
 
-    def filter_row(
-        row,
-        *,
-        only_problematic=False,
-        only_unlinked=False,
-        only_missing_address=False,
-        has_inbound=False,
-        has_signals=False,
-        only_active=False,
-    ):
+    def filter_row(row, *, only_problematic=False, only_unlinked=False, has_inbound=False, has_signals=False, only_active=False):
         if only_problematic and not row['has_critical_signal']:
             return False
         if only_unlinked and not row['is_unlinked']:
-            return False
-        if only_missing_address and not row['address_missing']:
             return False
         if has_inbound and not row['has_inbound']:
             return False
@@ -5978,7 +6416,6 @@ def warehouse_list_view(request):
     quick_filter_values = {
         'only_problematic': False,
         'only_unlinked': False,
-        'only_missing_address': False,
         'has_inbound': False,
         'has_signals': False,
         'only_active': False,
@@ -5998,6 +6435,14 @@ def warehouse_list_view(request):
         elif public_link == 'unlinked':
             warehouses = warehouses.filter(pickup_point__isnull=True)
         quick_filter_values = {key: bool(filter_form.cleaned_data.get(key)) for key in quick_filter_values}
+    if request.method == 'POST':
+        form = WarehouseForm(request.POST)
+        if form.is_valid():
+            warehouse = form.save()
+            messages.success(request, 'Склад создан.')
+            return redirect('manager_portal:warehouse_detail', pk=warehouse.pk)
+    else:
+        form = WarehouseForm()
     warehouse_rows_all = [build_warehouse_row(warehouse) for warehouse in warehouses]
     warehouse_rows = [
         row
@@ -6010,47 +6455,6 @@ def warehouse_list_view(request):
         'critical_signal_count': sum(1 for row in warehouse_rows if row['has_critical_signal']),
         'missing_address_count': sum(1 for row in warehouse_rows if row['address_missing']),
     }
-    summary_badges = [
-        {
-            'key': 'all',
-            'label': 'в выдаче',
-            'count': warehouse_summary['total'],
-            'active': not any(quick_filter_values.values()),
-            'url': build_filter_url(
-                only_problematic=False,
-                only_unlinked=False,
-                only_missing_address=False,
-                has_inbound=False,
-                has_signals=False,
-                only_active=False,
-            ),
-            'status': build_semantic_status('В выдаче', tone=SEMANTIC_TONE_UNKNOWN),
-        },
-        {
-            'key': 'only_unlinked',
-            'label': 'без связи',
-            'count': warehouse_summary['unlinked_count'],
-            'active': quick_filter_values['only_unlinked'],
-            'url': build_filter_url(only_unlinked=not quick_filter_values['only_unlinked']),
-            'status': build_semantic_status('Без связи', tone=SEMANTIC_TONE_CRITICAL if warehouse_summary['unlinked_count'] else SEMANTIC_TONE_UNKNOWN),
-        },
-        {
-            'key': 'only_problematic',
-            'label': 'проблемных',
-            'count': warehouse_summary['critical_signal_count'],
-            'active': quick_filter_values['only_problematic'],
-            'url': build_filter_url(only_problematic=not quick_filter_values['only_problematic']),
-            'status': build_semantic_status('Проблемных', tone=SEMANTIC_TONE_CRITICAL if warehouse_summary['critical_signal_count'] else SEMANTIC_TONE_UNKNOWN),
-        },
-        {
-            'key': 'only_missing_address',
-            'label': 'без адреса',
-            'count': warehouse_summary['missing_address_count'],
-            'active': quick_filter_values['only_missing_address'],
-            'url': build_filter_url(only_missing_address=not quick_filter_values['only_missing_address']),
-            'status': build_semantic_status('Без адреса', tone=SEMANTIC_TONE_ATTENTION if warehouse_summary['missing_address_count'] else SEMANTIC_TONE_UNKNOWN),
-        },
-    ]
     quick_filters = [
         {
             'key': 'only_problematic',
@@ -6058,7 +6462,7 @@ def warehouse_list_view(request):
             'count': sum(1 for row in warehouse_rows_all if row['has_critical_signal']),
             'active': quick_filter_values['only_problematic'],
             'url': build_filter_url(only_problematic=not quick_filter_values['only_problematic']),
-            'tone': SEMANTIC_TONE_UNKNOWN,
+            'tone': 'danger',
         },
         {
             'key': 'only_unlinked',
@@ -6066,7 +6470,7 @@ def warehouse_list_view(request):
             'count': sum(1 for row in warehouse_rows_all if row['is_unlinked']),
             'active': quick_filter_values['only_unlinked'],
             'url': build_filter_url(only_unlinked=not quick_filter_values['only_unlinked']),
-            'tone': SEMANTIC_TONE_UNKNOWN,
+            'tone': 'danger',
         },
         {
             'key': 'has_signals',
@@ -6074,7 +6478,7 @@ def warehouse_list_view(request):
             'count': sum(1 for row in warehouse_rows_all if row['has_signals']),
             'active': quick_filter_values['has_signals'],
             'url': build_filter_url(has_signals=not quick_filter_values['has_signals']),
-            'tone': SEMANTIC_TONE_UNKNOWN,
+            'tone': 'warning',
         },
         {
             'key': 'only_active',
@@ -6082,7 +6486,7 @@ def warehouse_list_view(request):
             'count': sum(1 for row in warehouse_rows_all if row['instance'].is_active),
             'active': quick_filter_values['only_active'],
             'url': build_filter_url(only_active=not quick_filter_values['only_active']),
-            'tone': SEMANTIC_TONE_UNKNOWN,
+            'tone': 'success',
         },
     ]
     search_active = filter_form.is_valid() and bool(
@@ -6099,32 +6503,10 @@ def warehouse_list_view(request):
         active_tab='warehouses',
         warehouses=warehouse_rows,
         warehouse_summary=warehouse_summary,
-        summary_badges=summary_badges,
         quick_filters=quick_filters,
         filters_applied=filters_applied,
-        filter_form=filter_form,
-    )
-
-
-@staff_required
-def warehouse_create_view(request):
-    if request.method == 'POST':
-        form = WarehouseForm(request.POST)
-        if form.is_valid():
-            warehouse = form.save()
-            messages.success(request, 'Склад создан.')
-            return redirect('manager_portal:warehouse_detail', pk=warehouse.pk)
-    else:
-        form = WarehouseForm()
-    return _render_registry_create_page(
-        request,
-        active_tab='warehouses',
         form=form,
-        page_kicker='Склады',
-        page_title='Новый склад',
-        page_description='Создайте склад на полноценной странице и сразу перейдите в его карточку.',
-        back_url=reverse('manager_portal:warehouse_list'),
-        submit_label='Создать склад',
+        filter_form=filter_form,
     )
 
 
@@ -6162,19 +6544,14 @@ def inventory_view(request):
         warehouse = Warehouse.objects.filter(pk=int(warehouse_id)).first()
         if warehouse:
             rows = inventory_snapshot_for_warehouse(warehouse)
-    product_search = (request.GET.get('product_q') or '').strip()
-    if product_search:
-        product_search_term = product_search.lower()
-        rows = [row for row in rows if product_search_term in row['product_name'].lower()]
-    search = (request.GET.get('q') or '').strip()
+    search = (request.GET.get('q') or '').strip().lower()
     if search:
-        search_term = search.lower()
         rows = [
             row for row in rows
-            if search_term in row['product_name'].lower()
-            or search_term in row['warehouse_name'].lower()
-            or search_term in (row['variant_name'] or '').lower()
-            or search_term in (row['sku'] or '').lower()
+            if search in row['product_name'].lower()
+            or search in row['warehouse_name'].lower()
+            or search in (row['variant_name'] or '').lower()
+            or search in (row['sku'] or '').lower()
         ]
     selected_problem_filters = [
         filter_item['param']
@@ -6186,21 +6563,11 @@ def inventory_view(request):
         rows = [row for row in rows if any(code in row['problem_codes'] for code in selected_problem_filters)]
     elif only_problematic:
         rows = [row for row in rows if row['has_problem']]
-    inventory_advanced_filter_count = 0
-    if warehouse:
-        inventory_advanced_filter_count += 1
-    if search:
-        inventory_advanced_filter_count += 1
-    if selected_problem_filters:
-        inventory_advanced_filter_count += len(selected_problem_filters)
-    elif only_problematic:
-        inventory_advanced_filter_count += 1
     enrich_inventory_rows(rows)
     selected_business_view = (request.GET.get('business_view') or '').strip()
     business_views = []
     base_query_params = request.GET.copy()
     base_query_params.pop('business_view', None)
-    base_query_params.pop('export', None)
     business_views.append(
         {
             'code': '',
@@ -6238,11 +6605,6 @@ def inventory_view(request):
             row['variant_name'],
         ),
     )
-    export_format = (request.GET.get('export') or '').strip().lower()
-    if export_format == 'csv':
-        return _inventory_export_csv_response(rows)
-    if export_format == 'excel':
-        return _inventory_export_excel_response(rows)
     summary = inventory_summary(rows)
     affected_deal_ids = {
         linked['deal'].pk
@@ -6250,147 +6612,50 @@ def inventory_view(request):
         for linked in (row.get('linked_deals') or [])
     }
     business_view_map = {item['code']: item for item in business_views if item['code']}
+    receipt_form = InventoryReceiptForm(initial={'warehouse': warehouse} if warehouse else None)
     return _render(
         request,
         'manager_portal/inventory.html',
         active_tab='inventory',
         inventory_rows=rows,
         inventory_summary=summary,
+        receipt_form=receipt_form,
         selected_warehouse=warehouse,
         warehouse_options=Warehouse.objects.order_by('name'),
         only_problematic=only_problematic,
         problem_filters=INVENTORY_PROBLEM_FILTERS,
         selected_problem_filters=selected_problem_filters,
-        inventory_advanced_filter_count=inventory_advanced_filter_count,
-        inventory_filters_open=inventory_advanced_filter_count > 0,
-        inventory_problem_filters_open=bool(selected_problem_filters),
-        product_search=product_search,
         search=search,
         selected_business_view=selected_business_view,
         business_views=business_views,
         deal_risk_view=business_view_map.get(INVENTORY_BUSINESS_VIEW_DEAL_RISK),
         replenishment_view=business_view_map.get(INVENTORY_BUSINESS_VIEW_REPLENISHMENT),
         affected_deal_count=len(affected_deal_ids),
+        open_receipt_drawer=request.GET.get('open_receipt') == '1',
     )
 
 
 @staff_required
 def inventory_receipt_view(request):
-    selected_warehouse = None
-    if request.method == 'POST':
-        form = InventoryReceiptForm(request.POST)
-        if form.is_valid():
-            selected_warehouse = form.cleaned_data['warehouse']
-            receipt_inventory(
-                warehouse=selected_warehouse,
-                product=form.cleaned_data['product'],
-                variant=form.cleaned_data['variant'],
-                quantity=form.cleaned_data['quantity'],
-                author=request.user,
-                comment=form.cleaned_data['comment'],
-            )
-            messages.success(request, 'Приход записан.')
-            return redirect(_inventory_url(warehouse=selected_warehouse))
-        warehouse_id = (request.POST.get('warehouse') or '').strip()
+    form = InventoryReceiptForm(request.POST)
+    if form.is_valid():
+        receipt_inventory(
+            warehouse=form.cleaned_data['warehouse'],
+            product=form.cleaned_data['product'],
+            variant=form.cleaned_data['variant'],
+            quantity=form.cleaned_data['quantity'],
+            author=request.user,
+            comment=form.cleaned_data['comment'],
+        )
+        messages.success(request, 'Приход записан.')
     else:
-        warehouse_id = (request.GET.get('warehouse') or '').strip()
-        if warehouse_id.isdigit():
-            selected_warehouse = Warehouse.objects.filter(pk=int(warehouse_id)).first()
-        form = InventoryReceiptForm(initial={'warehouse': selected_warehouse} if selected_warehouse else None)
-    if selected_warehouse is None and warehouse_id.isdigit():
-        selected_warehouse = Warehouse.objects.filter(pk=int(warehouse_id)).first()
-    if request.method == 'POST' and form.errors:
         messages.error(request, 'Не удалось записать приход.')
-    page_pills = [f'Склад: {selected_warehouse.name}'] if selected_warehouse is not None else []
-    return _render_registry_create_page(
-        request,
-        active_tab='inventory',
-        form=form,
-        page_kicker='Остатки',
-        page_title='Ручной приход',
-        page_description='Запишите приход на отдельной странице, без боковой панели.',
-        back_url=_inventory_url(warehouse=selected_warehouse),
-        submit_label='Записать приход',
-        page_pills=page_pills,
-    )
-
-
-def _inventory_export_rows(rows):
-    export_rows = []
-    for row in rows:
-        export_rows.append(
-            {
-                'warehouse_name': row['warehouse_name'],
-                'product_name': row['product_name'],
-                'variant_name': row['variant_name'] or '',
-                'sku': row['sku'] or '',
-                'row_status_label': row['row_status']['label'],
-                'on_hand': int(row['on_hand'] or 0),
-                'reserved_on_hand': int(row['reserved_on_hand'] or 0),
-                'available': int(row['available'] or 0),
-                'min_stock': int(row['min_stock'] or 0),
-                'inbound': int(row['inbound'] or 0),
-                'inbound_available': int(row['inbound_available'] or 0),
-                'promise_capacity': int(row['promise_capacity'] or 0),
-                'public_sync_status_label': row['public_sync_status_label'],
-                'public_published_qty': '' if row['public_published_qty'] is None else int(row['public_published_qty']),
-                'public_expected_qty': int(row['public_expected_qty'] or 0),
-                'problem_labels': ', '.join(problem['label'] for problem in row.get('problem_types') or []),
-            }
-        )
-    return export_rows
-
-
-def _inventory_export_filename(extension):
-    timestamp = manager_portal_now().strftime('%Y%m%d-%H%M')
-    return f'inventory-{timestamp}.{extension}'
-
-
-def _inventory_export_csv_response(rows):
-    export_rows = _inventory_export_rows(rows)
-    response = HttpResponse(content_type='text/csv; charset=utf-8')
-    response['Content-Disposition'] = f'attachment; filename="{_inventory_export_filename("csv")}"'
-    response.write('\ufeff')
-    writer = csv.writer(response)
-    writer.writerow([header for _, header in INVENTORY_EXPORT_COLUMNS])
-    for row in export_rows:
-        writer.writerow([row[key] for key, _ in INVENTORY_EXPORT_COLUMNS])
-    return response
-
-
-def _inventory_export_excel_response(rows):
-    export_rows = _inventory_export_rows(rows)
-    workbook = Workbook()
-    worksheet = workbook.active
-    worksheet.title = 'Inventory'
-    worksheet.freeze_panes = 'A2'
-    headers = [header for _, header in INVENTORY_EXPORT_COLUMNS]
-    worksheet.append(headers)
-    for cell in worksheet[1]:
-        cell.font = Font(bold=True)
-    for row in export_rows:
-        worksheet.append([row[key] for key, _ in INVENTORY_EXPORT_COLUMNS])
-    worksheet.auto_filter.ref = f'A1:{get_column_letter(len(headers))}{len(export_rows) + 1}'
-    for index, (key, header) in enumerate(INVENTORY_EXPORT_COLUMNS, start=1):
-        max_width = max(
-            [len(header), *[len(str(row[key])) for row in export_rows]],
-            default=len(header),
-        )
-        worksheet.column_dimensions[get_column_letter(index)].width = min(max_width + 2, 40)
-    buffer = BytesIO()
-    workbook.save(buffer)
-    response = HttpResponse(
-        buffer.getvalue(),
-        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    )
-    response['Content-Disposition'] = f'attachment; filename="{_inventory_export_filename("xlsx")}"'
-    return response
+    return redirect('manager_portal:inventory')
 
 
 @staff_required
 def purchase_list_view(request):
     purchases = Purchase.objects.prefetch_related('items').order_by('-date', '-id')
-    has_purchase_records = purchases.exists()
     filter_form = PurchaseFilterForm(request.GET or None)
     if filter_form.is_valid():
         q = (filter_form.cleaned_data.get('q') or '').strip()
@@ -6409,29 +6674,6 @@ def purchase_list_view(request):
             purchases = purchases.filter(date__gte=filter_form.cleaned_data['date_from'])
         if filter_form.cleaned_data.get('date_to'):
             purchases = purchases.filter(date__lte=filter_form.cleaned_data['date_to'])
-    filter_context = _build_list_filter_context(
-        request.GET,
-        filter_form,
-        base_url=reverse('manager_portal:purchase_list'),
-    )
-    list_ui_state = _registry_list_ui_state(
-        has_records=has_purchase_records,
-        has_filter_input=_list_filter_fields_present(request.GET, filter_form.fields),
-        active_filter_count=filter_context['active_filter_count'],
-    )
-    return _render(
-        request,
-        'manager_portal/purchases.html',
-        active_tab='purchases',
-        purchases=purchases,
-        filter_form=filter_form,
-        **filter_context,
-        **list_ui_state,
-    )
-
-
-@staff_required
-def purchase_create_view(request):
     if request.method == 'POST':
         form = PurchaseForm(request.POST)
         if form.is_valid():
@@ -6440,15 +6682,13 @@ def purchase_create_view(request):
             return redirect('manager_portal:purchase_detail', pk=purchase.pk)
     else:
         form = PurchaseForm(initial={'date': timezone.localdate()})
-    return _render_registry_create_page(
+    return _render(
         request,
+        'manager_portal/purchases.html',
         active_tab='purchases',
+        purchases=purchases,
         form=form,
-        page_kicker='Закупки',
-        page_title='Новая закупка',
-        page_description='Создайте закупку на отдельной странице и сразу переходите к позициям и связанным грузам.',
-        back_url=reverse('manager_portal:purchase_list'),
-        submit_label='Создать закупку',
+        filter_form=filter_form,
     )
 
 
@@ -6494,7 +6734,6 @@ def purchase_add_item_view(request, pk):
 @staff_required
 def cargo_list_view(request):
     cargos = Cargo.objects.select_related('purchase', 'destination_warehouse').prefetch_related('items').order_by('-created_at')
-    has_cargo_records = cargos.exists()
     filter_form = CargoFilterForm(request.GET or None)
     if filter_form.is_valid():
         q = (filter_form.cleaned_data.get('q') or '').strip()
@@ -6506,49 +6745,16 @@ def cargo_list_view(request):
             )
         if filter_form.cleaned_data.get('status'):
             cargos = cargos.filter(status=filter_form.cleaned_data['status'])
-        if filter_form.cleaned_data.get('date_from'):
-            cargos = cargos.filter(eta__gte=filter_form.cleaned_data['date_from'])
-        if filter_form.cleaned_data.get('date_to'):
-            cargos = cargos.filter(eta__lte=filter_form.cleaned_data['date_to'])
         if filter_form.cleaned_data.get('destination_warehouse'):
             cargos = cargos.filter(destination_warehouse=filter_form.cleaned_data['destination_warehouse'])
         if filter_form.cleaned_data.get('overdue'):
             cargos = cargos.filter(eta__lt=timezone.localdate(), status__in=['in_transit', 'arrived_rf', 'delivery_rf', 'awaiting_receipt'])
         if filter_form.cleaned_data.get('has_reservations'):
             cargos = cargos.filter(cargo_reservations__isnull=False).distinct()
-    filter_context = _build_list_filter_context(
-        request.GET,
-        filter_form,
-        base_url=reverse('manager_portal:cargo_list'),
-    )
-    list_ui_state = _registry_list_ui_state(
-        has_records=has_cargo_records,
-        has_filter_input=_list_filter_fields_present(request.GET, filter_form.fields),
-        active_filter_count=filter_context['active_filter_count'],
-    )
-    return _render(
-        request,
-        'manager_portal/cargos.html',
-        active_tab='cargos',
-        cargos=cargos,
-        filter_form=filter_form,
-        overdue_count=cargos.filter(eta__lt=timezone.localdate(), status__in=['in_transit', 'arrived_rf', 'delivery_rf', 'awaiting_receipt']).count(),
-        **filter_context,
-        **list_ui_state,
-    )
-
-
-@staff_required
-def cargo_create_view(request):
     initial = {}
-    page_pills = []
-    create_from_purchase = (request.GET.get('createFromPurchase') or '').strip()
-    if create_from_purchase.isdigit():
-        purchase = Purchase.objects.filter(pk=int(create_from_purchase)).first()
-        if purchase is not None:
-            initial['purchase'] = purchase.pk
-            purchase_label = purchase.code or purchase.short_label or purchase.title or str(purchase.pk)
-            page_pills.append(f'Закупка: {purchase_label}')
+    create_from_purchase = request.GET.get('createFromPurchase')
+    if create_from_purchase and create_from_purchase.isdigit():
+        initial['purchase'] = create_from_purchase
     if request.method == 'POST':
         form = CargoForm(request.POST)
         if form.is_valid():
@@ -6557,16 +6763,14 @@ def cargo_create_view(request):
             return redirect('manager_portal:cargo_detail', pk=cargo.pk)
     else:
         form = CargoForm(initial=initial)
-    return _render_registry_create_page(
+    return _render(
         request,
+        'manager_portal/cargos.html',
         active_tab='cargos',
+        cargos=cargos,
         form=form,
-        page_kicker='Грузы',
-        page_title='Новый груз',
-        page_description='Оформите груз на отдельной странице и затем добавьте позиции, этапы и приемку.',
-        back_url=reverse('manager_portal:cargo_list'),
-        submit_label='Создать груз',
-        page_pills=page_pills,
+        filter_form=filter_form,
+        overdue_count=cargos.filter(eta__lt=timezone.localdate(), status__in=['in_transit', 'arrived_rf', 'delivery_rf', 'awaiting_receipt']).count(),
     )
 
 
@@ -6704,7 +6908,6 @@ def reservation_list_view(request):
         'source_cargo',
         'target_warehouse',
     ).prefetch_related('items__product', 'items__variant').order_by('-created_at')
-    has_reservation_records = reservations.exists()
     filter_form = ReservationFilterForm(request.GET or None)
     if filter_form.is_valid():
         q = (filter_form.cleaned_data.get('q') or '').strip()
@@ -6717,10 +6920,6 @@ def reservation_list_view(request):
             )
         if filter_form.cleaned_data.get('status'):
             reservations = reservations.filter(status=filter_form.cleaned_data['status'])
-        if filter_form.cleaned_data.get('date_from'):
-            reservations = reservations.filter(created_at__date__gte=filter_form.cleaned_data['date_from'])
-        if filter_form.cleaned_data.get('date_to'):
-            reservations = reservations.filter(created_at__date__lte=filter_form.cleaned_data['date_to'])
         if filter_form.cleaned_data.get('source_type'):
             reservations = reservations.filter(source_type=filter_form.cleaned_data['source_type'])
         if filter_form.cleaned_data.get('source_warehouse'):
@@ -6729,54 +6928,10 @@ def reservation_list_view(request):
             reservations = reservations.filter(target_warehouse=filter_form.cleaned_data['target_warehouse'])
         if filter_form.cleaned_data.get('client'):
             reservations = reservations.filter(client=filter_form.cleaned_data['client'])
-    filter_context = _build_list_filter_context(
-        request.GET,
-        filter_form,
-        base_url=reverse('manager_portal:reservation_list'),
-    )
-    advanced_field_names = (
-        'date_from',
-        'date_to',
-        'source_type',
-        'source_warehouse',
-        'target_warehouse',
-        'client',
-    )
-    reservation_advanced_filter_count = _list_active_filter_count(filter_form, advanced_field_names)
-    reservation_advanced_filters_open = reservation_advanced_filter_count > 0 or _list_filter_fields_present(
-        request.GET,
-        advanced_field_names,
-    )
-    list_ui_state = _registry_list_ui_state(
-        has_records=has_reservation_records,
-        has_filter_input=_list_filter_fields_present(request.GET, filter_form.fields),
-        active_filter_count=filter_context['active_filter_count'],
-    )
-    return _render(
-        request,
-        'manager_portal/reservations.html',
-        active_tab='reservations',
-        reservations=reservations,
-        filter_form=filter_form,
-        reservation_primary_filter_fields=_list_bound_fields(filter_form, ('q', 'status')),
-        reservation_secondary_filter_fields=_list_bound_fields(filter_form, advanced_field_names),
-        reservation_advanced_filter_count=reservation_advanced_filter_count,
-        reservation_advanced_filters_open=reservation_advanced_filters_open,
-        **filter_context,
-        **list_ui_state,
-    )
-
-
-@staff_required
-def reservation_create_view(request):
     initial = {}
-    page_pills = []
-    create_from_client = (request.GET.get('createFromClient') or '').strip()
-    if create_from_client.isdigit():
-        client = ManagerClient.objects.filter(pk=int(create_from_client)).first()
-        if client is not None:
-            initial['client'] = client.pk
-            page_pills.append('Предзаполнение из карточки клиента')
+    create_from_client = request.GET.get('createFromClient')
+    if create_from_client and create_from_client.isdigit():
+        initial['client'] = create_from_client
     create_from_deal = _deal_request_target(request)
     reservation_prefill_note = ''
     reservation_prefill_items = []
@@ -6795,7 +6950,6 @@ def reservation_create_view(request):
             }
         )
         reservation_prefill_note = f'Новая бронь будет связана со сделкой #{create_from_deal.order_id}.'
-        page_pills.append(f'Сделка: {create_from_deal.code or create_from_deal.order_id}')
     if request.method == 'POST':
         form = ReservationForm(request.POST)
         if form.is_valid():
@@ -6840,22 +6994,17 @@ def reservation_create_view(request):
                 form.add_error(None, str(exc))
     else:
         form = ReservationForm(initial=initial)
-    hidden_fields = [{'name': 'createFromDeal', 'value': create_from_deal.pk}] if create_from_deal is not None else []
-    return _render_registry_create_page(
+    return _render(
         request,
+        'manager_portal/reservations.html',
         active_tab='reservations',
+        reservations=reservations,
         form=form,
-        page_kicker='Брони',
-        page_title='Новая бронь',
-        page_description='Создайте бронь на отдельной странице и при необходимости автоматически подтяните позиции из сделки.',
-        back_url=reverse('manager_portal:reservation_list'),
-        submit_label='Создать бронь',
-        page_pills=page_pills,
-        hidden_fields=hidden_fields,
-        prefill_note=reservation_prefill_note,
-        prefill_items=reservation_prefill_items if create_from_deal is not None else None,
-        prefill_items_title='Автоподстановка позиций',
-        prefill_empty_message='Все строки заказа уже покрыты резервами. Новая бронь создастся без автодобавления позиций.',
+        filter_form=filter_form,
+        reservation_prefill_deal=create_from_deal,
+        reservation_prefill_note=reservation_prefill_note,
+        reservation_prefill_items=reservation_prefill_items,
+        reservation_open_drawer=(request.GET.get('openDrawer') == 'reservation-create-drawer'),
     )
 
 
@@ -7005,7 +7154,6 @@ def shipment_detail_view(request, pk):
 def shipments_view(request):
     filter_form = ShipmentFilterForm(request.GET or None)
     rows = shipments_rows()
-    has_pending_shipment_rows = bool(rows)
     shipments = Shipment.objects.select_related(
         'order',
         'client',
@@ -7013,22 +7161,7 @@ def shipments_view(request):
         'source_warehouse',
         'target_warehouse',
     ).prefetch_related('items__product', 'items__variant').order_by('-created_at')
-    has_shipment_records = shipments.exists()
     if filter_form.is_valid():
-        date_from = filter_form.cleaned_data.get('date_from')
-        date_to = filter_form.cleaned_data.get('date_to')
-        if date_from:
-            rows = [
-                row for row in rows
-                if timezone.localtime(row['reservation'].created_at).date() >= date_from
-            ]
-            shipments = shipments.filter(created_at__date__gte=date_from)
-        if date_to:
-            rows = [
-                row for row in rows
-                if timezone.localtime(row['reservation'].created_at).date() <= date_to
-            ]
-            shipments = shipments.filter(created_at__date__lte=date_to)
         warehouse = filter_form.cleaned_data.get('warehouse')
         target_warehouse = filter_form.cleaned_data.get('target_warehouse')
         client = filter_form.cleaned_data.get('client')
@@ -7044,16 +7177,6 @@ def shipments_view(request):
         view_mode = filter_form.cleaned_data.get('view_mode') or 'reservation'
     else:
         view_mode = 'reservation'
-    filter_context = _build_list_filter_context(
-        request.GET,
-        filter_form,
-        base_url=reverse('manager_portal:shipments'),
-    )
-    list_ui_state = _registry_list_ui_state(
-        has_records=has_shipment_records or has_pending_shipment_rows,
-        has_filter_input=_list_filter_fields_present(request.GET, filter_form.fields),
-        active_filter_count=filter_context['active_filter_count'],
-    )
     return _render(
         request,
         'manager_portal/shipments.html',
@@ -7063,6 +7186,4 @@ def shipments_view(request):
         grouped_rows=shipments_grouped_by_reservation(rows),
         filter_form=filter_form,
         view_mode=view_mode,
-        **filter_context,
-        **list_ui_state,
     )

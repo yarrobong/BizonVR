@@ -122,12 +122,15 @@ MANAGER_PORTAL_DEFAULT_WORKFLOW_SETTINGS = {
     'timezone': 'Asia/Yekaterinburg',
     'business_hours': {'start': '10:00', 'end': '19:00'},
     'weekdays': [0, 1, 2, 3, 4],
+    'stale_after_hours': 48,
     'sla_map': {
         ManagerDeal.NEXT_STEP_NEEDS_CONFIRMATION: 'created_plus_30m',
+        ManagerDeal.NEXT_STEP_NEEDS_AVAILABILITY_CONFIRMATION: 'current_business_day_end',
         ManagerDeal.NEXT_STEP_NEEDS_PAYMENT: 'next_business_day_end',
         ManagerDeal.NEXT_STEP_NEEDS_RESERVATION: 'current_business_day_end',
         ManagerDeal.NEXT_STEP_NEEDS_PROCUREMENT: 'next_business_day_end',
         ManagerDeal.NEXT_STEP_NEEDS_DOCUMENTS: 'current_business_day_end',
+        ManagerDeal.NEXT_STEP_NEEDS_DOCUMENT_DISPATCH: 'current_business_day_end',
         ManagerDeal.NEXT_STEP_READY_TO_SHIP: 'current_business_day_end',
         ManagerDeal.NEXT_STEP_SHIPPED: None,
         ManagerDeal.NEXT_STEP_RETURN_TO_STOCK: 'current_business_day_end',
@@ -139,6 +142,11 @@ SYSTEM_DEAL_QUEUE_PRESETS = (
         'key': ManagerDeal.NEXT_STEP_NEEDS_CONFIRMATION,
         'label': 'Нужно подтвердить',
         'params': {'queue': ManagerDeal.NEXT_STEP_NEEDS_CONFIRMATION},
+    },
+    {
+        'key': ManagerDeal.NEXT_STEP_NEEDS_AVAILABILITY_CONFIRMATION,
+        'label': 'Ждут наличие',
+        'params': {'queue': ManagerDeal.NEXT_STEP_NEEDS_AVAILABILITY_CONFIRMATION},
     },
     {
         'key': ManagerDeal.NEXT_STEP_NEEDS_PAYMENT,
@@ -191,6 +199,10 @@ def manager_portal_workflow_settings():
 
 def manager_portal_zoneinfo():
     return ZoneInfo(manager_portal_workflow_settings()['timezone'])
+
+
+def manager_portal_stale_after():
+    return timedelta(hours=int(manager_portal_workflow_settings().get('stale_after_hours') or 48))
 
 
 def _portal_business_time(raw_value, *, fallback):
@@ -816,6 +828,69 @@ def _deal_stock_conflict(deal):
     return False
 
 
+def _deal_has_reachable_contacts(deal):
+    if deal.buyer_type == ManagerDeal.BUYER_BUSINESS:
+        contact_values = [
+            deal.business_phone,
+            deal.business_email,
+            deal.order.phone,
+            deal.order.email,
+        ]
+    else:
+        contact_values = [
+            deal.individual_phone,
+            deal.order.phone,
+            deal.order.email,
+            deal.individual_messenger,
+        ]
+    return any((value or '').strip() for value in contact_values)
+
+
+def _deal_latest_document(deal):
+    return _deal_linked_document(deal)
+
+
+def _deal_document_needs_preparation(deal):
+    if not _deal_requires_documents(deal):
+        return False
+    document = _deal_latest_document(deal)
+    if document is None:
+        return True
+    return bool(contract_document_missing_fields(document))
+
+
+def _deal_document_ready_for_dispatch(deal):
+    if not _deal_requires_documents(deal):
+        return False
+    document = _deal_latest_document(deal)
+    if document is None:
+        return False
+    if contract_document_missing_fields(document):
+        return False
+    return document.status not in {
+        ContractDocument.STATUS_SENT,
+        ContractDocument.STATUS_SIGNED,
+        ContractDocument.STATUS_PAID,
+    }
+
+
+def _deal_can_confirm_availability(deal):
+    if deal.deal_type != ManagerDeal.DEAL_SALE_FROM_STOCK:
+        return False
+    if deal.stock_warehouse_id or _deal_primary_reservation(deal):
+        return False
+    inventory_totals = _inventory_totals_map()
+    has_catalog_items = False
+    for item in deal.order.items.select_related('product', 'variant'):
+        if item.is_on_request or not item.product_id:
+            continue
+        has_catalog_items = True
+        available = inventory_totals.get((item.product_id, item.variant_id or 0), 0)
+        if available < item.quantity:
+            return False
+    return has_catalog_items
+
+
 def _compute_next_step_for_deal(deal, *, case_status, payment_state, fulfillment_status, delivery_status, documents_status):
     if deal.avito_return_pending:
         return ManagerDeal.NEXT_STEP_RETURN_TO_STOCK, 'По сделке оформлен возврат. Заберите товар у Avito и верните его на склад.'
@@ -825,31 +900,47 @@ def _compute_next_step_for_deal(deal, *, case_status, payment_state, fulfillment
         return ManagerDeal.NEXT_STEP_SHIPPED, 'Заказ уже отправлен и находится в доставке.'
     if case_status == ManagerDeal.CASE_STATUS_NEW or deal.order.status == Order.STATUS_NEW:
         return ManagerDeal.NEXT_STEP_NEEDS_CONFIRMATION, 'Новый заказ без подтверждения менеджером.'
-    if _deal_requires_documents(deal) and documents_status != ManagerDeal.DOCUMENTS_STATUS_SIGNED:
-        return ManagerDeal.NEXT_STEP_NEEDS_DOCUMENTS, 'Для заказа требуется договорный пакет.'
-    if payment_state in {ManagerDeal.PAYMENT_STATE_UNPAID, ManagerDeal.PAYMENT_STATE_PARTIAL}:
-        return ManagerDeal.NEXT_STEP_NEEDS_PAYMENT, 'Оплата не закрыта полностью.'
     if fulfillment_status == ManagerDeal.FULFILLMENT_STATUS_PROCUREMENT_REQUIRED:
         return ManagerDeal.NEXT_STEP_NEEDS_PROCUREMENT, 'Товара нет в доступном остатке, требуется закупка.'
+    if _deal_can_confirm_availability(deal):
+        return ManagerDeal.NEXT_STEP_NEEDS_AVAILABILITY_CONFIRMATION, 'Нужно подтвердить доступный склад и наличие до создания брони.'
+    if _deal_document_needs_preparation(deal):
+        return ManagerDeal.NEXT_STEP_NEEDS_DOCUMENTS, 'Для сделки нужен документ, но он еще не готов к отправке клиенту.'
+    if _deal_document_ready_for_dispatch(deal):
+        return ManagerDeal.NEXT_STEP_NEEDS_DOCUMENT_DISPATCH, 'Документы готовы. Отправьте клиенту договорный пакет.'
+    if payment_state in {ManagerDeal.PAYMENT_STATE_UNPAID, ManagerDeal.PAYMENT_STATE_PARTIAL}:
+        return ManagerDeal.NEXT_STEP_NEEDS_PAYMENT, 'Оплата не закрыта полностью.'
     if fulfillment_status == ManagerDeal.FULFILLMENT_STATUS_NOT_RESERVED:
-        return ManagerDeal.NEXT_STEP_NEEDS_RESERVATION, 'Резерв по позициям еще не создан.'
+        return ManagerDeal.NEXT_STEP_NEEDS_RESERVATION, 'Склад подтвержден, но резерв по позициям еще не создан.'
     return ManagerDeal.NEXT_STEP_READY_TO_SHIP, 'Заказ готов к подготовке отправления.'
 
 
-def _problem_flags_for_deal(*, deal, documents_status, next_step_code, sla_due_at):
+def _problem_flags_for_deal(*, deal, documents_status, next_step_code, sla_due_at, payment_state):
     flags = []
     if not deal.responsible_manager_id:
         flags.append(ManagerDeal.PROBLEM_FLAG_NO_ASSIGNEE)
+    if not _deal_has_reachable_contacts(deal):
+        flags.append(ManagerDeal.PROBLEM_FLAG_MISSING_CONTACTS)
     if _deal_stock_conflict(deal):
         flags.append(ManagerDeal.PROBLEM_FLAG_STOCK_CONFLICT)
-    if _deal_requires_documents(deal) and documents_status != ManagerDeal.DOCUMENTS_STATUS_SIGNED:
+    if _deal_document_needs_preparation(deal):
         flags.append(ManagerDeal.PROBLEM_FLAG_MISSING_DOCUMENTS)
-    if next_step_code == ManagerDeal.NEXT_STEP_READY_TO_SHIP and deal.payment_state != ManagerDeal.PAYMENT_STATE_PAID:
-        flags.append(ManagerDeal.PROBLEM_FLAG_PAYMENT_BLOCKED)
-    if next_step_code == ManagerDeal.NEXT_STEP_READY_TO_SHIP and _deal_delivery_required(deal) and not deal.shipments.exclude(status=Shipment.STATUS_CANCELLED).exists():
-        flags.append(ManagerDeal.PROBLEM_FLAG_SHIPMENT_BLOCKED)
+    if payment_state in {
+        ManagerDeal.PAYMENT_STATE_UNPAID,
+        ManagerDeal.PAYMENT_STATE_PARTIAL,
+    } and deal.case_status not in {
+        ManagerDeal.CASE_STATUS_COMPLETED,
+        ManagerDeal.CASE_STATUS_CANCELLED,
+    }:
+        flags.append(ManagerDeal.PROBLEM_FLAG_MISSING_PAYMENT)
     if sla_due_at and manager_portal_now() > _portal_localize(sla_due_at):
         flags.append(ManagerDeal.PROBLEM_FLAG_SLA_OVERDUE)
+    last_activity_at = deal.last_activity_at or deal.created_at
+    if last_activity_at and deal.case_status not in {
+        ManagerDeal.CASE_STATUS_COMPLETED,
+        ManagerDeal.CASE_STATUS_CANCELLED,
+    } and timezone.now() - last_activity_at >= manager_portal_stale_after():
+        flags.append(ManagerDeal.PROBLEM_FLAG_STALE_UPDATES)
     return flags
 
 
@@ -937,6 +1028,7 @@ def recompute_deal_workflow(deal, *, actor=None):
         documents_status=documents_status,
         next_step_code=effective_next_step_code,
         sla_due_at=sla_due_at,
+        payment_state=payment_state,
     )
     changed['problem_flags'] = problem_flags
     if ManagerDeal.PROBLEM_FLAG_SLA_OVERDUE in problem_flags:
@@ -1331,10 +1423,20 @@ def _document_counterparty_snapshot(*, deal, client):
 def _hydrate_contract_document_from_manager_deal(document, deal, *, actor=None, document_type=None):
     client = deal_manager_client(deal) or ensure_manager_client_for_order(deal.order)['client']
     counterparty = _document_counterparty_snapshot(deal=deal, client=client)
-    template = ContractTemplate.objects.filter(
-        document_type=document_type or document.document_type,
-        is_active=True,
-    ).order_by('sort_order', 'name').first()
+    target_document_type = document_type or document.document_type
+    template = None
+    if (
+        document.template_id
+        and document.template is not None
+        and document.template.is_active
+        and document.template.document_type == target_document_type
+    ):
+        template = document.template
+    if template is None:
+        template = ContractTemplate.objects.filter(
+            document_type=target_document_type,
+            is_active=True,
+        ).order_by('sort_order', 'name').first()
     company_profile = ContractCompanyProfile.objects.filter(is_active=True).order_by('-updated_at', '-id').first()
     snapshot_items = order_items_snapshot(deal.order)
     snapshot_data = {
@@ -1372,7 +1474,7 @@ def _hydrate_contract_document_from_manager_deal(document, deal, *, actor=None, 
         'manager_client': client,
         'responsible_manager': deal.responsible_manager or actor,
         'created_by': document.created_by or actor,
-        'document_type': document_type or document.document_type,
+        'document_type': target_document_type,
         'template': template or document.template,
         'company_profile': company_profile or document.company_profile,
         'issue_date': document.issue_date or timezone.localdate(),

@@ -1697,6 +1697,122 @@
     });
   }
 
+  let manualOrderProductCatalog = null;
+
+  function normalizeManualOrderProductName(value) {
+    return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+  }
+
+  function getManualOrderProductCatalog() {
+    if (manualOrderProductCatalog) {
+      return manualOrderProductCatalog;
+    }
+    const node = document.getElementById('manual-order-product-catalog');
+    const catalog = {byName: new Map()};
+    if (!node) {
+      manualOrderProductCatalog = catalog;
+      return catalog;
+    }
+    try {
+      const items = JSON.parse(node.textContent || '[]');
+      items.forEach((item) => {
+        const key = normalizeManualOrderProductName(item.name);
+        if (key) {
+          catalog.byName.set(key, item);
+        }
+      });
+    } catch (error) {
+      window.console.warn('Unable to parse manual order product catalog.', error);
+    }
+    manualOrderProductCatalog = catalog;
+    return catalog;
+  }
+
+  function syncManualOrderProductRow(row) {
+    const nameInput = row.querySelector('[name$="-product_name"]');
+    const productInput = row.querySelector('[name$="-product"]');
+    const salePriceInput = row.querySelector('[name$="-sale_price"]');
+    const preview = row.querySelector('[data-order-product-preview]');
+    if (!nameInput || !productInput || !preview) {
+      return;
+    }
+    const imageNode = preview.querySelector('[data-order-product-preview-image]');
+    const titleNode = preview.querySelector('[data-order-product-preview-title]');
+    const statusNode = preview.querySelector('[data-order-product-preview-status]');
+    const priceNode = preview.querySelector('[data-order-product-preview-price]');
+    const normalizedName = normalizeManualOrderProductName(nameInput.value);
+    const matchedProduct = normalizedName ? getManualOrderProductCatalog().byName.get(normalizedName) : null;
+
+    if (!normalizedName) {
+      productInput.value = '';
+      preview.classList.add('hidden');
+      if (imageNode) {
+        imageNode.classList.add('hidden');
+        imageNode.removeAttribute('src');
+      }
+      if (priceNode) {
+        priceNode.textContent = '';
+      }
+      return;
+    }
+
+    preview.classList.remove('hidden');
+    if (matchedProduct) {
+      const previousProductId = productInput.value;
+      productInput.value = String(matchedProduct.id);
+      if (
+        salePriceInput
+        && (!salePriceInput.value || salePriceInput.dataset.catalogAutofilled === '1' || previousProductId !== String(matchedProduct.id))
+      ) {
+        salePriceInput.value = matchedProduct.price;
+        salePriceInput.dataset.catalogAutofilled = '1';
+      }
+      if (titleNode) {
+        titleNode.textContent = matchedProduct.name;
+      }
+      if (statusNode) {
+        statusNode.textContent = 'Товар найден в каталоге. Цена подставлена автоматически, её можно скорректировать.';
+      }
+      if (priceNode) {
+        priceNode.textContent = formatMoney(parseMoney(matchedProduct.price));
+      }
+      if (imageNode) {
+        if (matchedProduct.image_url) {
+          imageNode.src = matchedProduct.image_url;
+          imageNode.alt = matchedProduct.name;
+          imageNode.classList.remove('hidden');
+        } else {
+          imageNode.classList.add('hidden');
+          imageNode.removeAttribute('src');
+        }
+      }
+      return;
+    }
+
+    productInput.value = '';
+    if (titleNode) {
+      titleNode.textContent = nameInput.value.trim();
+    }
+    if (statusNode) {
+      statusNode.textContent = 'Позиция не найдена в каталоге. Укажите полное наименование и цену вручную.';
+    }
+    if (priceNode) {
+      priceNode.textContent = '';
+    }
+    if (imageNode) {
+      imageNode.classList.add('hidden');
+      imageNode.removeAttribute('src');
+    }
+  }
+
+  function syncManualOrderProductRows(form) {
+    form.querySelectorAll('[data-order-item-row]').forEach((row) => {
+      if (!row.hidden) {
+        syncManualOrderProductRow(row);
+      }
+    });
+  }
+
   function updateManualOrderSummary(form) {
     let goodsTotal = 0;
     let discountTotal = 0;

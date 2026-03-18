@@ -15,52 +15,39 @@
         </a>
       </div>
       <p class="mt-1 truncate text-sm font-medium text-white">{{ deal.customer_name|default:deal.order.first_name|default:deal.order.phone }}</p>
-      <p class="manager-card-kicker mt-0.5">{{ deal.get_deal_type_display }}</p>
+      <p class="mt-1 text-xs uppercase tracking-[0.16em] text-slate-500">{{ deal.get_deal_type_display }}</p>
     </div>
-    <div class="shrink-0 text-right">
+    <div class="text-right">
       <p class="text-sm font-semibold text-white">{{ deal.grand_total|rub }}</p>
+      <p class="mt-1 text-xs text-slate-500">{% firstof deal.customer_phone deal.order.phone "—" %}</p>
     </div>
   </div>
 
-  <div class="manager-deal-card-metric mt-2">
-    <span class="manager-deal-card-label">Следующий шаг</span>
-    <span class="manager-deal-card-value">{{ deal.next_step_label }}</span>
+  <div class="manager-deal-card-metric mt-2.5">
+    <span class="manager-deal-card-label">{{ deal.action_block.title }}</span>
+    <span class="manager-deal-card-value">{{ deal.action_block.label }}</span>
+  </div>
+
+  <div class="manager-deal-card-inline mt-2">
+    <span class="manager-deal-card-inline-item">{{ deal.responsible_manager|default:"Не назначен" }}</span>
+    <span class="manager-deal-card-inline-item {% if deal.list_sla_is_overdue %}manager-deal-card-inline-item-overdue{% endif %}">
+      {{ deal.health_block.sla.text }}
+    </span>
+  </div>
+
+  <div class="mt-2 flex flex-wrap gap-1.5">
+    {% for blocker in deal.blocker_block.items|slice:":1" %}
+      <span class="manager-pill">{{ blocker.text }}</span>
+    {% endfor %}
+    <span class="manager-pill">{{ deal.health_block.activity.text }}</span>
   </div>
 
   <div class="mt-2 flex items-center gap-2">
+    {% with action=deal.action_block.primary_action %}
+      {% if action.kind == 'link' %}
+        <a href="{{ action.url }}" class="rounded-xl bg-cyan-500 px-2 py-1 text-xs font-medium text-slate-950 transition hover:bg-cyan-400">{{ action.label }}</a>
+      {% endif %}
+    {% endwith %}
     <a href="{% url 'manager_portal:deal_detail' deal.pk %}" class="rounded-xl border border-slate-700 px-2 py-1 text-xs text-slate-200 transition hover:bg-slate-800">Открыть</a>
-    <button
-      type="button"
-      class="manager-deal-card-expand-btn"
-      data-card-expand
-      aria-expanded="false"
-      aria-label="Показать детали сделки"
-    ><span data-card-expand-icon>▾</span></button>
-  </div>
-
-  <div class="manager-deal-card-details" hidden data-card-details>
-    <p class="mt-1.5 truncate text-xs text-slate-400">{{ deal.list_product_summary }}</p>
-    <p class="mt-0.5 truncate text-xs text-slate-500">{{ deal.list_delivery_summary }}</p>
-
-    <div class="manager-deal-card-statuses mt-2">
-      <div class="manager-status-line">
-        <span class="manager-status-line-label">Основной статус</span>
-        <span class="{{ deal.primary_status|manager_semantic_badge_classes }}">{{ deal.primary_status.label }}</span>
-        <span class="manager-status-line-detail">{{ deal.primary_status.detail }}</span>
-      </div>
-      <div class="manager-status-line">
-        <span class="manager-status-line-label">Вторичный статус</span>
-        <span class="{{ deal.secondary_status|manager_semantic_badge_classes }}">{{ deal.secondary_status.label }}</span>
-        <span class="manager-status-line-detail">{{ deal.secondary_status.detail }}</span>
-      </div>
-    </div>
-
-    <div class="manager-deal-card-risk {{ deal.risk_summary|manager_semantic_risk_classes }} mt-1.5">
-      <span class="manager-status-line-label">Риски</span>
-      <strong class="block text-sm text-white">{{ deal.risk_summary.label }}</strong>
-      <span class="manager-status-line-detail">{{ deal.risk_summary.detail }}</span>
-    </div>
-
-    <p class="mt-1.5 text-xs text-slate-500">{{ deal.get_payment_state_display }} · {{ deal.get_fulfillment_status_display }}</p>
   </div>
 </article>
