@@ -151,110 +151,155 @@
             </div>
           </div>
         {% else %}
-          <div class="manager-deals-registry-header">
-            <div class="manager-deals-page-header">
-              <div class="manager-deals-page-header-main">
-                <p class="manager-deals-page-kicker">Сделки</p>
-                <h2 class="manager-deals-page-title">Сделки / Заказы</h2>
-                <p class="manager-deals-page-copy">Активные и проблемные сделки с быстрыми действиями.</p>
-              </div>
-              <div class="manager-deals-page-header-actions">
-                <div class="manager-deals-page-meta">
-                  <span class="manager-pill">Найдено <strong>{{ total_deals }}</strong></span>
-                  <span class="manager-pill">Страница <strong>{{ deals_page.number }}</strong> / {{ deals_page.paginator.num_pages }}</span>
-                  {% if focused_deal %}
-                    <span class="manager-pill">В обзоре <strong>#{{ focused_deal.order_id }}</strong></span>
-                  {% endif %}
-                </div>
-                <div class="manager-deals-page-action-row">
-                  <a
-                    href="{% url 'manager_portal:deal_create' %}"
-                    class="manager-create-action"
-                    data-drawer-target="#manager-remote-drawer"
-                    hx-get="{% url 'manager_portal:deal_create' %}"
-                    hx-select="#manager-main-content > *"
-                    hx-target="#manager-remote-drawer-content"
-                    hx-swap="innerHTML"
-                    hx-push-url="false"
-                  >Новая сделка</a>
-                </div>
-              </div>
-            </div>
+	          <div class="manager-deals-registry-header">
+	            <div class="manager-deals-page-header">
+	              <div class="manager-deals-page-header-main">
+	                <p class="manager-deals-page-kicker">Сделки</p>
+	                <h2 class="manager-deals-page-title">Сделки / Заказы</h2>
+	                <p class="manager-deals-page-copy">Сначала видно, что горит, кто ведет сделку и какое действие нужно следующим.</p>
+	              </div>
+	              <div class="manager-deals-page-header-side">
+	                <div class="manager-deals-page-meta">
+	                  <span class="manager-pill">Найдено <strong>{{ total_deals }}</strong></span>
+	                  <span class="manager-pill">Страница <strong>{{ deals_page.number }}</strong> / {{ deals_page.paginator.num_pages }}</span>
+	                </div>
+	                <div class="manager-deals-page-action-row">
+	                  <div class="manager-view-switch" role="tablist" aria-label="Вид сделок">
+	                    <a
+	                      href="{% url 'manager_portal:deal_list' %}{% if list_view_query_string %}?{{ list_view_query_string }}{% endif %}"
+	                      class="manager-view-switch-link {% if current_scope != 'avito' %}manager-view-switch-link-active{% endif %}"
+	                    >Таблица</a>
+	                    <a
+	                      href="{% url 'manager_portal:deal_list' %}{% if kanban_view_query_string %}?{{ kanban_view_query_string }}{% endif %}"
+	                      class="manager-view-switch-link {% if current_view_mode == 'kanban' %}manager-view-switch-link-active{% endif %}"
+	                    >Канбан</a>
+	                    <a
+	                      href="{% url 'manager_portal:deal_list' %}{% if avito_view_query_string %}?{{ avito_view_query_string }}{% endif %}"
+	                      class="manager-view-switch-link {% if current_scope == 'avito' %}manager-view-switch-link-active{% endif %}"
+	                    >Avito</a>
+	                  </div>
+	                  <button type="button" data-drawer-target="#deal-filters-drawer" class="manager-inline-action manager-deals-filter-trigger">
+	                    Фильтры
+	                    {% if deal_advanced_filters_count %}
+	                      <span class="manager-queue-chip-count">{{ deal_advanced_filters_count }}</span>
+	                    {% endif %}
+	                  </button>
+	                  <details class="manager-deals-saved-views-menu">
+	                    <summary class="manager-inline-action">Виды</summary>
+	                    <div class="manager-deals-saved-views-dropdown">
+	                      {% for view in saved_views %}
+	                        <a href="{% url 'manager_portal:deal_list' %}{% if view.query_string %}?{{ view.query_string }}{% endif %}" class="manager-deals-saved-views-dropdown-link">{{ view.name }}</a>
+	                      {% empty %}
+	                        <p class="manager-deals-saved-views-dropdown-empty">Сохранённых видов пока нет.</p>
+	                      {% endfor %}
+	                      <button type="button" data-drawer-target="#deal-save-view-drawer" class="manager-deals-saved-views-dropdown-action">Сохранить текущий вид</button>
+	                    </div>
+	                  </details>
+	                  <a
+	                    href="{% url 'manager_portal:deal_create' %}"
+	                    class="manager-create-action"
+	                    data-drawer-target="#manager-remote-drawer"
+	                    hx-get="{% url 'manager_portal:deal_create' %}"
+	                    hx-select="#manager-main-content > *"
+	                    hx-target="#manager-remote-drawer-content"
+	                    hx-swap="innerHTML"
+	                    hx-push-url="false"
+	                  >Новая сделка</a>
+	                </div>
+	              </div>
+	            </div>
 
-            <div class="manager-deals-priority-strip">
-              {% for metric in deal_desktop_summary_metrics %}
-                <a href="{% url 'manager_portal:deal_list' %}?{{ metric.query_string }}" class="manager-deals-priority-chip manager-deals-priority-chip-{{ metric.tone }}">
-                  <span class="manager-deals-priority-label">{{ metric.label }}</span>
-                  <strong class="manager-deals-priority-value">{{ metric.value }}</strong>
-                </a>
-              {% endfor %}
-            </div>
+	            <section class="manager-deals-problem-zone">
+	              <div class="manager-deals-section-head">
+	                <div>
+	                  <p class="manager-deals-section-kicker">Ключевые проблемы</p>
+	                  <h3 class="manager-deals-section-title">Где нужно вмешаться прямо сейчас</h3>
+	                </div>
+	                <p class="manager-deals-section-copy">Пять рабочих сигналов для быстрого перехода к самой горящей очереди.</p>
+	              </div>
+	              <div class="manager-deals-priority-strip">
+	                {% for metric in deal_desktop_summary_metrics %}
+	                  <a href="{% url 'manager_portal:deal_list' %}?{{ metric.query_string }}" class="manager-deals-priority-chip manager-deals-priority-chip-{{ metric.tone }}">
+	                    <span class="manager-deals-priority-label">{{ metric.label }}</span>
+	                    <strong class="manager-deals-priority-value">{{ metric.value }}</strong>
+	                  </a>
+	                {% endfor %}
+	              </div>
+	            </section>
 
-            <div class="manager-deals-filter-stack">
-              <section class="manager-deals-filter-row">
-                <div class="manager-deals-filter-row-head">
-                  <div>
-                    <p class="manager-deals-filter-card-title">Этапы сделок</p>
-                    <p class="manager-deals-filter-card-copy">Жизненный цикл сделки.</p>
-                  </div>
-                </div>
-                <div class="manager-chip-scroll manager-chip-scroll-compact">
-                  {% for metric in deal_stage_metrics %}
-                    <a
-                      href="{% url 'manager_portal:deal_list' %}?{{ metric.query_string }}"
-                      class="manager-queue-chip manager-queue-chip-compact {% if filter_form.case_status.value == metric.key %}manager-queue-chip-active{% endif %}"
-                    >
-                      <span class="manager-queue-chip-label">{{ metric.label }}</span>
-                      <span class="manager-queue-chip-count {% if filter_form.case_status.value == metric.key %}manager-queue-chip-count-active{% else %}manager-queue-chip-count-muted{% endif %}">{{ metric.count }}</span>
-                    </a>
-                  {% endfor %}
-                </div>
-              </section>
+	            <section class="manager-deals-filter-hub">
+	              <div class="manager-deals-section-head manager-deals-section-head-compact">
+	                <div>
+	                  <p class="manager-deals-section-kicker">Рабочие фильтры</p>
+	                  <h3 class="manager-deals-section-title">Статус → очередь → личный фокус</h3>
+	                </div>
+	                <div class="manager-deals-filter-hub-actions">
+	                  <a href="{% url 'manager_portal:deal_list' %}{% if deal_reset_filters_query_string %}?{{ deal_reset_filters_query_string }}{% endif %}" class="manager-inline-action manager-inline-action-muted">Сбросить фильтры</a>
+	                </div>
+	              </div>
 
-              <section class="manager-deals-filter-row">
-                <div class="manager-deals-filter-row-head">
-                  <div>
-                    <p class="manager-deals-filter-card-title">Операционные очереди</p>
-                    <p class="manager-deals-filter-card-copy">Приоритетные рабочие очереди.</p>
-                  </div>
-                  <button type="button" data-drawer-target="#deal-filters-drawer" class="manager-inline-action manager-deals-filter-trigger">
-                    Фильтры
-                    {% if deal_advanced_filters_count %}
-                      <span class="manager-queue-chip-count">{{ deal_advanced_filters_count }}</span>
-                    {% endif %}
-                  </button>
-                </div>
-                <div class="manager-chip-scroll manager-chip-scroll-compact">
-                  {% for queue in queue_chips %}
-                    <a
-                      href="{% url 'manager_portal:deal_list' %}{% if queue.query_string or current_scope == 'avito' %}?{% endif %}{% if queue.query_string %}{{ queue.query_string }}{% endif %}{% if current_scope == 'avito' %}{% if queue.query_string %}&{% endif %}scope=avito{% endif %}"
-                      class="manager-queue-chip manager-queue-chip-compact {% if active_queue_chip == queue.key %}manager-queue-chip-active{% endif %}"
-                    >
-                      <span class="manager-queue-chip-label">{{ queue.label }}</span>
-                      <span class="manager-queue-chip-count {% if active_queue_chip == queue.key %}manager-queue-chip-count-active{% else %}manager-queue-chip-count-{{ queue.tone }}{% endif %}">{{ queue.count }}</span>
-                    </a>
-                  {% endfor %}
-                </div>
-              </section>
+	              <div class="manager-deals-filter-stack">
+	                <section class="manager-deals-filter-lane">
+	                  <div class="manager-deals-filter-lane-head">
+	                    <span class="manager-deals-filter-lane-index">1</span>
+	                    <div>
+	                      <p class="manager-deals-filter-lane-title">Статус</p>
+	                      <p class="manager-deals-filter-lane-copy">Этап, на котором находится сделка.</p>
+	                    </div>
+	                  </div>
+	                  <div class="manager-chip-scroll manager-chip-scroll-compact">
+	                    {% for metric in deal_stage_metrics %}
+	                      <a
+	                        href="{% url 'manager_portal:deal_list' %}?{{ metric.query_string }}"
+	                        class="manager-queue-chip manager-queue-chip-compact {% if filter_form.case_status.value == metric.key %}manager-queue-chip-active{% endif %}"
+	                      >
+	                        <span class="manager-queue-chip-label">{{ metric.label }}</span>
+	                        <span class="manager-queue-chip-count {% if filter_form.case_status.value == metric.key %}manager-queue-chip-count-active{% else %}manager-queue-chip-count-muted{% endif %}">{{ metric.count }}</span>
+	                      </a>
+	                    {% endfor %}
+	                  </div>
+	                </section>
 
-              <section class="manager-deals-filter-actions">
-                <div class="manager-deals-filter-actions-main">
-                  {% for toggle in deal_quick_toggle_filters %}
-                    <a href="{% url 'manager_portal:deal_list' %}{% if toggle.query_string %}?{{ toggle.query_string }}{% endif %}" class="manager-queue-chip manager-queue-chip-compact {% if toggle.active %}manager-queue-chip-active{% endif %}">
-                      <span class="manager-queue-chip-label">{{ toggle.label }}</span>
-                    </a>
-                  {% endfor %}
-                  {% for signal in signal_views|slice:":2" %}
-                    <a href="{% url 'manager_portal:deal_list' %}?{{ signal.query_string }}" class="manager-deals-signal-chip {% if signal.count %}manager-deals-signal-chip-live{% endif %}">
-                      <span>{{ signal.label }}</span>
-                      <strong>{{ signal.count }}</strong>
-                    </a>
-                  {% endfor %}
-                </div>
-                <a href="{% url 'manager_portal:deal_list' %}{% if deal_reset_filters_query_string %}?{{ deal_reset_filters_query_string }}{% endif %}" class="manager-inline-action">Сбросить фильтры</a>
-              </section>
-            </div>
-          </div>
+	                <section class="manager-deals-filter-lane">
+	                  <div class="manager-deals-filter-lane-head">
+	                    <span class="manager-deals-filter-lane-index">2</span>
+	                    <div>
+	                      <p class="manager-deals-filter-lane-title">Очередь</p>
+	                      <p class="manager-deals-filter-lane-copy">Следующий шаг, который должен закрыть менеджер.</p>
+	                    </div>
+	                  </div>
+	                  <div class="manager-chip-scroll manager-chip-scroll-compact">
+	                    {% for queue in queue_chips %}
+	                      <a
+	                        href="{% url 'manager_portal:deal_list' %}{% if queue.query_string or current_scope == 'avito' %}?{% endif %}{% if queue.query_string %}{{ queue.query_string }}{% endif %}{% if current_scope == 'avito' %}{% if queue.query_string %}&{% endif %}scope=avito{% endif %}"
+	                        class="manager-queue-chip manager-queue-chip-compact {% if active_queue_chip == queue.key %}manager-queue-chip-active{% endif %}"
+	                      >
+	                        <span class="manager-queue-chip-label">{{ queue.label }}</span>
+	                        <span class="manager-queue-chip-count {% if active_queue_chip == queue.key %}manager-queue-chip-count-active{% else %}manager-queue-chip-count-{{ queue.tone }}{% endif %}">{{ queue.count }}</span>
+	                      </a>
+	                    {% endfor %}
+	                  </div>
+	                </section>
+
+	                <section class="manager-deals-filter-lane">
+	                  <div class="manager-deals-filter-lane-head">
+	                    <span class="manager-deals-filter-lane-index">3</span>
+	                    <div>
+	                      <p class="manager-deals-filter-lane-title">Личный фокус</p>
+	                      <p class="manager-deals-filter-lane-copy">Быстрый срез по вашей нагрузке и срочности.</p>
+	                    </div>
+	                  </div>
+	                  <div class="manager-deals-filter-focus">
+	                    {% for toggle in deal_quick_toggle_filters %}
+	                      <a href="{% url 'manager_portal:deal_list' %}{% if toggle.query_string %}?{{ toggle.query_string }}{% endif %}" class="manager-queue-chip manager-queue-chip-compact {% if toggle.active %}manager-queue-chip-active{% endif %}">
+	                        <span class="manager-queue-chip-label">{{ toggle.label }}</span>
+	                      </a>
+	                    {% endfor %}
+	                  </div>
+	                </section>
+	              </div>
+	            </section>
+	          </div>
         {% endif %}
       </div>
     </section>
@@ -316,66 +361,26 @@
                       <h3 class="text-lg font-semibold text-white">Очередь сделок</h3>
                       <p class="mt-1 text-sm text-slate-400">Приоритет, риск и следующее действие в одной строке.</p>
                     {% endif %}
-                    <div class="manager-deals-list-toolbar-title">
-                      <span class="manager-pill">После фильтрации <strong>{{ total_deals }}</strong></span>
-                    </div>
-                  </div>
-                  <div class="manager-deals-list-toolbar-tabs">
-                    {% for tab in deal_toolbar_presets %}
-                      <a href="{% url 'manager_portal:deal_list' %}{% if tab.query_string %}?{{ tab.query_string }}{% endif %}" class="manager-queue-chip manager-queue-chip-compact {% if tab.active %}manager-queue-chip-active{% endif %}">
-                        <span class="manager-queue-chip-label">{{ tab.label }}</span>
-                      </a>
-                    {% endfor %}
-                  </div>
-                </div>
-                <div class="manager-deals-list-toolbar-actions">
-                  <form method="get" class="manager-deals-toolbar-sort-form">
-                    {% for key, value in request.GET.items %}
-                      {% if key != 'sort' and key != 'page' %}
-                        <input type="hidden" name="{{ key }}" value="{{ value }}">
-                      {% endif %}
+	                  <div class="manager-deals-list-toolbar-title">
+	                    <p class="manager-deals-list-toolbar-note">После фильтрации {{ total_deals }}</p>
+	                  </div>
+	                </div>
+	                <div class="manager-deals-list-toolbar-actions">
+	                  <form method="get" class="manager-deals-toolbar-sort-form">
+	                    {% for key, value in request.GET.items %}
+	                      {% if key != 'sort' and key != 'page' %}
+	                        <input type="hidden" name="{{ key }}" value="{{ value }}">
+	                      {% endif %}
                     {% endfor %}
                     <label for="deal-toolbar-sort" class="sr-only">Сортировка</label>
                     <select id="deal-toolbar-sort" name="sort" class="manager-deals-toolbar-sort-select" onchange="this.form.submit()">
-                      {% for value, label in filter_form.sort.field.choices %}
-                        <option value="{{ value }}" {% if filter_form.sort.value == value %}selected{% endif %}>{{ label }}</option>
-                      {% endfor %}
-                    </select>
-                  </form>
-                  <button type="button" data-drawer-target="#deal-filters-drawer" class="manager-inline-action">
-                    Фильтры
-                    {% if deal_advanced_filters_count %}
-                      <span class="manager-queue-chip-count">{{ deal_advanced_filters_count }}</span>
-                    {% endif %}
-                  </button>
-                  <div class="manager-view-switch" role="tablist" aria-label="Вид сделок">
-                    <a
-                      href="{% url 'manager_portal:deal_list' %}{% if list_view_query_string %}?{{ list_view_query_string }}{% endif %}"
-                      class="manager-view-switch-link {% if current_scope != 'avito' %}manager-view-switch-link-active{% endif %}"
-                    >Таблица</a>
-                    <a
-                      href="{% url 'manager_portal:deal_list' %}{% if kanban_view_query_string %}?{{ kanban_view_query_string }}{% endif %}"
-                      class="manager-view-switch-link {% if current_view_mode == 'kanban' %}manager-view-switch-link-active{% endif %}"
-                    >Канбан</a>
-                    <a
-                      href="{% url 'manager_portal:deal_list' %}{% if avito_view_query_string %}?{{ avito_view_query_string }}{% endif %}"
-                      class="manager-view-switch-link {% if current_scope == 'avito' %}manager-view-switch-link-active{% endif %}"
-                    >Avito</a>
-                  </div>
-                  <button type="button" class="manager-inline-action manager-inline-action-disabled" disabled title="Настройка колонок пока не вынесена в отдельный сценарий">Колонки</button>
-                  <details class="manager-deals-saved-views-menu">
-                    <summary class="manager-inline-action">Мои виды</summary>
-                    <div class="manager-deals-saved-views-dropdown">
-                      {% for view in saved_views %}
-                        <a href="{% url 'manager_portal:deal_list' %}{% if view.query_string %}?{{ view.query_string }}{% endif %}" class="manager-deals-saved-views-dropdown-link">{{ view.name }}</a>
-                      {% empty %}
-                        <p class="manager-deals-saved-views-dropdown-empty">Сохранённых видов пока нет.</p>
-                      {% endfor %}
-                    </div>
-                  </details>
-                  <button type="button" data-drawer-target="#deal-save-view-drawer" class="manager-inline-action">Сохранить текущий вид</button>
-                </div>
-              </div>
+	                      {% for value, label in filter_form.sort.field.choices %}
+	                        <option value="{{ value }}" {% if filter_form.sort.value == value %}selected{% endif %}>{{ label }}</option>
+	                      {% endfor %}
+	                    </select>
+	                  </form>
+	                </div>
+	              </div>
 
               <div id="bulk-toolbar" class="manager-bulk-toolbar" hidden>
                 <div class="hidden lg:flex lg:flex-wrap lg:items-center lg:gap-3">
@@ -409,17 +414,16 @@
 
               <div class="manager-work-queue manager-deals-table-wrap overflow-hidden rounded-[1.5rem] border border-slate-800/80">
                 <div class="manager-table-shell overflow-x-auto">
-                  <table id="deal-compact-list" class="manager-table manager-deals-table w-full min-w-[112rem] text-sm">
+                  <table id="deal-compact-list" class="manager-table manager-deals-table w-full min-w-[96rem] text-sm">
                     <thead class="bg-slate-950/70 text-left text-[0.72rem] uppercase tracking-[0.16em] text-slate-500">
                       <tr>
                         <th class="px-3 py-3 font-medium w-[4.5rem]">Выбор</th>
-                        <th class="px-4 py-3 font-medium">Сделка</th>
-                        <th class="px-4 py-3 font-medium">Клиент / Контекст</th>
-                        <th class="px-4 py-3 font-medium">Текущий статус</th>
-                        <th class="px-4 py-3 font-medium">Следующее действие</th>
-                        <th class="px-4 py-3 font-medium">Деньги</th>
-                        <th class="px-4 py-3 font-medium">Ответственный / SLA</th>
-                        <th class="px-4 py-3 font-medium">Риск</th>
+                        <th class="px-3 py-3 font-medium">Сделка</th>
+                        <th class="px-3 py-3 font-medium">Сейчас</th>
+                        <th class="px-3 py-3 font-medium">Что сделать</th>
+                        <th class="px-3 py-3 font-medium">Деньги</th>
+                        <th class="px-3 py-3 font-medium">Ведёт / SLA</th>
+                        <th class="px-3 py-3 font-medium">Срочность / действие</th>
                       </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-800/80">
@@ -429,8 +433,8 @@
                         {% url 'manager_portal:deal_shipment_action' deal.pk as shipment_action_url %}
                         {% url 'manager_portal:deal_finance_action' deal.pk as finance_action_url %}
                         <tr
-                          class="manager-deals-table-row {% if deal.is_focused %}manager-deals-table-row-focused{% endif %}{% if deal.blocker_block.is_blocked %} manager-deals-table-row-state-problem{% endif %}{% if deal.health_block.sla.is_overdue %} manager-deals-table-row-state-overdue{% endif %}{% if not deal.responsible_manager %} manager-deals-table-row-state-unassigned{% endif %} bg-transparent transition"
-                          data-row-focus-url="?{{ deal.list_focus_query }}"
+                          class="manager-deals-table-row {% if deal.health_block.sla.is_overdue or deal.blocker_block.is_blocked %} manager-deals-table-row-state-critical{% elif deal.risk_summary.tone == 'attention' %} manager-deals-table-row-state-warning{% elif deal.secondary_status.tone == 'attention' %} manager-deals-table-row-state-attention{% elif deal.primary_status.tone == 'active' %} manager-deals-table-row-state-active{% elif deal.primary_status.tone == 'complete' %} manager-deals-table-row-state-ready{% endif %} bg-transparent transition"
+                          data-row-toggle-row="{{ deal.list_row_key }}"
                         >
                           <td class="px-3 py-4 align-top">
                             <div class="manager-deals-table-control">
@@ -444,45 +448,32 @@
                               >
                                 <span data-row-toggle-icon>▸</span>
                               </button>
-                              {% if deal.health_block.has_attention or deal.blocker_block.is_blocked %}
-                                <span class="manager-deals-priority-mark" title="Требует внимания"></span>
+                              {% if deal.health_block.sla.is_overdue or deal.blocker_block.is_blocked %}
+                                <span class="manager-deals-priority-mark manager-deals-priority-mark-critical" title="Критичный приоритет">!</span>
+                              {% elif deal.risk_summary.tone == 'attention' %}
+                                <span class="manager-deals-priority-mark manager-deals-priority-mark-warning" title="Есть риск">!</span>
+                              {% elif deal.secondary_status.tone == 'attention' %}
+                                <span class="manager-deals-priority-mark manager-deals-priority-mark-attention" title="Нужно действие сегодня">!</span>
+                              {% elif deal.primary_status.tone == 'active' %}
+                                <span class="manager-deals-priority-mark manager-deals-priority-mark-active" title="Сделка в работе">•</span>
+                              {% elif deal.primary_status.tone == 'complete' %}
+                                <span class="manager-deals-priority-mark manager-deals-priority-mark-ready" title="Готово к выдаче или завершено">•</span>
                               {% endif %}
                             </div>
                           </td>
-                          <td class="px-4 py-4 align-top min-w-[18rem]">
+                          <td class="px-3 py-4 align-top min-w-[22rem]">
                             <div class="manager-deals-row-content">
-                              <div class="manager-deals-row-head">
-                                <p class="manager-deals-row-eyebrow">{% firstof deal.code deal.order_id %}</p>
-                                <a href="?{{ deal.list_focus_query }}" class="manager-deals-row-focus-link">{% if deal.is_focused %}В обзоре{% else %}В обзор{% endif %}</a>
-                              </div>
-                              <a href="?{{ deal.list_focus_query }}" class="manager-deals-row-title">
-                                {% if current_scope == 'avito' %}
-                                  {% firstof deal.avito_listing_title deal.list_product_summary deal.short_label "Без названия сделки" %}
-                                {% else %}
-                                  {% firstof deal.customer_name deal.order.first_name deal.order.phone "Клиент" %} / {% firstof deal.list_product_summary deal.short_label deal.get_case_status_display "Без описания" %}
-                                {% endif %}
+                              <p class="manager-deals-row-eyebrow">{% firstof deal.code deal.order_id %}</p>
+                              <a href="{{ deal.list_actions.detail_url }}" class="manager-deals-row-summary">
+                                {{ deal.list_identity_summary }}
                               </a>
-                              <div class="manager-deals-row-tags">
-                                <span class="manager-deals-inline-pill">{{ deal.get_case_status_display }}</span>
-                                <span class="manager-deals-inline-pill">{{ deal.get_deal_type_display }}</span>
-                              </div>
-                            </div>
-                          </td>
-                          <td class="px-4 py-4 align-top min-w-[16rem]">
-                            <div class="manager-deals-context-block">
-                              {% if current_scope == 'avito' %}
-                                <p class="manager-deals-context-title">{% firstof deal.customer_name deal.order.first_name deal.order.phone "Клиент Avito" %}</p>
-                                <p class="manager-deals-context-muted">{% firstof deal.customer_phone deal.order.phone deal.avito_listing_id "—" %}</p>
-                              {% else %}
-                                <p class="manager-deals-context-title">{% firstof deal.customer_name deal.order.first_name deal.order.phone "Клиент" %}</p>
-                                <p class="manager-deals-context-muted">{% firstof deal.customer_phone deal.order.phone deal.order.email "—" %}</p>
+                              {% if deal.list_context_summary %}
+                                <p class="manager-deals-row-context">{{ deal.list_context_summary }}</p>
                               {% endif %}
-                              <p class="manager-deals-context-subline">{{ deal.list_channel_summary|default:"Канал не указан" }}</p>
-                              <p class="manager-deals-context-subline">{% firstof deal.order.city_text deal.list_delivery_summary "Город не указан" %}</p>
                             </div>
                           </td>
-                          <td class="px-4 py-4 align-top min-w-[13rem]">
-                            <div class="manager-deals-status-block">
+                          <td class="px-3 py-4 align-top min-w-[12rem]">
+                            <div class="manager-deals-status-block manager-deals-status-block-strong">
                               <span class="{{ deal.primary_status|manager_semantic_badge_classes }}">{{ deal.primary_status.label }}</span>
                               <p class="manager-deals-status-copy">{{ deal.primary_status.detail }}</p>
                               {% if deal.secondary_status.meta %}
@@ -490,111 +481,136 @@
                               {% endif %}
                             </div>
                           </td>
-                          <td class="px-4 py-4 align-top min-w-[20rem]">
-                            <div class="manager-deals-next-step">
+                          <td class="px-3 py-4 align-top min-w-[20.5rem]">
+                            <div class="manager-deals-next-step manager-deals-next-step-strong">
                               <div class="manager-deals-next-step-head">
                                 <span class="manager-deals-next-step-title">{{ deal.list_actions.primary_action.label }}</span>
-                                {% if deal.health_block.sla.is_overdue %}
-                                  <span class="manager-deals-next-step-flag manager-deals-next-step-flag-danger">Срочно</span>
-                                {% elif deal.blocker_block.is_blocked %}
-                                  <span class="manager-deals-next-step-flag manager-deals-next-step-flag-warn">Блокер</span>
-                                {% endif %}
                               </div>
-                              <p class="manager-deals-next-step-copy">{{ deal.action_block.reason }}</p>
-                              <p class="manager-deals-next-step-meta">{{ deal.health_block.sla.text|capfirst }}</p>
+                              <p class="manager-deals-next-step-urgency {% if deal.health_block.sla.is_overdue %}manager-deals-next-step-urgency-danger{% elif deal.blocker_block.is_blocked %}manager-deals-next-step-urgency-warn{% endif %}">
+                                {{ deal.list_action_urgency }}
+                              </p>
+                              <p class="manager-deals-next-step-copy">{{ deal.list_action_reason }}</p>
                             </div>
                           </td>
-                          <td class="px-4 py-4 align-top min-w-[14rem]">
-                            <div class="manager-deals-finance-block">
+                          <td class="px-3 py-4 align-top min-w-[12.75rem]">
+                            {% with payment_method=deal.order.get_payment_method_display %}
+                            <div class="manager-deals-finance-block manager-deals-side-block"{% if payment_method %} title="Способ оплаты: {{ payment_method }}"{% endif %}>
                               <p class="manager-deals-finance-total">{{ deal.grand_total|rub }}</p>
-                              <p class="manager-deals-finance-meta">Оплачено: {{ deal.amount_paid|rub }}</p>
-                              <p class="manager-deals-finance-meta">К оплате: {{ deal.balance_due|rub }}</p>
-                              <p class="manager-deals-finance-submeta">{{ deal.order.get_payment_method_display }}</p>
-                              {% if deal.last_payment_at %}
-                                <p class="manager-deals-finance-submeta">Последний платёж {{ deal.last_payment_at|date:"d.m H:i" }}</p>
-                              {% endif %}
+                              <p class="manager-deals-finance-meta"><span class="manager-deals-finance-label">Оплачено:</span> {{ deal.amount_paid|rub }}</p>
+                              <p class="manager-deals-finance-meta"><span class="manager-deals-finance-label">К оплате:</span> {{ deal.balance_due|rub }}</p>
                             </div>
+                            {% endwith %}
                           </td>
-                          <td class="px-4 py-4 align-top min-w-[15rem]">
-                            <div class="manager-deals-owner-block">
+                          <td class="px-3 py-4 align-top min-w-[13.5rem]">
+                            <div class="manager-deals-owner-block manager-deals-side-block">
                               <p class="manager-deals-owner-name {% if not deal.responsible_manager %}manager-deals-owner-name-unassigned{% endif %}">
                                 {{ deal.responsible_manager|default:"Не назначен" }}
                               </p>
-                              <p class="manager-deals-status-meta">{{ deal.health_block.sla.text|capfirst }}</p>
-                              <p class="manager-deals-status-meta">{{ deal.health_block.activity.text|capfirst }}</p>
+                              <p
+                                class="manager-deals-owner-sla manager-deals-owner-sla-{{ deal.list_owner_sla.tone }}"
+                                title="{{ deal.list_owner_sla.detail }}"
+                              >
+                                {{ deal.list_owner_sla.label }}
+                              </p>
+                              {% if deal.list_owner_update_text %}
+                                <p class="manager-deals-owner-meta">{{ deal.list_owner_update_text }}</p>
+                              {% endif %}
+                              {% if deal.list_owner_action %}
+                                {% with action=deal.list_owner_action %}
+                                  {% if action.kind == 'form' %}
+                                    <form method="post" action="{{ action.url }}">
+                                      {% csrf_token %}
+                                      {% for key, value in action.fields.items %}
+                                        <input type="hidden" name="{{ key }}" value="{{ value }}">
+                                      {% endfor %}
+                                      <button type="submit" class="manager-deals-action-secondary manager-deals-owner-action">{{ action.label }}</button>
+                                    </form>
+                                  {% else %}
+                                    <a href="{{ action.url }}" class="manager-deals-action-secondary manager-deals-owner-action">{{ action.label }}</a>
+                                  {% endif %}
+                                {% endwith %}
+                              {% endif %}
                             </div>
                           </td>
-                          <td class="px-4 py-4 align-top min-w-[15rem]">
-                            <section class="{{ deal.risk_summary|manager_semantic_risk_classes }} manager-deals-risk-block">
-                              <p class="manager-deals-risk-title">{{ deal.risk_summary.label }}</p>
-                              <p class="manager-deals-risk-copy">
-                                {% if deal.blocker_block.is_blocked %}
-                                  {{ deal.blocker_block.summary }}
-                                {% else %}
-                                  {{ deal.risk_summary.detail|default:"Критичных сигналов нет." }}
-                                {% endif %}
-                              </p>
-                            </section>
-                            <div class="manager-deals-row-action-stack">
-                              {% with action=deal.list_actions.primary_action %}
-                                {% if action.kind == 'form' %}
-                                  <form method="post" action="{{ action.url }}">
-                                    {% csrf_token %}
-                                    {% for key, value in action.fields.items %}
-                                      <input type="hidden" name="{{ key }}" value="{{ value }}">
-                                    {% endfor %}
-                                    <button type="submit" class="manager-deals-action-primary">{{ action.label }}</button>
-                                  </form>
-                                {% else %}
-                                  <a
-                                    href="{{ action.url }}"
-                                    class="manager-deals-action-primary"
-                                    {% if action.url == reservation_action_url or action.url == contract_action_url or action.url == shipment_action_url or action.url == finance_action_url %}
-                                      data-drawer-target="#manager-remote-drawer"
-                                      hx-get="{{ action.url }}"
-                                      hx-select="#manager-main-content > *"
-                                      hx-target="#manager-remote-drawer-content"
-                                      hx-swap="innerHTML"
-                                      hx-push-url="false"
-                                    {% endif %}
-                                  >{{ action.label }}</a>
-                                {% endif %}
-                              {% endwith %}
-                              <a href="{{ deal.list_actions.detail_url }}" class="manager-deals-action-secondary">Открыть</a>
-                              <details class="manager-deals-row-menu">
-                                <summary class="manager-deals-row-menu-trigger">Ещё</summary>
-                                <div class="manager-deals-row-menu-dropdown">
-                                  {% for action in deal.list_actions.more_actions|slice:":5" %}
-                                    {% if action.kind == 'form' %}
-                                      <form method="post" action="{{ action.url }}">
-                                        {% csrf_token %}
-                                        {% for key, value in action.fields.items %}
-                                          <input type="hidden" name="{{ key }}" value="{{ value }}">
-                                        {% endfor %}
-                                        <button type="submit" class="manager-deals-row-menu-item">{{ action.label }}</button>
-                                      </form>
-                                    {% else %}
-                                      <a
-                                        href="{{ action.url }}"
-                                        class="manager-deals-row-menu-item"
-                                        {% if action.url == reservation_action_url or action.url == contract_action_url or action.url == shipment_action_url or action.url == finance_action_url %}
-                                          data-drawer-target="#manager-remote-drawer"
-                                          hx-get="{{ action.url }}"
-                                          hx-select="#manager-main-content > *"
-                                          hx-target="#manager-remote-drawer-content"
-                                          hx-swap="innerHTML"
-                                          hx-push-url="false"
+                          <td class="px-3 py-4 align-top min-w-[14rem]">
+                            <div class="manager-deals-urgency-column">
+                              <div class="manager-deals-row-action-stack manager-deals-row-action-stack-primary manager-deals-row-action-stack-linked">
+                                <div class="manager-deals-row-action-cluster">
+                                {% with action=deal.list_actions.primary_action %}
+                                  {% if action.kind == 'form' %}
+                                    <form method="post" action="{{ action.url }}" class="manager-deals-row-action-form">
+                                      {% csrf_token %}
+                                      {% for key, value in action.fields.items %}
+                                        <input type="hidden" name="{{ key }}" value="{{ value }}">
+                                      {% endfor %}
+                                      <button type="submit" class="manager-deals-action-primary manager-deals-row-action-button">{{ action.label }}</button>
+                                    </form>
+                                  {% else %}
+                                    <a
+                                      href="{{ action.url }}"
+                                      class="manager-deals-action-primary manager-deals-row-action-button"
+                                      {% if action.url == reservation_action_url or action.url == contract_action_url or action.url == shipment_action_url or action.url == finance_action_url %}
+                                        data-drawer-target="#manager-remote-drawer"
+                                        hx-get="{{ action.url }}"
+                                        hx-select="#manager-main-content > *"
+                                        hx-target="#manager-remote-drawer-content"
+                                        hx-swap="innerHTML"
+                                        hx-push-url="false"
+                                      {% endif %}
+                                    >{{ action.label }}</a>
+                                  {% endif %}
+                                {% endwith %}
+                                <a href="{{ deal.list_actions.detail_url }}" class="manager-deals-action-secondary manager-deals-row-action-button manager-deals-row-action-button-muted">Открыть</a>
+                                {% if deal.list_actions.more_actions %}
+                                  <details class="manager-deals-row-menu manager-deals-row-menu-compact">
+                                    <summary class="manager-deals-row-menu-trigger manager-deals-row-menu-trigger-compact" title="Дополнительные действия">
+                                      <span aria-hidden="true">⋯</span>
+                                    </summary>
+                                    <div class="manager-deals-row-menu-dropdown">
+                                      {% for action in deal.list_actions.more_actions|slice:":5" %}
+                                        {% if action.kind == 'form' %}
+                                          <form method="post" action="{{ action.url }}">
+                                            {% csrf_token %}
+                                            {% for key, value in action.fields.items %}
+                                              <input type="hidden" name="{{ key }}" value="{{ value }}">
+                                            {% endfor %}
+                                            <button type="submit" class="manager-deals-row-menu-item">{{ action.label }}</button>
+                                          </form>
+                                        {% else %}
+                                          <a
+                                            href="{{ action.url }}"
+                                            class="manager-deals-row-menu-item"
+                                            {% if action.url == reservation_action_url or action.url == contract_action_url or action.url == shipment_action_url or action.url == finance_action_url %}
+                                              data-drawer-target="#manager-remote-drawer"
+                                              hx-get="{{ action.url }}"
+                                              hx-select="#manager-main-content > *"
+                                              hx-target="#manager-remote-drawer-content"
+                                              hx-swap="innerHTML"
+                                              hx-push-url="false"
+                                            {% endif %}
+                                          >{{ action.label }}</a>
                                         {% endif %}
-                                      >{{ action.label }}</a>
-                                    {% endif %}
-                                  {% endfor %}
+                                      {% endfor %}
+                                    </div>
+                                  </details>
+                                {% endif %}
                                 </div>
-                              </details>
+                              </div>
+                              <section class="{{ deal.risk_summary|manager_semantic_risk_classes }} manager-deals-risk-block manager-deals-risk-block-muted">
+                                <p class="manager-deals-risk-title">{{ deal.risk_summary.label }}</p>
+                                <p class="manager-deals-risk-copy">
+                                  {% if deal.blocker_block.is_blocked %}
+                                    {{ deal.blocker_block.summary }}
+                                  {% else %}
+                                    {{ deal.risk_summary.detail|default:"Критичных сигналов нет." }}
+                                  {% endif %}
+                                </p>
+                              </section>
                             </div>
                           </td>
                         </tr>
                         <tr data-row-detail="{{ deal.list_row_key }}" hidden>
-                          <td colspan="8" class="border-t border-slate-800/70 bg-slate-950/70 px-5 py-5">
+                          <td colspan="7" class="border-t border-slate-800/70 bg-slate-950/70 px-5 py-5">
                             <div class="grid gap-4 xl:grid-cols-[1.15fr,1fr,1fr]">
                               <section class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
                                 <div class="flex items-start justify-between gap-3">
@@ -636,14 +652,18 @@
                               <section class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
                                 <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Второстепенные поля</p>
                                 <div class="mt-4 grid gap-4">
-                                  <div>
-                                    <p class="text-xs text-slate-500">Канал</p>
-                                    <p class="mt-1 text-white">{{ deal.list_channel_summary }}</p>
-                                  </div>
-                                  <div>
-                                    <p class="text-xs text-slate-500">Доставка</p>
-                                    <p class="mt-1 text-white">{{ deal.list_delivery_summary }}</p>
-                                  </div>
+                                  {% if deal.list_channel_summary %}
+                                    <div>
+                                      <p class="text-xs text-slate-500">Канал</p>
+                                      <p class="mt-1 text-white">{{ deal.list_channel_summary }}</p>
+                                    </div>
+                                  {% endif %}
+                                  {% if deal.list_delivery_summary %}
+                                    <div>
+                                      <p class="text-xs text-slate-500">Доставка</p>
+                                      <p class="mt-1 text-white">{{ deal.list_delivery_summary }}</p>
+                                    </div>
+                                  {% endif %}
                                   <div>
                                     <p class="text-xs text-slate-500">Комментарии</p>
                                     <div class="mt-1 space-y-2">
@@ -684,7 +704,7 @@
                         </tr>
                       {% empty %}
                         <tr>
-                          <td colspan="8" class="px-4 py-10 text-center text-slate-400">Сделки по текущему фильтру не найдены.</td>
+                          <td colspan="7" class="px-4 py-10 text-center text-slate-400">Сделки по текущему фильтру не найдены.</td>
                         </tr>
                       {% endfor %}
                     </tbody>
@@ -693,279 +713,6 @@
               </div>
             </div>
 
-            <aside class="manager-deals-quick-panel">
-              {% if focused_deal %}
-                {% with deal=focused_deal %}
-                  {% url 'manager_portal:deal_reservation_action' deal.pk as quick_reservation_action_url %}
-                  {% url 'manager_portal:deal_document_action' deal.pk 'contract' as quick_contract_action_url %}
-                  {% url 'manager_portal:deal_shipment_action' deal.pk as quick_shipment_action_url %}
-                  {% url 'manager_portal:deal_finance_action' deal.pk as quick_finance_action_url %}
-                  <div class="manager-deals-quick-panel-sticky">
-                    <div class="manager-deals-quick-head">
-                      <div>
-                        <p class="manager-deals-quick-kicker">Быстрый просмотр</p>
-                        <h4 class="manager-deals-quick-title">{% firstof deal.code deal.order_id %}</h4>
-                        <p class="manager-deals-quick-copy">{{ deal.customer_name|default:deal.order.first_name|default:deal.order.phone }} · {{ deal.list_product_summary|default:"Без товара" }}</p>
-                      </div>
-                      <a href="{% url 'manager_portal:deal_list' %}{% if current_focus_reset_query_string %}?{{ current_focus_reset_query_string }}{% endif %}" class="manager-deals-quick-reset">Сбросить</a>
-                    </div>
-
-                    <div class="manager-deals-quick-badges">
-                      <span class="{{ deal.primary_status|manager_semantic_badge_classes }}">{{ deal.primary_status.label }}</span>
-                      <span class="{{ deal.secondary_status|manager_semantic_badge_classes }}">{{ deal.secondary_status.label }}</span>
-                      <span class="{{ deal.risk_summary|manager_semantic_badge_classes }}">{{ deal.risk_summary.label }}</span>
-                    </div>
-
-                    <div class="manager-deals-quick-actions">
-                      {% with action=deal.list_actions.primary_action %}
-                        {% if action.kind == 'form' %}
-                          <form method="post" action="{{ action.url }}">
-                            {% csrf_token %}
-                            {% for key, value in action.fields.items %}
-                              <input type="hidden" name="{{ key }}" value="{{ value }}">
-                            {% endfor %}
-                            <button type="submit" class="manager-deals-action-primary manager-deals-action-primary-wide">{{ action.label }}</button>
-                          </form>
-                        {% else %}
-                          <a
-                            href="{{ action.url }}"
-                            class="manager-deals-action-primary manager-deals-action-primary-wide"
-                            {% if action.url == quick_reservation_action_url or action.url == quick_contract_action_url or action.url == quick_shipment_action_url or action.url == quick_finance_action_url %}
-                              data-drawer-target="#manager-remote-drawer"
-                              hx-get="{{ action.url }}"
-                              hx-select="#manager-main-content > *"
-                              hx-target="#manager-remote-drawer-content"
-                              hx-swap="innerHTML"
-                              hx-push-url="false"
-                            {% endif %}
-                          >{{ action.label }}</a>
-                        {% endif %}
-                      {% endwith %}
-                      <a href="{{ deal.list_actions.detail_url }}" class="manager-deals-action-secondary manager-deals-action-secondary-wide">Открыть</a>
-                      <details class="manager-deals-row-menu manager-deals-row-menu-wide">
-                        <summary class="manager-deals-row-menu-trigger manager-deals-row-menu-trigger-wide">Ещё</summary>
-                        <div class="manager-deals-row-menu-dropdown manager-deals-row-menu-dropdown-wide">
-                          {% for action in deal.list_actions.more_actions|slice:":5" %}
-                            {% if action.kind == 'form' %}
-                              <form method="post" action="{{ action.url }}">
-                                {% csrf_token %}
-                                {% for key, value in action.fields.items %}
-                                  <input type="hidden" name="{{ key }}" value="{{ value }}">
-                                {% endfor %}
-                                <button type="submit" class="manager-deals-row-menu-item">{{ action.label }}</button>
-                              </form>
-                            {% else %}
-                              <a
-                                href="{{ action.url }}"
-                                class="manager-deals-row-menu-item"
-                                {% if action.url == quick_reservation_action_url or action.url == quick_contract_action_url or action.url == quick_shipment_action_url or action.url == quick_finance_action_url %}
-                                  data-drawer-target="#manager-remote-drawer"
-                                  hx-get="{{ action.url }}"
-                                  hx-select="#manager-main-content > *"
-                                  hx-target="#manager-remote-drawer-content"
-                                  hx-swap="innerHTML"
-                                  hx-push-url="false"
-                                {% endif %}
-                              >{{ action.label }}</a>
-                            {% endif %}
-                          {% endfor %}
-                        </div>
-                      </details>
-                    </div>
-
-                    <div class="manager-deals-quick-meta-grid">
-                      <div class="manager-deals-quick-metric">
-                        <span>Ответственный</span>
-                        <strong>{{ deal.responsible_manager|default:"Не назначен" }}</strong>
-                      </div>
-                      <div class="manager-deals-quick-metric">
-                        <span>SLA</span>
-                        <strong>{{ deal.health_block.sla.text }}</strong>
-                      </div>
-                      <div class="manager-deals-quick-metric">
-                        <span>Активность</span>
-                        <strong>{{ deal.health_block.activity.text }}</strong>
-                      </div>
-                      <div class="manager-deals-quick-metric">
-                        <span>Сумма</span>
-                        <strong>{{ deal.grand_total|rub }}</strong>
-                      </div>
-                    </div>
-
-                    <section class="manager-deals-quick-section">
-                      <p class="manager-deals-quick-section-label">Следующий шаг</p>
-                      <h5 class="manager-deals-quick-section-title">{{ deal.list_actions.primary_action.label }}</h5>
-                      <p class="manager-deals-quick-section-copy">{{ deal.action_block.reason }}</p>
-                    </section>
-
-                    <section class="manager-deals-quick-section">
-                      <p class="manager-deals-quick-section-label">Клиент</p>
-                      <div class="manager-deals-quick-list">
-                        <div class="manager-deals-quick-list-row">
-                          <span>Клиент</span>
-                          <strong>{{ deal.quick_preview.client_summary.display_name }}</strong>
-                        </div>
-                        <div class="manager-deals-quick-list-row">
-                          <span>Тип</span>
-                          <strong>{{ deal.quick_preview.client_summary.client_type_label }}</strong>
-                        </div>
-                        <div class="manager-deals-quick-list-row">
-                          <span>Телефон</span>
-                          <strong>{% firstof deal.customer_phone deal.order.phone "—" %}</strong>
-                        </div>
-                        <div class="manager-deals-quick-list-row">
-                          <span>Email</span>
-                          <strong>{% firstof deal.business_email deal.order.email "—" %}</strong>
-                        </div>
-                        <div class="manager-deals-quick-list-row">
-                          <span>Доставка</span>
-                          <strong>{{ deal.list_delivery_summary|default:"—" }}</strong>
-                        </div>
-                        <div class="manager-deals-quick-list-row">
-                          <span>Канал</span>
-                          <strong>{{ deal.list_channel_summary|default:"—" }}</strong>
-                        </div>
-                      </div>
-                    </section>
-
-                    <section class="manager-deals-quick-section">
-                      <p class="manager-deals-quick-section-label">Товары</p>
-                      <div class="manager-deals-quick-comments">
-                        {% for item in deal.quick_preview.subject_summary.rows|slice:":3" %}
-                          <div class="manager-deals-quick-comment">
-                            <span>{{ item.quantity }} шт. · {{ item.sku|default:item.configuration|default:"Без SKU" }}</span>
-                            <strong>{{ item.title }}</strong>
-                          </div>
-                        {% empty %}
-                          <p class="manager-deals-quick-section-copy">Позиции пока не добавлены.</p>
-                        {% endfor %}
-                      </div>
-                    </section>
-
-                    <section class="manager-deals-quick-section">
-                      <p class="manager-deals-quick-section-label">Деньги</p>
-                      <div class="manager-deals-quick-list">
-                        <div class="manager-deals-quick-list-row">
-                          <span>Сумма</span>
-                          <strong>{{ deal.quick_preview.finance_summary.sum_total|rub }}</strong>
-                        </div>
-                        <div class="manager-deals-quick-list-row">
-                          <span>Оплачено</span>
-                          <strong>{{ deal.quick_preview.finance_summary.paid_total|rub }}</strong>
-                        </div>
-                        <div class="manager-deals-quick-list-row">
-                          <span>К оплате</span>
-                          <strong>{{ deal.quick_preview.finance_summary.remaining_total|rub }}</strong>
-                        </div>
-                        <div class="manager-deals-quick-list-row">
-                          <span>Метод</span>
-                          <strong>{{ deal.quick_preview.finance_summary.payment_method_label }}</strong>
-                        </div>
-                      </div>
-                    </section>
-
-                    <section class="manager-deals-quick-section">
-                      <p class="manager-deals-quick-section-label">Документы</p>
-                      <div class="manager-deals-quick-comments">
-                        {% for document in deal.quick_preview.documents_summary.recent_documents %}
-                          <a href="{{ document.url }}" class="manager-deals-quick-link">
-                            {{ document.title }} · {{ document.status }}
-                          </a>
-                        {% empty %}
-                          <a
-                            href="{{ deal.quick_preview.documents_summary.primary_action.url }}"
-                            class="manager-deals-quick-link"
-                            data-drawer-target="#manager-remote-drawer"
-                            hx-get="{{ deal.quick_preview.documents_summary.primary_action.url }}"
-                            hx-select="#manager-main-content > *"
-                            hx-target="#manager-remote-drawer-content"
-                            hx-swap="innerHTML"
-                            hx-push-url="false"
-                          >{{ deal.quick_preview.documents_summary.primary_action.label }}</a>
-                        {% endfor %}
-                      </div>
-                    </section>
-
-                    <section class="manager-deals-quick-section">
-                      <p class="manager-deals-quick-section-label">Логистика</p>
-                      <div class="manager-deals-quick-list">
-                        <div class="manager-deals-quick-list-row">
-                          <span>Резерв</span>
-                          <strong>{{ deal.quick_preview.logistics_summary.reservation_status }}</strong>
-                        </div>
-                        <div class="manager-deals-quick-list-row">
-                          <span>Отгрузка</span>
-                          <strong>{{ deal.quick_preview.logistics_summary.shipment_status }}</strong>
-                        </div>
-                        <div class="manager-deals-quick-list-row">
-                          <span>Доставка</span>
-                          <strong>{{ deal.quick_preview.logistics_summary.delivery_status_label }}</strong>
-                        </div>
-                        <div class="manager-deals-quick-list-row">
-                          <span>Трек</span>
-                          <strong>{{ deal.quick_preview.logistics_summary.tracking_number|default:"—" }}</strong>
-                        </div>
-                      </div>
-                    </section>
-
-                    <section class="manager-deals-quick-section">
-                      <p class="manager-deals-quick-section-label">История</p>
-                      <div class="manager-deals-quick-comments">
-                        {% for event in deal.quick_preview.history_entries %}
-                          <div class="manager-deals-quick-comment">
-                            <span>{{ event.timestamp|date:"d.m H:i" }} · {{ event.meta }}</span>
-                            <strong>{{ event.title }}</strong>
-                            {% if event.body %}<p class="manager-deals-quick-section-copy">{{ event.body }}</p>{% endif %}
-                          </div>
-                        {% empty %}
-                          <p class="manager-deals-quick-section-copy">История пока пустая.</p>
-                        {% endfor %}
-                      </div>
-                    </section>
-
-                    <section class="manager-deals-quick-section">
-                      <p class="manager-deals-quick-section-label">Комментарии</p>
-                      <div class="manager-deals-quick-comments">
-                        {% for comment in deal.list_comments|slice:":2" %}
-                          <div class="manager-deals-quick-comment">
-                            <span>{{ comment.label }}</span>
-                            <strong>{{ comment.value }}</strong>
-                          </div>
-                        {% empty %}
-                          <p class="manager-deals-quick-section-copy">Комментариев пока нет.</p>
-                        {% endfor %}
-                      </div>
-                    </section>
-
-                    <section class="manager-deals-quick-section">
-                      <p class="manager-deals-quick-section-label">Быстрые действия</p>
-                      <div class="manager-deals-quick-links">
-                        {% for action in deal.list_actions.secondary_actions|slice:":3" %}
-                          <a
-                            href="{{ action.url }}"
-                            class="manager-deals-quick-link"
-                            {% if action.url == quick_reservation_action_url or action.url == quick_contract_action_url or action.url == quick_shipment_action_url or action.url == quick_finance_action_url %}
-                              data-drawer-target="#manager-remote-drawer"
-                              hx-get="{{ action.url }}"
-                              hx-select="#manager-main-content > *"
-                              hx-target="#manager-remote-drawer-content"
-                              hx-swap="innerHTML"
-                              hx-push-url="false"
-                            {% endif %}
-                          >{{ action.label }}</a>
-                        {% endfor %}
-                      </div>
-                    </section>
-                  </div>
-                {% endwith %}
-              {% else %}
-                <div class="manager-deals-quick-panel-sticky manager-deals-quick-panel-empty">
-                  <p class="manager-deals-quick-kicker">Быстрый просмотр</p>
-                  <h4 class="manager-deals-quick-title">Нет сделки для обзора</h4>
-                  <p class="manager-deals-quick-copy">Откройте рабочую очередь или выберите сделку из списка, чтобы видеть следующий шаг, блокеры и быстрые действия справа.</p>
-                </div>
-              {% endif %}
-            </aside>
           </div>
         </div>
 

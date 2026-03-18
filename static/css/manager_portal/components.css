@@ -569,6 +569,18 @@
   color: rgb(165 243 252);
 }
 
+.manager-inline-action-muted {
+  border-color: rgba(51, 65, 85, 0.46);
+  background: transparent;
+  color: rgb(148 163 184);
+}
+
+.manager-inline-action-muted:hover {
+  border-color: rgba(71, 85, 105, 0.62);
+  background: rgba(15, 23, 42, 0.5);
+  color: rgb(203 213 225);
+}
+
 .manager-primary-cta {
   display: inline-flex;
   align-items: center;

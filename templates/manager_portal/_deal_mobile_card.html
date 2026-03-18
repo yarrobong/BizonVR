@@ -36,16 +36,9 @@
   </div>
 
   <div class="manager-mobile-deal-step">
-    <div>
-      <p class="manager-mobile-deal-eyebrow">{{ deal.action_block.title }}</p>
-      <p class="manager-mobile-deal-step-title">{{ deal.action_block.label }}</p>
-      <p class="manager-mobile-deal-step-copy">{{ deal.action_block.reason }}</p>
-    </div>
-    <div class="manager-mobile-deal-sla {% if deal.list_sla_is_overdue %}manager-mobile-deal-sla-overdue{% endif %}">
-      <span class="manager-mobile-deal-eyebrow">{{ deal.health_block.title }}</span>
-      <strong>{{ deal.health_block.sla.text }}</strong>
-      <span>{{ deal.health_block.activity.text }}</span>
-    </div>
+    <p class="manager-mobile-deal-step-title">{{ deal.list_actions.primary_action.label }}</p>
+    <p class="manager-mobile-deal-step-urgency {% if deal.list_sla_is_overdue %}manager-mobile-deal-step-urgency-overdue{% elif deal.blocker_block.is_blocked %}manager-mobile-deal-step-urgency-warn{% endif %}">{{ deal.list_action_urgency }}</p>
+    <p class="manager-mobile-deal-step-copy">{{ deal.list_action_reason }}</p>
   </div>
 
   <div class="rounded-2xl border px-4 py-4 {% if deal.blocker_block.is_blocked %}border-rose-500/30 bg-rose-500/10{% else %}border-emerald-500/20 bg-emerald-500/10{% endif %}">

@@ -927,6 +927,59 @@ def _format_duration_compact(delta):
     return f'{max(total_hours, 0)} ч'
 
 
+def _format_duration_tight(delta):
+    total_seconds = max(int(delta.total_seconds()), 0)
+    total_hours = total_seconds // 3600
+    days, hours = divmod(total_hours, 24)
+    if days and hours:
+        return f'{days}д {hours}ч'
+    if days:
+        return f'{days}д'
+    return f'{max(total_hours, 0)}ч'
+
+
+def _truncate_single_line(value, *, max_length=64):
+    normalized = ' '.join((value or '').split()).strip()
+    if len(normalized) <= max_length:
+        return normalized
+    return f'{normalized[: max_length - 1].rstrip(" ,;:.-")}…'
+
+
+def _deal_list_action_reason(deal):
+    compact_reasons = {
+        ManagerDeal.NEXT_STEP_NEEDS_CONFIRMATION: 'Новый заказ без подтверждения',
+        ManagerDeal.NEXT_STEP_NEEDS_AVAILABILITY_CONFIRMATION: 'Нужно проверить склад и наличие',
+        ManagerDeal.NEXT_STEP_NEEDS_PAYMENT: 'Оплата ещё не закрыта',
+        ManagerDeal.NEXT_STEP_NEEDS_RESERVATION: 'Резерв по позициям не создан',
+        ManagerDeal.NEXT_STEP_NEEDS_PROCUREMENT: 'Требуется закупка',
+        ManagerDeal.NEXT_STEP_NEEDS_DOCUMENTS: 'Нужен договорный пакет',
+        ManagerDeal.NEXT_STEP_NEEDS_DOCUMENT_DISPATCH: 'Документы готовы к отправке',
+        ManagerDeal.NEXT_STEP_READY_TO_SHIP: 'Можно готовить отправление',
+        ManagerDeal.NEXT_STEP_SHIPPED: 'Заказ уже в доставке',
+        ManagerDeal.NEXT_STEP_RETURN_TO_STOCK: 'Нужно вернуть товар на склад',
+        ManagerDeal.NEXT_STEP_COMPLETED: 'Сделка закрыта',
+    }
+    if deal.next_step_source != ManagerDeal.NEXT_STEP_SOURCE_MANUAL:
+        compact_reason = compact_reasons.get(deal.next_step_code)
+        if compact_reason:
+            return compact_reason
+    reason = deal.next_step_reason_snapshot or 'Нужно уточнить следующий шаг'
+    compact_reason = ' '.join(reason.split()).strip()
+    sentence, _, _ = compact_reason.partition('. ')
+    compact_reason = sentence.rstrip('.').strip() or compact_reason
+    return _truncate_single_line(compact_reason, max_length=58)
+
+
+def _deal_list_action_urgency_text(deal):
+    if not deal.sla_due_at:
+        return 'Без дедлайна'
+    if deal.sla_breached_at or deal.sla_due_at <= timezone.now():
+        overdue_for = timezone.now() - deal.sla_due_at
+        return f'Просрочено на {_format_duration_tight(overdue_for)}'
+    remaining = deal.sla_due_at - timezone.now()
+    return f'До дедлайна {_format_duration_tight(remaining)}'
+
+
 def _deal_sla_health_block(deal):
     if not deal.sla_due_at:
         return {
@@ -976,6 +1029,51 @@ def _deal_activity_health_block(deal):
         'tone': 'positive',
         'is_stale': False,
     }
+
+
+def _deal_list_owner_sla_summary(deal):
+    if deal.responsible_manager_id is None:
+        return {
+            'label': 'SLA не задан',
+            'detail': 'Сначала назначьте владельца сделки.',
+            'tone': 'quiet',
+            'is_overdue': False,
+        }
+    if not deal.sla_due_at:
+        return {
+            'label': 'SLA не задан',
+            'detail': 'Для следующего шага дедлайн пока не задан.',
+            'tone': 'quiet',
+            'is_overdue': False,
+        }
+    due_at = timezone.localtime(deal.sla_due_at)
+    if deal.sla_breached_at or deal.sla_due_at <= timezone.now():
+        overdue_for = timezone.now() - deal.sla_due_at
+        return {
+            'label': f'SLA: просрочено на {_format_duration_compact(overdue_for)}',
+            'detail': f'Дедлайн был {due_at:%d.%m %H:%M}.',
+            'tone': 'danger',
+            'is_overdue': True,
+        }
+    remaining = deal.sla_due_at - timezone.now()
+    return {
+        'label': f'SLA: через {_format_duration_compact(remaining)}',
+        'detail': f'Дедлайн {due_at:%d.%m %H:%M}.',
+        'tone': 'active',
+        'is_overdue': False,
+    }
+
+
+def _deal_list_owner_update_text(deal):
+    if deal.responsible_manager_id is None:
+        return ''
+    activity_at = deal.last_activity_at or deal.deal_created_at or deal.created_at
+    if not activity_at:
+        return 'Обновлений нет'
+    activity_at = timezone.localtime(activity_at)
+    if activity_at.date() == timezone.localdate():
+        return f'Обновлено {activity_at:%H:%M}'
+    return f'Обновлено {activity_at:%d.%m %H:%M}'
 
 
 def _deal_action_block(deal, *, scope, finance_deal=None, deal_client=None, return_query=''):
@@ -1632,19 +1730,50 @@ def _deal_list_channel_summary(deal):
     return ' · '.join(part for part in parts if part)
 
 
+def _deal_list_customer_label(deal):
+    return deal.customer_name or deal.order.first_name or deal.order.phone or ('Клиент Avito' if deal.is_avito else 'Клиент')
+
+
+def _deal_list_primary_product_label(deal):
+    order_items = list(deal.order.items.all())
+    if not order_items:
+        return ''
+    primary_item = order_items[0]
+    parts = [primary_item.resolved_product_name, primary_item.resolved_variant_name]
+    return ' · '.join(part for part in parts if part)
+
+
 def _deal_list_product_summary(deal):
+    summary = _deal_list_primary_product_label(deal)
     order_items = list(deal.order.items.all())
     if not order_items:
         return deal.short_label or deal.get_deal_type_display()
-    primary_item = order_items[0]
-    parts = [primary_item.resolved_product_name]
-    variant_label = primary_item.resolved_variant_name
-    if variant_label:
-        parts.append(variant_label)
-    summary = ' · '.join(part for part in parts if part)
     if len(order_items) > 1:
         summary = f'{summary} +{len(order_items) - 1}'
     return summary
+
+
+def _deal_list_identity_summary(deal):
+    customer_label = _deal_list_customer_label(deal)
+    if deal.is_avito:
+        product_label = deal.avito_listing_title or _deal_list_primary_product_label(deal) or deal.short_label
+    else:
+        product_label = _deal_list_primary_product_label(deal) or deal.short_label or deal.get_case_status_display()
+    parts = [part for part in [customer_label, product_label] if part]
+    return ' · '.join(parts) if parts else 'Без описания'
+
+
+def _deal_list_context_summary(deal):
+    primary_status = getattr(deal, 'primary_status', None) or {}
+    delivery_label = deal.get_delivery_method_display() or deal.delivery_provider_name
+    parts = [deal.get_buyer_type_display(), delivery_label, primary_status.get('label') or deal.get_case_status_display()]
+    compact_parts = []
+    for part in parts:
+        normalized = (part or '').strip()
+        if not normalized or normalized == '—' or normalized == 'Не требуется' or normalized in compact_parts:
+            continue
+        compact_parts.append(normalized)
+    return ' · '.join(compact_parts)
 
 
 def _decorate_deal_list_rows(deals, *, finance_map, current_user, return_query):
@@ -1667,6 +1796,12 @@ def _decorate_deal_list_rows(deals, *, finance_map, current_user, return_query):
             deal_client=deal.work_queue_client,
             return_query=return_query,
         )
+        assign_self_action = _deal_assign_self_action(deal, scope='list', return_query=return_query)
+        deal.list_owner_sla = _deal_list_owner_sla_summary(deal)
+        deal.list_owner_update_text = _deal_list_owner_update_text(deal)
+        deal.list_owner_action = None
+        if deal.responsible_manager_id is None and _action_identity(deal.list_actions['primary_action']) != _action_identity(assign_self_action):
+            deal.list_owner_action = assign_self_action
         deal.list_readiness = _deal_list_readiness(deal)
         deal.list_problem_labels = list(deal.problem_flag_labels[:3])
         deal.list_row_key = f'deal-{deal.pk}'
@@ -1676,6 +1811,8 @@ def _decorate_deal_list_rows(deals, *, finance_map, current_user, return_query):
         deal.list_comments = _deal_list_commentaries(deal, deal_client=deal.work_queue_client)
         deal.list_fulfillment_detail = _deal_list_fulfillment_detail(deal)
         deal.list_documents_detail = _deal_list_documents_detail(deal)
+        deal.list_action_reason = _deal_list_action_reason(deal)
+        deal.list_action_urgency = _deal_list_action_urgency_text(deal)
         deal.list_sla_is_overdue = bool(
             deal.sla_due_at and (deal.sla_breached_at or deal.sla_due_at <= timezone.now())
         )
@@ -1700,96 +1837,9 @@ def _decorate_deal_list_rows(deals, *, finance_map, current_user, return_query):
         deal.primary_status = deal_primary_status(deal)
         deal.secondary_status = deal_secondary_status(deal)
         deal.risk_summary = deal_risk_summary(deal, blockers=blockers)
+        deal.list_identity_summary = _deal_list_identity_summary(deal)
+        deal.list_context_summary = _deal_list_context_summary(deal)
     return deals
-
-
-def _decorate_focused_deal_preview(deal):
-    if deal is None:
-        return None
-    deal_client = getattr(deal, 'work_queue_client', None) or deal_manager_client(deal)
-    documents = list(
-        deal.contract_documents.exclude(status=ContractDocument.STATUS_ARCHIVED).order_by('-issue_date', '-id')
-    )
-    reservations = list(
-        deal.reservations.select_related('client', 'target_warehouse', 'source_warehouse')
-        .prefetch_related('items')
-        .order_by('-created_at', '-id')
-    )
-    shipments = list(
-        deal.shipments.select_related('client', 'reservation', 'source_warehouse', 'target_warehouse')
-        .prefetch_related('items')
-        .order_by('-created_at', '-id')
-    )
-    purchase_items = list(
-        PurchaseItem.objects.filter(order_item__order=deal.order)
-        .select_related('purchase', 'product', 'variant', 'order_item')
-        .prefetch_related('cargo_items__cargo')
-        .order_by('purchase_id', 'id')
-    )
-    cargo_items = list(
-        CargoItem.objects.filter(purchase_item__order_item__order=deal.order)
-        .select_related('cargo', 'product', 'variant', 'purchase_item')
-        .order_by('cargo_id', 'id')
-    )
-    supply_summary = _deal_supply_summary(
-        deal,
-        reservations=reservations,
-        purchase_items=purchase_items,
-        cargo_items=cargo_items,
-    )
-    order_item_rows = _deal_order_item_rows(
-        list(deal.order.items.select_related('product', 'variant').all()),
-        deal=deal,
-        reservations=reservations,
-        purchase_items=purchase_items,
-        cargo_items=cargo_items,
-        shipments=shipments,
-    )
-    try:
-        finance_deal = deal.finance_deal
-    except FinanceDeal.DoesNotExist:
-        finance_deal = None
-    finance_expenses = list(deal.finance_expenses.select_related('category', 'created_by').order_by('-date', '-id'))
-    finance_payouts = list(deal.finance_payouts.select_related('created_by').order_by('-date', '-id'))
-    participant_summary = _deal_participant_summary(
-        list(deal.participants.select_related('person_alias', 'order_item').order_by('role', 'id'))
-    )
-    activities = list(deal.activities.select_related('actor').order_by('-created_at', '-id')[:6])
-    timeline_entries = _deal_timeline_entries(activities)
-    payments = list(deal.order.payments.order_by('-created_at', '-id'))
-    latest_payment = next((payment for payment in payments if payment.status == Payment.STATUS_FINISHED), None)
-    if latest_payment is None and payments:
-        latest_payment = payments[0]
-    finance_summary = _deal_finance_summary(
-        deal,
-        finance_deal=finance_deal,
-        finance_expenses=finance_expenses,
-        finance_payouts=finance_payouts,
-        participant_summary=participant_summary,
-        latest_payment=latest_payment,
-    )
-    deal.quick_preview = {
-        'subject_summary': _deal_subject_summary(deal, order_item_rows=order_item_rows, finance_deal=finance_deal),
-        'documents_summary': _deal_documents_summary(deal, documents=documents),
-        'logistics_summary': _deal_logistics_summary(
-            deal,
-            reservations=reservations,
-            shipments=shipments,
-            purchase_items=purchase_items,
-            cargo_items=cargo_items,
-            order_item_rows=order_item_rows,
-            supply_summary=supply_summary,
-        ),
-        'history_entries': timeline_entries[:4],
-        'finance_summary': _deal_finance_summary_compact(finance_summary),
-        'client_summary': _deal_client_summary(
-            deal,
-            deal_client=deal_client,
-            activities=activities,
-            client_comment=(deal_client.comments if deal_client else '') or deal.customer_request_comment or deal.order.comment,
-        ),
-    }
-    return deal
 
 
 def _decorate_deal_kanban_rows(deals):
@@ -6062,7 +6112,6 @@ def deal_list_view(request):
     deals_page = None
     deal_page_numbers = []
     deal_kanban_columns = []
-    focused_deal = None
     if current_view_mode == DEAL_VIEW_KANBAN:
         kanban_deals = list(deals)
         decorated_kanban_deals = _decorate_deal_kanban_rows(kanban_deals)
@@ -6081,19 +6130,9 @@ def deal_list_view(request):
             current_user=request.user,
             return_query=request.GET.urlencode(),
         ))
-        focused_deal_id = (request.GET.get('focus') or '').strip()
-        focused_deal = next(
-            (deal for deal in deal_rows if str(deal.pk) == focused_deal_id),
-            deal_rows[0] if deal_rows else None,
-        )
-        for deal in deal_rows:
-            deal.is_focused = focused_deal is not None and deal.pk == focused_deal.pk
-            deal.list_focus_query = _deal_query_string_with_updates(request.GET, focus=deal.pk)
-        focused_deal = _decorate_focused_deal_preview(focused_deal)
         deals_page.object_list = deal_rows
         deal_page_numbers = _deal_page_numbers(deals_page)
     current_filter_query_string = _deal_query_string_without_page(request.GET)
-    current_focus_reset_query_string = _deal_query_string_with_updates(request.GET, focus=None)
     all_deals = deal_queryset_factory()
     all_deals = _apply_deal_scope(all_deals, current_scope)
     active_scope = _active_deals(all_deals)
@@ -6151,14 +6190,11 @@ def deal_list_view(request):
         deal_stage_metrics=_deal_stage_metrics(active_scope, request.GET),
         queue_chips=queue_chips,
         signal_views=_deal_signal_views(active_scope),
-        deal_toolbar_presets=_deal_toolbar_presets(request.GET),
         deal_quick_toggle_filters=_deal_quick_toggle_filters(request.GET),
         deal_reset_filters_query_string=_deal_reset_filters_query_string(request.GET),
-        focused_deal=focused_deal,
         active_queue_chip=active_queue_chip,
         current_view_mode=current_view_mode,
         current_scope=current_scope,
-        current_focus_reset_query_string=current_focus_reset_query_string,
         list_view_query_string=_deal_query_string_with_updates(request.GET, page=None, view=None, scope=None, kanban_scope=None),
         kanban_view_query_string=_deal_query_string_with_updates(
             request.GET,

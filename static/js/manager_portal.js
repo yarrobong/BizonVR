@@ -1960,22 +1960,6 @@
       });
     });
 
-    root.querySelectorAll('[data-row-focus-url]').forEach((row) => {
-      if (row.dataset.managerFocusBound === '1') {
-        return;
-      }
-      row.dataset.managerFocusBound = '1';
-      row.addEventListener('click', (event) => {
-        if (event.target.closest(interactiveSelector)) {
-          return;
-        }
-        const {rowFocusUrl} = row.dataset;
-        if (!rowFocusUrl) {
-          return;
-        }
-        window.location.assign(rowFocusUrl);
-      });
-    });
   }
 
   function getTableSortStorage() {
