@@ -11,7 +11,6 @@
 
 <div class="container mx-auto px-0 md:px-4 pt-0 pb-8 md:py-8"
      x-data="catalogProductList()"
-     x-init="init()"
      x-effect="syncBodyOverflow()"
      @filters-dirty="mobileFiltersDirty = true"
      @filters-url="pendingFiltersUrl = $event.detail"
