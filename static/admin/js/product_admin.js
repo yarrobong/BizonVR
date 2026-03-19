@@ -607,6 +607,35 @@
     }
 
     onReady(function() {
+        // Auto-collapse sidebar on product admin pages; remember user's explicit choice.
+        // setTimeout(0) defers until after nav_sidebar.js has created the toggle button.
+        // Django admin puts the 'shifted' class on #main (not #container).
+        setTimeout(function() {
+            var PREF_KEY = 'product_admin.sidebarOpen';
+            var main = document.getElementById('main');
+            var toggle = document.getElementById('toggle-nav-sidebar');
+            var autoCollapsing = false;
+
+            if (!main || !toggle) return;
+
+            toggle.addEventListener('click', function() {
+                if (autoCollapsing) return;
+                window.requestAnimationFrame(function() {
+                    if (main.classList.contains('shifted')) {
+                        localStorage.setItem(PREF_KEY, '1');
+                    } else {
+                        localStorage.removeItem(PREF_KEY);
+                    }
+                });
+            });
+
+            if (localStorage.getItem(PREF_KEY) !== '1' && main.classList.contains('shifted')) {
+                autoCollapsing = true;
+                toggle.click();
+                autoCollapsing = false;
+            }
+        }, 0);
+
         var dashboard = document.querySelector('[data-product-admin-dashboard]');
         var refreshScheduled = false;
         var mode;

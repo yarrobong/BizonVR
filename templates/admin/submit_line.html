@@ -10,7 +10,7 @@
     {% endif %}
     {% if show_save_as_new or show_save_and_add_another or show_save_and_continue %}
       <details class="product-admin-action-menu">
-        <summary class="button product-admin-action-menu__summary">Ещё</summary>
+        <summary class="button product-admin-action-menu__summary" title="{% if show_save_and_continue %}Сохранить и продолжить{% endif %}{% if show_save_and_add_another %}{% if show_save_and_continue %} · {% endif %}Сохранить и добавить ещё{% endif %}{% if show_save_as_new %} · Сохранить как новый{% endif %}">Ещё</summary>
         <div class="product-admin-action-menu__panel">
           {% if show_save_and_continue %}
             <button type="submit" name="_continue" class="button product-admin-action-menu__button">
