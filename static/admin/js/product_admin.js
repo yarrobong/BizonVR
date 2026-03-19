@@ -250,28 +250,10 @@
 
     function updateSkuFieldState(skuInput, variantCount) {
         var row;
-        var note;
-
         if (!skuInput) return;
-
         row = closest(skuInput, '.form-row');
-        note = ensureFieldNote(skuInput, 'data-product-admin-sku-note');
-        if (!row || !note) return;
-
-        if (variantCount > 0) {
-            skuInput.setAttribute('disabled', 'disabled');
-            skuInput.setAttribute('aria-disabled', 'true');
-            row.classList.add('product-admin-field-disabled');
-            ensureSkuMirrorInput(skuInput);
-            note.innerHTML = '<strong>SKU на уровне товара отключён.</strong> У карточки уже есть варианты, поэтому артикулы задаются в строках вариантов.';
-            return;
-        }
-
-        skuInput.removeAttribute('disabled');
-        skuInput.removeAttribute('aria-disabled');
-        row.classList.remove('product-admin-field-disabled');
-        removeSkuMirrorInput();
-        note.innerHTML = '<strong>SKU товара активен.</strong> Используйте это поле только для товаров без вариантов.';
+        if (!row) return;
+        row.hidden = variantCount > 0;
     }
 
     function ensureDescriptionMeta(descriptionInput) {
@@ -638,8 +620,10 @@
         var alertsBox;
         var alertsList;
         var photoGroup;
+        var videoGroup;
         var contentBlockGroup;
         var variantGroup;
+        var characteristicsGroup;
         var stockGroup;
         var bundleGroup;
         var previewImageNode;
@@ -662,14 +646,18 @@
         previewPlaceholderNode = document.querySelector('[data-preview-placeholder]');
 
         photoGroup = getInlineGroupById('inline-images-group') || findInlineGroupByHeading('Фото товара');
+        videoGroup = getInlineGroupById('inline-videos-group') || findInlineGroupByHeading('Видео товара');
         contentBlockGroup = findInlineGroupByHeading('Блоки подробного описания');
         variantGroup = getInlineGroupById('inline-variants-group') || findInlineGroupByHeading('Варианты товара');
+        characteristicsGroup = getInlineGroupById('inline-characteristics-group') || findInlineGroupByHeading('Характеристики');
         stockGroup = getInlineGroupById('inline-stocks-group') || findInlineGroupByHeading('Остатки');
         bundleGroup = getInlineGroupById('inline-bundle_items-group') || findInlineGroupByHeading('комплект');
 
         if (photoGroup) photoGroup.classList.add('product-inline-group--photos');
+        if (videoGroup) videoGroup.classList.add('product-inline-group--videos');
         if (contentBlockGroup) contentBlockGroup.classList.add('product-inline-group--content-blocks');
         if (variantGroup) variantGroup.classList.add('product-inline-group--variants');
+        if (characteristicsGroup) characteristicsGroup.classList.add('product-inline-group--characteristics');
         if (stockGroup) stockGroup.classList.add('product-inline-group--stocks');
         if (bundleGroup) bundleGroup.classList.add('product-inline-group--bundles');
 
@@ -893,9 +881,64 @@
             window.requestAnimationFrame(refreshDashboard);
         }
 
+        function setupTabs() {
+            var nav = document.querySelector('[data-product-admin-anchor-nav]');
+            if (!nav) return;
+
+            var buttons = Array.prototype.slice.call(nav.querySelectorAll('[data-scroll-target]'));
+            if (!buttons.length) return;
+
+            var contentForm = document.querySelector('#content-main form');
+            var panelMap = {
+                'field-name': contentForm ? Array.prototype.filter.call(
+                    contentForm.querySelectorAll('.module'),
+                    function(el) { return !closest(el, '.inline-group'); }
+                ) : [],
+                'inline-images-group':          [photoGroup].filter(Boolean),
+                'inline-videos-group':          [videoGroup, contentBlockGroup].filter(Boolean),
+                'inline-variants-group':        [variantGroup].filter(Boolean),
+                'inline-characteristics-group': [characteristicsGroup].filter(Boolean),
+                'inline-stocks-group':          [stockGroup].filter(Boolean),
+                'inline-bundle_items-group':    [bundleGroup].filter(Boolean),
+            };
+
+            var activeKey = null;
+
+            function activateTab(key) {
+                if (!panelMap[key] || activeKey === key) return;
+                activeKey = key;
+
+                buttons.forEach(function(btn) {
+                    btn.classList.toggle('is-active', btn.getAttribute('data-scroll-target') === key);
+                });
+
+                Object.keys(panelMap).forEach(function(panelKey) {
+                    panelMap[panelKey].forEach(function(el) {
+                        el.hidden = panelKey !== key;
+                    });
+                });
+            }
+
+            buttons.forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    if (!btn.disabled) activateTab(btn.getAttribute('data-scroll-target'));
+                });
+            });
+
+            // Start on first available tab
+            buttons.some(function(btn) {
+                if (!btn.disabled) {
+                    activateTab(btn.getAttribute('data-scroll-target'));
+                    return true;
+                }
+                return false;
+            });
+        }
+
         document.addEventListener('click', function(event) {
             var button = closest(event.target, '[data-scroll-target]');
             if (!button || button.disabled) return;
+            if (closest(button, '[data-product-admin-anchor-nav]')) return;
             event.preventDefault();
             scrollToTarget(button.getAttribute('data-scroll-target'));
         });
@@ -929,6 +972,7 @@
 
         setupTagsWidget();
         setupImagePreviewLightbox();
+        setupTabs();
         refreshDashboard();
     });
 })();

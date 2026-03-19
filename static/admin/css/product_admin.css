@@ -306,6 +306,15 @@ body.change-form {
     cursor: not-allowed;
 }
 
+.product-admin-anchor-nav .product-admin-anchor-nav__button.is-active,
+.product-admin-anchor-nav .product-admin-anchor-nav__button.is-active:hover,
+.product-admin-anchor-nav .product-admin-anchor-nav__button.is-active:focus {
+    background: var(--product-admin-primary) !important;
+    border-color: var(--product-admin-primary) !important;
+    color: #fff !important;
+    box-shadow: 0 2px 8px rgba(36, 87, 197, 0.35);
+}
+
 .product-admin-summary__topline {
     display: flex;
     align-items: center;
