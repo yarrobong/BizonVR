@@ -48,19 +48,6 @@
                     </article>
                 </div>
             </div>
-            <div class="product-admin-hero__actions">
-                {% if product_view_url %}
-                <a href="{{ product_view_url }}" class="button product-admin-actions__button" target="_blank" rel="noreferrer">
-                    Открыть на сайте
-                </a>
-                {% endif %}
-                <button type="button" class="button product-admin-actions__button" data-scroll-target="inline-images-group">
-                    Перейти к фото
-                </button>
-                <button type="button" class="button product-admin-actions__button" data-scroll-target="field-name">
-                    Вернуться к базе
-                </button>
-            </div>
         </div>
         <details class="product-admin-guide-details">
             <summary>Подсказки по этапам</summary>
@@ -165,4 +152,46 @@
 
 {% block after_field_sets %}
 {{ block.super }}
+{% endblock %}
+
+{% block after_related_objects %}
+{{ block.super }}
+<div class="product-admin-floating-bar" data-product-admin-floating-bar>
+    <div class="product-admin-floating-bar__meta">
+        <strong>Сохранение карточки</strong>
+        <span data-product-admin-floating-status>Изменения можно сохранить из любой точки страницы.</span>
+    </div>
+    <div class="product-admin-floating-bar__actions">
+        <button type="button" class="button product-admin-floating-bar__button product-admin-floating-bar__button--secondary" data-scroll-target="field-name">
+            Наверх
+        </button>
+        {% if show_save_as_new or show_save_and_add_another or show_save_and_continue %}
+        <details class="product-admin-action-menu product-admin-action-menu--floating">
+            <summary class="button product-admin-floating-bar__button product-admin-floating-bar__button--ghost">Ещё</summary>
+            <div class="product-admin-action-menu__panel">
+                {% if show_save_and_continue %}
+                <button type="submit" name="_continue" class="button product-admin-action-menu__button">
+                    Сохранить и продолжить
+                </button>
+                {% endif %}
+                {% if show_save_and_add_another %}
+                <button type="submit" name="_addanother" class="button product-admin-action-menu__button">
+                    Сохранить и добавить ещё
+                </button>
+                {% endif %}
+                {% if show_save_as_new %}
+                <button type="submit" name="_saveasnew" class="button product-admin-action-menu__button">
+                    Сохранить как новый
+                </button>
+                {% endif %}
+            </div>
+        </details>
+        {% endif %}
+        {% if show_save %}
+        <button type="submit" name="_save" class="button default product-admin-floating-bar__button">
+            Сохранить
+        </button>
+        {% endif %}
+    </div>
+</div>
 {% endblock %}

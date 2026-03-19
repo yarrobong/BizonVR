@@ -108,6 +108,8 @@ class DealFilterForm(StyledFormMixin, forms.Form):
             ('-sla_due_at', 'SLA: позже дедлайн'),
             ('-last_activity_at', 'Последняя активность: свежие'),
             ('last_activity_at', 'Последняя активность: старые'),
+            ('-prepayment_amount', 'Сумма: больше'),
+            ('prepayment_amount', 'Сумма: меньше'),
         ],
         initial='sla_due_at',
     )

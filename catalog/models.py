@@ -1,6 +1,12 @@
+import html
+import re
 from decimal import Decimal
+from urllib.parse import urlparse
+
+import requests
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.urls import reverse
 from django.utils.text import slugify
@@ -97,6 +103,108 @@ class ProductTag(models.Model):
 
     def __str__(self):
         return self.name
+
+
+RUTUBE_HOSTS = {'rutube.ru', 'www.rutube.ru', 'm.rutube.ru'}
+RUTUBE_PUBLIC_VIDEO_PREFIX = '/video/'
+RUTUBE_PRIVATE_VIDEO_PREFIX = '/video/private/'
+RUTUBE_REQUEST_TIMEOUT_SECONDS = 4
+RUTUBE_REQUEST_HEADERS = {
+    'User-Agent': 'BizonVR/1.0 (+https://bizonvr.ru)',
+}
+
+
+def _parse_rutube_video_url(raw_url):
+    raw_value = (raw_url or '').strip()
+    if not raw_value:
+        raise ValidationError({'rutube_url': 'Укажите ссылку на видео RUTUBE.'})
+
+    parsed = urlparse(raw_value)
+    if not parsed.scheme:
+        parsed = urlparse(f'https://{raw_value}')
+
+    host = (parsed.netloc or '').split(':', 1)[0].lower()
+    if host not in RUTUBE_HOSTS:
+        raise ValidationError({'rutube_url': 'Допустимы только публичные ссылки RUTUBE.'})
+
+    if parsed.path.startswith(RUTUBE_PRIVATE_VIDEO_PREFIX) or 'p=' in (parsed.query or ''):
+        raise ValidationError({'rutube_url': 'Приватные видео RUTUBE и ссылки с ключом доступа не поддерживаются.'})
+
+    path = parsed.path.rstrip('/')
+    if not path.startswith(RUTUBE_PUBLIC_VIDEO_PREFIX):
+        raise ValidationError({'rutube_url': 'Вставьте обычную публичную ссылку вида https://rutube.ru/video/<id>/.'})
+
+    segments = [segment for segment in path.split('/') if segment]
+    if len(segments) < 2 or segments[0] != 'video' or not segments[1]:
+        raise ValidationError({'rutube_url': 'Не удалось определить ID видео RUTUBE по ссылке.'})
+
+    video_id = segments[1]
+    normalized_url = f'https://rutube.ru/video/{video_id}/'
+    embed_url = f'https://rutube.ru/play/embed/{video_id}'
+    return normalized_url, video_id, embed_url
+
+
+def _extract_rutube_embed_src(html_snippet):
+    if not html_snippet:
+        return ''
+    match = re.search(r'src=["\']([^"\']+)["\']', html_snippet, re.IGNORECASE)
+    return html.unescape(match.group(1).strip()) if match else ''
+
+
+def _extract_meta_content(page_html, meta_names):
+    for meta_name in meta_names:
+        patterns = (
+            rf'<meta[^>]+(?:property|name)=["\']{re.escape(meta_name)}["\'][^>]+content=["\']([^"\']+)["\']',
+            rf'<meta[^>]+content=["\']([^"\']+)["\'][^>]+(?:property|name)=["\']{re.escape(meta_name)}["\']',
+        )
+        for pattern in patterns:
+            match = re.search(pattern, page_html, re.IGNORECASE)
+            if match:
+                return html.unescape(match.group(1).strip())
+    return ''
+
+
+def _fetch_rutube_video_metadata(normalized_url, fallback_embed_url):
+    try:
+        response = requests.get(
+            'https://rutube.ru/api/oembed/',
+            params={'url': normalized_url, 'format': 'json'},
+            timeout=RUTUBE_REQUEST_TIMEOUT_SECONDS,
+            headers=RUTUBE_REQUEST_HEADERS,
+        )
+        response.raise_for_status()
+        data = response.json() or {}
+        embed_url = _extract_rutube_embed_src(data.get('html', '')) or fallback_embed_url
+        return {
+            'embed_url': embed_url,
+            'thumbnail_url': (data.get('thumbnail_url') or '').strip(),
+            'title': (data.get('title') or '').strip(),
+        }
+    except (requests.RequestException, ValueError, TypeError):
+        pass
+
+    try:
+        response = requests.get(
+            normalized_url,
+            timeout=RUTUBE_REQUEST_TIMEOUT_SECONDS,
+            headers=RUTUBE_REQUEST_HEADERS,
+        )
+        response.raise_for_status()
+    except requests.RequestException:
+        return {}
+
+    page_html = response.text or ''
+    return {
+        'embed_url': (
+            _extract_meta_content(page_html, ('og:video:iframe', 'twitter:player'))
+            or fallback_embed_url
+        ),
+        'thumbnail_url': _extract_meta_content(
+            page_html,
+            ('og:image:url', 'og:image', 'twitter:image', 'thumbnailUrl'),
+        ),
+        'title': _extract_meta_content(page_html, ('og:title', 'twitter:title')),
+    }
 
 
 class Product(models.Model):
@@ -281,6 +389,200 @@ class ProductImage(models.Model):
 
     def __str__(self):
         return f'{self.product.name} — фото #{self.order}'
+
+
+class ProductVideo(models.Model):
+    """Видео товара из RUTUBE для галереи карточки."""
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name='videos',
+        verbose_name='Товар',
+    )
+    rutube_url = models.URLField(
+        'Ссылка RUTUBE',
+        max_length=500,
+        help_text='Вставьте обычную публичную ссылку на видео RUTUBE.',
+    )
+    rutube_video_id = models.CharField('ID видео RUTUBE', max_length=100, blank=True, db_index=True)
+    embed_url = models.URLField('Embed URL', max_length=500, blank=True)
+    thumbnail_url = models.URLField('Постер', max_length=500, blank=True)
+    title = models.CharField('Заголовок видео', max_length=500, blank=True)
+    order = models.PositiveIntegerField('Порядок', default=0, db_index=True)
+
+    class Meta:
+        verbose_name = 'Видео товара'
+        verbose_name_plural = 'Видео товара'
+        ordering = ('order', 'id')
+
+    def __str__(self):
+        label = self.title or self.rutube_video_id or 'видео'
+        return f'{self.product.name} — {label}'
+
+    def clean(self):
+        super().clean()
+        normalized_url, video_id, embed_url = _parse_rutube_video_url(self.rutube_url)
+        self.rutube_url = normalized_url
+        self.rutube_video_id = video_id
+        self.embed_url = embed_url
+
+    def save(self, *args, **kwargs):
+        previous_video_id = None
+        if self.pk:
+            previous_video_id = (
+                type(self).objects.filter(pk=self.pk).values_list('rutube_video_id', flat=True).first()
+            )
+
+        self.clean()
+
+        if previous_video_id and previous_video_id != self.rutube_video_id:
+            self.thumbnail_url = ''
+            self.title = ''
+
+        metadata = _fetch_rutube_video_metadata(self.rutube_url, self.embed_url)
+        if metadata.get('embed_url'):
+            self.embed_url = metadata['embed_url']
+        if metadata.get('thumbnail_url'):
+            self.thumbnail_url = metadata['thumbnail_url']
+        if metadata.get('title'):
+            self.title = metadata['title']
+
+        super().save(*args, **kwargs)
+
+
+class ProductContentBlock(models.Model):
+    """Управляемые блоки подробного описания на странице товара."""
+
+    class BlockType(models.TextChoices):
+        TEXT = 'text', 'Текстовый блок'
+        IMAGE_TEXT = 'image_text', 'Картинка и текст'
+        FULL_IMAGE = 'full_image', 'Большое изображение'
+        VIDEO = 'video', 'Видео'
+
+    class ImagePosition(models.TextChoices):
+        LEFT = 'left', 'Слева'
+        RIGHT = 'right', 'Справа'
+
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name='content_blocks',
+        verbose_name='Товар',
+    )
+    block_type = models.CharField(
+        'Тип блока',
+        max_length=20,
+        choices=BlockType.choices,
+        default=BlockType.TEXT,
+    )
+    title = models.CharField(
+        'Заголовок',
+        max_length=255,
+        blank=True,
+        help_text='Крупный заголовок секции. Для full_image можно оставить пустым.',
+    )
+    text = models.TextField(
+        'Текст',
+        blank=True,
+        help_text='Основной текст блока. Для full_image не используется.',
+    )
+    image = models.ImageField(
+        'Изображение',
+        upload_to='products/content_blocks/',
+        blank=True,
+        null=True,
+        help_text='Изображение для блока. Обязательно для типов "Картинка и текст" и "Большое изображение".',
+    )
+    image_position = models.CharField(
+        'Положение изображения',
+        max_length=10,
+        choices=ImagePosition.choices,
+        default=ImagePosition.LEFT,
+        blank=True,
+        help_text='Используется только для блока "Картинка и текст".',
+    )
+    caption = models.CharField(
+        'Подпись к изображению',
+        max_length=255,
+        blank=True,
+        help_text='Необязательная подпись под большим изображением.',
+    )
+    rutube_url = models.URLField(
+        'Ссылка RUTUBE',
+        max_length=500,
+        blank=True,
+        help_text='Для видео-блока вставьте обычную публичную ссылку RUTUBE.',
+    )
+    rutube_video_id = models.CharField('ID видео RUTUBE', max_length=100, blank=True, db_index=True)
+    embed_url = models.URLField('Embed URL', max_length=500, blank=True)
+    sort_order = models.IntegerField(
+        'Порядок',
+        default=0,
+        db_index=True,
+        help_text='Чем меньше число, тем выше блок на странице.',
+    )
+    is_active = models.BooleanField(
+        'Активен',
+        default=True,
+        help_text='Позволяет временно скрыть блок без удаления.',
+    )
+    created_at = models.DateTimeField('Создан', auto_now_add=True)
+    updated_at = models.DateTimeField('Обновлён', auto_now=True)
+
+    class Meta:
+        verbose_name = 'Блок подробного описания'
+        verbose_name_plural = 'Блоки подробного описания'
+        ordering = ('sort_order', 'id')
+
+    def __str__(self):
+        label = self.title or self.get_block_type_display()
+        return f'{self.product.name} — {label}'
+
+    def clean(self):
+        errors = {}
+
+        if self.block_type == self.BlockType.TEXT:
+            if not (self.title or '').strip():
+                errors['title'] = 'Укажите заголовок для текстового блока.'
+            if not (self.text or '').strip():
+                errors['text'] = 'Укажите текст для текстового блока.'
+        elif self.block_type == self.BlockType.IMAGE_TEXT:
+            if not (self.title or '').strip():
+                errors['title'] = 'Укажите заголовок для блока "Картинка и текст".'
+            if not (self.text or '').strip():
+                errors['text'] = 'Укажите текст для блока "Картинка и текст".'
+            if not self.image:
+                errors['image'] = 'Загрузите изображение для блока "Картинка и текст".'
+            if not (self.image_position or '').strip():
+                errors['image_position'] = 'Выберите положение изображения.'
+        elif self.block_type == self.BlockType.FULL_IMAGE:
+            if not self.image:
+                errors['image'] = 'Загрузите изображение для блока "Большое изображение".'
+        elif self.block_type == self.BlockType.VIDEO:
+            if not (self.rutube_url or '').strip():
+                errors['rutube_url'] = 'Укажите публичную ссылку RUTUBE для блока "Видео".'
+            else:
+                try:
+                    normalized_url, video_id, embed_url = _parse_rutube_video_url(self.rutube_url)
+                except ValidationError as exc:
+                    errors.update(exc.message_dict)
+                else:
+                    self.rutube_url = normalized_url
+                    self.rutube_video_id = video_id
+                    self.embed_url = embed_url
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+
+        if self.block_type == self.BlockType.VIDEO and self.rutube_url and self.embed_url:
+            metadata = _fetch_rutube_video_metadata(self.rutube_url, self.embed_url)
+            if metadata.get('embed_url'):
+                self.embed_url = metadata['embed_url']
+
+        super().save(*args, **kwargs)
 
 
 class ProductCharacteristic(models.Model):

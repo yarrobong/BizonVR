@@ -1,0 +1,62 @@
+{% load i18n admin_urls %}
+<div class="submit-row{% if opts.app_label == "catalog" and opts.model_name == "product" %} product-admin-submit-row{% endif %}">
+{% block submit-row %}
+{% if opts.app_label == "catalog" and opts.model_name == "product" %}
+  <div class="product-admin-submit-row__main">
+    {% if show_save %}<input type="submit" value="{% translate 'Save' %}" class="default" name="_save">{% endif %}
+    {% if show_close %}
+        {% url opts|admin_urlname:'changelist' as changelist_url %}
+        <a role="button" href="{% add_preserved_filters changelist_url %}" class="closelink">{% translate 'Close' %}</a>
+    {% endif %}
+    {% if show_save_as_new or show_save_and_add_another or show_save_and_continue %}
+      <details class="product-admin-action-menu">
+        <summary class="button product-admin-action-menu__summary">Ещё</summary>
+        <div class="product-admin-action-menu__panel">
+          {% if show_save_and_continue %}
+            <button type="submit" name="_continue" class="button product-admin-action-menu__button">
+              {% if can_change %}{% translate 'Save and continue editing' %}{% else %}{% translate 'Save and view' %}{% endif %}
+            </button>
+          {% endif %}
+          {% if show_save_and_add_another %}
+            <button type="submit" name="_addanother" class="button product-admin-action-menu__button">
+              {% translate 'Save and add another' %}
+            </button>
+          {% endif %}
+          {% if show_save_as_new %}
+            <button type="submit" name="_saveasnew" class="button product-admin-action-menu__button">
+              {% translate 'Save as new' %}
+            </button>
+          {% endif %}
+        </div>
+      </details>
+    {% endif %}
+  </div>
+  {% if show_delete_link and original %}
+      {% url opts|admin_urlname:'delete' original.pk|admin_urlquote as delete_url %}
+      <div class="product-admin-submit-row__danger">
+          <span class="product-admin-submit-row__danger-label">Удаление</span>
+          <a
+              role="button"
+              href="{% add_preserved_filters delete_url %}"
+              class="deletelink"
+              data-product-admin-delete-link
+              data-confirm-message="Удалить товар? Это действие нельзя отменить."
+          >{% translate "Delete" %}</a>
+      </div>
+  {% endif %}
+{% else %}
+  {% if show_save %}<input type="submit" value="{% translate 'Save' %}" class="default" name="_save">{% endif %}
+  {% if show_save_as_new %}<input type="submit" value="{% translate 'Save as new' %}" name="_saveasnew">{% endif %}
+  {% if show_save_and_add_another %}<input type="submit" value="{% translate 'Save and add another' %}" name="_addanother">{% endif %}
+  {% if show_save_and_continue %}<input type="submit" value="{% if can_change %}{% translate 'Save and continue editing' %}{% else %}{% translate 'Save and view' %}{% endif %}" name="_continue">{% endif %}
+  {% if show_close %}
+      {% url opts|admin_urlname:'changelist' as changelist_url %}
+      <a role="button" href="{% add_preserved_filters changelist_url %}" class="closelink">{% translate 'Close' %}</a>
+  {% endif %}
+  {% if show_delete_link and original %}
+      {% url opts|admin_urlname:'delete' original.pk|admin_urlquote as delete_url %}
+      <a role="button" href="{% add_preserved_filters delete_url %}" class="deletelink">{% translate "Delete" %}</a>
+  {% endif %}
+{% endif %}
+{% endblock %}
+</div>

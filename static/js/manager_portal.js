@@ -1,7 +1,7 @@
 (function () {
   const FILTER_DEBOUNCE_MS = 260;
   const GLOBAL_SEARCH_DEBOUNCE_MS = 180;
-  const CHART_JS_URL = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js';
+  const CHART_JS_URL = window.managerPortalShell?.chartJsUrl || '/static/vendor/chartjs/chart-4.4.8.umd.min.js';
   const TABLE_SORT_STORAGE_PREFIX = 'manager-portal-table-sort:';
   const MANAGER_PROGRESS_PENDING_KEY = window.managerPortalProgress?.pendingKey || 'manager-portal:navigation-pending';
   const MANAGER_SIDEBAR_COLLAPSED_KEY = window.managerPortalShell?.sidebarCollapsedKey || 'manager-portal:sidebar-collapsed';
@@ -1060,6 +1060,69 @@
         field.addEventListener(eventName, () => debounceSubmit(form));
       });
     });
+  }
+
+  function parseFilterAssignments(rawValue) {
+    return String(rawValue || '')
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+      .map((entry) => {
+        const [id, ...valueParts] = entry.split('=');
+        return {
+          id: (id || '').trim(),
+          value: valueParts.join('=').trim(),
+        };
+      })
+      .filter((item) => item.id);
+  }
+
+  function applyFilterAssignments(assignments, nextValue = '') {
+    assignments.forEach(({id}) => {
+      const input = document.getElementById(id);
+      if (input) {
+        input.value = nextValue;
+      }
+    });
+  }
+
+  function matchFilterAssignments(assignments) {
+    return assignments.length > 0 && assignments.every(({id, value}) => {
+      const input = document.getElementById(id);
+      return input && String(input.value || '') === value;
+    });
+  }
+
+  function syncDealFilterToggleState(root) {
+    root.querySelectorAll('[data-filter-toggle-button]').forEach((button) => {
+      const isActive = matchFilterAssignments(parseFilterAssignments(button.dataset.filterActiveCheck));
+      button.classList.toggle('is-active', isActive);
+      button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    });
+  }
+
+  function wireDealFilterToggles(root) {
+    root.querySelectorAll('[data-filter-toggle-button]').forEach((button) => {
+      if (button.dataset.managerBound === '1') {
+        return;
+      }
+      button.dataset.managerBound = '1';
+      button.addEventListener('click', () => {
+        const activeAssignments = parseFilterAssignments(button.dataset.filterActiveCheck);
+        const isActive = matchFilterAssignments(activeAssignments);
+        applyFilterAssignments(parseFilterAssignments(button.dataset.filterClear), '');
+        if (!isActive) {
+          parseFilterAssignments(button.dataset.filterSet).forEach(({id, value}) => {
+            const input = document.getElementById(id);
+            if (input) {
+              input.value = value;
+            }
+          });
+        }
+        syncDealFilterToggleState(document);
+      });
+    });
+    syncDealFilterToggleState(root);
   }
 
   function wireDisclosureToggles(root) {
@@ -2627,6 +2690,7 @@
     wireDatePickerTriggers(root);
     wireDisclosureToggles(root);
     wireAutoFilters(root);
+    wireDealFilterToggles(root);
     wireBulkSelection(root);
     wireScrollFade(root);
     wireFilterSearch(root);

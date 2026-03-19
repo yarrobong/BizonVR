@@ -1,9 +1,28 @@
+from django import forms
 from django.contrib import admin
 
 from config.formatting import format_currency_amount
 
 from ..models import ProductBundle, ProductBundleItem
 from .shared import _admin_image_preview
+
+
+class ProductBundleChoiceField(forms.ModelChoiceField):
+    def label_from_instance(self, obj):
+        return f'{obj} • {format_currency_amount(obj.total_price)}'
+
+
+class ProductBundleItemInlineForProductForm(forms.ModelForm):
+    bundle = ProductBundleChoiceField(
+        queryset=ProductBundle.objects.order_by('name', 'pk'),
+        empty_label='Выберите комплект',
+        label='Комплект',
+        widget=forms.Select(attrs={'data-product-admin-bundle-select': 'true'}),
+    )
+
+    class Meta:
+        model = ProductBundleItem
+        fields = '__all__'
 
 
 class ProductBundleItemInline(admin.TabularInline):
@@ -23,19 +42,19 @@ class ProductBundleItemInline(admin.TabularInline):
 class ProductBundleItemInlineForProduct(admin.TabularInline):
     """Участие товара в комплектах — редактируется при редактировании товара."""
     model = ProductBundleItem
+    form = ProductBundleItemInlineForProductForm
     fk_name = 'product'
     extra = 1
     classes = ('collapse',)
-    autocomplete_fields = ('bundle',)
     fields = ('bundle', 'quantity', 'price_preview')
     readonly_fields = ('price_preview',)
     verbose_name = 'Позиция в комплекте'
     verbose_name_plural = 'Участие в комплектах'
 
     def price_preview(self, obj):
-        if obj and obj.product_id:
-            return f'{format_currency_amount(obj.effective_price)} (−5%)'
-        return '—'
+        if obj and obj.bundle_id and obj.product_id:
+            return f'{format_currency_amount(obj.effective_price)} для «{obj.bundle}» (−5%)'
+        return 'Выберите комплект, чтобы увидеть цену'
     price_preview.short_description = 'Цена в комплекте'
 
 

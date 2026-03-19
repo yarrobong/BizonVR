@@ -11,18 +11,16 @@
 <link rel="icon" type="image/png" sizes="512x512" href="{% static 'images/android-chrome-512x512.png' %}">
 
 <!-- Fonts -->
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Orbitron:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<!-- Use the local/system font stack so the UI does not depend on Google Fonts availability. -->
 
 <!-- Tailwind CSS -->
 <link rel="stylesheet" href="{% static 'css/tailwind.css' %}">
 <link rel="stylesheet" href="{% static 'css/layout/base.css' %}">
 
 <!-- HTMX & Alpine.js -->
-<script defer src="https://unpkg.com/htmx.org@1.9.10"></script>
+<script defer src="{% static 'vendor/htmx/htmx-1.9.10.min.js' %}"></script>
 <script defer src="{% static 'js/layout/base.js' %}"></script>
-<script defer src="https://unpkg.com/alpinejs@3.13.3/dist/cdn.min.js"></script>
+<script defer src="{% static 'vendor/alpine/alpine-3.13.3-cdn.min.js' %}"></script>
 
 <!-- Lucide Icons -->
-<script defer src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+<script defer src="{% static 'vendor/lucide/lucide-0.468.0.min.js' %}"></script>

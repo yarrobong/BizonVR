@@ -174,33 +174,50 @@
 	    this.selectedImageIndex = 0;
 	    window.dispatchEvent(new CustomEvent('pd-variant-change', { detail: { name: v ? v.name : '' } }));
 	  },
-  get displayImages() {
-    const baseGallery = Array.isArray(this.data.productGallery) ? [...this.data.productGallery] : [];
+  get displayMedia() {
+    const baseMedia = Array.isArray(this.data.productMedia) ? this.data.productMedia.map(item => ({ ...item })) : [];
     const variantImage = this.selectedVariant && this.selectedVariant.imageUrl ? this.selectedVariant.imageUrl : '';
-    let images = baseGallery;
+    let media = baseMedia;
 
     if (variantImage) {
-      if (this.data.productImage && baseGallery.length > 0) {
-        images = [variantImage].concat(baseGallery.slice(1));
+      const variantMedia = {
+        type: 'image',
+        imageUrl: variantImage,
+        thumbnailUrl: variantImage,
+        title: this.selectedVariant && this.selectedVariant.name ? this.selectedVariant.name : '{{ product.name|escapejs }}',
+      };
+      if (this.data.productImage && baseMedia.length > 0 && baseMedia[0].type === 'image') {
+        media = [variantMedia].concat(baseMedia.slice(1));
       } else {
-        images = [variantImage].concat(baseGallery);
+        media = [variantMedia].concat(baseMedia);
       }
     }
 
-    const uniqueImages = [];
+    const uniqueMedia = [];
     const seen = new Set();
-    for (const img of images) {
-      if (!img || seen.has(img)) continue;
-      seen.add(img);
-      uniqueImages.push(img);
+    for (const item of media) {
+      if (!item) continue;
+      const uniqueKey = item.type === 'video'
+        ? `video:${item.embedUrl || ''}`
+        : `image:${item.imageUrl || item.thumbnailUrl || ''}`;
+      if (uniqueKey === 'video:' || uniqueKey === 'image:' || seen.has(uniqueKey)) continue;
+      seen.add(uniqueKey);
+      uniqueMedia.push(item);
     }
-    return uniqueImages;
+    return uniqueMedia;
+  },
+  get effectiveMedia() {
+    const media = this.displayMedia;
+    if (media.length > 0) {
+      if (this.selectedImageIndex >= media.length) this.selectedImageIndex = 0;
+      return media[this.selectedImageIndex];
+    }
+    return null;
   },
   get effectiveImage() {
-    const images = this.displayImages;
-    if (images.length > 0) {
-      if (this.selectedImageIndex >= images.length) this.selectedImageIndex = 0;
-      return images[this.selectedImageIndex];
+    const media = this.effectiveMedia;
+    if (media && media.type === 'image') {
+      return media.imageUrl || media.thumbnailUrl || null;
     }
     return this.data.productImage || null;
   },
@@ -369,8 +386,8 @@
 
     if (!wasHorizontal) return;
 
-    const imagesLen = this.displayImages.length;
-    if (imagesLen <= 1) return;
+    const mediaLen = this.displayMedia.length;
+    if (mediaLen <= 1) return;
 
     const wrapperW = this.$refs.mainImageWrapper?.getBoundingClientRect?.().width || window.innerWidth || 360;
     const distanceThreshold = Math.max(40, wrapperW * 0.18);
@@ -387,7 +404,7 @@
     if (!shouldAdvance || absDx <= absDy) return;
 
     if (dir < 0) {
-      if (this.selectedImageIndex < imagesLen - 1) this.selectedImageIndex++;
+      if (this.selectedImageIndex < mediaLen - 1) this.selectedImageIndex++;
     } else if (dir > 0) {
       if (this.selectedImageIndex > 0) this.selectedImageIndex--;
     }
@@ -410,9 +427,24 @@
 
     <div class="product-main">
       <div class="gallery-container">
-        <div class="thumbs desktop-only" x-show="displayImages.length > 1" x-cloak>
-          <template x-for="(img, i) in displayImages" :key="i">
-            <img :src="img" class="thumb" :class="selectedImageIndex === i ? 'active' : ''" @click="selectedImageIndex = i" alt="" loading="lazy" />
+        <div class="thumbs desktop-only" x-show="displayMedia.length > 1" x-cloak>
+          <template x-for="(media, i) in displayMedia" :key="`${media.type}-${i}`">
+            <button type="button" class="thumb" :class="selectedImageIndex === i ? 'active' : ''" @click="selectedImageIndex = i">
+              <template x-if="media.type === 'image'">
+                <img :src="media.thumbnailUrl || media.imageUrl" class="thumb-media thumb-media--image" :alt="media.title || ''" loading="lazy" />
+              </template>
+              <template x-if="media.type === 'video'">
+                <div class="thumb-video" :class="{ 'thumb-video--fallback': !(media.thumbnailUrl) }">
+                  <template x-if="media.thumbnailUrl">
+                    <img :src="media.thumbnailUrl" class="thumb-media thumb-media--video" :alt="media.title || 'Видео товара'" loading="lazy" />
+                  </template>
+                  <template x-if="!media.thumbnailUrl">
+                    <span class="thumb-video-label">Видео</span>
+                  </template>
+                  <span class="thumb-video-play" aria-hidden="true"></span>
+                </div>
+              </template>
+            </button>
           </template>
         </div>
         <div class="main-image-wrapper"
@@ -421,34 +453,68 @@
              @touchmove="handleGalleryTouchMove($event)"
              @touchend="handleGalleryTouchEnd($event)"
              @touchcancel="handleGalleryTouchEnd($event)">
-          {% if product_gallery %}
-            <img
-              src="{{ product_gallery.0 }}"
-              x-bind:src="effectiveImage || '{{ product_gallery.0|escapejs }}'"
-              class="main-image"
-              alt="{{ product.name }}"
-              loading="eager" />
-          {% elif product.image %}
-            <img
-              src="{{ product.image.url }}"
-              x-bind:src="effectiveImage || '{{ product.image.url|escapejs }}'"
-              class="main-image"
-              alt="{{ product.name }}"
-              loading="eager" />
-          {% else %}
-            <img
-              x-show="effectiveImage"
-              x-bind:src="effectiveImage"
-              class="main-image"
-              alt="{{ product.name }}"
-              loading="eager"
-              x-cloak />
-            <div style="color: var(--pd-muted);">Нет фото</div>
-          {% endif %}
+          <div class="main-video-shell"
+               x-show="effectiveMedia && effectiveMedia.type === 'video'"
+               {% if not product_media or product_media.0.type != 'video' %}style="display:none;"{% endif %}>
+            {% if product_media and product_media.0.type == 'video' %}
+              <iframe
+                src="{{ product_media.0.embedUrl }}"
+                x-bind:src="effectiveMedia && effectiveMedia.type === 'video' ? effectiveMedia.embedUrl : '{{ product_media.0.embedUrl|escapejs }}'"
+                x-bind:title="effectiveMedia && effectiveMedia.title ? effectiveMedia.title : '{{ product.name|escapejs }}'"
+                class="main-video"
+                frameborder="0"
+                allow="clipboard-write; autoplay; encrypted-media; picture-in-picture; web-share"
+                allowfullscreen></iframe>
+            {% else %}
+              <iframe
+                x-bind:src="effectiveMedia && effectiveMedia.type === 'video' ? effectiveMedia.embedUrl : ''"
+                x-bind:title="effectiveMedia && effectiveMedia.title ? effectiveMedia.title : '{{ product.name|escapejs }}'"
+                class="main-video"
+                frameborder="0"
+                allow="clipboard-write; autoplay; encrypted-media; picture-in-picture; web-share"
+                allowfullscreen
+                x-cloak></iframe>
+            {% endif %}
+          </div>
+          <div class="main-image-shell"
+               x-show="!effectiveMedia || effectiveMedia.type === 'image'"
+               {% if product_media and product_media.0.type == 'video' %}style="display:none;"{% endif %}>
+            {% if product_media and product_media.0.type == 'image' %}
+              <img
+                src="{{ product_media.0.imageUrl }}"
+                x-bind:src="effectiveImage || '{{ product_media.0.imageUrl|escapejs }}'"
+                class="main-image"
+                alt="{{ product.name }}"
+                loading="eager" />
+            {% elif product_gallery %}
+              <img
+                src="{{ product_gallery.0 }}"
+                x-bind:src="effectiveImage || '{{ product_gallery.0|escapejs }}'"
+                class="main-image"
+                alt="{{ product.name }}"
+                loading="eager" />
+            {% elif product.image %}
+              <img
+                src="{{ product.image.url }}"
+                x-bind:src="effectiveImage || '{{ product.image.url|escapejs }}'"
+                class="main-image"
+                alt="{{ product.name }}"
+                loading="eager" />
+            {% else %}
+              <img
+                x-show="effectiveImage"
+                x-bind:src="effectiveImage"
+                class="main-image"
+                alt="{{ product.name }}"
+                loading="eager"
+                x-cloak />
+              <div style="color: var(--pd-muted);">Нет фото</div>
+            {% endif %}
+          </div>
         </div>
         <!-- Mobile Dots -->
-        <div class="dots mobile-only" x-show="displayImages.length > 1">
-            <template x-for="(img, i) in displayImages" :key="i">
+        <div class="dots mobile-only" x-show="displayMedia.length > 1">
+            <template x-for="(media, i) in displayMedia" :key="`${media.type}-${i}`">
                 <div class="dot" :class="selectedImageIndex === i ? 'active' : ''"></div>
             </template>
         </div>
@@ -708,14 +774,43 @@
     {% endif %}
 
     <h2 class="section-title">Описание</h2>
-    <div class="details-section" id="desc">
-      <div class="desc-text">
-        {% if product.description %}
-          {{ product.description|linebreaks }}
-        {% else %}
+    <div class="details-section" id="desc" x-data="{ detailsExpanded: false }">
+      {% if product.description or active_content_blocks %}
+        <div class="details-collapsible" :class="{ 'is-expanded': detailsExpanded }">
+          <div class="details-collapsible-content" :class="{ 'is-expanded': detailsExpanded }">
+            {% if product.description %}
+              <div class="desc-text">
+                {{ product.description|linebreaks }}
+              </div>
+            {% endif %}
+
+            {% if active_content_blocks %}
+              {% include "catalog/partials/product_content_blocks.html" with content_blocks=active_content_blocks product=product %}
+            {% endif %}
+          </div>
+
+          <div class="details-collapsible-fade"
+               x-show="!detailsExpanded"
+               x-cloak
+               aria-hidden="true"></div>
+
+          <div class="details-collapsible-actions" :class="{ 'is-expanded': detailsExpanded }">
+            <button type="button"
+                    class="details-toggle-btn details-toggle-btn--corner"
+                    @click="detailsExpanded = !detailsExpanded"
+                    :aria-expanded="detailsExpanded.toString()">
+              <span x-text="detailsExpanded ? 'Свернуть' : 'Подробнее'">Подробнее</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true" class="details-toggle-btn__icon" :class="{ 'is-open': detailsExpanded }">
+                <path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+      {% else %}
+        <div class="desc-text">
           <span style="color: var(--pd-muted);">Описание пока не добавлено.</span>
-        {% endif %}
-      </div>
+        </div>
+      {% endif %}
 
       <h3 class="specs-title">Характеристики</h3>
       <div class="mobile-specs-list mobile-only">

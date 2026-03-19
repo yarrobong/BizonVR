@@ -2,16 +2,19 @@
 import json
 import os
 import re
+import shutil
 import tempfile
 import zipfile
 from datetime import timedelta
 from decimal import Decimal
 from io import BytesIO
+from unittest.mock import Mock, patch
 
 from django.contrib.auth.models import AnonymousUser
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
 from django.core.cache import cache
+from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.core.management.base import CommandError
@@ -42,8 +45,10 @@ from .models import (
     ProductBundle,
     ProductBundleItem,
     ProductCharacteristic,
+    ProductContentBlock,
     ProductStock,
     ProductTag,
+    ProductVideo,
     ProductVariant,
     Service,
 )
@@ -149,6 +154,14 @@ class VariantGalleryAndCatalogCardsTest(TestCase):
         self.assertIsNotNone(match)
         return json.loads(match.group(1))
 
+    def _mock_http_response(self, *, json_data=None, text='', status_code=200):
+        response = Mock()
+        response.status_code = status_code
+        response.text = text
+        response.json.return_value = json_data or {}
+        response.raise_for_status = Mock()
+        return response
+
     def test_product_detail_accepts_variant_query_and_sets_initial_variant_id(self):
         resp = self.client.get(
             reverse('catalog:product_detail', kwargs={'slug': self.product.slug}),
@@ -189,6 +202,99 @@ class VariantGalleryAndCatalogCardsTest(TestCase):
             r'<img\s+src="http://testserver/media/products/[^"]+"[^>]*class="main-image"',
         )
         self.assertIn('x-bind:src="effectiveImage ||', html)
+
+    def test_product_video_save_normalizes_public_rutube_url_and_fetches_metadata(self):
+        with patch('catalog.models.requests.get') as mock_get:
+            mock_get.return_value = self._mock_http_response(json_data={
+                'title': 'Видео обзор Quest 3',
+                'thumbnail_url': 'https://cdn.example/rutube-thumb.jpg',
+                'html': '<iframe src="https://rutube.ru/play/embed/7716bd3e665725c3c008ae7ab4ff02e2"></iframe>',
+            })
+            video = ProductVideo.objects.create(
+                product=self.product,
+                rutube_url='https://www.rutube.ru/video/7716bd3e665725c3c008ae7ab4ff02e2/?utm_source=test',
+                order=3,
+            )
+
+        self.assertEqual(video.rutube_url, 'https://rutube.ru/video/7716bd3e665725c3c008ae7ab4ff02e2/')
+        self.assertEqual(video.rutube_video_id, '7716bd3e665725c3c008ae7ab4ff02e2')
+        self.assertEqual(video.embed_url, 'https://rutube.ru/play/embed/7716bd3e665725c3c008ae7ab4ff02e2')
+        self.assertEqual(video.thumbnail_url, 'https://cdn.example/rutube-thumb.jpg')
+        self.assertEqual(video.title, 'Видео обзор Quest 3')
+        self.assertEqual(mock_get.call_count, 1)
+
+    def test_product_video_rejects_non_rutube_or_private_links(self):
+        with self.assertRaises(ValidationError):
+            ProductVideo(product=self.product, rutube_url='https://youtube.com/watch?v=abc').clean()
+
+        with self.assertRaises(ValidationError):
+            ProductVideo(
+                product=self.product,
+                rutube_url='https://rutube.ru/video/private/7716bd3e665725c3c008ae7ab4ff02e2/?p=secret',
+            ).clean()
+
+    def test_product_detail_includes_rutube_video_after_images_and_renders_inline_player_markup(self):
+        png_bytes = (
+            b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01'
+            b'\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDAT\x08\xd7c\xf8\xff\xff?'
+            b'\x00\x05\xfe\x02\xfeA\xd9\x89\xc9\x00\x00\x00\x00IEND\xaeB`\x82'
+        )
+        self.product.image = SimpleUploadedFile('detail-main.png', png_bytes, content_type='image/png')
+        self.product.save(update_fields=['image'])
+        self.product.images.create(
+            image=SimpleUploadedFile('detail-extra.png', png_bytes, content_type='image/png'),
+            order=1,
+        )
+        ProductVideo.objects.bulk_create([
+            ProductVideo(
+                product=self.product,
+                rutube_url='https://rutube.ru/video/7716bd3e665725c3c008ae7ab4ff02e2/',
+                rutube_video_id='7716bd3e665725c3c008ae7ab4ff02e2',
+                embed_url='https://rutube.ru/play/embed/7716bd3e665725c3c008ae7ab4ff02e2',
+                thumbnail_url='https://cdn.example/rutube-poster.jpg',
+                title='Видео обзор Quest 3',
+                order=0,
+            ),
+        ])
+
+        resp = self.client.get(reverse('catalog:product_detail', kwargs={'slug': self.product.slug}))
+        self.assertEqual(resp.status_code, 200)
+        data = self._extract_product_detail_data(resp)
+        html = resp.content.decode()
+
+        self.assertEqual(data['productMedia'][0]['type'], 'image')
+        self.assertEqual(data['productMedia'][-1]['type'], 'video')
+        self.assertEqual(
+            data['productMedia'][-1]['embedUrl'],
+            'https://rutube.ru/play/embed/7716bd3e665725c3c008ae7ab4ff02e2',
+        )
+        self.assertEqual(data['productMedia'][-1]['thumbnailUrl'], 'https://cdn.example/rutube-poster.jpg')
+        self.assertIn('class="main-video"', html)
+        self.assertIn('thumb-video-play', html)
+        self.assertIn("effectiveMedia && effectiveMedia.type === 'video'", html)
+
+    def test_product_detail_keeps_video_without_thumbnail_and_has_fallback_marker(self):
+        ProductVideo.objects.bulk_create([
+            ProductVideo(
+                product=self.product,
+                rutube_url='https://rutube.ru/video/7716bd3e665725c3c008ae7ab4ff02e2/',
+                rutube_video_id='7716bd3e665725c3c008ae7ab4ff02e2',
+                embed_url='https://rutube.ru/play/embed/7716bd3e665725c3c008ae7ab4ff02e2',
+                thumbnail_url='',
+                title='Видео без постера',
+                order=0,
+            ),
+        ])
+
+        resp = self.client.get(reverse('catalog:product_detail', kwargs={'slug': self.product.slug}))
+        self.assertEqual(resp.status_code, 200)
+        data = self._extract_product_detail_data(resp)
+        html = resp.content.decode()
+
+        self.assertEqual(data['productMedia'][0]['type'], 'video')
+        self.assertEqual(data['productMedia'][0]['thumbnailUrl'], '')
+        self.assertIn('thumb-video--fallback', html)
+        self.assertIn('thumb-video-label', html)
 
     def test_catalog_renders_all_variants_as_cards_without_base_product_card(self):
         resp = self.client.get(reverse('catalog:product_list'), {'category': self.category.slug})
@@ -263,6 +369,162 @@ class VariantGalleryAndCatalogCardsTest(TestCase):
         self.assertNotIn('stockInCityProduct', data)
         self.assertNotIn('selectedCityName', data)
         self.assertNotContains(resp, 'Укажите город')
+
+class ProductContentBlocksTest(TestCase):
+    def setUp(self):
+        self.media_root = tempfile.mkdtemp()
+        self.storage_override = override_settings(
+            MEDIA_ROOT=self.media_root,
+            STORAGES={
+                'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+                'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+            },
+        )
+        self.storage_override.enable()
+        self.addCleanup(self.storage_override.disable)
+        self.addCleanup(shutil.rmtree, self.media_root, True)
+
+        self.client = Client()
+        self.category = Category.objects.create(name='Контентные блоки', slug='content-blocks')
+        self.product = Product.objects.create(
+            category=self.category,
+            name='Bizon Helmet',
+            slug='bizon-helmet',
+            description='Базовое описание товара',
+            price=1990,
+            is_active=True,
+        )
+
+    def _png_file(self, name='block.png'):
+        png_bytes = (
+            b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01'
+            b'\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDAT\x08\xd7c\xf8\xff\xff?'
+            b'\x00\x05\xfe\x02\xfeA\xd9\x89\xc9\x00\x00\x00\x00IEND\xaeB`\x82'
+        )
+        return SimpleUploadedFile(name, png_bytes, content_type='image/png')
+
+    def _mock_http_response(self, *, json_data=None, text='', status_code=200):
+        response = Mock()
+        response.status_code = status_code
+        response.text = text
+        response.json.return_value = json_data or {}
+        response.raise_for_status = Mock()
+        return response
+
+    def test_product_content_block_requires_fields_by_type(self):
+        text_block = ProductContentBlock(product=self.product, block_type=ProductContentBlock.BlockType.TEXT)
+        with self.assertRaises(ValidationError) as text_error:
+            text_block.full_clean()
+        self.assertIn('title', text_error.exception.message_dict)
+        self.assertIn('text', text_error.exception.message_dict)
+
+        image_text_block = ProductContentBlock(
+            product=self.product,
+            block_type=ProductContentBlock.BlockType.IMAGE_TEXT,
+            title='С картинкой',
+        )
+        with self.assertRaises(ValidationError) as image_text_error:
+            image_text_block.full_clean()
+        self.assertIn('text', image_text_error.exception.message_dict)
+        self.assertIn('image', image_text_error.exception.message_dict)
+
+        full_image_block = ProductContentBlock(
+            product=self.product,
+            block_type=ProductContentBlock.BlockType.FULL_IMAGE,
+        )
+        with self.assertRaises(ValidationError) as full_image_error:
+            full_image_block.full_clean()
+        self.assertIn('image', full_image_error.exception.message_dict)
+
+        video_block = ProductContentBlock(
+            product=self.product,
+            block_type=ProductContentBlock.BlockType.VIDEO,
+        )
+        with self.assertRaises(ValidationError) as video_error:
+            video_block.full_clean()
+        self.assertIn('rutube_url', video_error.exception.message_dict)
+
+    def test_product_detail_renders_active_content_blocks_in_order_and_collapsible_description(self):
+        ProductContentBlock.objects.create(
+            product=self.product,
+            block_type=ProductContentBlock.BlockType.TEXT,
+            title='Второй блок',
+            text='Текст второго блока',
+            sort_order=20,
+            is_active=True,
+        )
+        ProductContentBlock.objects.create(
+            product=self.product,
+            block_type=ProductContentBlock.BlockType.IMAGE_TEXT,
+            title='Первый блок',
+            text='Текст первого блока',
+            image=self._png_file('image-text.png'),
+            image_position=ProductContentBlock.ImagePosition.RIGHT,
+            sort_order=10,
+            is_active=True,
+        )
+        ProductContentBlock.objects.create(
+            product=self.product,
+            block_type=ProductContentBlock.BlockType.FULL_IMAGE,
+            title='Третий блок',
+            caption='Подпись к изображению',
+            image=self._png_file('full-image.png'),
+            sort_order=30,
+            is_active=False,
+        )
+        ProductContentBlock.objects.create(
+            product=self.product,
+            block_type=ProductContentBlock.BlockType.FULL_IMAGE,
+            title='Финальный блок',
+            caption='Подпись финального блока',
+            image=self._png_file('final-image.png'),
+            sort_order=40,
+            is_active=True,
+        )
+        with patch('catalog.models.requests.get') as mock_get:
+            mock_get.return_value = self._mock_http_response(json_data={
+                'title': 'Видео обзор Quest 3',
+                'thumbnail_url': 'https://cdn.example/rutube-thumb.jpg',
+                'html': '<iframe src="https://rutube.ru/play/embed/7716bd3e665725c3c008ae7ab4ff02e2"></iframe>',
+            })
+            ProductContentBlock.objects.create(
+                product=self.product,
+                block_type=ProductContentBlock.BlockType.VIDEO,
+                title='Видео обзор',
+                caption='Короткий ролик',
+                rutube_url='https://www.rutube.ru/video/7716bd3e665725c3c008ae7ab4ff02e2/?utm_source=test',
+                sort_order=50,
+                is_active=True,
+            )
+
+        response = self.client.get(reverse('catalog:product_detail', kwargs={'slug': self.product.slug}))
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+
+        self.assertContains(response, 'Подробнее')
+        self.assertIn('x-data="{ detailsExpanded: false }"', html)
+        self.assertIn('class="details-collapsible-fade"', html)
+        self.assertIn('class="details-toggle-btn details-toggle-btn--corner"', html)
+        self.assertNotIn('Третий блок', html)
+        self.assertIn('class="content-block content-block--image-text is-image-right"', html)
+        self.assertIn('alt="Первый блок"', html)
+        self.assertIn('alt="Финальный блок"', html)
+        self.assertIn('class="content-block content-block--video"', html)
+        self.assertIn('https://rutube.ru/play/embed/7716bd3e665725c3c008ae7ab4ff02e2', html)
+        self.assertIn('Видео обзор', html)
+        self.assertLess(html.index('Первый блок'), html.index('Второй блок'))
+        self.assertLess(html.index('Второй блок'), html.index('Финальный блок'))
+        self.assertLess(html.index('Финальный блок'), html.index('Видео обзор'))
+        self.assertLess(html.index('details-collapsible-content'), html.index('Характеристики'))
+
+    def test_product_detail_without_description_and_blocks_keeps_empty_state(self):
+        self.product.description = ''
+        self.product.save(update_fields=['description'])
+
+        response = self.client.get(reverse('catalog:product_detail', kwargs={'slug': self.product.slug}))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Описание пока не добавлено.')
+        self.assertNotContains(response, 'Подробнее')
 
 
 class PublicLocationCleanupTest(TestCase):

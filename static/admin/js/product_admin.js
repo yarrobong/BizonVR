@@ -179,6 +179,7 @@
 
         if (!target) {
             if (targetKey === 'inline-images-group') target = findInlineGroupByHeading('Фото товара');
+            if (targetKey === 'inline-videos-group') target = findInlineGroupByHeading('Видео товара');
             if (targetKey === 'inline-variants-group') target = findInlineGroupByHeading('Варианты товара');
             if (targetKey === 'inline-characteristics-group') target = findInlineGroupByHeading('Характеристики');
             if (targetKey === 'inline-stocks-group') target = findInlineGroupByHeading('Остатки');
@@ -212,6 +213,417 @@
         group.appendChild(lockMessage);
     }
 
+    function ensureFieldNote(field, dataKey) {
+        var row = closest(field, '.form-row');
+        var existing = row ? row.querySelector('[' + dataKey + ']') : null;
+        var note;
+
+        if (!row) return null;
+        if (existing) return existing;
+
+        note = document.createElement('div');
+        note.className = 'product-admin-field-note';
+        note.setAttribute(dataKey, 'true');
+        field.parentNode.appendChild(note);
+        return note;
+    }
+
+    function ensureSkuMirrorInput(skuInput) {
+        var mirror = document.querySelector('input[data-product-admin-sku-mirror]');
+        if (!mirror) {
+            mirror = document.createElement('input');
+            mirror.type = 'hidden';
+            mirror.name = skuInput.name;
+            mirror.setAttribute('data-product-admin-sku-mirror', 'true');
+            skuInput.parentNode.appendChild(mirror);
+        }
+        mirror.value = skuInput.value;
+        return mirror;
+    }
+
+    function removeSkuMirrorInput() {
+        var mirror = document.querySelector('input[data-product-admin-sku-mirror]');
+        if (mirror && mirror.parentNode) {
+            mirror.parentNode.removeChild(mirror);
+        }
+    }
+
+    function updateSkuFieldState(skuInput, variantCount) {
+        var row;
+        var note;
+
+        if (!skuInput) return;
+
+        row = closest(skuInput, '.form-row');
+        note = ensureFieldNote(skuInput, 'data-product-admin-sku-note');
+        if (!row || !note) return;
+
+        if (variantCount > 0) {
+            skuInput.setAttribute('disabled', 'disabled');
+            skuInput.setAttribute('aria-disabled', 'true');
+            row.classList.add('product-admin-field-disabled');
+            ensureSkuMirrorInput(skuInput);
+            note.innerHTML = '<strong>SKU на уровне товара отключён.</strong> У карточки уже есть варианты, поэтому артикулы задаются в строках вариантов.';
+            return;
+        }
+
+        skuInput.removeAttribute('disabled');
+        skuInput.removeAttribute('aria-disabled');
+        row.classList.remove('product-admin-field-disabled');
+        removeSkuMirrorInput();
+        note.innerHTML = '<strong>SKU товара активен.</strong> Используйте это поле только для товаров без вариантов.';
+    }
+
+    function ensureDescriptionMeta(descriptionInput) {
+        var existing = descriptionInput.parentNode.querySelector('[data-product-admin-description-meta]');
+        var meta;
+        var count;
+        var hint;
+
+        if (existing) {
+            return {
+                meta: existing,
+                count: existing.querySelector('[data-product-admin-description-count]'),
+                hint: existing.querySelector('[data-product-admin-description-hint]')
+            };
+        }
+
+        meta = document.createElement('div');
+        meta.className = 'product-admin-description-meta';
+        meta.setAttribute('data-product-admin-description-meta', 'true');
+
+        count = document.createElement('span');
+        count.className = 'product-admin-description-meta__count';
+        count.setAttribute('data-product-admin-description-count', 'true');
+
+        hint = document.createElement('span');
+        hint.className = 'product-admin-description-meta__hint';
+        hint.setAttribute('data-product-admin-description-hint', 'true');
+
+        meta.appendChild(count);
+        meta.appendChild(hint);
+        descriptionInput.parentNode.appendChild(meta);
+
+        return { meta: meta, count: count, hint: hint };
+    }
+
+    function updateDescriptionMeta(descriptionInput) {
+        var parts;
+        var normalizedLength;
+        var softMin;
+        var softMax;
+
+        if (!descriptionInput) return;
+
+        parts = ensureDescriptionMeta(descriptionInput);
+        normalizedLength = descriptionInput.value.replace(/\s+/g, ' ').trim().length;
+        softMin = parseInt(descriptionInput.getAttribute('data-soft-min-length') || '300', 10);
+        softMax = parseInt(descriptionInput.getAttribute('data-soft-max-length') || '1200', 10);
+
+        parts.meta.classList.remove('is-short', 'is-good', 'is-long');
+        parts.count.textContent = String(normalizedLength) + ' символов';
+
+        if (!normalizedLength) {
+            parts.meta.classList.add('is-short');
+            parts.hint.textContent = 'Описание пока пустое. Рекомендуем минимум ' + String(softMin) + ' символов.';
+            return;
+        }
+
+        if (normalizedLength < softMin) {
+            parts.meta.classList.add('is-short');
+            parts.hint.textContent = 'Коротко для витрины. Добавьте преимущества, комплектацию и сценарий использования.';
+            return;
+        }
+
+        if (normalizedLength <= softMax) {
+            parts.meta.classList.add('is-good');
+            parts.hint.textContent = 'Хороший объём для карточки. Текст уже выглядит достаточно информативным.';
+            return;
+        }
+
+        parts.meta.classList.add('is-long');
+        parts.hint.textContent = 'Описание длиннее рекомендации. Проверьте, не прячутся ли ключевые преимущества слишком глубоко.';
+    }
+
+    function ensureImageLightbox() {
+        var existing = document.querySelector('[data-product-admin-image-lightbox]');
+        var overlay;
+        var dialog;
+        var actions;
+        var closeButton;
+        var openButton;
+        var canvas;
+        var image;
+
+        if (existing) {
+            return {
+                overlay: existing,
+                image: existing.querySelector('[data-product-admin-image-lightbox-image]'),
+                openButton: existing.querySelector('[data-product-admin-image-lightbox-open]'),
+            };
+        }
+
+        overlay = document.createElement('div');
+        overlay.className = 'product-admin-image-lightbox';
+        overlay.hidden = true;
+        overlay.setAttribute('data-product-admin-image-lightbox', 'true');
+
+        dialog = document.createElement('div');
+        dialog.className = 'product-admin-image-lightbox__dialog';
+
+        actions = document.createElement('div');
+        actions.className = 'product-admin-image-lightbox__actions';
+
+        openButton = document.createElement('a');
+        openButton.className = 'button product-admin-image-lightbox__button';
+        openButton.target = '_blank';
+        openButton.rel = 'noreferrer';
+        openButton.textContent = 'Открыть в новой вкладке';
+        openButton.setAttribute('data-product-admin-image-lightbox-open', 'true');
+
+        closeButton = document.createElement('button');
+        closeButton.type = 'button';
+        closeButton.className = 'button product-admin-image-lightbox__button';
+        closeButton.textContent = 'Закрыть';
+        closeButton.setAttribute('data-product-admin-image-lightbox-close', 'true');
+
+        canvas = document.createElement('div');
+        canvas.className = 'product-admin-image-lightbox__canvas';
+
+        image = document.createElement('img');
+        image.alt = '';
+        image.setAttribute('data-product-admin-image-lightbox-image', 'true');
+
+        canvas.appendChild(image);
+        actions.appendChild(openButton);
+        actions.appendChild(closeButton);
+        dialog.appendChild(actions);
+        dialog.appendChild(canvas);
+        overlay.appendChild(dialog);
+        document.body.appendChild(overlay);
+
+        return {
+            overlay: overlay,
+            image: image,
+            openButton: openButton,
+        };
+    }
+
+    function setupImagePreviewLightbox() {
+        var parts = ensureImageLightbox();
+
+        function closeLightbox() {
+            parts.overlay.hidden = true;
+            parts.image.removeAttribute('src');
+            parts.openButton.removeAttribute('href');
+        }
+
+        document.addEventListener('click', function(event) {
+            var previewLink = closest(event.target, '[data-product-admin-image-preview-link]');
+            var closeButton = closest(event.target, '[data-product-admin-image-lightbox-close]');
+            var dialog = closest(event.target, '.product-admin-image-lightbox__dialog');
+
+            if (closeButton) {
+                closeLightbox();
+                return;
+            }
+
+            if (previewLink) {
+                if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                event.preventDefault();
+                parts.image.src = previewLink.getAttribute('href');
+                parts.openButton.href = previewLink.getAttribute('href');
+                parts.overlay.hidden = false;
+                return;
+            }
+
+            if (!parts.overlay.hidden && event.target === parts.overlay && !dialog) {
+                closeLightbox();
+            }
+        });
+
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape' && !parts.overlay.hidden) {
+                closeLightbox();
+            }
+        });
+    }
+
+    function setupTagsWidget() {
+        var tagsRoot = document.querySelector('[data-product-admin-tags-widget]');
+        var fieldRow;
+        var shell;
+        var toolbar;
+        var searchInput;
+        var countNode;
+        var emptyNode;
+        var items;
+
+        function refresh() {
+            var query;
+            var visibleCount = 0;
+
+            if (!items.length) return;
+
+            query = searchInput.value.replace(/\s+/g, ' ').trim().toLowerCase();
+            items.forEach(function(item) {
+                var text = item.label.textContent.replace(/\s+/g, ' ').trim().toLowerCase();
+                var matches = !query || text.indexOf(query) !== -1;
+                item.wrapper.hidden = !matches;
+                if (matches) visibleCount += 1;
+            });
+
+            countNode.textContent = query
+                ? 'Найдено тегов: ' + String(visibleCount)
+                : 'Всего тегов: ' + String(items.length);
+            emptyNode.hidden = visibleCount !== 0;
+        }
+
+        if (!tagsRoot || tagsRoot.getAttribute('data-tags-enhanced') === 'true') return;
+
+        fieldRow = closest(tagsRoot, '.form-row');
+        if (!fieldRow) return;
+
+        items = Array.prototype.map.call(
+            tagsRoot.querySelectorAll('input[type="checkbox"]'),
+            function(checkbox) {
+                var label = closest(checkbox, 'label');
+                var wrapper = label && label.parentElement ? label.parentElement : checkbox.parentElement;
+                return {
+                    checkbox: checkbox,
+                    label: label,
+                    wrapper: wrapper
+                };
+            }
+        ).filter(function(item) {
+            return item.label && item.wrapper;
+        });
+
+        if (!items.length) return;
+
+        shell = document.createElement('div');
+        shell.setAttribute('data-product-admin-tags-shell', 'true');
+
+        toolbar = document.createElement('div');
+        toolbar.setAttribute('data-product-admin-tags-toolbar', 'true');
+
+        searchInput = document.createElement('input');
+        searchInput.type = 'search';
+        searchInput.placeholder = 'Поиск по тегам';
+        searchInput.className = 'vTextField';
+        searchInput.setAttribute('data-product-admin-tags-search', 'true');
+
+        countNode = document.createElement('span');
+        countNode.setAttribute('data-product-admin-tags-count', 'true');
+
+        emptyNode = document.createElement('p');
+        emptyNode.setAttribute('data-product-admin-tags-empty', 'true');
+        emptyNode.textContent = 'По вашему запросу теги не найдены.';
+        emptyNode.hidden = true;
+
+        toolbar.appendChild(searchInput);
+        toolbar.appendChild(countNode);
+
+        tagsRoot.parentNode.insertBefore(shell, tagsRoot);
+        shell.appendChild(toolbar);
+        shell.appendChild(tagsRoot);
+        shell.appendChild(emptyNode);
+        tagsRoot.setAttribute('data-tags-enhanced', 'true');
+
+        searchInput.addEventListener('input', refresh);
+        refresh();
+    }
+
+    function getStackedInlineRows(group) {
+        if (!group) return [];
+        return Array.prototype.filter.call(group.querySelectorAll('.inline-related'), function(row) {
+            return !row.classList.contains('empty-form');
+        });
+    }
+
+    function getFieldRow(container, fieldName) {
+        return container ? container.querySelector('.form-row.field-' + fieldName) : null;
+    }
+
+    function setFieldVisibility(container, fieldName, visible) {
+        var row = getFieldRow(container, fieldName);
+        if (!row) return;
+        row.classList.toggle('is-hidden-by-block-type', !visible);
+        row.setAttribute('aria-hidden', visible ? 'false' : 'true');
+    }
+
+    function applyContentBlockFieldVisibility(group) {
+        var rows;
+        var visibilityMap;
+
+        if (!group) return;
+
+        visibilityMap = {
+            text: {
+                title: true,
+                text: true,
+                image_preview: false,
+                image: false,
+                rutube_preview: false,
+                rutube_url: false,
+                image_position: false,
+                caption: false,
+                sort_order: true,
+                is_active: true
+            },
+            image_text: {
+                title: true,
+                text: true,
+                image_preview: true,
+                image: true,
+                rutube_preview: false,
+                rutube_url: false,
+                image_position: true,
+                caption: false,
+                sort_order: true,
+                is_active: true
+            },
+            full_image: {
+                title: true,
+                text: false,
+                image_preview: true,
+                image: true,
+                rutube_preview: false,
+                rutube_url: false,
+                image_position: false,
+                caption: true,
+                sort_order: true,
+                is_active: true
+            },
+            video: {
+                title: true,
+                text: false,
+                image_preview: false,
+                image: false,
+                rutube_preview: true,
+                rutube_url: true,
+                image_position: false,
+                caption: true,
+                sort_order: true,
+                is_active: true
+            }
+        };
+
+        rows = getStackedInlineRows(group);
+        rows.forEach(function(row) {
+            var typeField = row.querySelector('select[name$="-block_type"]');
+            var currentType = typeField && typeField.value ? typeField.value : 'text';
+            var currentMap = visibilityMap[currentType] || visibilityMap.text;
+
+            row.classList.add('product-content-block-inline');
+            row.setAttribute('data-block-type', currentType);
+
+            Object.keys(visibilityMap.text).forEach(function(fieldName) {
+                setFieldVisibility(row, fieldName, !!currentMap[fieldName]);
+            });
+        });
+    }
+
     onReady(function() {
         var dashboard = document.querySelector('[data-product-admin-dashboard]');
         var refreshScheduled = false;
@@ -219,11 +631,14 @@
         var nameInput;
         var categoryInput;
         var priceInput;
+        var skuInput;
+        var descriptionInput;
         var optionLabelInput;
         var slugInput;
         var alertsBox;
         var alertsList;
         var photoGroup;
+        var contentBlockGroup;
         var variantGroup;
         var stockGroup;
         var bundleGroup;
@@ -237,6 +652,8 @@
         nameInput = document.getElementById('id_name');
         categoryInput = document.getElementById('id_category');
         priceInput = document.getElementById('id_price');
+        skuInput = document.getElementById('id_sku');
+        descriptionInput = document.getElementById('id_description');
         optionLabelInput = document.getElementById('id_option_label');
         slugInput = document.getElementById('id_slug');
         alertsBox = document.querySelector('[data-product-admin-alerts]');
@@ -245,11 +662,13 @@
         previewPlaceholderNode = document.querySelector('[data-preview-placeholder]');
 
         photoGroup = getInlineGroupById('inline-images-group') || findInlineGroupByHeading('Фото товара');
+        contentBlockGroup = findInlineGroupByHeading('Блоки подробного описания');
         variantGroup = getInlineGroupById('inline-variants-group') || findInlineGroupByHeading('Варианты товара');
         stockGroup = getInlineGroupById('inline-stocks-group') || findInlineGroupByHeading('Остатки');
         bundleGroup = getInlineGroupById('inline-bundle_items-group') || findInlineGroupByHeading('комплект');
 
         if (photoGroup) photoGroup.classList.add('product-inline-group--photos');
+        if (contentBlockGroup) contentBlockGroup.classList.add('product-inline-group--content-blocks');
         if (variantGroup) variantGroup.classList.add('product-inline-group--variants');
         if (stockGroup) stockGroup.classList.add('product-inline-group--stocks');
         if (bundleGroup) bundleGroup.classList.add('product-inline-group--bundles');
@@ -365,6 +784,7 @@
             var progressPercent;
             var missingRequired = [];
             var alerts = [];
+            var floatingStatusNode = document.querySelector('[data-product-admin-floating-status]');
 
             if (nameValue) requiredComplete += 1;
             else missingRequired.push('название');
@@ -454,6 +874,17 @@
             renderAlerts(alerts);
             markPhotoPrimaryRow(photoGroup);
             updatePreviewImage(photoGroup);
+            updateSkuFieldState(skuInput, variantCount);
+            updateDescriptionMeta(descriptionInput);
+            applyContentBlockFieldVisibility(contentBlockGroup);
+
+            if (floatingStatusNode) {
+                if (requiredComplete === 4) {
+                    floatingStatusNode.textContent = 'База карточки готова. Можно сохранять без возврата к началу страницы.';
+                } else {
+                    floatingStatusNode.textContent = 'До сохранения базы осталось: ' + missingRequired.join(', ') + '.';
+                }
+            }
         }
 
         function scheduleRefresh() {
@@ -469,11 +900,21 @@
             scrollToTarget(button.getAttribute('data-scroll-target'));
         });
 
+        document.addEventListener('click', function(event) {
+            var deleteLink = closest(event.target, '[data-product-admin-delete-link]');
+            var message;
+            if (!deleteLink) return;
+            message = deleteLink.getAttribute('data-confirm-message') || 'Удалить товар? Это действие нельзя отменить.';
+            if (!window.confirm(message)) {
+                event.preventDefault();
+            }
+        });
+
         document.addEventListener('input', scheduleRefresh);
         document.addEventListener('change', scheduleRefresh);
 
         if (window.MutationObserver) {
-            [photoGroup, variantGroup, stockGroup, bundleGroup].filter(Boolean).forEach(function(group) {
+            [photoGroup, contentBlockGroup, variantGroup, stockGroup, bundleGroup].filter(Boolean).forEach(function(group) {
                 (new MutationObserver(function(mutations) {
                     var shouldRefresh = mutations.some(function(mutation) {
                         return !isInsideManagedPanel(mutation.target);
@@ -486,6 +927,8 @@
             });
         }
 
+        setupTagsWidget();
+        setupImagePreviewLightbox();
         refreshDashboard();
     });
 })();

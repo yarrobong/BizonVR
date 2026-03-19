@@ -9,7 +9,8 @@
   <link rel="stylesheet" href="{% static 'css/manager_portal.css' %}">
   <script>
     window.managerPortalShell = Object.assign({}, window.managerPortalShell, {
-      sidebarCollapsedKey: 'manager-portal:sidebar-collapsed:v2'
+      sidebarCollapsedKey: 'manager-portal:sidebar-collapsed:v2',
+      chartJsUrl: "{% static 'vendor/chartjs/chart-4.4.8.umd.min.js' %}"
     });
   </script>
   <script defer src="{% static 'js/manager_portal.js' %}"></script>

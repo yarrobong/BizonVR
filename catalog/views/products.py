@@ -3,7 +3,7 @@ from collections import OrderedDict
 from difflib import SequenceMatcher
 
 from django.core.paginator import Paginator
-from django.db.models import Case, Count, F, IntegerField, Max, Min, Q, Sum, Value, When
+from django.db.models import Case, Count, F, IntegerField, Max, Min, Prefetch, Q, Sum, Value, When
 from django.db.utils import ProgrammingError
 from django.views.generic import DetailView, ListView
 
@@ -16,6 +16,7 @@ from ..models import (
     Product,
     ProductBundle,
     ProductCharacteristic,
+    ProductContentBlock,
     ProductStock,
     ProductTag,
 )
@@ -408,7 +409,17 @@ class ProductDetailView(DetailView):
 
     def get_queryset(self):
         return Product.objects.filter(is_active=True).prefetch_related(
-            'characteristics', 'tags', 'variants', 'variants__characteristics', 'images'
+            'characteristics',
+            'tags',
+            'variants',
+            'variants__characteristics',
+            'images',
+            'videos',
+            Prefetch(
+                'content_blocks',
+                queryset=ProductContentBlock.objects.filter(is_active=True).order_by('sort_order', 'id'),
+                to_attr='active_content_blocks',
+            ),
         ).select_related('category')
 
     def get_context_data(self, **kwargs):
@@ -489,28 +500,48 @@ class ProductDetailView(DetailView):
         except ProgrammingError:
             context['bundles'] = []
 
-        gallery = []
-        seen = set()
-        try:
-            if self.object.image:
-                url = self.request.build_absolute_uri(self.object.image.url)
-                gallery.append(url)
-                seen.add(url)
-            for img in self.object.images.all():
-                if img.image:
-                    url = self.request.build_absolute_uri(img.image.url)
-                    if url not in seen:
-                        gallery.append(url)
-                        seen.add(url)
-        except (ValueError, OSError):
-            pass
-        context['product_gallery'] = gallery
-
         def _safe_image_url(img_field):
             try:
                 return self.request.build_absolute_uri(img_field.url) if img_field else ''
             except (ValueError, OSError):
                 return ''
+
+        gallery = []
+        product_media = []
+        seen_images = set()
+        seen_video_embeds = set()
+
+        def _append_image(url, title=''):
+            if not url or url in seen_images:
+                return
+            seen_images.add(url)
+            gallery.append(url)
+            product_media.append({
+                'type': 'image',
+                'imageUrl': url,
+                'thumbnailUrl': url,
+                'title': title or self.object.name,
+            })
+
+        _append_image(_safe_image_url(self.object.image), self.object.name)
+        for img in self.object.images.all():
+            _append_image(_safe_image_url(img.image), self.object.name)
+
+        for video in self.object.videos.all():
+            embed_url = (video.embed_url or '').strip()
+            if not embed_url or embed_url in seen_video_embeds:
+                continue
+            seen_video_embeds.add(embed_url)
+            product_media.append({
+                'type': 'video',
+                'embedUrl': embed_url,
+                'thumbnailUrl': (video.thumbnail_url or '').strip(),
+                'title': (video.title or self.object.name).strip(),
+            })
+
+        context['product_gallery'] = gallery
+        context['product_media'] = product_media
+        context['active_content_blocks'] = list(getattr(self.object, 'active_content_blocks', []))
 
         variants_data = [
             {
@@ -535,6 +566,7 @@ class ProductDetailView(DetailView):
             'productImage': _safe_image_url(self.object.image),
             'productPrice': float(self.object.price),
             'productGallery': gallery,
+            'productMedia': product_media,
             'productCharacteristics': [[c.name, c.value] for c in self.object.characteristics.all()],
             'variantCharacteristics': context['variant_characteristics'],
             'stockByVariant': context['stock_by_variant'],

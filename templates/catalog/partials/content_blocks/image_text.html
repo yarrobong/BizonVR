@@ -1,0 +1,20 @@
+<article class="content-block content-block--image-text {% if block.image_position == 'right' %}is-image-right{% endif %}">
+  <div class="content-block__media-shell">
+    {% if block.image %}
+      <img src="{{ block.image.url }}"
+           alt="{{ block.title|default:product.name }}"
+           class="content-block__image content-block__image--cover"
+           loading="lazy" />
+    {% endif %}
+  </div>
+  <div class="content-block__text-shell">
+    {% if block.title %}
+      <h3 class="content-block__title">{{ block.title }}</h3>
+    {% endif %}
+    {% if block.text %}
+      <div class="content-block__body">
+        {{ block.text|linebreaks }}
+      </div>
+    {% endif %}
+  </div>
+</article>

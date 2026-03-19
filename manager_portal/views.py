@@ -4046,6 +4046,18 @@ def _apply_deal_sorting(deals, sort_value):
             '-deal_created_at',
             '-id',
         )
+    if sort_value == '-prepayment_amount':
+        return deals.order_by(
+            F('prepayment_amount').desc(nulls_last=True),
+            F('sla_due_at').asc(nulls_last=True),
+            '-id',
+        )
+    if sort_value == 'prepayment_amount':
+        return deals.order_by(
+            F('prepayment_amount').asc(nulls_last=True),
+            F('sla_due_at').asc(nulls_last=True),
+            '-id',
+        )
     return deals.order_by(
         F('sla_due_at').asc(nulls_last=True),
         F('last_activity_at').desc(nulls_last=True),
@@ -4193,7 +4205,9 @@ def _apply_deal_filters(deals, form, *, user):
 
 
 def _deal_advanced_filter_state(form):
-    advanced_fields = (
+    tracked_fields = (
+        'q',
+        'queue',
         'payment_state',
         'fulfillment_status',
         'documents_status',
@@ -4202,24 +4216,22 @@ def _deal_advanced_filter_state(form):
         'overlay',
         'problem_view',
         'case_status',
+        'responsible_manager',
         'mine',
         'only_active',
         'only_unassigned',
+        'only_problematic',
         'action_today',
     )
     active_count = 0
     if form.is_valid():
-        for field_name in advanced_fields:
+        for field_name in tracked_fields:
             if form.cleaned_data.get(field_name):
                 active_count += 1
-        sort_value = form.cleaned_data.get('sort') or ''
     else:
-        for field_name in advanced_fields:
+        for field_name in tracked_fields:
             if form.data.get(field_name):
                 active_count += 1
-        sort_value = (form.data.get('sort') or '').strip()
-    if sort_value and sort_value != (form.fields['sort'].initial or ''):
-        active_count += 1
     return active_count > 0, active_count
 
 
@@ -4451,6 +4463,112 @@ def _deal_quick_toggle_filters(query_params):
             }
         )
     return toggles
+
+
+def _deal_choice_label(choices, value):
+    normalized_value = str(value)
+    for choice_value, label in choices:
+        if isinstance(label, (list, tuple)):
+            nested_label = _deal_choice_label(label, value)
+            if nested_label != normalized_value:
+                return nested_label
+            continue
+        if str(choice_value) == normalized_value:
+            return label
+    return normalized_value
+
+
+def _deal_active_filter_chips(query_params, filter_form):
+    chips = []
+    boolean_filters = (
+        ('only_problematic', 'Проблемные'),
+        ('mine', 'Только мои'),
+        ('only_unassigned', 'Без ответственного'),
+        ('action_today', 'Требуют действия сегодня'),
+        ('only_active', 'Только активные'),
+    )
+    for key, label in boolean_filters:
+        if (query_params.get(key) or '').strip():
+            chips.append(
+                {
+                    'key': key,
+                    'label': label,
+                    'remove_query_string': _deal_query_string_with_updates(query_params, page=None, **{key: None}),
+                }
+            )
+
+    queue_value = (query_params.get('queue') or '').strip()
+    if queue_value:
+        queue_labels = {
+            ManagerDeal.NEXT_STEP_NEEDS_PAYMENT: 'Ждут оплату',
+            ManagerDeal.NEXT_STEP_NEEDS_RESERVATION: 'Ждут резерв',
+            ManagerDeal.NEXT_STEP_NEEDS_DOCUMENTS: 'Ждут документы',
+            ManagerDeal.NEXT_STEP_READY_TO_SHIP: 'Готовы к отгрузке',
+        }
+        chips.append(
+            {
+                'key': 'queue',
+                'label': queue_labels.get(
+                    queue_value,
+                    _deal_choice_label(filter_form.fields['queue'].choices, queue_value),
+                ),
+                'remove_query_string': _deal_query_string_with_updates(query_params, page=None, queue=None),
+            }
+        )
+
+    choice_fields = (
+        'problem_view',
+        'overlay',
+        'case_status',
+        'payment_state',
+        'fulfillment_status',
+        'documents_status',
+        'deal_type',
+        'sla_status',
+    )
+    for key in choice_fields:
+        value = (query_params.get(key) or '').strip()
+        if not value:
+            continue
+        chips.append(
+            {
+                'key': key,
+                'label': _deal_choice_label(filter_form.fields[key].choices, value),
+                'remove_query_string': _deal_query_string_with_updates(query_params, page=None, **{key: None}),
+            }
+        )
+
+    responsible_manager = (query_params.get('responsible_manager') or '').strip()
+    if responsible_manager:
+        manager_label = responsible_manager
+        manager_queryset = filter_form.fields['responsible_manager'].queryset
+        try:
+            manager_label = str(manager_queryset.get(pk=responsible_manager))
+        except manager_queryset.model.DoesNotExist:
+            pass
+        chips.append(
+            {
+                'key': 'responsible_manager',
+                'label': f'Менеджер: {manager_label}',
+                'remove_query_string': _deal_query_string_with_updates(
+                    query_params,
+                    page=None,
+                    responsible_manager=None,
+                ),
+            }
+        )
+
+    search_query = (query_params.get('q') or '').strip()
+    if search_query:
+        compact_query = search_query if len(search_query) <= 28 else f'{search_query[:25].rstrip()}...'
+        chips.append(
+            {
+                'key': 'q',
+                'label': f'Поиск: {compact_query}',
+                'remove_query_string': _deal_query_string_with_updates(query_params, page=None, q=None),
+            }
+        )
+    return chips
 
 
 def _deal_reset_filters_query_string(query_params):
@@ -6019,6 +6137,7 @@ def deal_list_view(request):
     filter_form = DealFilterForm(request.GET or None)
     deals = _apply_deal_filters(deals, filter_form, user=request.user)
     deal_advanced_filters_open, deal_advanced_filters_count = _deal_advanced_filter_state(filter_form)
+    active_deal_filter_chips = _deal_active_filter_chips(request.GET, filter_form)
     bulk_form = DealBulkAssignForm()
     bulk_case_status_form = DealBulkCaseStatusForm()
     save_view_form = DealSavedViewForm()
@@ -6191,6 +6310,8 @@ def deal_list_view(request):
         queue_chips=queue_chips,
         signal_views=_deal_signal_views(active_scope),
         deal_quick_toggle_filters=_deal_quick_toggle_filters(request.GET),
+        deal_active_filter_chips=active_deal_filter_chips,
+        deal_active_filters_count=len(active_deal_filter_chips),
         deal_reset_filters_query_string=_deal_reset_filters_query_string(request.GET),
         active_queue_chip=active_queue_chip,
         current_view_mode=current_view_mode,

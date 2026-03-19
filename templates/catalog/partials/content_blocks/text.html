@@ -1,0 +1,10 @@
+<article class="content-block content-block--text">
+  {% if block.title %}
+    <h3 class="content-block__title">{{ block.title }}</h3>
+  {% endif %}
+  {% if block.text %}
+    <div class="content-block__body">
+      {{ block.text|linebreaks }}
+    </div>
+  {% endif %}
+</article>

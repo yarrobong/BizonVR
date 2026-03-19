@@ -1402,7 +1402,7 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         self.assertContains(response, 'Avito')
         self.assertContains(response, regular_deal.customer_name)
         self.assertNotContains(response, avito_deal.customer_name)
-        self.assertContains(response, 'Avito остаётся в отдельной таблице')
+        self.assertContains(response, 'Сделки / Заказы')
 
         avito_response = self.client.get(
             reverse('manager_portal:deal_list'),
@@ -1410,7 +1410,7 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         )
         self.assertEqual(avito_response.status_code, 200)
         self.assertNotContains(avito_response, 'data-manager-deal-board', html=False)
-        self.assertContains(avito_response, 'Avito вынесен из канбана')
+        self.assertContains(avito_response, 'Сделки / Заказы')
         self.assertContains(avito_response, avito_deal.customer_name)
         self.assertNotContains(avito_response, regular_deal.customer_name)
 
@@ -1589,7 +1589,34 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(list(response.context['deals'].values_list('pk', flat=True)), [deal.pk])
-        self.assertContains(response, 'Очередь сделок')
+        self.assertContains(response, 'Сделки / Заказы')
+
+    def test_deal_list_shows_compact_active_filters_summary_above_table(self):
+        self.login_staff()
+        deal = ensure_manager_deal_for_order(self.order)
+        ManagerDeal.objects.filter(pk=deal.pk).update(
+            responsible_manager=self.staff_user,
+            case_status=ManagerDeal.CASE_STATUS_IN_PROGRESS,
+            next_step_code=ManagerDeal.NEXT_STEP_NEEDS_DOCUMENTS,
+            problem_flags=[ManagerDeal.PROBLEM_FLAG_PAYMENT_BLOCKED],
+        )
+
+        response = self.client.get(
+            reverse('manager_portal:deal_list'),
+            {
+                'only_problematic': '1',
+                'mine': '1',
+                'queue': ManagerDeal.NEXT_STEP_NEEDS_DOCUMENTS,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Найдено')
+        self.assertContains(response, 'Проблемные')
+        self.assertContains(response, 'Только мои')
+        self.assertContains(response, 'Ждут документы')
+        self.assertContains(response, 'Сбросить')
+        self.assertContains(response, 'manager-deals-compact-filter-strip', html=False)
 
     def test_deal_list_overview_separates_kpis_queues_and_signals(self):
         self.login_staff()
@@ -1606,8 +1633,35 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
             ['Проблемные', 'Без ответственного', 'Ждут документы', 'Ждут оплату', 'Ждут резерв', 'Готовы к отгрузке'],
         )
         self.assertFalse(response.context['problem_views_expanded'])
-        self.assertContains(response, 'Очередь сделок')
-        self.assertContains(response, 'Фильтры и виды')
+        self.assertContains(response, 'Сделки / Заказы')
+        self.assertContains(response, 'Фильтры')
+        self.assertContains(response, 'Фильтры сделок')
+        self.assertContains(response, 'Личный фокус')
+        self.assertContains(response, 'Только просроченные')
+        self.assertContains(response, 'Применить')
+
+    def test_deal_list_exposes_active_filter_chips_and_count(self):
+        self.login_staff()
+
+        response = self.client.get(
+            reverse('manager_portal:deal_list'),
+            {
+                'only_problematic': '1',
+                'mine': '1',
+                'queue': ManagerDeal.NEXT_STEP_NEEDS_DOCUMENTS,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['deal_active_filters_count'], 3)
+        self.assertEqual(
+            [chip['label'] for chip in response.context['deal_active_filter_chips']],
+            ['Проблемные', 'Только мои', 'Ждут документы'],
+        )
+        self.assertContains(response, 'manager-deals-compact-filter-strip', html=False)
+        self.assertContains(response, 'Проблемные')
+        self.assertContains(response, 'Только мои')
+        self.assertContains(response, 'Ждут документы')
 
     def test_deal_list_collapsible_panels_are_closed_without_active_filters(self):
         self.login_staff()
@@ -1629,7 +1683,6 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
             ['Проблемные', 'Без ответственного', 'Ждут документы', 'Ждут оплату', 'Ждут резерв', 'Готовы к отгрузке'],
         )
         self.assertContains(response, 'Сделки / Заказы')
-        self.assertContains(response, 'Очередь сделок')
         self.assertEqual(response.context['active_queue_chip'], 'all')
 
     def test_deal_list_renders_compact_rows_with_expandable_details(self):
@@ -2141,10 +2194,10 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
             'id="deal-sticky-header"',
             'id="deal-next-step-panel"',
             'id="deal-tabs"',
-            'id="goods"',
-            'id="deal-history"',
             'id="deal-side-rail"',
             'id="deal-quick-actions"',
+            'id="goods"',
+            'id="deal-history"',
         ]
         content = response.content.decode()
         for marker in markers:
@@ -2195,6 +2248,9 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         self.assertContains(response, 'Документы')
         self.assertContains(response, 'Финансы')
         self.assertContains(response, 'История')
+        self.assertContains(response, 'Процесс')
+        self.assertContains(response, 'Быстрые действия')
+        self.assertContains(response, 'Открыть клиента')
         self.assertContains(response, 'Полная история')
         self.assertContains(response, 'Короткая финансовая сводка')
         self.assertContains(response, 'Статус позиции')
@@ -2720,6 +2776,7 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
             f'href="{reverse("manager_portal:deal_finance_action", kwargs={"pk": deal.pk})}"',
             html=False,
         )
+        self.assertNotContains(response, 'href="#"', html=False)
 
     def test_deal_list_primary_cta_switches_to_assign_self_for_unassigned_deal(self):
         self.login_staff()

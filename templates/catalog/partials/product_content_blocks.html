@@ -1,0 +1,13 @@
+<div class="details-rich-blocks">
+  {% for block in content_blocks %}
+    {% if block.block_type == 'text' %}
+      {% include "catalog/partials/content_blocks/text.html" with block=block product=product %}
+    {% elif block.block_type == 'image_text' %}
+      {% include "catalog/partials/content_blocks/image_text.html" with block=block product=product %}
+    {% elif block.block_type == 'full_image' %}
+      {% include "catalog/partials/content_blocks/full_image.html" with block=block product=product %}
+    {% elif block.block_type == 'video' %}
+      {% include "catalog/partials/content_blocks/video.html" with block=block product=product %}
+    {% endif %}
+  {% endfor %}
+</div>

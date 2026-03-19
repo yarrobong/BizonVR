@@ -10,17 +10,21 @@ from decimal import Decimal
 from adminsortable2.admin import SortableAdminBase, SortableInlineAdminMixin
 from django.conf import settings
 from django.contrib import admin, messages
+from django import forms
 from django.core.exceptions import PermissionDenied
 from django.http import HttpResponse, HttpResponseForbidden, HttpResponseRedirect
 from django.template.response import TemplateResponse
 from django.urls import path
+from django.utils.html import format_html
 from django.utils import timezone
 
 from ..cache_utils import invalidate_catalog_cache
 from ..models import (
     Product,
     ProductCharacteristic,
+    ProductContentBlock,
     ProductImage,
+    ProductVideo,
     ProductVariant,
     ProductVariantCharacteristic,
 )
@@ -59,15 +63,75 @@ class ProductImageInline(SortableInlineAdminMixin, admin.TabularInline):
     model = ProductImage
     extra = 1
     sortable_field_name = 'order'
+    template = 'admin/catalog/product/edit_inline/tabular_with_help.html'
     fields = ('image_preview', 'image', 'order')
     readonly_fields = ('image_preview',)
     verbose_name = 'Фото товара'
-    verbose_name_plural = 'Фото товара (первое — главное, порядок перетаскиванием, загрузка: Ctrl+V)'
+    verbose_name_plural = 'Фото товара'
+    help_text = 'Первое фото станет главным. Порядок можно менять перетаскиванием, изображения можно вставлять через Ctrl+V.'
 
     def image_preview(self, obj):
-        return _admin_image_preview(obj)
+        return _admin_image_preview(obj, width=140, height=104)
 
     image_preview.short_description = 'Превью'
+
+
+class ProductVideoInline(SortableInlineAdminMixin, admin.TabularInline):
+    model = ProductVideo
+    extra = 1
+    sortable_field_name = 'order'
+    fields = ('thumbnail_preview', 'rutube_url', 'title', 'order')
+    readonly_fields = ('thumbnail_preview', 'title')
+    verbose_name = 'Видео товара'
+    verbose_name_plural = 'Видео товара (публичные ссылки RUTUBE, после фото на витрине)'
+
+    def thumbnail_preview(self, obj):
+        if not getattr(obj, 'thumbnail_url', ''):
+            return 'Превью появится после сохранения'
+        return format_html(
+            '<img src="{}" alt="{}" style="width: 92px; height: 52px; object-fit: cover; border-radius: 8px;" />',
+            obj.thumbnail_url,
+            obj.title or 'Видео товара',
+        )
+
+    thumbnail_preview.short_description = 'Превью'
+
+
+class ProductContentBlockInline(SortableInlineAdminMixin, admin.StackedInline):
+    model = ProductContentBlock
+    extra = 0
+    sortable_field_name = 'sort_order'
+    fields = (
+        'block_type',
+        'title',
+        'text',
+        'image_preview',
+        'image',
+        'rutube_preview',
+        'rutube_url',
+        'image_position',
+        'caption',
+        'sort_order',
+        'is_active',
+    )
+    readonly_fields = ('image_preview', 'rutube_preview')
+    verbose_name = 'Блок подробного описания'
+    verbose_name_plural = 'Блоки подробного описания (порядок можно менять перетаскиванием)'
+
+    def image_preview(self, obj):
+        return _admin_image_preview(obj, width=120, height=80)
+
+    image_preview.short_description = 'Превью'
+
+    def rutube_preview(self, obj):
+        if obj and getattr(obj, 'rutube_url', ''):
+            return format_html(
+                '<a href="{}" target="_blank" rel="noreferrer">Открыть видео на RUTUBE</a>',
+                obj.rutube_url,
+            )
+        return '—'
+
+    rutube_preview.short_description = 'Видео'
 
 
 @admin.register(ProductVariant)
@@ -114,9 +178,16 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
     list_filter = ('category', 'is_active', 'tags')
     search_fields = ('name', 'sku', 'description')
     prepopulated_fields = {'slug': ('name',)}
-    inlines = (ProductImageInline, ProductVariantInline, ProductCharacteristicInline, ProductStockInlineForProduct, ProductBundleItemInlineForProduct)
+    inlines = (
+        ProductImageInline,
+        ProductVideoInline,
+        ProductContentBlockInline,
+        ProductVariantInline,
+        ProductCharacteristicInline,
+        ProductStockInlineForProduct,
+        ProductBundleItemInlineForProduct,
+    )
     readonly_fields = ('created_at', 'updated_at')
-    filter_horizontal = ('tags',)
     actions = ('export_catalog_with_images', 'backup_full_catalog',)
     change_form_template = 'admin/catalog/product/change_form.html'
     save_on_top = True
@@ -173,11 +244,48 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
                 inline.classes = ('collapse',) if obj is None else ()
         return inline_instances
 
+    def formfield_for_manytomany(self, db_field, request, **kwargs):
+        if db_field.name == 'tags':
+            kwargs['widget'] = forms.CheckboxSelectMultiple(
+                attrs={'data-product-admin-tags-widget': 'true'}
+            )
+        return super().formfield_for_manytomany(db_field, request, **kwargs)
+
+    def formfield_for_dbfield(self, db_field, request, **kwargs):
+        formfield = super().formfield_for_dbfield(db_field, request, **kwargs)
+        if not formfield:
+            return formfield
+
+        if db_field.name == 'sku':
+            formfield.widget.attrs['data-product-admin-sku-field'] = 'true'
+
+        if db_field.name == 'description':
+            formfield.help_text = (
+                'Рекомендуем 300-1200 символов: кратко опишите ключевые преимущества, '
+                'комплектацию и для кого подходит товар.'
+            )
+            formfield.widget.attrs.update({
+                'data-product-admin-description': 'true',
+                'data-soft-min-length': '300',
+                'data-soft-max-length': '1200',
+                'rows': 10,
+                'placeholder': 'Например: что входит в комплект, для кого подходит товар и чем он отличается от альтернатив.',
+            })
+
+        if db_field.name == 'option_label':
+            formfield.help_text = (
+                'Подпись над выбором вариантов на странице товара. '
+                'Например: «Цвет», «Объём памяти» или «Комплектация».'
+            )
+
+        return formfield
+
     def render_change_form(self, request, context, add=False, change=False, form_url='', obj=None):
         context['is_add_product'] = add
         context['product_admin_sections'] = (
             {'label': 'База', 'target': 'field-name', 'available_on_add': True},
             {'label': 'Фото', 'target': 'inline-images-group', 'available_on_add': True},
+            {'label': 'Видео', 'target': 'inline-videos-group', 'available_on_add': True},
             {'label': 'Варианты', 'target': 'inline-variants-group', 'available_on_add': False},
             {'label': 'Характеристики', 'target': 'inline-characteristics-group', 'available_on_add': True},
             {'label': 'Остатки', 'target': 'inline-stocks-group', 'available_on_add': False},
@@ -196,7 +304,14 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
     image_preview.short_description = 'Превью'
 
     def get_queryset(self, request):
-        return super().get_queryset(request).select_related('category').prefetch_related('tags', 'variants', 'characteristics', 'images')
+        return super().get_queryset(request).select_related('category').prefetch_related(
+            'tags',
+            'variants',
+            'characteristics',
+            'content_blocks',
+            'images',
+            'videos',
+        )
 
     def changelist_view(self, request, extra_context=None):
         extra_context = extra_context or {}
@@ -576,3 +691,12 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
             'has_view_permission': True,
         }
         return TemplateResponse(request, 'admin/catalog/restore_backup.html', context)
+
+
+@admin.register(ProductContentBlock)
+class ProductContentBlockAdmin(admin.ModelAdmin):
+    list_display = ('product', 'block_type', 'title', 'sort_order', 'is_active', 'updated_at')
+    list_filter = ('block_type', 'is_active', 'product__category')
+    search_fields = ('product__name', 'title', 'text', 'caption')
+    autocomplete_fields = ('product',)
+    ordering = ('product', 'sort_order', 'id')
