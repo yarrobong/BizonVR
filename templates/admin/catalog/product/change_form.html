@@ -4,23 +4,20 @@
 {% block form_top %}
 {{ block.super }}
 <div class="product-admin-dashboard" data-product-admin-dashboard data-mode="{% if is_add_product %}add{% else %}change{% endif %}">
+    {% if is_add_product %}
     <section class="product-admin-panel product-admin-panel--guide">
         <div class="product-admin-hero">
             <div class="product-admin-hero__content">
-                <p class="product-admin-panel__eyebrow">
-                    {% if is_add_product %}Новый товар{% else %}Редактирование товара{% endif %}
-                </p>
+                <p class="product-admin-panel__eyebrow">Новый товар</p>
                 <div class="product-admin-hero__header">
                     <div>
-                        <h2 class="product-admin-panel__title">
-                            {% if is_add_product %}Сначала заполните базу карточки{% else %}Карточка товара и рабочие секции{% endif %}
-                        </h2>
+                        <h2 class="product-admin-panel__title">Сначала заполните базу карточки</h2>
                         <p class="product-admin-panel__text">
                             Первый экран сводится к четырём шагам: название, категория, цена и первое фото. Остальные блоки можно заполнить после сохранения.
                         </p>
                     </div>
                     <div class="product-admin-hero__status">
-                        <span class="product-admin-hero__pill">{% if is_add_product %}Статус: черновик{% else %}Статус: редактирование{% endif %}</span>
+                        <span class="product-admin-hero__pill">Статус: черновик</span>
                         <span class="product-admin-hero__hint">Slug формируется автоматически из названия и остаётся доступным для ручной правки.</span>
                     </div>
                 </div>
@@ -63,6 +60,20 @@
             </div>
         </details>
     </section>
+    {% else %}
+    <div class="product-admin-panel product-admin-edit-banner">
+        <div class="product-admin-edit-banner__icon" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="11" cy="11" r="11" fill="currentColor" opacity="0.12"/>
+                <path d="M6.5 11l3.2 3.2 5.8-6.4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </div>
+        <div class="product-admin-edit-banner__body">
+            <strong class="product-admin-edit-banner__title">Редактирование товара</strong>
+            <span class="product-admin-edit-banner__hint">Все вкладки доступны — переключайтесь через навигацию ниже</span>
+        </div>
+    </div>
+    {% endif %}
 
     <aside class="product-admin-panel product-admin-panel--summary" data-product-admin-summary>
         <div class="product-admin-summary__topline">
@@ -156,42 +167,49 @@
 
 {% block after_related_objects %}
 {{ block.super }}
-<div class="product-admin-floating-bar" data-product-admin-floating-bar>
-    <div class="product-admin-floating-bar__meta">
-        <strong>Сохранение карточки</strong>
-        <span data-product-admin-floating-status>Изменения можно сохранить из любой точки страницы.</span>
-    </div>
-    <div class="product-admin-floating-bar__actions">
-        <button type="button" class="button product-admin-floating-bar__button product-admin-floating-bar__button--secondary" data-scroll-target="field-name">
-            Наверх
-        </button>
-        {% if show_save_as_new or show_save_and_add_another or show_save_and_continue %}
-        <details class="product-admin-action-menu product-admin-action-menu--floating">
-            <summary class="button product-admin-floating-bar__button product-admin-floating-bar__button--ghost" title="{% if show_save_and_continue %}Сохранить и продолжить{% endif %}{% if show_save_and_add_another %}{% if show_save_and_continue %} · {% endif %}Сохранить и добавить ещё{% endif %}{% if show_save_as_new %} · Сохранить как новый{% endif %}">Ещё</summary>
-            <div class="product-admin-action-menu__panel">
-                {% if show_save_and_continue %}
-                <button type="submit" name="_continue" class="button product-admin-action-menu__button">
-                    Сохранить и продолжить
-                </button>
-                {% endif %}
-                {% if show_save_and_add_another %}
-                <button type="submit" name="_addanother" class="button product-admin-action-menu__button">
-                    Сохранить и добавить ещё
-                </button>
-                {% endif %}
-                {% if show_save_as_new %}
-                <button type="submit" name="_saveasnew" class="button product-admin-action-menu__button">
-                    Сохранить как новый
-                </button>
-                {% endif %}
-            </div>
-        </details>
-        {% endif %}
-        {% if show_save %}
-        <button type="submit" name="_save" class="button default product-admin-floating-bar__button">
-            Сохранить
-        </button>
-        {% endif %}
+<div class="product-admin-bottom-bar" data-product-admin-floating-bar>
+    <div class="product-admin-bottom-bar__inner">
+        <div class="product-admin-bottom-bar__left">
+            {% if original %}
+            {% url opts|admin_urlname:'delete' original.pk|admin_urlquote as delete_url %}
+            <a
+                role="button"
+                href="{% add_preserved_filters delete_url %}"
+                class="product-admin-bottom-bar__danger"
+                data-product-admin-delete-link
+                data-confirm-message="Удалить товар? Это действие нельзя отменить."
+            >Удалить</a>
+            {% endif %}
+        </div>
+        <div class="product-admin-bottom-bar__meta">
+            <span data-product-admin-floating-status>Изменения можно сохранить из любой точки страницы.</span>
+        </div>
+        <div class="product-admin-bottom-bar__right">
+            <button type="button" class="product-admin-bottom-bar__util" data-scroll-target="field-name">Наверх</button>
+            {% if not is_popup %}
+            <details class="product-admin-action-menu product-admin-action-menu--up">
+                <summary class="product-admin-bottom-bar__util">Ещё</summary>
+                <div class="product-admin-action-menu__panel">
+                    {% if original %}
+                    <button type="submit" name="_saveasnew" class="button product-admin-action-menu__button">
+                        Сохранить как новый
+                    </button>
+                    {% else %}
+                    <button type="submit" name="_addanother" class="button product-admin-action-menu__button">
+                        Сохранить и добавить ещё
+                    </button>
+                    {% endif %}
+                </div>
+            </details>
+            <span class="product-admin-bottom-bar__sep" aria-hidden="true"></span>
+            <button type="submit" name="_continue" class="button product-admin-bottom-bar__btn product-admin-bottom-bar__btn--secondary">
+                Сохранить и продолжить
+            </button>
+            <button type="submit" name="_save" class="button default product-admin-bottom-bar__btn">
+                Сохранить
+            </button>
+            {% endif %}
+        </div>
     </div>
 </div>
 {% endblock %}

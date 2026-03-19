@@ -7,7 +7,7 @@
     --product-admin-border-strong: #c5d2e1;
     --product-admin-text: #233142;
     --product-admin-text-strong: #172231;
-    --product-admin-text-muted: #617286;
+    --product-admin-text-muted: #4a5568;
     --product-admin-primary: #2457c5;
     --product-admin-primary-strong: #173b8a;
     --product-admin-primary-soft: #e8f0ff;
@@ -15,7 +15,7 @@
     --product-admin-success-soft: #e6f6ee;
     --product-admin-warning: #c27414;
     --product-admin-warning-soft: #fff3e0;
-    --product-admin-shadow: 0 18px 44px rgba(31, 49, 79, 0.08);
+    --product-admin-shadow: 0 2px 8px rgba(31, 49, 79, 0.07);
 }
 
 html[data-theme="dark"] .change-form {
@@ -27,7 +27,7 @@ html[data-theme="dark"] .change-form {
     --product-admin-border-strong: #415369;
     --product-admin-text: #e1ebf5;
     --product-admin-text-strong: #f7fbff;
-    --product-admin-text-muted: #9eb0c5;
+    --product-admin-text-muted: #b8ccd9;
     --product-admin-primary: #78a6ff;
     --product-admin-primary-strong: #aac6ff;
     --product-admin-primary-soft: rgba(120, 166, 255, 0.16);
@@ -35,7 +35,7 @@ html[data-theme="dark"] .change-form {
     --product-admin-success-soft: rgba(73, 191, 137, 0.16);
     --product-admin-warning: #f2a154;
     --product-admin-warning-soft: rgba(242, 161, 84, 0.16);
-    --product-admin-shadow: 0 24px 56px rgba(0, 0, 0, 0.36);
+    --product-admin-shadow: 0 4px 12px rgba(0, 0, 0, 0.24);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -48,7 +48,7 @@ html[data-theme="dark"] .change-form {
         --product-admin-border-strong: #415369;
         --product-admin-text: #e1ebf5;
         --product-admin-text-strong: #f7fbff;
-        --product-admin-text-muted: #9eb0c5;
+        --product-admin-text-muted: #b8ccd9;
         --product-admin-primary: #78a6ff;
         --product-admin-primary-strong: #aac6ff;
         --product-admin-primary-soft: rgba(120, 166, 255, 0.16);
@@ -56,15 +56,12 @@ html[data-theme="dark"] .change-form {
         --product-admin-success-soft: rgba(73, 191, 137, 0.16);
         --product-admin-warning: #f2a154;
         --product-admin-warning-soft: rgba(242, 161, 84, 0.16);
-        --product-admin-shadow: 0 24px 56px rgba(0, 0, 0, 0.36);
+        --product-admin-shadow: 0 4px 12px rgba(0, 0, 0, 0.24);
     }
 }
 
 body.change-form {
-    background:
-        radial-gradient(circle at top left, rgba(36, 87, 197, 0.08), transparent 28%),
-        radial-gradient(circle at top right, rgba(194, 116, 20, 0.08), transparent 24%),
-        var(--product-admin-page-bg);
+    background: var(--product-admin-page-bg);
 }
 
 /* Keep Django admin upstream CSS intact; only override the product form layout here. */
@@ -115,10 +112,7 @@ body.change-form {
 }
 
 .product-admin-panel--guide {
-    background:
-        radial-gradient(circle at top right, rgba(194, 116, 20, 0.11), transparent 26%),
-        radial-gradient(circle at top left, rgba(36, 87, 197, 0.1), transparent 30%),
-        linear-gradient(180deg, #fdfefe, #ffffff 56%);
+    background: var(--product-admin-surface);
 }
 
 .product-admin-panel--summary {
@@ -129,8 +123,51 @@ body.change-form {
 .product-admin-panel--alerts {
     margin: 0 0 20px;
     border-color: #f0cf98;
-    background: linear-gradient(180deg, #fffaf2, #fffefb);
+    background: #fffaf2;
 }
+
+/* Compact edit-mode banner (replaces full hero on existing product pages) */
+[data-product-admin-dashboard][data-mode="change"] {
+    grid-template-columns: 1fr;
+    margin-bottom: 0;
+}
+
+[data-product-admin-dashboard][data-mode="change"] .product-admin-panel--summary {
+    display: none;
+}
+
+.product-admin-edit-banner {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 16px 20px;
+    border-radius: 18px 18px 0 0;
+    background: var(--product-admin-surface);
+}
+
+.product-admin-edit-banner__icon {
+    flex: 0 0 auto;
+    color: var(--product-admin-success);
+    display: flex;
+}
+
+.product-admin-edit-banner__body {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.product-admin-edit-banner__title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--product-admin-text-strong);
+}
+
+.product-admin-edit-banner__hint {
+    font-size: 13px;
+    color: var(--product-admin-text-muted);
+}
+
 
 .product-admin-panel__eyebrow {
     margin: 0 0 10px;
@@ -178,7 +215,7 @@ body.change-form {
     justify-content: center;
     min-height: 36px;
     border-radius: 999px;
-    background: linear-gradient(135deg, var(--product-admin-success), #14573b);
+    background: var(--product-admin-success);
     color: #fff;
     font-size: 13px;
     font-weight: 700;
@@ -202,14 +239,13 @@ body.change-form {
     gap: 14px;
     border: 1px solid var(--product-admin-border);
     border-radius: 16px;
-    background: linear-gradient(180deg, #ffffff, #fbfdff);
+    background: var(--product-admin-surface);
     padding: 16px;
 }
 
 .product-admin-stage-card--primary {
     border-color: #c8d9ff;
-    background:
-        linear-gradient(180deg, rgba(232, 240, 255, 0.95), #ffffff 70%);
+    background: var(--product-admin-primary-soft);
 }
 
 .product-admin-stage-card__index {
@@ -219,7 +255,7 @@ body.change-form {
     width: 34px;
     height: 34px;
     border-radius: 12px;
-    background: linear-gradient(135deg, var(--product-admin-primary-strong), var(--product-admin-primary));
+    background: var(--product-admin-primary);
     color: #fff;
     font-size: 14px;
     font-weight: 700;
@@ -280,25 +316,25 @@ body.change-form {
     margin-bottom: 14px;
     border: 1px solid #d4def6;
     border-radius: 12px;
-    background: linear-gradient(180deg, #f6f9ff, #fdfefe);
+    background: var(--product-admin-primary-soft);
     color: var(--product-admin-primary-strong);
     padding: 12px 14px;
 }
 
 .product-admin-anchor-nav {
     position: sticky;
-    top: 76px;
+    top: 0;
     z-index: 60;
     display: flex;
     flex-wrap: wrap;
     gap: 10px;
     margin: 0 0 20px;
-    padding: 12px;
+    padding: 10px 12px;
     border: 1px solid var(--product-admin-border);
-    border-radius: 16px;
-    background: rgba(255, 255, 255, 0.94);
-    box-shadow: 0 12px 28px rgba(24, 39, 75, 0.08);
-    backdrop-filter: blur(8px);
+    border-top: 3px solid var(--product-admin-primary);
+    border-radius: 0 0 16px 16px;
+    background: var(--product-admin-surface);
+    box-shadow: 0 4px 12px rgba(24, 39, 75, 0.07);
 }
 
 .product-admin-anchor-nav__button[disabled] {
@@ -328,7 +364,7 @@ body.change-form {
     align-items: center;
     min-height: 24px;
     border-radius: 999px;
-    background: linear-gradient(135deg, var(--product-admin-success), #14573b);
+    background: var(--product-admin-success);
     color: #fff;
     font-size: 12px;
     font-weight: 700;
@@ -345,7 +381,7 @@ body.change-form {
     padding: 16px;
     border: 1px solid #e2e9f2;
     border-radius: 16px;
-    background: linear-gradient(180deg, #f8fbfd, #f4f8fb);
+    background: var(--product-admin-surface-soft);
 }
 
 .product-admin-progress__meta {
@@ -377,7 +413,7 @@ body.change-form {
     width: 0;
     height: 100%;
     border-radius: inherit;
-    background: linear-gradient(90deg, var(--product-admin-warning), var(--product-admin-success));
+    background: var(--product-admin-primary);
     transition: width 0.2s ease;
 }
 
@@ -395,7 +431,7 @@ body.change-form {
     margin-bottom: 18px;
     padding: 16px;
     border-radius: 16px;
-    background: linear-gradient(180deg, #ffffff, #f7fafc);
+    background: var(--product-admin-surface);
     border: 1px solid #e1e9f2;
 }
 
@@ -407,9 +443,7 @@ body.change-form {
     overflow: hidden;
     min-height: 92px;
     border-radius: 14px;
-    background:
-        linear-gradient(135deg, rgba(23, 59, 138, 0.12), rgba(36, 87, 197, 0.05)),
-        #eef3fb;
+    background: var(--product-admin-surface-soft-alt);
 }
 
 .product-admin-preview__media img {
@@ -571,7 +605,7 @@ body.change-form {
     padding: 10px 12px;
     border: 1px solid var(--product-admin-border);
     border-radius: 12px;
-    background: linear-gradient(180deg, #fbfdff, #f5f8fc);
+    background: var(--product-admin-surface-soft);
 }
 
 .product-admin-field-note {
@@ -606,29 +640,22 @@ body.change-form {
 
 .product-admin-description-meta.is-short {
     border-color: #f0c27a;
-    background: linear-gradient(180deg, #fffaf1, #fff5e8);
+    background: var(--product-admin-warning-soft);
 }
 
 .product-admin-description-meta.is-good {
     border-color: #a9d7bc;
-    background: linear-gradient(180deg, #f6fdf8, #eef9f2);
+    background: var(--product-admin-success-soft);
 }
 
 .product-admin-description-meta.is-long {
     border-color: #cad5e3;
-    background: linear-gradient(180deg, #f9fbfe, #f2f6fb);
+    background: var(--product-admin-surface-soft);
 }
 
-.change-form #content-main form > .submit-row:first-of-type {
-    position: sticky;
-    top: 16px;
-    z-index: 70;
-    margin: 0 0 18px;
-    border: 1px solid var(--product-admin-border);
-    border-radius: 16px;
-    box-shadow: 0 12px 28px rgba(24, 39, 75, 0.08);
-    background: rgba(255, 255, 255, 0.96);
-    backdrop-filter: blur(8px);
+/* Both submit rows are hidden — floating bar is the sole save mechanism */
+.change-form .submit-row.product-admin-submit-row {
+    display: none !important;
 }
 
 .change-form form#product_form {
@@ -640,7 +667,7 @@ body.change-form {
     border: 1px solid var(--product-admin-border);
     border-radius: 18px;
     overflow: hidden;
-    box-shadow: 0 10px 26px rgba(24, 39, 75, 0.05);
+    box-shadow: none;
     margin-bottom: 18px;
     scroll-margin-top: 160px;
     background: var(--product-admin-surface);
@@ -649,7 +676,7 @@ body.change-form {
 .change-form fieldset.module h2,
 .change-form .inline-group > h2 {
     margin: 0;
-    background: linear-gradient(180deg, #f8fbfd, #f4f7fb);
+    background: var(--product-admin-surface-soft);
     color: var(--product-admin-text-strong);
     font-size: 18px;
     line-height: 1.3;
@@ -678,43 +705,45 @@ body.change-form {
 
 .change-form fieldset.product-fieldset--primary {
     border-color: #cfdcff;
-    background: linear-gradient(180deg, #fcfdff, #ffffff 58%);
+    background: var(--product-admin-surface);
 }
 
 .change-form fieldset.product-fieldset--primary h2 {
-    background:
-        linear-gradient(135deg, rgba(36, 87, 197, 0.14), rgba(36, 87, 197, 0.02)),
-        #f7faff;
+    background: var(--product-admin-primary-soft);
     color: var(--product-admin-primary-strong);
 }
 
 .change-form fieldset.product-fieldset--secondary h2,
 .change-form fieldset.product-fieldset--meta h2 {
-    background: linear-gradient(180deg, #fbfcfe, #f7fafc);
+    background: var(--product-admin-surface-soft);
+}
+
+.change-form fieldset.product-fieldset--description {
+    border-color: #d7e7e4;
+}
+
+.change-form fieldset.product-fieldset--description h2 {
+    background: var(--product-admin-success-soft);
+    color: #1c5c45;
+    border-bottom-color: #d7e7e4;
 }
 
 .inline-group.product-inline-group--photos {
     border-color: #d8e3ff;
-    box-shadow: 0 10px 28px rgba(50, 86, 197, 0.08);
 }
 
 .inline-group.product-inline-group--content-blocks {
     border-color: #d7e7e4;
-    box-shadow: 0 10px 28px rgba(37, 113, 98, 0.08);
 }
 
 .inline-group.product-inline-group--content-blocks > h2 {
-    background:
-        linear-gradient(135deg, rgba(27, 122, 82, 0.12), rgba(27, 122, 82, 0.03)),
-        #f5fcf8;
+    background: var(--product-admin-success-soft);
     color: #1c5c45;
     border-bottom-color: #d7e7e4;
 }
 
 .inline-group.product-inline-group--photos > h2 {
-    background:
-        linear-gradient(135deg, rgba(36, 87, 197, 0.14), rgba(36, 87, 197, 0.04)),
-        #f6f9ff;
+    background: var(--product-admin-primary-soft);
     color: var(--product-admin-primary-strong);
     border-bottom-color: #d8e3ff;
 }
@@ -760,10 +789,7 @@ body.change-form {
     text-indent: -9999px;
     border: 1px solid var(--product-admin-border);
     border-radius: 12px;
-    background:
-        radial-gradient(circle at top left, rgba(36, 87, 197, 0.14), rgba(36, 87, 197, 0.04)),
-        var(--product-admin-surface-soft);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+    background: var(--product-admin-surface-soft);
     cursor: grab;
 }
 
@@ -872,9 +898,7 @@ body.change-form {
     overflow: auto;
     max-height: calc(90vh - 86px);
     border-radius: 16px;
-    background:
-        linear-gradient(135deg, rgba(36, 87, 197, 0.06), rgba(23, 34, 49, 0.02)),
-        #f6f9fc;
+    background: #f6f9fc;
 }
 
 .product-admin-image-lightbox__canvas img {
@@ -905,7 +929,7 @@ body.change-form {
 .product-inline-group__lock {
     padding: 18px;
     border-top: 1px solid #edf1f6;
-    background: linear-gradient(180deg, #fbfcfe, #f7fafb);
+    background: var(--product-admin-surface-soft);
 }
 
 .product-inline-group__lock strong {
@@ -942,17 +966,20 @@ body.change-form {
     padding: 0 12px;
 }
 
+/* ── Unified button base ── */
+/* All interactive buttons share 8px radius and the same primary color.
+   999px pills are reserved for tab-nav and status chips only. */
 .change-form .button,
 .change-form input[type="submit"],
 .change-form input[type="button"],
 .change-form .submit-row a.closelink,
 .change-form .submit-row a.deletelink {
-    border: 1px solid #2f6e9b;
-    border-radius: 10px;
-    background: linear-gradient(180deg, #4f87aa, #376f93);
+    border: 1px solid var(--product-admin-primary);
+    border-radius: 8px;
+    background: var(--product-admin-primary);
     color: #ffffff;
-    box-shadow: 0 8px 18px rgba(55, 111, 147, 0.16);
-    transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+    box-shadow: none;
+    transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .change-form .button:hover,
@@ -960,20 +987,19 @@ body.change-form {
 .change-form input[type="button"]:hover,
 .change-form .submit-row a.closelink:hover,
 .change-form .submit-row a.deletelink:hover {
-    border-color: #255a7b;
-    background: linear-gradient(180deg, #467f9f, #2f6787);
-    transform: translateY(-1px);
+    border-color: var(--product-admin-primary-strong);
+    background: var(--product-admin-primary-strong);
 }
 
 .change-form .submit-row a.deletelink {
     border-color: #b45a56;
-    background: linear-gradient(180deg, #cd7a73, #b9655d);
-    box-shadow: 0 8px 18px rgba(185, 101, 93, 0.16);
+    background: #c0665e;
+    box-shadow: none;
 }
 
 .change-form .submit-row a.deletelink:hover {
     border-color: #9c4d49;
-    background: linear-gradient(180deg, #c36d66, #ad5952);
+    background: #ad5952;
 }
 
 .change-form .submit-row.product-admin-submit-row {
@@ -1043,9 +1069,8 @@ body.change-form {
     padding: 12px;
     border: 1px solid var(--product-admin-border);
     border-radius: 16px;
-    background: rgba(255, 255, 255, 0.98);
-    box-shadow: 0 18px 36px rgba(24, 39, 75, 0.14);
-    backdrop-filter: blur(10px);
+    background: var(--product-admin-surface);
+    box-shadow: 0 4px 16px rgba(24, 39, 75, 0.1);
 }
 
 .change-form .product-admin-action-menu__button {
@@ -1053,14 +1078,14 @@ body.change-form {
     justify-content: flex-start;
     text-align: left;
     border-color: var(--product-admin-border-strong);
-    background: linear-gradient(180deg, #f9fbfd, #eef4f9);
+    background: var(--product-admin-surface-soft);
     color: var(--product-admin-text-strong);
     box-shadow: none;
 }
 
 .change-form .product-admin-action-menu__button:hover {
     border-color: #96aac0;
-    background: linear-gradient(180deg, #ffffff, #edf4fb);
+    background: var(--product-admin-surface);
 }
 
 .change-form .inline-group.product-inline-group--bundles .tabular td.field-bundle select {
@@ -1074,68 +1099,138 @@ body.change-form {
     line-height: 1.45;
 }
 
-.product-admin-floating-bar {
+/* ─── Bottom action bar ─────────────────────────────────────────────────── */
+
+.product-admin-bottom-bar {
     position: fixed;
-    left: 50%;
-    bottom: 18px;
+    bottom: 0;
+    left: 0;
+    right: 0;
     z-index: 85;
+    border-top: 1px solid var(--product-admin-border);
+    background: var(--product-admin-surface);
+    box-shadow: 0 -2px 8px rgba(24, 39, 75, 0.06);
+}
+
+.product-admin-bottom-bar__inner {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 18px;
-    width: min(calc(100vw - 32px), 960px);
-    padding: 14px 16px;
-    border: 1px solid var(--product-admin-border);
-    border-radius: 18px;
-    background: rgba(255, 255, 255, 0.94);
-    box-shadow: 0 22px 40px rgba(24, 39, 75, 0.18);
-    backdrop-filter: blur(14px);
-    transform: translateX(-50%);
+    gap: 16px;
+    padding: 0 20px;
+    height: 52px;
 }
 
-.product-admin-floating-bar__meta {
-    display: grid;
-    gap: 4px;
+.product-admin-bottom-bar__left {
+    flex: 0 0 auto;
+}
+
+.product-admin-bottom-bar__meta {
+    flex: 1 1 auto;
     min-width: 0;
+    padding: 0 12px;
 }
 
-.product-admin-floating-bar__meta strong {
-    color: var(--product-admin-text-strong);
-    font-size: 14px;
-}
-
-.product-admin-floating-bar__meta span {
+.product-admin-bottom-bar__meta span {
+    display: block;
     color: var(--product-admin-text-muted);
     font-size: 12px;
-    line-height: 1.45;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.product-admin-floating-bar__actions {
+.product-admin-bottom-bar__right {
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-    justify-content: flex-end;
+    gap: 8px;
 }
 
-.change-form .product-admin-floating-bar__button {
-    min-height: 40px;
-    border-radius: 999px;
-    padding: 0 16px;
+/* Danger delete — text-link style, clearly red, far from save */
+.product-admin-bottom-bar__danger {
+    display: inline-flex;
+    align-items: center;
+    height: 32px;
+    padding: 0 10px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: #b03030;
+    font-size: 13px;
+    font-weight: 500;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 
-.change-form .product-admin-floating-bar__button--secondary,
-.change-form .product-admin-floating-bar__button--ghost {
+.product-admin-bottom-bar__danger:hover {
+    background: #fff1f1;
+    border-color: #e05252;
+    color: #922020;
+}
+
+/* Secondary utility buttons — Наверх, Ещё — low visual weight */
+button.product-admin-bottom-bar__util,
+summary.product-admin-bottom-bar__util {
+    display: inline-flex;
+    align-items: center;
+    height: 32px;
+    padding: 0 10px;
+    border: 1px solid var(--product-admin-border);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--product-admin-text-muted);
+    font-size: 13px;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+    list-style: none;
+}
+
+button.product-admin-bottom-bar__util:hover,
+summary.product-admin-bottom-bar__util:hover {
+    color: var(--product-admin-text);
     border-color: var(--product-admin-border-strong);
-    background: linear-gradient(180deg, #f9fbfd, #eef4f9);
+}
+
+/* Vertical separator between util group and primary actions */
+.product-admin-bottom-bar__sep {
+    display: block;
+    width: 1px;
+    height: 24px;
+    background: var(--product-admin-border);
+    margin: 0 4px;
+    flex: 0 0 auto;
+}
+
+/* Primary action buttons */
+.change-form .product-admin-bottom-bar__btn {
+    height: 36px;
+    border-radius: 8px;
+    padding: 0 16px;
+    font-size: 14px;
+    min-height: unset;
+}
+
+.change-form .product-admin-bottom-bar__btn--secondary {
+    border-color: var(--product-admin-border-strong);
+    background: var(--product-admin-surface-soft);
     color: var(--product-admin-text-strong);
     box-shadow: none;
 }
 
-.change-form .product-admin-floating-bar__button--secondary:hover,
-.change-form .product-admin-floating-bar__button--ghost:hover {
+.change-form .product-admin-bottom-bar__btn--secondary:hover {
     border-color: #96aac0;
-    background: linear-gradient(180deg, #ffffff, #edf4fb);
+    background: var(--product-admin-surface);
+}
+
+/* Action menu opens upward when inside the bottom bar */
+.product-admin-action-menu--up .product-admin-action-menu__panel {
+    top: auto;
+    bottom: calc(100% + 8px);
+}
+
+.change-form #content-main {
+    padding-bottom: 68px;
 }
 
 .change-form .field-tags .help {
@@ -1174,44 +1269,66 @@ body.change-form {
     white-space: nowrap;
 }
 
-.change-form .field-tags [data-product-admin-tags-widget] {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 10px;
+.change-form .field-tags [data-product-admin-tags-toolbar] {
+    display: none;
+}
+
+.change-form .field-tags .help {
+    display: none;
+}
+
+/* Tags chip widget — targets #id_tags container */
+.change-form .field-tags #id_tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
     max-width: none;
     margin: 0;
     padding: 0;
 }
 
-.change-form .field-tags [data-product-admin-tags-widget] > div {
+.change-form .field-tags #id_tags > div {
     margin: 0;
-}
-
-.change-form .field-tags [data-product-admin-tags-widget] label {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    min-height: 100%;
-    padding: 12px 14px;
-    border: 1px solid var(--product-admin-border);
-    border-radius: 14px;
-    background: linear-gradient(180deg, #ffffff, #f8fbfd);
-    box-shadow: 0 6px 16px rgba(24, 39, 75, 0.04);
-    cursor: pointer;
-}
-
-.change-form .field-tags [data-product-admin-tags-widget] label:hover {
-    border-color: #9eb7da;
-    background: linear-gradient(180deg, #ffffff, #f3f8ff);
-}
-
-.change-form .field-tags [data-product-admin-tags-widget] input[type="checkbox"] {
-    margin-top: 2px;
     flex: 0 0 auto;
 }
 
-.change-form .field-tags [data-product-admin-tags-widget] input[type="checkbox"]:checked + * {
-    color: var(--product-admin-primary-strong);
+.change-form .field-tags #id_tags label {
+    display: inline-flex;
+    align-items: center;
+    min-height: auto;
+    padding: 6px 16px;
+    border: 1.5px solid var(--product-admin-border-strong);
+    border-radius: 999px;
+    background: var(--product-admin-surface);
+    box-shadow: none;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--product-admin-text-muted);
+    cursor: pointer;
+    user-select: none;
+    transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+.change-form .field-tags #id_tags label:hover {
+    border-color: var(--product-admin-primary);
+    background: var(--product-admin-primary-soft);
+    color: var(--product-admin-primary);
+}
+
+.change-form .field-tags #id_tags input[type="checkbox"] {
+    display: none;
+}
+
+.change-form .field-tags #id_tags label:has(input:checked) {
+    background: var(--product-admin-primary);
+    border-color: var(--product-admin-primary);
+    color: #fff;
+    font-weight: 600;
+}
+
+.change-form .field-tags #id_tags label:has(input:checked):hover {
+    background: var(--product-admin-primary-strong);
+    border-color: var(--product-admin-primary-strong);
 }
 
 .change-form .field-tags [data-product-admin-tags-empty] {
@@ -1262,7 +1379,7 @@ body.change-form {
     background: #ffffff;
     color: var(--product-admin-text);
     border: 1px solid var(--product-admin-border-strong);
-    border-radius: 10px;
+    border-radius: 8px;
     box-shadow: inset 0 1px 2px rgba(23, 34, 49, 0.04);
 }
 
@@ -1287,14 +1404,75 @@ body.change-form {
     margin-right: 10px;
     border: 1px solid var(--product-admin-border-strong);
     border-radius: 8px;
-    background: linear-gradient(180deg, #f9fbfd, #eef4f9);
+    background: var(--product-admin-surface-soft);
     color: var(--product-admin-text-strong);
     padding: 8px 12px;
 }
 
+/* ── Object tools (ИСТОРИЯ, СМОТРЕТЬ НА САЙТЕ) ── */
+/* Style as ghost secondary buttons matching the design system */
+.change-form .object-tools {
+    float: none;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin: 0 0 14px;
+    padding: 0;
+    list-style: none;
+}
+
+.change-form .object-tools li {
+    margin: 0;
+}
+
+.change-form .object-tools a {
+    display: inline-flex;
+    align-items: center;
+    height: 32px;
+    padding: 0 12px;
+    border: 1px solid var(--product-admin-border-strong);
+    border-radius: 8px;
+    background: var(--product-admin-surface-soft);
+    color: var(--product-admin-text-strong);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: normal;
+    text-transform: none;
+    text-decoration: none;
+    transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+.change-form .object-tools a:hover {
+    border-color: var(--product-admin-primary);
+    background: var(--product-admin-primary-soft);
+    color: var(--product-admin-primary);
+}
+
+/* ── FK related-widget icons ── */
+/* Subdue the brightly-colored emoji icons; they clash on dark backgrounds */
 .change-form .related-widget-wrapper-link,
 .change-form a.related-widget-wrapper-link {
+    color: var(--product-admin-text-muted);
+    opacity: 0.8;
+    transition: opacity 0.15s, color 0.15s;
+}
+
+.change-form .related-widget-wrapper-link:hover,
+.change-form a.related-widget-wrapper-link:hover {
+    opacity: 1;
     color: var(--product-admin-primary);
+}
+
+/* Desaturate the colored SVG/img icons Django renders for related fields */
+.change-form .related-widget-wrapper-link img,
+.change-form a.related-widget-wrapper-link img {
+    filter: grayscale(1) opacity(0.55);
+    transition: filter 0.15s;
+}
+
+.change-form .related-widget-wrapper-link:hover img,
+.change-form a.related-widget-wrapper-link:hover img {
+    filter: grayscale(0) opacity(1);
 }
 
 .change-form .inline-group .tabular {
@@ -1302,7 +1480,7 @@ body.change-form {
 }
 
 .change-form .inline-group .tabular thead th {
-    background: linear-gradient(180deg, #f8fbfd, #edf3f8);
+    background: var(--product-admin-surface-soft);
     color: var(--product-admin-text-strong);
     border-bottom: 1px solid var(--product-admin-border);
 }
@@ -1312,13 +1490,19 @@ body.change-form {
     border-top: 1px solid #edf1f6;
 }
 
+/* Hide redundant string representation in characteristics inline */
+#characteristics-group td.original,
+#characteristics-group th.original {
+    display: none;
+}
+
 .change-form .inline-group .tabular tbody tr:nth-child(even) td {
     background: #fbfdff;
 }
 
 .change-form details summary,
 .change-form fieldset.collapse summary {
-    background: linear-gradient(180deg, #f8fbfd, #edf3f8);
+    background: var(--product-admin-surface-soft);
     color: var(--product-admin-text-strong);
 }
 
@@ -1327,6 +1511,135 @@ body.change-form {
 .product-inline-group--locked .add-row,
 .product-inline-group--locked .module {
     display: none;
+}
+
+/* ── Django inline-deletelink (on new/empty rows) ── */
+/* Unify with our custom .product-inline-delete-btn */
+.change-form .inline-group .tabular td.delete .inline-deletelink {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--product-admin-text-muted);
+    font-size: 16px;
+    line-height: 1;
+    text-decoration: none;
+    transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+
+.change-form .inline-group .tabular td.delete .inline-deletelink:hover {
+    color: #c0392b;
+    background: rgba(192, 57, 43, 0.08);
+    border-color: rgba(192, 57, 43, 0.2);
+}
+
+/* Hide the img inside inline-deletelink and show a plain × instead */
+.change-form .inline-group .tabular td.delete .inline-deletelink img {
+    display: none;
+}
+
+.change-form .inline-group .tabular td.delete .inline-deletelink::after {
+    content: "×";
+    font-size: 15px;
+    line-height: 1;
+}
+
+/* ── Inline enhancements ── */
+
+/* Hide the original Django "Add another …" add-row link since we inject a button above */
+.change-form .inline-group .tabular tr.add-row a {
+    display: none;
+}
+
+/* "+ Добавить" button injected above each tabular */
+.product-inline-add-btn {
+    display: inline-flex;
+    align-items: center;
+    height: 30px;
+    padding: 0 12px;
+    margin: 10px 16px;
+    background: transparent;
+    border: 1px solid var(--product-admin-border-strong);
+    border-radius: 8px;
+    color: var(--product-admin-text-strong);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+
+.product-inline-add-btn:hover {
+    border-color: var(--product-admin-primary);
+    background: var(--product-admin-primary-soft);
+    color: var(--product-admin-primary);
+}
+
+/* Delete button — small × icon, right-aligned in delete cell */
+.change-form .inline-group .tabular td.delete {
+    width: 40px;
+    min-width: 40px;
+    max-width: 40px;
+    text-align: center;
+    padding: 0;
+    vertical-align: middle;
+}
+
+.product-inline-delete-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--product-admin-text-muted);
+    cursor: pointer;
+    transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+
+.product-inline-delete-btn:hover {
+    color: #c0392b;
+    background: rgba(192, 57, 43, 0.08);
+    border-color: rgba(192, 57, 43, 0.2);
+}
+
+.product-inline-delete-btn.is-active {
+    color: #c0392b;
+    background: rgba(192, 57, 43, 0.1);
+    border-color: rgba(192, 57, 43, 0.3);
+}
+
+/* Visually mark rows queued for deletion */
+.change-form .inline-group .tabular tbody tr.is-marked-delete td {
+    opacity: 0.4;
+    background: rgba(192, 57, 43, 0.04) !important;
+    text-decoration: line-through;
+    text-decoration-color: rgba(192, 57, 43, 0.4);
+}
+
+.change-form .inline-group .tabular tbody tr.is-marked-delete td.delete {
+    opacity: 1;
+    text-decoration: none;
+}
+
+/* Row hover for better scanability */
+.change-form .inline-group .tabular tbody tr.form-row:hover td {
+    background: #f5f8ff !important;
+}
+
+.change-form .inline-group .tabular tbody tr.form-row.is-marked-delete:hover td {
+    background: rgba(192, 57, 43, 0.06) !important;
+    opacity: 0.4;
+}
+
+.change-form .inline-group .tabular tbody tr.form-row.is-marked-delete:hover td.delete {
+    opacity: 1;
 }
 
 @media (max-width: 1180px) {
@@ -1396,12 +1709,6 @@ body.change-form {
         margin-top: 8px;
     }
 
-    .product-admin-floating-bar {
-        bottom: 12px;
-        width: calc(100vw - 20px);
-        padding: 12px 14px;
-    }
-
     .product-admin-description-meta {
         align-items: flex-start;
     }
@@ -1415,22 +1722,23 @@ body.change-form {
         padding: 14px;
     }
 
-    .product-admin-floating-bar__actions {
-        width: 100%;
-        justify-content: stretch;
+    .product-admin-bottom-bar__meta {
+        display: none;
     }
 
-    .change-form .product-admin-floating-bar__button {
-        flex: 1 1 100%;
-        justify-content: center;
+    .product-admin-bottom-bar__inner {
+        padding: 0 12px;
+        gap: 8px;
+    }
+
+    .change-form .product-admin-bottom-bar__btn {
+        padding: 0 12px;
+        font-size: 13px;
     }
 }
 
 html[data-theme="dark"] body.change-form {
-    background:
-        radial-gradient(circle at top left, rgba(120, 166, 255, 0.12), transparent 28%),
-        radial-gradient(circle at top right, rgba(242, 161, 84, 0.1), transparent 24%),
-        var(--product-admin-page-bg);
+    background: var(--product-admin-page-bg);
 }
 
 html[data-theme="dark"] .change-form div.breadcrumbs {
@@ -1443,39 +1751,47 @@ html[data-theme="dark"] .change-form div.breadcrumbs a {
 }
 
 html[data-theme="dark"] .product-admin-panel--guide {
-    background:
-        radial-gradient(circle at top right, rgba(242, 161, 84, 0.14), transparent 26%),
-        radial-gradient(circle at top left, rgba(120, 166, 255, 0.14), transparent 30%),
-        linear-gradient(180deg, #1d2732, #18212b 56%);
+    background: var(--product-admin-surface);
 }
 
 html[data-theme="dark"] .product-admin-panel--alerts {
     border-color: #6a4e2e;
-    background: linear-gradient(180deg, #2a2118, #211a14);
+    background: #2a2118;
 }
 
 html[data-theme="dark"] .product-admin-stage-card {
-    background: linear-gradient(180deg, #1b2430, #18212b);
+    background: var(--product-admin-surface);
 }
 
 html[data-theme="dark"] .product-admin-stage-card--primary {
     border-color: #4a648d;
-    background: linear-gradient(180deg, rgba(120, 166, 255, 0.14), #18212b 70%);
+    background: var(--product-admin-primary-soft);
 }
 
 html[data-theme="dark"] .product-admin-callout {
     border-color: #39527b;
-    background: linear-gradient(180deg, rgba(120, 166, 255, 0.14), #1a2230);
+    background: var(--product-admin-primary-soft);
 }
 
 html[data-theme="dark"] .product-admin-anchor-nav {
-    background: rgba(24, 33, 43, 0.92);
-    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.32);
+    border-top-color: var(--product-admin-primary);
+    background: var(--product-admin-surface);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.24);
+}
+
+html[data-theme="dark"] .product-admin-bottom-bar__danger {
+    color: #f08080;
+}
+
+html[data-theme="dark"] .product-admin-bottom-bar__danger:hover {
+    background: rgba(200, 50, 50, 0.12);
+    border-color: #7a3030;
+    color: #f08080;
 }
 
 html[data-theme="dark"] .product-admin-progress {
     border-color: #314153;
-    background: linear-gradient(180deg, #1d2732, #1a2430);
+    background: var(--product-admin-surface-soft);
 }
 
 html[data-theme="dark"] .product-admin-progress__bar {
@@ -1483,14 +1799,12 @@ html[data-theme="dark"] .product-admin-progress__bar {
 }
 
 html[data-theme="dark"] .product-admin-preview {
-    background: linear-gradient(180deg, #1b2430, #18212b);
+    background: var(--product-admin-surface);
     border-color: #324253;
 }
 
 html[data-theme="dark"] .product-admin-preview__media {
-    background:
-        linear-gradient(135deg, rgba(120, 166, 255, 0.14), rgba(120, 166, 255, 0.05)),
-        #22303d;
+    background: var(--product-admin-surface-soft-alt);
 }
 
 html[data-theme="dark"] .product-admin-preview__meta span,
@@ -1543,43 +1857,28 @@ html[data-theme="dark"] .change-form .product-admin-field-disabled :is(input[typ
 html[data-theme="dark"] .product-admin-field-note,
 html[data-theme="dark"] .product-admin-description-meta {
     border-color: #314153;
-    background: linear-gradient(180deg, #1d2732, #1a2430);
+    background: var(--product-admin-surface-soft);
 }
 
-html[data-theme="dark"] .product-admin-floating-bar {
-    border-color: #314153;
-    background: rgba(24, 33, 43, 0.94);
-    box-shadow: 0 24px 44px rgba(0, 0, 0, 0.34);
-}
-
-html[data-theme="dark"] .change-form .product-admin-floating-bar__button--secondary,
-html[data-theme="dark"] .change-form .product-admin-floating-bar__button--ghost {
-    border-color: #415369;
-    background: linear-gradient(180deg, #22303d, #1a2430);
-    color: var(--product-admin-text);
-}
-
-html[data-theme="dark"] .change-form .product-admin-floating-bar__button--secondary:hover,
-html[data-theme="dark"] .change-form .product-admin-floating-bar__button--ghost:hover {
-    border-color: #7198bd;
-    background: linear-gradient(180deg, #2a3948, #1f2b37);
+html[data-theme="dark"] .product-admin-bottom-bar__sep {
+    background: var(--product-admin-border);
 }
 
 html[data-theme="dark"] .product-admin-action-menu__panel {
     border-color: #314153;
-    background: rgba(24, 33, 43, 0.98);
-    box-shadow: 0 18px 36px rgba(0, 0, 0, 0.28);
+    background: var(--product-admin-surface);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
 }
 
 html[data-theme="dark"] .change-form .product-admin-action-menu__button {
     border-color: #415369;
-    background: linear-gradient(180deg, #22303d, #1a2430);
+    background: var(--product-admin-surface-soft);
     color: var(--product-admin-text);
 }
 
 html[data-theme="dark"] .change-form .product-admin-action-menu__button:hover {
     border-color: #7198bd;
-    background: linear-gradient(180deg, #2a3948, #1f2b37);
+    background: var(--product-admin-surface-soft-alt);
 }
 
 html[data-theme="dark"] .change-form fieldset.module h2,
@@ -1589,19 +1888,17 @@ html[data-theme="dark"] .change-form fieldset.product-fieldset--meta h2,
 html[data-theme="dark"] .change-form details summary,
 html[data-theme="dark"] .change-form fieldset.collapse summary {
     border-bottom-color: #314153;
-    background: linear-gradient(180deg, #22303d, #1d2732);
+    background: var(--product-admin-surface-soft);
 }
 
 html[data-theme="dark"] .change-form fieldset.product-fieldset--primary {
     border-color: #496184;
-    background: linear-gradient(180deg, #1d2733, #18212b 58%);
+    background: var(--product-admin-surface);
 }
 
 html[data-theme="dark"] .change-form fieldset.product-fieldset--primary h2,
 html[data-theme="dark"] .inline-group.product-inline-group--photos > h2 {
-    background:
-        linear-gradient(135deg, rgba(120, 166, 255, 0.16), rgba(120, 166, 255, 0.04)),
-        #22303d;
+    background: var(--product-admin-primary-soft);
 }
 
 html[data-theme="dark"] .inline-group.product-inline-group--photos tbody tr.is-primary-image td {
@@ -1614,15 +1911,12 @@ html[data-theme="dark"] .change-form .product-admin-image-preview-link::after {
 
 html[data-theme="dark"] .inline-group.product-inline-group--photos fieldset.sortable table tr.form-row.has_original td.original p {
     border-color: #415369;
-    background:
-        radial-gradient(circle at top left, rgba(120, 166, 255, 0.18), rgba(120, 166, 255, 0.05)),
-        #22303d;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    background: var(--product-admin-surface-soft-alt);
 }
 
 html[data-theme="dark"] .product-inline-group__lock {
     border-top-color: #314153;
-    background: linear-gradient(180deg, #1d2732, #1a2430);
+    background: var(--product-admin-surface-soft);
 }
 
 html[data-theme="dark"] .product-admin-image-lightbox__dialog {
@@ -1631,37 +1925,51 @@ html[data-theme="dark"] .product-admin-image-lightbox__dialog {
 }
 
 html[data-theme="dark"] .product-admin-image-lightbox__canvas {
-    background:
-        linear-gradient(135deg, rgba(120, 166, 255, 0.09), rgba(15, 21, 28, 0.04)),
-        #16202a;
+    background: #16202a;
 }
 
+/* Dark-mode button: variables already set --product-admin-primary to #78a6ff,
+   but we need a readable text color since the bg will be very light blue. */
 html[data-theme="dark"] .change-form .button,
 html[data-theme="dark"] .change-form input[type="submit"],
 html[data-theme="dark"] .change-form input[type="button"],
 html[data-theme="dark"] .change-form .submit-row a.closelink {
-    border-color: #537899;
-    background: linear-gradient(180deg, #3c5f7d, #294963);
-    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.26);
+    border-color: var(--product-admin-primary);
+    background: var(--product-admin-primary);
+    color: #0f151c;
+    box-shadow: none;
 }
 
 html[data-theme="dark"] .change-form .button:hover,
 html[data-theme="dark"] .change-form input[type="submit"]:hover,
 html[data-theme="dark"] .change-form input[type="button"]:hover,
 html[data-theme="dark"] .change-form .submit-row a.closelink:hover {
-    border-color: #7198bd;
-    background: linear-gradient(180deg, #496f90, #31546f);
+    border-color: var(--product-admin-primary-strong);
+    background: var(--product-admin-primary-strong);
+    color: #0f151c;
+}
+
+html[data-theme="dark"] .change-form .object-tools a {
+    border-color: #415369;
+    background: var(--product-admin-surface-soft);
+    color: var(--product-admin-text-strong);
+}
+
+html[data-theme="dark"] .change-form .object-tools a:hover {
+    border-color: var(--product-admin-primary);
+    background: var(--product-admin-primary-soft);
+    color: var(--product-admin-primary);
 }
 
 html[data-theme="dark"] .change-form .submit-row a.deletelink {
     border-color: #9f5858;
-    background: linear-gradient(180deg, #874949, #6f3c3c);
-    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.24);
+    background: #7b4040;
+    box-shadow: none;
 }
 
 html[data-theme="dark"] .change-form .submit-row a.deletelink:hover {
     border-color: #c27777;
-    background: linear-gradient(180deg, #995454, #7d4343);
+    background: #8f4a4a;
 }
 
 html[data-theme="dark"] .change-form :is(input[type="text"], input[type="password"], input[type="email"], input[type="url"], input[type="number"], textarea, select) {
@@ -1672,27 +1980,16 @@ html[data-theme="dark"] .change-form :is(input[type="text"], input[type="passwor
 }
 
 html[data-theme="dark"] .change-form input[type="file"]::file-selector-button {
-    background: linear-gradient(180deg, #22303d, #1a2430);
+    background: var(--product-admin-surface-soft);
 }
 
 html[data-theme="dark"] .change-form .field-tags [data-product-admin-tags-toolbar] {
     border-color: #314153;
-    background: linear-gradient(180deg, #1d2732, #1a2430);
-}
-
-html[data-theme="dark"] .change-form .field-tags [data-product-admin-tags-widget] label {
-    border-color: #314153;
-    background: linear-gradient(180deg, #1b2430, #18212b);
-    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.16);
-}
-
-html[data-theme="dark"] .change-form .field-tags [data-product-admin-tags-widget] label:hover {
-    border-color: #5b7da4;
-    background: linear-gradient(180deg, #22303d, #1b2430);
+    background: var(--product-admin-surface-soft);
 }
 
 html[data-theme="dark"] .change-form .inline-group .tabular thead th {
-    background: linear-gradient(180deg, #22303d, #1d2732);
+    background: var(--product-admin-surface-soft);
 }
 
 html[data-theme="dark"] .change-form .inline-group .tabular tbody td {
@@ -1704,12 +2001,25 @@ html[data-theme="dark"] .change-form .inline-group .tabular tbody tr:nth-child(e
     background: #1b2530;
 }
 
+html[data-theme="dark"] .product-inline-add-btn {
+    border-bottom-color: #314153;
+}
+
+html[data-theme="dark"] .product-inline-add-btn:hover {
+    background: var(--product-admin-primary-soft);
+}
+
+html[data-theme="dark"] .change-form .inline-group .tabular tbody tr.form-row:hover td {
+    background: #1e2d3d !important;
+}
+
+html[data-theme="dark"] .change-form .inline-group .tabular tbody tr.is-marked-delete td {
+    background: rgba(192, 57, 43, 0.08) !important;
+}
+
 @media (prefers-color-scheme: dark) {
     html[data-theme="auto"] body.change-form {
-        background:
-            radial-gradient(circle at top left, rgba(120, 166, 255, 0.12), transparent 28%),
-            radial-gradient(circle at top right, rgba(242, 161, 84, 0.1), transparent 24%),
-            var(--product-admin-page-bg);
+        background: var(--product-admin-page-bg);
     }
 
     html[data-theme="auto"] .change-form div.breadcrumbs {
@@ -1722,39 +2032,36 @@ html[data-theme="dark"] .change-form .inline-group .tabular tbody tr:nth-child(e
     }
 
     html[data-theme="auto"] .product-admin-panel--guide {
-        background:
-            radial-gradient(circle at top right, rgba(242, 161, 84, 0.14), transparent 26%),
-            radial-gradient(circle at top left, rgba(120, 166, 255, 0.14), transparent 30%),
-            linear-gradient(180deg, #1d2732, #18212b 56%);
+        background: var(--product-admin-surface);
     }
 
     html[data-theme="auto"] .product-admin-panel--alerts {
         border-color: #6a4e2e;
-        background: linear-gradient(180deg, #2a2118, #211a14);
+        background: #2a2118;
     }
 
     html[data-theme="auto"] .product-admin-stage-card {
-        background: linear-gradient(180deg, #1b2430, #18212b);
+        background: var(--product-admin-surface);
     }
 
     html[data-theme="auto"] .product-admin-stage-card--primary {
         border-color: #4a648d;
-        background: linear-gradient(180deg, rgba(120, 166, 255, 0.14), #18212b 70%);
+        background: var(--product-admin-primary-soft);
     }
 
     html[data-theme="auto"] .product-admin-callout {
         border-color: #39527b;
-        background: linear-gradient(180deg, rgba(120, 166, 255, 0.14), #1a2230);
+        background: var(--product-admin-primary-soft);
     }
 
     html[data-theme="auto"] .product-admin-anchor-nav {
-        background: rgba(24, 33, 43, 0.92);
-        box-shadow: 0 12px 28px rgba(0, 0, 0, 0.32);
+        background: var(--product-admin-surface);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.24);
     }
 
     html[data-theme="auto"] .product-admin-progress {
         border-color: #314153;
-        background: linear-gradient(180deg, #1d2732, #1a2430);
+        background: var(--product-admin-surface-soft);
     }
 
     html[data-theme="auto"] .product-admin-progress__bar {
@@ -1762,14 +2069,12 @@ html[data-theme="dark"] .change-form .inline-group .tabular tbody tr:nth-child(e
     }
 
     html[data-theme="auto"] .product-admin-preview {
-        background: linear-gradient(180deg, #1b2430, #18212b);
+        background: var(--product-admin-surface);
         border-color: #324253;
     }
 
     html[data-theme="auto"] .product-admin-preview__media {
-        background:
-            linear-gradient(135deg, rgba(120, 166, 255, 0.14), rgba(120, 166, 255, 0.05)),
-            #22303d;
+        background: var(--product-admin-surface-soft-alt);
     }
 
     html[data-theme="auto"] .product-admin-preview__meta span,
@@ -1821,19 +2126,17 @@ html[data-theme="dark"] .change-form .inline-group .tabular tbody tr:nth-child(e
     html[data-theme="auto"] .change-form details summary,
     html[data-theme="auto"] .change-form fieldset.collapse summary {
         border-bottom-color: #314153;
-        background: linear-gradient(180deg, #22303d, #1d2732);
+        background: var(--product-admin-surface-soft);
     }
 
     html[data-theme="auto"] .change-form fieldset.product-fieldset--primary {
         border-color: #496184;
-        background: linear-gradient(180deg, #1d2733, #18212b 58%);
+        background: var(--product-admin-surface);
     }
 
     html[data-theme="auto"] .change-form fieldset.product-fieldset--primary h2,
     html[data-theme="auto"] .inline-group.product-inline-group--photos > h2 {
-        background:
-            linear-gradient(135deg, rgba(120, 166, 255, 0.16), rgba(120, 166, 255, 0.04)),
-            #22303d;
+        background: var(--product-admin-primary-soft);
     }
 
     html[data-theme="auto"] .inline-group.product-inline-group--photos tbody tr.is-primary-image td {
@@ -1842,43 +2145,54 @@ html[data-theme="dark"] .change-form .inline-group .tabular tbody tr:nth-child(e
 
     html[data-theme="auto"] .inline-group.product-inline-group--photos fieldset.sortable table tr.form-row.has_original td.original p {
         border-color: #415369;
-        background:
-            radial-gradient(circle at top left, rgba(120, 166, 255, 0.18), rgba(120, 166, 255, 0.05)),
-            #22303d;
-        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+        background: var(--product-admin-surface-soft-alt);
     }
 
     html[data-theme="auto"] .product-inline-group__lock {
         border-top-color: #314153;
-        background: linear-gradient(180deg, #1d2732, #1a2430);
+        background: var(--product-admin-surface-soft);
     }
 
     html[data-theme="auto"] .change-form .button,
     html[data-theme="auto"] .change-form input[type="submit"],
     html[data-theme="auto"] .change-form input[type="button"],
     html[data-theme="auto"] .change-form .submit-row a.closelink {
-        border-color: #537899;
-        background: linear-gradient(180deg, #3c5f7d, #294963);
-        box-shadow: 0 8px 18px rgba(0, 0, 0, 0.26);
+        border-color: var(--product-admin-primary);
+        background: var(--product-admin-primary);
+        color: #0f151c;
+        box-shadow: none;
     }
 
     html[data-theme="auto"] .change-form .button:hover,
     html[data-theme="auto"] .change-form input[type="submit"]:hover,
     html[data-theme="auto"] .change-form input[type="button"]:hover,
     html[data-theme="auto"] .change-form .submit-row a.closelink:hover {
-        border-color: #7198bd;
-        background: linear-gradient(180deg, #496f90, #31546f);
+        border-color: var(--product-admin-primary-strong);
+        background: var(--product-admin-primary-strong);
+        color: #0f151c;
+    }
+
+    html[data-theme="auto"] .change-form .object-tools a {
+        border-color: #415369;
+        background: var(--product-admin-surface-soft);
+        color: var(--product-admin-text-strong);
+    }
+
+    html[data-theme="auto"] .change-form .object-tools a:hover {
+        border-color: var(--product-admin-primary);
+        background: var(--product-admin-primary-soft);
+        color: var(--product-admin-primary);
     }
 
     html[data-theme="auto"] .change-form .submit-row a.deletelink {
         border-color: #9f5858;
-        background: linear-gradient(180deg, #874949, #6f3c3c);
-        box-shadow: 0 8px 18px rgba(0, 0, 0, 0.24);
+        background: #7b4040;
+        box-shadow: none;
     }
 
     html[data-theme="auto"] .change-form .submit-row a.deletelink:hover {
         border-color: #c27777;
-        background: linear-gradient(180deg, #995454, #7d4343);
+        background: #8f4a4a;
     }
 
     html[data-theme="auto"] .change-form :is(input[type="text"], input[type="password"], input[type="email"], input[type="url"], input[type="number"], textarea, select) {
@@ -1889,11 +2203,11 @@ html[data-theme="dark"] .change-form .inline-group .tabular tbody tr:nth-child(e
     }
 
     html[data-theme="auto"] .change-form input[type="file"]::file-selector-button {
-        background: linear-gradient(180deg, #22303d, #1a2430);
+        background: var(--product-admin-surface-soft);
     }
 
     html[data-theme="auto"] .change-form .inline-group .tabular thead th {
-        background: linear-gradient(180deg, #22303d, #1d2732);
+        background: var(--product-admin-surface-soft);
     }
 
     html[data-theme="auto"] .change-form .inline-group .tabular tbody td {
@@ -1903,5 +2217,27 @@ html[data-theme="dark"] .change-form .inline-group .tabular tbody tr:nth-child(e
 
     html[data-theme="auto"] .change-form .inline-group .tabular tbody tr:nth-child(even) td {
         background: #1b2530;
+    }
+
+    html[data-theme="auto"] .product-inline-add-btn {
+        border-bottom-color: #314153;
+    }
+
+    html[data-theme="auto"] .change-form .inline-group .tabular tbody tr.form-row:hover td {
+        background: #1e2d3d !important;
+    }
+
+    html[data-theme="auto"] .change-form .inline-group .tabular tbody tr.is-marked-delete td {
+        background: rgba(192, 57, 43, 0.08) !important;
+    }
+
+    html[data-theme="auto"] .product-admin-bottom-bar__danger {
+        color: #f08080;
+    }
+
+    html[data-theme="auto"] .product-admin-bottom-bar__danger:hover {
+        background: rgba(200, 50, 50, 0.12);
+        border-color: #7a3030;
+        color: #f08080;
     }
 }

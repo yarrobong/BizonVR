@@ -181,20 +181,20 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
     inlines = (
         ProductImageInline,
         ProductVideoInline,
+        ProductCharacteristicInline,
         ProductContentBlockInline,
         ProductVariantInline,
-        ProductCharacteristicInline,
         ProductStockInlineForProduct,
         ProductBundleItemInlineForProduct,
     )
     readonly_fields = ('created_at', 'updated_at')
     actions = ('export_catalog_with_images', 'backup_full_catalog',)
     change_form_template = 'admin/catalog/product/change_form.html'
-    save_on_top = True
+    save_on_top = False
     fieldsets = (
         ('База карточки', {
-            'fields': ('name', 'sku', 'category', 'price', 'description', 'is_active', 'allow_order_on_request'),
-            'description': 'Минимум для публикации: название, категория, цена и описание.',
+            'fields': ('name', 'sku', 'category', 'price', 'is_active', 'allow_order_on_request'),
+            'description': 'Минимум для публикации: название, категория и цена.',
             'classes': ('product-fieldset', 'product-fieldset--primary'),
         }),
         ('Публикация и структура', {
@@ -211,15 +211,25 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
             'fields': ('created_at', 'updated_at'),
             'classes': ('product-fieldset', 'product-fieldset--meta', 'collapse'),
         }),
+        ('Описание', {
+            'fields': ('description',),
+            'description': 'Краткое описание для карточки товара в каталоге. Рекомендуем 300–1200 символов.',
+            'classes': ('product-fieldset', 'product-fieldset--description'),
+        }),
     )
 
     def get_fieldsets(self, request, obj=None):
         if obj is None:
             return (
                 ('База карточки', {
-                    'fields': ('name', 'sku', 'category', 'price', 'description', 'is_active', 'allow_order_on_request'),
-                    'description': 'Сначала заполните название, категорию, цену и описание. Этого достаточно для первого сохранения.',
+                    'fields': ('name', 'sku', 'category', 'price', 'is_active', 'allow_order_on_request'),
+                    'description': 'Сначала заполните название, категорию и цену. Описание можно добавить здесь же или на вкладке «Описание».',
                     'classes': ('product-fieldset', 'product-fieldset--primary'),
+                }),
+                ('Описание', {
+                    'fields': ('description',),
+                    'description': 'Краткое описание для карточки товара в каталоге. Рекомендуем 300–1200 символов.',
+                    'classes': ('product-fieldset', 'product-fieldset--description'),
                 }),
                 ('Дополнительно', {
                     'fields': (
@@ -284,10 +294,9 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
         context['is_add_product'] = add
         context['product_admin_sections'] = (
             {'label': 'База', 'target': 'field-name', 'available_on_add': True},
-            {'label': 'Фото', 'target': 'inline-images-group', 'available_on_add': True},
-            {'label': 'Видео', 'target': 'inline-videos-group', 'available_on_add': True},
+            {'label': 'Описание', 'target': 'inline-description-group', 'available_on_add': True},
+            {'label': 'Фото и видео', 'target': 'inline-images-group', 'available_on_add': True},
             {'label': 'Варианты', 'target': 'inline-variants-group', 'available_on_add': False},
-            {'label': 'Характеристики', 'target': 'inline-characteristics-group', 'available_on_add': True},
             {'label': 'Остатки', 'target': 'inline-stocks-group', 'available_on_add': False},
             {'label': 'Комплекты', 'target': 'inline-bundle_items-group', 'available_on_add': False},
         )

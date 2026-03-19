@@ -178,10 +178,9 @@
         }
 
         if (!target) {
+            if (targetKey === 'inline-description-group') target = descriptionFieldset || findInlineGroupByHeading('Характеристики');
             if (targetKey === 'inline-images-group') target = findInlineGroupByHeading('Фото товара');
-            if (targetKey === 'inline-videos-group') target = findInlineGroupByHeading('Видео товара');
             if (targetKey === 'inline-variants-group') target = findInlineGroupByHeading('Варианты товара');
-            if (targetKey === 'inline-characteristics-group') target = findInlineGroupByHeading('Характеристики');
             if (targetKey === 'inline-stocks-group') target = findInlineGroupByHeading('Остатки');
             if (targetKey === 'inline-bundle_items-group') target = findInlineGroupByHeading('комплект');
         }
@@ -432,7 +431,10 @@
     }
 
     function setupTagsWidget() {
-        var tagsRoot = document.querySelector('[data-product-admin-tags-widget]');
+        var firstTagCheckbox = document.querySelector('input[data-product-admin-tags-widget]');
+        var tagsRoot = firstTagCheckbox
+            ? (firstTagCheckbox.parentElement && firstTagCheckbox.parentElement.parentElement && firstTagCheckbox.parentElement.parentElement.parentElement)
+            : null;
         var fieldRow;
         var shell;
         var toolbar;
@@ -655,6 +657,7 @@
         var characteristicsGroup;
         var stockGroup;
         var bundleGroup;
+        var descriptionFieldset;
         var previewImageNode;
         var previewPlaceholderNode;
         var currentPreviewObjectUrl = '';
@@ -681,6 +684,7 @@
         characteristicsGroup = getInlineGroupById('inline-characteristics-group') || findInlineGroupByHeading('Характеристики');
         stockGroup = getInlineGroupById('inline-stocks-group') || findInlineGroupByHeading('Остатки');
         bundleGroup = getInlineGroupById('inline-bundle_items-group') || findInlineGroupByHeading('комплект');
+        descriptionFieldset = document.querySelector('.product-fieldset--description');
 
         if (photoGroup) photoGroup.classList.add('product-inline-group--photos');
         if (videoGroup) videoGroup.classList.add('product-inline-group--videos');
@@ -910,6 +914,102 @@
             window.requestAnimationFrame(refreshDashboard);
         }
 
+        function processDeleteCellInRow(row) {
+            var deleteCell = row.querySelector('td.delete');
+            if (!deleteCell || deleteCell.querySelector('[data-inline-delete-btn]')) return;
+            var checkbox = deleteCell.querySelector('input[name$="-DELETE"]');
+            if (!checkbox) return;
+
+            checkbox.style.display = 'none';
+            var label = deleteCell.querySelector('label');
+            if (label) label.style.display = 'none';
+
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'product-inline-delete-btn';
+            btn.setAttribute('data-inline-delete-btn', '');
+            btn.setAttribute('aria-label', 'Удалить строку');
+            btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 2l10 10M12 2L2 12" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/></svg>';
+            if (checkbox.checked) {
+                btn.classList.add('is-active');
+                row.classList.add('is-marked-delete');
+            }
+            deleteCell.appendChild(btn);
+        }
+
+        function injectAddButton(group) {
+            if (group.classList.contains('product-inline-group--locked')) return;
+            var tabularEl = group.querySelector('.tabular') || group.querySelector('table');
+            if (!tabularEl) return;
+            if (tabularEl.previousElementSibling && tabularEl.previousElementSibling.classList.contains('product-inline-add-btn')) return;
+            var addRow = group.querySelector('tr.add-row, .add-row');
+            var addLink = addRow ? addRow.querySelector('a') : null;
+            if (!addLink) return;
+            var addBtn = document.createElement('button');
+            addBtn.type = 'button';
+            addBtn.className = 'product-inline-add-btn';
+            addBtn.textContent = '+ Добавить';
+            addBtn.addEventListener('click', function() { addLink.click(); });
+            tabularEl.parentNode.insertBefore(addBtn, tabularEl);
+        }
+
+        function setupInlineEnhancements() {
+            var groups = [photoGroup, videoGroup, characteristicsGroup, contentBlockGroup, variantGroup, stockGroup, bundleGroup];
+
+            groups.filter(Boolean).forEach(function(group) {
+                if (group.classList.contains('product-inline-group--locked')) return;
+
+                // Process existing rows' delete cells immediately
+                getInlineRows(group).forEach(function(row) {
+                    processDeleteCellInRow(row);
+                });
+
+                // Event delegation: delete button click → toggle checkbox
+                group.addEventListener('click', function(e) {
+                    var btn = closest(e.target, '[data-inline-delete-btn]');
+                    if (!btn) return;
+                    var row = closest(btn, 'tr');
+                    if (!row) return;
+                    var checkbox = row.querySelector('input[name$="-DELETE"]');
+                    if (!checkbox) return;
+                    checkbox.checked = !checkbox.checked;
+                    checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+                });
+
+                // Event delegation: checkbox change → toggle visual state
+                group.addEventListener('change', function(e) {
+                    if (!e.target || !e.target.name || e.target.name.indexOf('-DELETE') === -1) return;
+                    var row = closest(e.target, 'tr');
+                    if (!row) return;
+                    row.classList.toggle('is-marked-delete', e.target.checked);
+                    var btn = row.querySelector('[data-inline-delete-btn]');
+                    if (btn) btn.classList.toggle('is-active', e.target.checked);
+                });
+
+                // Process newly added rows (Django formset adds them dynamically)
+                if (window.MutationObserver) {
+                    var tbody = group.querySelector('tbody');
+                    if (tbody) {
+                        new MutationObserver(function(mutations) {
+                            mutations.forEach(function(mutation) {
+                                Array.prototype.forEach.call(mutation.addedNodes, function(node) {
+                                    if (node.nodeType === 1 && node.tagName === 'TR' && !node.classList.contains('empty-form')) {
+                                        processDeleteCellInRow(node);
+                                    }
+                                });
+                            });
+                        }).observe(tbody, { childList: true });
+                    }
+                }
+            });
+
+            // Defer add-button injection: Django formset JS populates tr.add-row links
+            // asynchronously after DOMContentLoaded, so we wait one task.
+            setTimeout(function() {
+                groups.filter(Boolean).forEach(injectAddButton);
+            }, 0);
+        }
+
         function setupTabs() {
             var nav = document.querySelector('[data-product-admin-anchor-nav]');
             if (!nav) return;
@@ -921,14 +1021,13 @@
             var panelMap = {
                 'field-name': contentForm ? Array.prototype.filter.call(
                     contentForm.querySelectorAll('.module'),
-                    function(el) { return !closest(el, '.inline-group'); }
+                    function(el) { return !closest(el, '.inline-group') && !el.classList.contains('product-fieldset--description'); }
                 ) : [],
-                'inline-images-group':          [photoGroup].filter(Boolean),
-                'inline-videos-group':          [videoGroup, contentBlockGroup].filter(Boolean),
-                'inline-variants-group':        [variantGroup].filter(Boolean),
-                'inline-characteristics-group': [characteristicsGroup].filter(Boolean),
-                'inline-stocks-group':          [stockGroup].filter(Boolean),
-                'inline-bundle_items-group':    [bundleGroup].filter(Boolean),
+                'inline-description-group': [descriptionFieldset, characteristicsGroup, contentBlockGroup].filter(Boolean),
+                'inline-images-group':      [photoGroup, videoGroup].filter(Boolean),
+                'inline-variants-group':    [variantGroup].filter(Boolean),
+                'inline-stocks-group':      [stockGroup].filter(Boolean),
+                'inline-bundle_items-group':[bundleGroup].filter(Boolean),
             };
 
             var activeKey = null;
@@ -1003,5 +1102,6 @@
         setupImagePreviewLightbox();
         setupTabs();
         refreshDashboard();
+        setupInlineEnhancements();
     });
 })();
