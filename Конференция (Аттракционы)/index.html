@@ -46,8 +46,9 @@
     }
 
     .container {
-      width: min(100% - 40px, var(--container));
+      width: min(calc(100% - 40px), var(--container));
       margin-inline: auto;
+      min-width: 0;
     }
 
     .section {
@@ -78,6 +79,7 @@
       font-weight: 800;
       letter-spacing: -0.02em;
       line-height: 1.1;
+      overflow-wrap: anywhere;
     }
 
     h1 { font-size: clamp(2rem, 5vw, 4.5rem); }
@@ -95,6 +97,7 @@
       flex-wrap: wrap;
       gap: 12px;
       margin-top: 28px;
+      min-width: 0;
     }
 
     .btn {
@@ -110,6 +113,10 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      max-width: 100%;
+      min-width: 0;
+      text-align: center;
+      white-space: normal;
     }
 
     .btn:hover {
@@ -140,6 +147,12 @@
       grid-template-columns: 1.1fr 1fr;
       gap: 30px;
       align-items: center;
+    }
+
+    .hero-grid > *,
+    .detail-grid > *,
+    .final-wrap > * {
+      min-width: 0;
     }
 
     .hero-collage {
@@ -188,6 +201,20 @@
     .steps-grid {
       display: grid;
       gap: 16px;
+    }
+
+    .kpi-row > *,
+    .adv-grid > *,
+    .models-grid > *,
+    .cards-grid > *,
+    .addons-grid > *,
+    .cases-grid > *,
+    .steps-grid > *,
+    .included-grid > *,
+    .cert-grid > *,
+    .detail-specs > *,
+    .metric > * {
+      min-width: 0;
     }
 
     .kpi-row {
@@ -429,8 +456,8 @@
     .detail-specs b.price-value {
       font-size: 1.7rem;
       line-height: 1.05;
-      white-space: nowrap;
       text-shadow: none;
+      overflow-wrap: anywhere;
     }
 
     .detail-specs div.delivery-note {
@@ -626,6 +653,7 @@
       align-items: baseline;
       gap: 10px;
       margin-bottom: 14px;
+      flex-wrap: wrap;
     }
 
     .case-place {
@@ -780,8 +808,8 @@
 
     .contacts {
       margin-top: 16px;
-      display: flex;
-      flex-wrap: wrap;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 10px;
     }
 
@@ -793,6 +821,8 @@
       color: #d7c7ff;
       text-decoration: none;
       font-size: 0.9rem;
+      min-width: 0;
+      text-align: center;
     }
 
     footer {
@@ -877,10 +907,24 @@
     }
 
     @media (max-width: 1080px) {
+      .hero {
+        min-height: auto;
+        padding-top: 48px;
+      }
+
       .hero-grid,
       .detail-grid,
       .final-wrap {
         grid-template-columns: 1fr;
+      }
+
+      .hero-grid {
+        gap: 24px;
+      }
+
+      .hero-collage {
+        min-height: 380px;
+        background-size: 54%;
       }
 
       .models-grid,
@@ -901,6 +945,32 @@
         grid-template-columns: repeat(3, 1fr);
       }
 
+      .detail {
+        padding: 24px;
+        border-radius: 24px;
+      }
+
+      .detail-media {
+        min-height: 320px;
+        background-size: 60%;
+      }
+
+      .model-video {
+        min-height: 0;
+      }
+
+      .content-card,
+      .addon,
+      .case-card,
+      .step,
+      .contact-card {
+        padding: 18px;
+      }
+
+      .metric {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
       .steps-grid.flow-steps .step:nth-child(6),
       .steps-grid.flow-steps .step:nth-child(7),
       .steps-grid.flow-steps .step:nth-child(8),
@@ -913,12 +983,50 @@
       }
 
       .scroll-indicator {
-        right: 10px;
+        display: none;
       }
     }
 
     @media (max-width: 760px) {
-      .section { padding: 70px 0; }
+      .container {
+        width: min(calc(100% - 32px), var(--container));
+      }
+
+      .section {
+        padding: 68px 0;
+      }
+
+      .tag {
+        margin-bottom: 16px;
+      }
+
+      .hero {
+        padding-top: 36px;
+      }
+
+      .hero-grid {
+        gap: 20px;
+      }
+
+      .hero-collage {
+        min-height: 300px;
+        border-radius: 24px;
+        background-size: 68%;
+      }
+
+      .lead {
+        font-size: 1rem;
+      }
+
+      .btns {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .btn {
+        width: 100%;
+        padding: 15px 18px;
+      }
 
       .models-grid,
       .addons-grid,
@@ -935,20 +1043,62 @@
         grid-template-columns: 1fr;
       }
 
-      .scroll-indicator {
-        display: none;
+      .metric,
+      .contacts {
+        grid-template-columns: 1fr;
       }
 
       .detail {
         padding: 18px;
+        border-radius: 20px;
       }
 
       .detail-media {
         min-height: 260px;
+        border-radius: 18px;
+        background-size: 72%;
       }
 
       .detail-specs {
         grid-template-columns: 1fr;
+      }
+
+      .detail-specs div,
+      .case-info,
+      .content-card,
+      .addon,
+      .case-card,
+      .step,
+      .contact-card {
+        padding: 16px;
+      }
+
+      .detail-specs b.price-value {
+        font-size: 1.45rem;
+      }
+
+      .bundle-list li,
+      .step p,
+      .case-list li,
+      .metric span {
+        font-size: 0.82rem;
+      }
+
+      .case-head {
+        align-items: flex-start;
+      }
+
+      .case-place {
+        max-width: 100%;
+      }
+
+      .model-video {
+        min-height: 0;
+        border-radius: 14px;
+      }
+
+      footer {
+        padding: 18px 16px 32px;
       }
     }
   </style>
