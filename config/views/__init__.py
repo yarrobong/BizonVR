@@ -12,6 +12,7 @@ from .legal_pages import (
 )
 from .static_pages import (
     arenda_view,
+    conference_attractions_view,
     favicon_view,
     not_found_view,
     permission_denied_view,
@@ -22,6 +23,7 @@ from .static_pages import (
 
 __all__ = [
     'arenda_view',
+    'conference_attractions_view',
     'contacts_view',
     'cookies_policy_view',
     'debug_cities_view',

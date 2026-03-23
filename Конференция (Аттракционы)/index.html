@@ -1,0 +1,1414 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VR Аттракционы под ключ</title>
+  <meta name="description" content="Продажа VR-аттракционов под ключ для ТРЦ, парков, игровых и развлекательных площадок." />
+  <style>
+    :root {
+      --bg: #06070d;
+      --bg-2: #0c1020;
+      --card: rgba(15, 20, 38, 0.72);
+      --stroke: rgba(131, 155, 255, 0.25);
+      --text: #e8ecff;
+      --muted: #9aa4c5;
+      --neon-cyan: #27f0ff;
+      --neon-violet: #8b5cf6;
+      --neon-pink: #ff4fd8;
+      --success: #34d399;
+      --warning: #fbbf24;
+      --danger: #fb7185;
+      --shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+      --container: 1180px;
+      --radius: 22px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      font-family: "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(1200px 700px at 5% -10%, rgba(39, 240, 255, 0.18), transparent 50%),
+        radial-gradient(1000px 600px at 95% 0%, rgba(139, 92, 246, 0.2), transparent 55%),
+        linear-gradient(180deg, var(--bg) 0%, #03040a 55%, #070b1a 100%);
+      line-height: 1.45;
+      overflow-x: hidden;
+    }
+
+    .container {
+      width: min(100% - 40px, var(--container));
+      margin-inline: auto;
+    }
+
+    .section {
+      padding: 96px 0;
+      position: relative;
+    }
+
+    .section + .section {
+      border-top: 1px solid rgba(106, 124, 202, 0.15);
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(39, 240, 255, 0.4);
+      background: rgba(39, 240, 255, 0.08);
+      color: #a5f8ff;
+      font-size: 13px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+    }
+
+    h1, h2, h3 {
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      line-height: 1.1;
+    }
+
+    h1 { font-size: clamp(2rem, 5vw, 4.5rem); }
+    h2 { font-size: clamp(1.6rem, 3.3vw, 3rem); margin-bottom: 18px; }
+    h3 { font-size: clamp(1.2rem, 2vw, 1.6rem); }
+
+    .lead {
+      color: var(--muted);
+      font-size: clamp(1rem, 1.8vw, 1.2rem);
+      max-width: 760px;
+    }
+
+    .btns {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 28px;
+    }
+
+    .btn {
+      border: none;
+      border-radius: 12px;
+      padding: 14px 22px;
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #0a0f1d;
+      text-decoration: none;
+      cursor: pointer;
+      transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .btn:hover {
+      transform: translateY(-1px);
+      opacity: 0.95;
+    }
+
+    .btn-primary {
+      background: linear-gradient(90deg, var(--neon-cyan), #7bf1ff);
+      box-shadow: 0 8px 30px rgba(39, 240, 255, 0.25);
+    }
+
+    .btn-secondary {
+      color: var(--text);
+      background: rgba(139, 92, 246, 0.14);
+      border: 1px solid rgba(139, 92, 246, 0.45);
+    }
+
+    .hero {
+      padding-top: 70px;
+      min-height: 95vh;
+      display: grid;
+      align-items: center;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 1.1fr 1fr;
+      gap: 30px;
+      align-items: center;
+    }
+
+    .hero-collage {
+      min-height: 460px;
+      border-radius: 30px;
+      border: 1px solid var(--stroke);
+      box-shadow: var(--shadow);
+      background:
+        linear-gradient(160deg, rgba(4, 8, 19, 0.7), rgba(8, 11, 24, 0.75)),
+        url("./Контент/VARTOneMotion360.png") center / 70% no-repeat;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero-collage::before,
+    .hero-collage::after {
+      content: "";
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(30px);
+      opacity: 0.75;
+    }
+
+    .hero-collage::before {
+      width: 240px;
+      height: 240px;
+      background: rgba(39, 240, 255, 0.28);
+      top: -20px;
+      right: -40px;
+    }
+
+    .hero-collage::after {
+      width: 220px;
+      height: 220px;
+      background: rgba(139, 92, 246, 0.34);
+      bottom: -50px;
+      left: -40px;
+    }
+
+    .kpi-row,
+    .adv-grid,
+    .models-grid,
+    .cards-grid,
+    .addons-grid,
+    .cases-grid,
+    .steps-grid {
+      display: grid;
+      gap: 16px;
+    }
+
+    .kpi-row {
+      grid-template-columns: repeat(4, 1fr);
+      margin-top: 30px;
+    }
+
+    .kpi-card,
+    .adv-card,
+    .model-card,
+    .case-card,
+    .step,
+    .content-card,
+    .addon,
+    .included-item {
+      border-radius: var(--radius);
+      background: var(--card);
+      border: 1px solid var(--stroke);
+      backdrop-filter: blur(10px);
+      box-shadow: var(--shadow);
+    }
+
+    .kpi-card {
+      padding: 18px;
+    }
+
+    .kpi-card b {
+      display: block;
+      font-size: 1.4rem;
+      color: #d6f9ff;
+      margin-bottom: 6px;
+    }
+
+    .kpi-card span {
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+
+    .adv-grid {
+      grid-template-columns: repeat(4, 1fr);
+      margin-top: 34px;
+    }
+
+    .adv-card {
+      padding: 20px;
+      min-height: 170px;
+    }
+
+    .adv-card .icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      margin-bottom: 14px;
+      background: linear-gradient(140deg, rgba(39, 240, 255, 0.18), rgba(139, 92, 246, 0.22));
+      border: 1px solid rgba(39, 240, 255, 0.28);
+      font-size: 1.3rem;
+    }
+
+    .adv-card p {
+      color: var(--muted);
+      margin-top: 8px;
+      font-size: 0.94rem;
+    }
+
+    .models-grid {
+      grid-template-columns: repeat(3, 1fr);
+      margin-top: 30px;
+    }
+
+    .model-card {
+      overflow: hidden;
+    }
+
+    .model-image {
+      height: 190px;
+      background-size: 70%;
+      background-repeat: no-repeat;
+      background-position: center;
+      position: relative;
+    }
+
+    .model-image::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, transparent 35%, rgba(4, 8, 18, 0.65) 100%);
+    }
+
+    .model-body {
+      padding: 18px;
+    }
+
+    .model-body p {
+      color: var(--muted);
+      margin: 8px 0 16px;
+      font-size: 0.95rem;
+    }
+
+    .model-specs {
+      display: grid;
+      gap: 8px;
+      margin: 10px 0 16px;
+    }
+
+    .model-specs div {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid rgba(131, 155, 255, 0.18);
+      background: rgba(255, 255, 255, 0.02);
+      font-size: 0.88rem;
+    }
+
+    .model-specs span {
+      color: var(--muted);
+    }
+
+    .model-specs b {
+      color: #dfe8ff;
+      text-align: right;
+      font-weight: 600;
+    }
+
+    .price {
+      display: inline-flex;
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      font-weight: 700;
+      background: rgba(52, 211, 153, 0.15);
+      border: 1px solid rgba(52, 211, 153, 0.4);
+      color: #9ef7d4;
+      margin-bottom: 14px;
+    }
+
+    .detail {
+      padding: 30px;
+      border-radius: 28px;
+      border: 1px solid var(--stroke);
+      background: linear-gradient(160deg, rgba(12, 16, 32, 0.9), rgba(10, 14, 29, 0.7));
+      box-shadow: var(--shadow);
+    }
+
+    .detail-grid {
+      display: grid;
+      grid-template-columns: 1.05fr 1fr;
+      gap: 26px;
+      align-items: stretch;
+    }
+
+    .detail-media {
+      border-radius: 22px;
+      min-height: 350px;
+      border: 1px solid var(--stroke);
+      overflow: hidden;
+      background-size: 70%;
+      background-repeat: no-repeat;
+      background-position: center;
+      position: relative;
+    }
+
+    .detail-media::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(7, 11, 24, 0.1), rgba(7, 11, 24, 0.5));
+    }
+
+    .detail-list {
+      list-style: none;
+      display: grid;
+      gap: 10px;
+      margin: 18px 0 16px;
+    }
+
+    .detail-specs {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin: 16px 0 14px;
+    }
+
+    .detail-specs div {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      align-items: flex-start;
+      justify-content: flex-start;
+      min-height: 62px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(171, 193, 255, 0.22);
+      background: rgba(255, 255, 255, 0.03);
+      box-shadow: none;
+      backdrop-filter: none;
+      transition: border-color 0.18s ease, background-color 0.18s ease, transform 0.18s ease;
+    }
+
+    .detail-specs div::before {
+      content: "";
+      position: absolute;
+      display: none;
+    }
+
+    .detail-specs div:hover {
+      transform: translateY(-1px);
+      border-color: rgba(39, 240, 255, 0.28);
+      background: rgba(255, 255, 255, 0.035);
+    }
+
+    .detail-specs span {
+      color: rgba(210, 224, 255, 0.78);
+      font-size: 0.7rem;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+    }
+
+    .detail-specs b {
+      color: #f5f7ff;
+      font-size: 0.9rem;
+      line-height: 1.15;
+      font-weight: 800;
+      text-shadow: none;
+    }
+
+    .detail-price-block,
+    .detail-size-block {
+      min-height: 32px;
+      padding: 4px 6px;
+      border-radius: 10px;
+      box-shadow: none;
+    }
+
+    .detail-specs b.price-value {
+      font-size: 1.7rem;
+      line-height: 1.05;
+      white-space: nowrap;
+      text-shadow: none;
+    }
+
+    .detail-specs div.delivery-note {
+      margin-top: 0;
+    }
+
+    .bundle-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      display: grid;
+      gap: 6px;
+      width: 100%;
+    }
+
+    .bundle-list li {
+      color: rgba(230, 240, 255, 0.95);
+      font-size: 0.72rem;
+      line-height: 1.2;
+    }
+
+    .delivery-note {
+      margin-top: 2px;
+      align-self: flex-start;
+      font-size: 0.58rem;
+      color: rgba(201, 242, 255, 0.92);
+      line-height: 1.1;
+      padding: 3px 6px;
+      border-radius: 999px;
+      border: 1px solid rgba(171, 193, 255, 0.2);
+      background: rgba(255, 255, 255, 0.02);
+      box-shadow: none;
+      white-space: nowrap;
+    }
+
+    .detail-desc-span {
+      grid-column: 1 / -1;
+    }
+
+    .model-video {
+      margin-top: 16px;
+      position: relative;
+      aspect-ratio: 16 / 9;
+      min-height: 220px;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid rgba(131, 155, 255, 0.28);
+      background: rgba(8, 11, 22, 0.7);
+      box-shadow: 0 12px 24px rgba(0, 0, 0, 0.3);
+    }
+
+    .model-video video {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #02040a;
+    }
+
+    .detail-list li {
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: rgba(39, 240, 255, 0.06);
+      border: 1px solid rgba(39, 240, 255, 0.18);
+      color: #d8edff;
+    }
+
+    .subline {
+      color: #aeb7d6;
+      font-size: 0.94rem;
+    }
+
+    .subline span {
+      color: #dce4ff;
+    }
+
+    .record {
+      margin-top: 14px;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      border-radius: 10px;
+      background: rgba(255, 79, 216, 0.15);
+      border: 1px solid rgba(255, 79, 216, 0.38);
+      color: #ffd8f6;
+      font-size: 0.88rem;
+      font-weight: 700;
+    }
+
+    .included-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-top: 28px;
+    }
+
+    .included-item {
+      padding: 18px;
+      min-height: 120px;
+    }
+
+    .included-item h4 {
+      font-size: 1rem;
+      margin-bottom: 8px;
+    }
+
+    .included-item p {
+      color: var(--muted);
+      font-size: 0.93rem;
+    }
+
+    .cards-grid {
+      grid-template-columns: repeat(3, 1fr);
+      margin-top: 26px;
+    }
+
+    .content-card {
+      padding: 20px;
+      min-height: 170px;
+      background:
+        linear-gradient(170deg, rgba(15, 20, 38, 0.85), rgba(8, 11, 23, 0.9)),
+        radial-gradient(220px 140px at 70% 0%, rgba(139, 92, 246, 0.22), transparent 60%);
+    }
+
+    .content-card p {
+      color: var(--muted);
+      margin-top: 10px;
+    }
+
+    .addons-grid {
+      grid-template-columns: repeat(4, 1fr);
+      margin-top: 28px;
+    }
+
+    .addon {
+      padding: 18px;
+      min-height: 115px;
+    }
+
+    .addon p {
+      color: var(--muted);
+      margin-top: 8px;
+      font-size: 0.92rem;
+    }
+
+    .cases-grid {
+      grid-template-columns: repeat(3, 1fr);
+      margin-top: 26px;
+    }
+
+    .cert-grid {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 16px;
+      margin-top: 18px;
+    }
+
+    .case-card {
+      padding: 20px;
+    }
+
+    .case-info {
+      margin-top: 12px;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(131, 155, 255, 0.22);
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .case-info h4 {
+      font-size: 0.86rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #9eb0de;
+      margin-bottom: 8px;
+    }
+
+    .case-list {
+      list-style: none;
+      display: grid;
+      gap: 6px;
+    }
+
+    .case-list li {
+      color: #e6ecff;
+      font-size: 0.9rem;
+    }
+
+    .case-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .case-place {
+      font-size: 0.85rem;
+      color: #bdd5ff;
+      padding: 4px 10px;
+      border: 1px solid rgba(39, 240, 255, 0.28);
+      border-radius: 999px;
+      background: rgba(39, 240, 255, 0.08);
+    }
+
+    .metric {
+      margin-top: 14px;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      align-items: stretch;
+    }
+
+    .metric > div {
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid rgba(39, 240, 255, 0.18);
+      background: rgba(39, 240, 255, 0.05);
+    }
+
+    .metric b {
+      display: block;
+      font-size: 1.12rem;
+      color: #e8f7ff;
+    }
+
+    .metric span {
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+
+    .steps-grid {
+      grid-template-columns: repeat(5, minmax(170px, 1fr));
+      row-gap: 26px;
+      margin-top: 28px;
+    }
+
+    .step {
+      padding: 16px;
+      position: relative;
+      min-height: 150px;
+    }
+
+    .step h3 {
+      font-size: 1rem;
+      line-height: 1.2;
+    }
+
+    .step .num {
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      margin-bottom: 12px;
+      font-weight: 800;
+      color: #001821;
+      background: linear-gradient(140deg, var(--neon-cyan), #95f5ff);
+    }
+
+    .step p {
+      color: var(--muted);
+      font-size: 0.84rem;
+      line-height: 1.35;
+      margin-top: 6px;
+    }
+
+    .steps-grid.flow-steps .step:nth-child(6) { grid-column: 5; }
+    .steps-grid.flow-steps .step:nth-child(7) { grid-column: 4; }
+    .steps-grid.flow-steps .step:nth-child(8) { grid-column: 3; }
+    .steps-grid.flow-steps .step:nth-child(9) { grid-column: 2; }
+    .steps-grid.flow-steps .step:nth-child(n+6):nth-child(-n+9) { grid-row: 2; }
+
+    .steps-grid.flow-steps .step::after {
+      content: "";
+      position: absolute;
+      pointer-events: none;
+    }
+
+    .steps-grid.flow-steps .step:nth-child(-n+4)::after {
+      top: 32px;
+      right: -17px;
+      width: 17px;
+      border-top: 2px solid rgba(39, 240, 255, 0.45);
+    }
+
+    .steps-grid.flow-steps .step:nth-child(5)::after {
+      right: 30px;
+      top: 32px;
+      height: calc(100% + 26px);
+      border-right: 2px solid rgba(39, 240, 255, 0.45);
+    }
+
+    .steps-grid.flow-steps .step:nth-child(n+6):nth-child(-n+8)::after {
+      top: 32px;
+      left: -17px;
+      width: 17px;
+      border-top: 2px solid rgba(39, 240, 255, 0.45);
+    }
+
+    .final {
+      padding-bottom: 110px;
+    }
+
+    .final-wrap {
+      display: grid;
+      grid-template-columns: 1.1fr 1fr;
+      gap: 24px;
+      align-items: start;
+    }
+
+    .contact-card {
+      padding: 28px;
+      border-radius: 24px;
+      background: linear-gradient(180deg, rgba(13, 19, 37, 0.95), rgba(10, 14, 28, 0.9));
+      border: 1px solid var(--stroke);
+      box-shadow: var(--shadow);
+    }
+
+    form {
+      display: grid;
+      gap: 12px;
+      margin-top: 14px;
+    }
+
+    input, textarea {
+      width: 100%;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(143, 164, 255, 0.35);
+      border-radius: 12px;
+      color: var(--text);
+      padding: 12px 14px;
+      font-size: 0.95rem;
+      outline: none;
+    }
+
+    input:focus, textarea:focus {
+      border-color: rgba(39, 240, 255, 0.7);
+      box-shadow: 0 0 0 3px rgba(39, 240, 255, 0.15);
+    }
+
+    textarea {
+      min-height: 110px;
+      resize: vertical;
+    }
+
+    .contacts {
+      margin-top: 16px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .chip {
+      border-radius: 999px;
+      padding: 9px 12px;
+      border: 1px solid rgba(139, 92, 246, 0.45);
+      background: rgba(139, 92, 246, 0.12);
+      color: #d7c7ff;
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+
+    footer {
+      padding: 22px 0 40px;
+      color: #7d88aa;
+      font-size: 0.9rem;
+      text-align: center;
+    }
+
+    .scroll-indicator {
+      position: fixed;
+      right: 16px;
+      top: 50%;
+      transform: translateY(-50%);
+      z-index: 120;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 8px;
+      border-radius: 16px;
+      border: 1px solid rgba(131, 155, 255, 0.26);
+      background: rgba(8, 11, 22, 0.72);
+      backdrop-filter: blur(8px);
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4);
+    }
+
+    .scroll-indicator::before {
+      content: "";
+      position: absolute;
+      top: 12px;
+      bottom: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 2px;
+      background: linear-gradient(180deg, rgba(39, 240, 255, 0.5), rgba(139, 92, 246, 0.35));
+      opacity: 0.6;
+    }
+
+    .scroll-dot {
+      position: relative;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: 1px solid rgba(170, 187, 255, 0.55);
+      background: #0d1327;
+      transition: transform 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+      z-index: 1;
+    }
+
+    .scroll-dot:hover {
+      transform: scale(1.08);
+      background: rgba(39, 240, 255, 0.4);
+    }
+
+    .scroll-dot.active {
+      background: var(--neon-cyan);
+      border-color: rgba(39, 240, 255, 0.95);
+      box-shadow: 0 0 0 5px rgba(39, 240, 255, 0.16), 0 0 14px rgba(39, 240, 255, 0.6);
+    }
+
+    .scroll-dot span {
+      position: absolute;
+      right: 24px;
+      top: 50%;
+      transform: translateY(-50%);
+      white-space: nowrap;
+      font-size: 0.74rem;
+      color: #dbe6ff;
+      background: rgba(10, 14, 28, 0.93);
+      border: 1px solid rgba(131, 155, 255, 0.35);
+      border-radius: 8px;
+      padding: 5px 8px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.18s ease;
+    }
+
+    .scroll-dot:hover span,
+    .scroll-dot.active span {
+      opacity: 1;
+    }
+
+    @media (max-width: 1080px) {
+      .hero-grid,
+      .detail-grid,
+      .final-wrap {
+        grid-template-columns: 1fr;
+      }
+
+      .models-grid,
+      .addons-grid,
+      .adv-grid,
+      .included-grid,
+      .cards-grid,
+      .cases-grid,
+      .cert-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .kpi-row {
+        grid-template-columns: repeat(3, 1fr);
+      }
+
+      .steps-grid {
+        grid-template-columns: repeat(3, 1fr);
+      }
+
+      .steps-grid.flow-steps .step:nth-child(6),
+      .steps-grid.flow-steps .step:nth-child(7),
+      .steps-grid.flow-steps .step:nth-child(8),
+      .steps-grid.flow-steps .step:nth-child(9) {
+        grid-column: auto;
+      }
+
+      .steps-grid.flow-steps .step::after {
+        display: none;
+      }
+
+      .scroll-indicator {
+        right: 10px;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .section { padding: 70px 0; }
+
+      .models-grid,
+      .addons-grid,
+      .adv-grid,
+      .included-grid,
+      .cards-grid,
+      .cases-grid,
+      .cert-grid,
+      .kpi-row {
+        grid-template-columns: 1fr;
+      }
+
+      .steps-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .scroll-indicator {
+        display: none;
+      }
+
+      .detail {
+        padding: 18px;
+      }
+
+      .detail-media {
+        min-height: 260px;
+      }
+
+      .detail-specs {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <nav class="scroll-indicator" aria-label="Навигация по блокам">
+    <a class="scroll-dot" href="#start" data-target="start"><span>Старт</span></a>
+    <a class="scroll-dot" href="#offer" data-target="offer"><span>Предложение</span></a>
+    <a class="scroll-dot" href="#thunder" data-target="thunder"><span>Модель 1</span></a>
+    <a class="scroll-dot" href="#light-speed" data-target="light-speed"><span>Модель 2</span></a>
+    <a class="scroll-dot" href="#bike" data-target="bike"><span>Модель 3</span></a>
+    <a class="scroll-dot" href="#skiing" data-target="skiing"><span>Модель 4</span></a>
+    <a class="scroll-dot" href="#egg-chair" data-target="egg-chair"><span>Модель 5</span></a>
+    <a class="scroll-dot" href="#vart360" data-target="vart360"><span>Модель 6</span></a>
+    <a class="scroll-dot" href="#work-terms" data-target="work-terms"><span>Условия</span></a>
+    <a class="scroll-dot" href="#certification" data-target="certification"><span>Сертификация</span></a>
+    <a class="scroll-dot" href="#addons" data-target="addons"><span>Допы</span></a>
+    <a class="scroll-dot" href="#cases" data-target="cases"><span>Кейсы</span></a>
+    <a class="scroll-dot" href="#process" data-target="process"><span>Этапы</span></a>
+    <a class="scroll-dot" href="#final" data-target="final"><span>Заявка</span></a>
+  </nav>
+
+  <section class="hero section" id="start">
+    <div class="container hero-grid">
+      <div>
+        <div class="tag">Премиальные VR решения</div>
+        <h1>Продажа VR-аттракционов под ключ</h1>
+        <p class="lead">
+          Решения для ТРЦ, парков, игровых зон и развлекательных площадок. Подбираем формат под вашу площадь, трафик и бюджет.
+        </p>
+        <div class="btns">
+          <a class="btn btn-primary" href="#final">Получить консультацию</a>
+          <a class="btn btn-secondary" href="#thunder">Подобрать решение</a>
+        </div>
+      </div>
+      <div class="hero-collage" aria-label="Коллаж VR-аттракционов"></div>
+    </div>
+  </section>
+
+  <section class="section" id="offer">
+    <div class="container">
+      <div class="tag">Что мы предлагаем</div>
+      <h2>Линейка из 6 VR-аттракционов под разные форматы бизнеса</h2>
+      <p class="lead">Экшен, гонки, спорт, экстрим и семейные сценарии. Помогаем масштабировать выручку через контент и доп. решения.</p>
+      <div class="adv-grid">
+        <article class="adv-card">
+          <div class="icon">🎯</div>
+          <h3>Подбор под площадку</h3>
+          <p>Учитываем размер зоны, поток посетителей и вашу бизнес-модель.</p>
+        </article>
+        <article class="adv-card">
+          <div class="icon">⚡</div>
+          <h3>Ясная механика</h3>
+          <p>Форматы, которые легко продаются: сел, включился и получил эмоцию.</p>
+        </article>
+        <article class="adv-card">
+          <div class="icon">📈</div>
+          <h3>Рост выручки</h3>
+          <p>Дополняем турнирными режимами, пакетами и визуальными магнитами.</p>
+        </article>
+        <article class="adv-card">
+          <div class="icon">🧩</div>
+          <h3>Готовое решение</h3>
+          <p>Аттракцион, VR-комплект, контент, настройка и сопровождение.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="thunder">
+    <div class="container detail">
+      <div class="detail-grid">
+        <div class="detail-media" style="background-image:url('./Контент/VRThunderGodofWar.png')"></div>
+        <div>
+          <div class="tag">Модель 1</div>
+          <h2>VR Thunder</h2>
+          <div class="detail-specs">
+            <div class="detail-price-block"><span>Цена</span><b class="price-value">726 990 ₽</b></div>
+            <div><span>Комплект</span><ul class="bundle-list">
+              <li>Компьютер — 2 шт</li>
+              <li>Шлем HTC Vive — 2 шт</li>
+              <li>Монитор 42 дюйма — 2 шт</li>
+            </ul></div>
+            <div class="detail-size-block"><span>Габариты</span><b>2400 х 2000 х 2450</b></div>
+            <div><span>Количество игр</span><b>> 20</b></div>
+            <div><span>Количество мест</span><b>2</b></div>
+            <div><span>Шлем</span><b>HTC Vive</b></div>
+          </div>
+        </div>
+      </div>
+      <div class="model-video">
+        <video controls preload="none" playsinline poster="./Контент/VRThunderGodofWar.png">
+          <source src="./Контент/Видео/VRThunderGodOfWar.mov" type="video/quicktime" />
+        </video>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="light-speed">
+    <div class="container detail">
+      <div class="detail-grid">
+        <div class="detail-media" style="background-image:url('./Контент/VRLightSpeedRacing.png')"></div>
+        <div>
+          <div class="tag">Модель 2</div>
+          <h2>VR Light Speed Racing</h2>
+          <div class="detail-specs">
+            <div class="detail-price-block"><span>Цена</span><b class="price-value">934 990 ₽</b></div>
+            <div><span>Комплект</span><ul class="bundle-list">
+              <li>Компьютер — 1 шт</li>
+              <li>Шлем DPVR E3 — 1 шт</li>
+            </ul></div>
+            <div class="detail-size-block"><span>Габариты</span><b>2100 х 1500 х 1800</b></div>
+            <div><span>Количество игр</span><b>8</b></div>
+            <div><span>Количество мест</span><b>1</b></div>
+            <div><span>Шлем</span><b>DPVR E3</b></div>
+            <div><span>Описание</span><b>Гоночный VR-симулятор</b></div>
+          </div>
+        </div>
+      </div>
+      <div class="model-video">
+        <video controls preload="none" playsinline poster="./Контент/VRLightSpeedRacing.png">
+          <source src="./Контент/Видео/VR Аттракцион Flame Racing.mp4" type="video/mp4" />
+        </video>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="bike">
+    <div class="container detail">
+      <div class="detail-grid">
+        <div class="detail-media" style="background-image:url('./Контент/VRRacingBike.png')"></div>
+        <div>
+          <div class="tag">Модель 3</div>
+          <h2>VR Racing Bike</h2>
+          <div class="detail-specs">
+            <div class="detail-price-block"><span>Цена</span><b class="price-value">689 990 ₽</b></div>
+            <div><span>Комплект</span><ul class="bundle-list">
+              <li>Компьютер — 1 шт</li>
+              <li>Шлем DPVR E3 — 1 шт</li>
+              <li>Монитор 43 дюйма — 1 шт</li>
+            </ul></div>
+            <div class="detail-size-block"><span>Габариты</span><b>1700 х 800 х 2300</b></div>
+            <div><span>Количество игр</span><b>4</b></div>
+            <div><span>Количество мест</span><b>1</b></div>
+            <div><span>Шлем</span><b>DPVR E3</b></div>
+            <div><span>Описание</span><b>VR-велосипед с физ. активностью</b></div>
+          </div>
+        </div>
+      </div>
+      <div class="model-video">
+        <video controls preload="none" playsinline poster="./Контент/VRRacingBike.png">
+          <source src="./Контент/Видео/VR Bike.mp4" type="video/mp4" />
+        </video>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="skiing">
+    <div class="container detail">
+      <div class="detail-grid">
+        <div class="detail-media" style="background-image:url('./Контент/VRSKIING.png')"></div>
+        <div>
+          <div class="tag">Модель 4</div>
+          <h2>VR SKIING</h2>
+          <div class="detail-specs">
+            <div class="detail-price-block"><span>Цена</span><b class="price-value">774 990 ₽</b></div>
+            <div><span>Комплект</span><ul class="bundle-list">
+              <li>Компьютер — 1 шт</li>
+              <li>Шлем DPVR E3 — 1 шт</li>
+              <li>Монитор 42 дюйма — 1 шт</li>
+            </ul></div>
+            <div class="detail-size-block"><span>Габариты</span><b>1800 х 1000 х 2300</b></div>
+            <div><span>Количество игр</span><b>9</b></div>
+            <div><span>Количество мест</span><b>1</b></div>
+            <div><span>Шлем</span><b>DPVR E3</b></div>
+            <div><span>Описание</span><b>Лыжный симулятор спуска</b></div>
+          </div>
+        </div>
+      </div>
+      <div class="model-video">
+        <video controls preload="none" playsinline poster="./Контент/VRSKIING.png">
+          <source src="./Контент/Видео/VR SKIING.mp4" type="video/mp4" />
+        </video>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="egg-chair">
+    <div class="container detail">
+      <div class="detail-grid">
+        <div class="detail-media" style="background-image:url('./Контент/Dual-PersonEggChair.png')"></div>
+        <div>
+          <div class="tag">Модель 5</div>
+          <h2>Dual-Person Egg Chair</h2>
+          <div class="detail-specs">
+            <div class="detail-price-block"><span>Цена</span><b class="price-value">889 990 ₽</b></div>
+            <div><span>Комплект</span><ul class="bundle-list">
+              <li>Компьютер — 2 шт</li>
+              <li>Шлем DPVR E3 — 2 шт</li>
+              <li>Экран администратора — 1 шт</li>
+            </ul></div>
+            <div class="detail-size-block"><span>Габариты</span><b>2100 х 1200 х 1900</b></div>
+            <div><span>Количество игр</span><b>> 100</b></div>
+            <div><span>Количество мест</span><b>2</b></div>
+            <div><span>Шлем</span><b>DPVR E3</b></div>
+            <div><span>Описание</span><b>Динамическая платформа 9 DoF</b></div>
+          </div>
+        </div>
+      </div>
+      <div class="model-video">
+        <video controls preload="none" playsinline poster="./Контент/Dual-PersonEggChair.png">
+          <source src="./Контент/Видео/VR Аттракцион Dual-Person Egg Chair.mp4" type="video/mp4" />
+        </video>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="vart360">
+    <div class="container detail">
+      <div class="detail-grid">
+        <div class="detail-media" style="background-image:url('./Контент/VARTOneMotion360.png')"></div>
+        <div>
+          <div class="tag">Модель 6 — Кульминация</div>
+          <h2>VART One Motion 360</h2>
+          <div class="detail-specs">
+            <div class="detail-price-block"><span>Цена</span><b class="price-value">1 005 990 ₽</b></div>
+            <div><span>Комплект</span><ul class="bundle-list">
+              <li>Компьютер — 1 шт</li>
+              <li>Шлем DPVR E3 — 1 шт</li>
+              <li>Экран администратора — 1 шт</li>
+            </ul></div>
+            <div class="detail-size-block"><span>Габариты</span><b>1650 х 1000 х 2400</b></div>
+            <div><span>Количество игр</span><b>> 40</b></div>
+            <div><span>Количество мест</span><b>1</b></div>
+            <div><span>Шлем</span><b>DPVR E3</b></div>
+            <div><span>Описание</span><b>360° motion с вау-эффектом</b></div>
+          </div>
+        </div>
+      </div>
+      <div class="model-video">
+        <video controls preload="metadata" playsinline poster="./Контент/VARTOneMotion360.png">
+          <source src="./Контент/Видео/VR Аттракцион VART One Motion 360.mp4" type="video/mp4" />
+        </video>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="work-terms">
+    <div class="container">
+      <div class="tag">Условия работы</div>
+      <h2>Прозрачные условия поставки и сопровождения</h2>
+      <div class="cards-grid">
+        <article class="content-card">
+          <h3>Доставка под заказ</h3>
+          <p>Аттракционы доставляются под заказ: 24-33 дня.</p>
+        </article>
+        <article class="content-card">
+          <h3>Гарантия</h3>
+          <p>Гарантия на оборудование: 12 месяцев.</p>
+        </article>
+        <article class="content-card">
+          <h3>Техподдержка</h3>
+          <p>Техническая поддержка на весь срок эксплуатации.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="certification">
+    <div class="container">
+      <div class="tag">О сертификации</div>
+      <h2>Сопроводительные документы</h2>
+      <div class="cert-grid">
+        <div class="case-info" style="margin-top: 0;">
+          <h4>Сертификация</h4>
+          <ul class="case-list">
+            <li>Формуляр (паспорт)</li>
+            <li>Руководство по эксплуатации</li>
+            <li>Руководство по техническому обслуживанию</li>
+            <li>Инструкция по монтажу аттракциона</li>
+            <li>Инструкция по хранению и перевозке аттракциона</li>
+            <li>Инструкция по утилизации аттракциона</li>
+            <li>Ведомость запасных частей и принадлежностей</li>
+            <li>Обоснование безопасности</li>
+            <li>Журналы (2 шт.)</li>
+          </ul>
+        </div>
+        <div class="case-info" style="margin-top: 0;">
+          <h4>Документы с таможни</h4>
+          <ul class="case-list">
+            <li>Сертификат от грузоотправителя</li>
+            <li>Декларация о соответствии</li>
+            <li>Декларация на товары</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="addons">
+    <div class="container">
+      <div class="tag">Дополнительные решения</div>
+      <h2>Доступные дополнительные решения</h2>
+      <div class="addons-grid">
+        <article class="addon"><h3>Монетоприемник</h3><p>Доплата: 40 000 ₽</p></article>
+        <article class="addon"><h3>Терминал для карт</h3><p>Доплата: 50 000 ₽</p></article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="cases">
+    <div class="container">
+      <div class="tag">Кейсы партнеров</div>
+      <h2>Примеры внедрения в реальных площадках</h2>
+      <div class="cases-grid">
+        <article class="case-card">
+          <div class="case-head">
+            <h3>ТРЦ «Гринвич»</h3>
+            <span class="case-place">ТРЦ</span>
+          </div>
+          <div class="case-info">
+            <h4>Аттракционы</h4>
+            <ul class="case-list">
+              <li>VR Аттракцион VART One Motion 360</li>
+              <li>VR Аттракцион Dual-Person Egg Chair</li>
+              <li>VR Аттракцион Helicopter</li>
+            </ul>
+          </div>
+          <div class="case-info">
+            <h4>Сессия</h4>
+            <ul class="case-list">
+              <li>600 ₽</li>
+            </ul>
+          </div>
+          <div class="metric">
+            <div><b>25 / 15 000 ₽</b><span>будни</span></div>
+            <div><b>34 / 20 400 ₽</b><span>выходные</span></div>
+            <div><b>84 / 50 400 ₽</b><span>праздники</span></div>
+            <div><b>6 500 000 ₽</b><span>оборот в год</span></div>
+          </div>
+        </article>
+        <article class="case-card">
+          <div class="case-head">
+            <h3>Парк «Маяковского»</h3>
+            <span class="case-place">Парк</span>
+          </div>
+          <div class="case-info">
+            <h4>Аттракционы</h4>
+            <ul class="case-list">
+              <li>VR Аттракцион Dual-Person Egg Chair</li>
+              <li>VR Аттракцион Helicopter</li>
+              <li>VR Аттракцион BIKE</li>
+              <li>VR Аттракцион VART Flying</li>
+              <li>VR Аттракцион Space Rifter 3x</li>
+              <li>VR Аттракцион VART 9D Cinema 2x</li>
+            </ul>
+          </div>
+          <div class="case-info">
+            <h4>Сессия</h4>
+            <ul class="case-list">
+              <li>800 ₽</li>
+            </ul>
+          </div>
+          <div class="metric">
+            <div><b>60 / 48 000 ₽</b><span>будни</span></div>
+            <div><b>92 / 73 600 ₽</b><span>выходные</span></div>
+            <div><b>115 / 92 000 ₽</b><span>праздники</span></div>
+            <div><b>20 000 000 ₽</b><span>оборот в год</span></div>
+          </div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="process">
+    <div class="container">
+      <div class="tag">Как мы работаем</div>
+      <h2>Этапы работы</h2>
+      <div class="steps-grid flow-steps">
+        <article class="step"><div class="num">1</div><h3>Согласование моделей</h3><p>Утверждаем состав аттракционов для заказа.</p></article>
+        <article class="step"><div class="num">2</div><h3>Согласование допов</h3><p>Фиксируем дополнительные опции и комплектацию.</p></article>
+        <article class="step"><div class="num">3</div><h3>Оплата заказа</h3><p>Подтверждаем заказ после оплаты.</p></article>
+        <article class="step"><div class="num">4</div><h3>Поставка на склад</h3><p>3-5 дней.</p></article>
+        <article class="step"><div class="num">5</div><h3>Начало оформления сертификации</h3><p>Запускаем процесс подготовки сертификационных документов.</p></article>
+        <article class="step"><div class="num">6</div><h3>Доставка до склада в России</h3><p>20-25 дней.</p></article>
+        <article class="step"><div class="num">7</div><h3>Растаможка</h3><p>1-3 дня.</p></article>
+        <article class="step"><div class="num">8</div><h3>Выдача</h3><p>Передача заказа после завершения всех этапов.</p></article>
+        <article class="step"><div class="num">9</div><h3>Приезд специалиста для тестирования</h3><p>Финальная проверка и тестовый запуск оборудования.</p></article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section final" id="final">
+    <div class="container final-wrap">
+      <div>
+        <div class="tag">Финальная заявка</div>
+        <h2>Подберем VR-аттракцион под вашу площадку и бюджет</h2>
+        <p class="lead">Отправим подборку моделей, ориентир по срокам и коммерческое предложение под вашу задачу.</p>
+        <div class="btns">
+          <a class="btn btn-primary" href="#form">Получить подборку</a>
+          <a class="btn btn-secondary" href="#form">Получить КП</a>
+          <a class="btn btn-secondary" href="#form">Обсудить проект</a>
+        </div>
+      </div>
+      <div class="contact-card">
+        <h3 id="form">Оставить заявку</h3>
+        <form>
+          <input type="text" placeholder="Ваше имя" required />
+          <input type="tel" placeholder="Телефон / WhatsApp" required />
+          <input type="text" placeholder="Город и тип площадки" />
+          <textarea placeholder="Комментарий: желаемый формат, бюджет, сроки"></textarea>
+          <button class="btn btn-primary" type="submit">Отправить запрос</button>
+        </form>
+        <div class="contacts">
+          <a class="chip" href="#">WhatsApp</a>
+          <a class="chip" href="#">Telegram</a>
+          <a class="chip" href="tel:+70000000000">+7 (000) 000-00-00</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    VR Аттракционы под ключ • Презентационный лендинг для видеоконференций
+  </footer>
+  <script>
+    (function () {
+      const dots = Array.from(document.querySelectorAll(".scroll-dot"));
+      const sections = dots
+        .map((dot) => document.getElementById(dot.dataset.target))
+        .filter(Boolean);
+
+      if (!dots.length || !sections.length) return;
+
+      const setActive = (id) => {
+        dots.forEach((dot) => {
+          dot.classList.toggle("active", dot.dataset.target === id);
+        });
+      };
+
+      const observer = new IntersectionObserver(
+        (entries) => {
+          const visible = entries
+            .filter((entry) => entry.isIntersecting)
+            .sort((a, b) => b.intersectionRatio - a.intersectionRatio);
+
+          if (visible[0]) {
+            setActive(visible[0].target.id);
+          }
+        },
+        {
+          root: null,
+          rootMargin: "-35% 0px -45% 0px",
+          threshold: [0.2, 0.45, 0.7]
+        }
+      );
+
+      sections.forEach((section) => observer.observe(section));
+      setActive(sections[0].id);
+    })();
+  </script>
+</body>
+</html>
