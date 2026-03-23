@@ -33,7 +33,7 @@
   - `Шлем` (DPVR E3)
   - `Описание`
 - Картинка: `./Контент/VRThunderGodofWar.png`
- - Видео-плеер (controls): `./Контент/Видео/VRThunderGodOfWar.mov` (задан в верстке)
+- Видео-плеер (controls): `./Контент/Видео/VRThunderGodOfWar.mp4` (задан в верстке)
 
 4) `#light-speed` — Модель 2 (VR Light Speed Racing)
 - Тег: `Модель 2`
@@ -122,4 +122,3 @@
   - комментарий
   - кнопка `Отправить запрос`
 - Контакты-кнопки: WhatsApp / Telegram / телефон
-

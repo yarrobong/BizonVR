@@ -222,9 +222,9 @@
 - Количество мест: 2
 - Шлем: HTC Vive
 - Видео:
-  - ./Контент/Видео/VRThunderGodOfWar.mov
+  - ./Контент/Видео/VRThunderGodOfWar.mp4
   - preload="none"
-  - type="video/quicktime"
+  - type="video/mp4"
 
 13) Блок #offer — Что мы предлагаем
 - Тег: Что мы предлагаем
@@ -254,4 +254,3 @@
 - Коллаж:
   - element: hero-collage
   - aria-label: Коллаж VR-аттракционов
-
