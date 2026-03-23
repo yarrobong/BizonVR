@@ -12,6 +12,7 @@ class StaticViewSitemap(Sitemap):
         return [
             'home',
             'arenda',
+            'conference_attractions',
             'uslugi',
             'contacts',
             'privacy',
@@ -45,4 +46,3 @@ class BundleSitemap(Sitemap):
 
     def items(self):
         return ProductBundle.objects.all().order_by('id')
-

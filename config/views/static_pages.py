@@ -14,6 +14,34 @@ from catalog.models import CallbackRequest, Service
 from ..forms import CallbackForm
 from ..legal_consent import build_legal_acceptance_payload
 
+CONFERENCE_ATTRACTIONS_DIRNAME = 'Конференция (Аттракционы)'
+
+
+def _serve_public_directory_file(base_dir, requested_path='', *, default_file=None):
+    requested_path = requested_path or default_file
+    if not requested_path:
+        raise Http404()
+
+    normalized_path = os.path.normpath(str(requested_path)).lstrip('/').lstrip('\\')
+    if normalized_path in {'.', ''}:
+        normalized_path = default_file or ''
+    if not normalized_path or '..' in normalized_path or normalized_path.startswith('/'):
+        raise Http404()
+
+    base_dir = os.path.abspath(os.path.realpath(str(base_dir)))
+    full_path = os.path.abspath(os.path.realpath(os.path.join(base_dir, normalized_path)))
+    if os.path.commonpath([base_dir, full_path]) != base_dir:
+        raise Http404()
+    if os.path.isdir(full_path) or not os.path.exists(full_path):
+        raise Http404()
+
+    content_type, _ = mimetypes.guess_type(full_path)
+    return FileResponse(
+        open(full_path, 'rb'),
+        as_attachment=False,
+        content_type=content_type or 'application/octet-stream',
+    )
+
 
 def favicon_view(request):
     """Отдаём favicon по ожидаемому пути /favicon.ico."""
@@ -48,23 +76,13 @@ def robots_txt_view(request):
 
 def serve_media(request, path):
     """Раздача медиа при DEBUG или SERVE_MEDIA=1."""
-    path = os.path.normpath(path).lstrip('/').lstrip('\\')
-    if '..' in path or path.startswith('/'):
-        raise Http404()
-    media_root = os.path.abspath(os.path.realpath(str(settings.MEDIA_ROOT)))
-    full_path = os.path.abspath(os.path.join(media_root, path))
-    if not full_path.startswith(media_root):
-        raise Http404()
-    if os.path.isdir(full_path):
-        raise Http404()
-    if not os.path.exists(full_path):
-        raise Http404()
-    content_type, _ = mimetypes.guess_type(full_path)
-    return FileResponse(
-        open(full_path, 'rb'),
-        as_attachment=False,
-        content_type=content_type or 'application/octet-stream',
-    )
+    return _serve_public_directory_file(settings.MEDIA_ROOT, path)
+
+
+def conference_attractions_view(request, path=''):
+    """Standalone-лендинг VR-аттракционов и его локальные ассеты."""
+    landing_root = settings.BASE_DIR / CONFERENCE_ATTRACTIONS_DIRNAME
+    return _serve_public_directory_file(landing_root, path, default_file='index.html')
 
 
 def not_found_view(request, exception=None, unmatched_path=''):
