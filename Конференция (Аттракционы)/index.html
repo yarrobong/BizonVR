@@ -1355,17 +1355,17 @@
       </div>
       <div class="contact-card">
         <h3 id="form">Оставить заявку</h3>
-        <form>
-          <input type="text" placeholder="Ваше имя" required />
-          <input type="tel" placeholder="Телефон / WhatsApp" required />
-          <input type="text" placeholder="Город и тип площадки" />
-          <textarea placeholder="Комментарий: желаемый формат, бюджет, сроки"></textarea>
+        <form method="get" action="/contacts/">
+          <input type="text" name="name" placeholder="Ваше имя" required />
+          <input type="tel" name="phone" placeholder="Телефон / WhatsApp" required />
+          <input type="text" name="site_context" placeholder="Город и тип площадки" />
+          <textarea name="site_comment" placeholder="Комментарий: желаемый формат, бюджет, сроки"></textarea>
           <button class="btn btn-primary" type="submit">Отправить запрос</button>
         </form>
         <div class="contacts">
-          <a class="chip" href="#">WhatsApp</a>
-          <a class="chip" href="#">Telegram</a>
-          <a class="chip" href="tel:+70000000000">+7 (000) 000-00-00</a>
+          <a class="chip" href="https://wa.me/79931033610" target="_blank" rel="noopener noreferrer">WhatsApp</a>
+          <a class="chip" href="https://t.me/bizon_order_manager" target="_blank" rel="noopener noreferrer">Telegram</a>
+          <a class="chip" href="tel:+79931033610">+7 (993) 103-36-10</a>
         </div>
       </div>
     </div>

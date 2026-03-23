@@ -796,6 +796,15 @@ class LegalConsentFormsAndViewsTest(TestCase):
     def setUp(self):
         self.client = Client()
 
+    def test_contact_form_is_valid_without_email(self):
+        form = ContactForm(data={
+            'name': 'Иван',
+            'phone': '+7 999 111 22 33',
+            'message': 'Тест',
+            'agree_personal_data': 'on',
+        })
+        self.assertTrue(form.is_valid(), form.errors)
+
     def test_contact_form_requires_personal_data_consent(self):
         form = ContactForm(data={
             'name': 'Иван',
@@ -831,6 +840,54 @@ class LegalConsentFormsAndViewsTest(TestCase):
         self.assertIsNotNone(req)
         self.assertIsNotNone(req.legal_accepted_at)
         self.assertEqual(req.legal_docs_version, LEGAL_BUNDLE_VERSION)
+
+    def test_contacts_view_prefills_message_from_landing_query(self):
+        resp = self.client.get(
+            reverse('contacts'),
+            {
+                'name': 'Иван',
+                'phone': '+7 (999) 111-22-33',
+                'site_context': 'Екатеринбург, ТРЦ',
+                'site_comment': 'Нужна консультация по бюджету',
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        form = resp.context['form']
+        self.assertEqual(form['name'].value(), 'Иван')
+        self.assertEqual(form['phone'].value(), '+7 (999) 111-22-33')
+        self.assertEqual(
+            form['message'].value(),
+            'Город и тип площадки: Екатеринбург, ТРЦ\n\nКомментарий: Нужна консультация по бюджету',
+        )
+
+    def test_contacts_view_prefers_direct_message_query(self):
+        resp = self.client.get(
+            reverse('contacts'),
+            {
+                'message': 'Готовое сообщение',
+                'site_context': 'Екатеринбург, ТРЦ',
+                'site_comment': 'Нужна консультация по бюджету',
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.context['form']['message'].value(), 'Готовое сообщение')
+
+    def test_contacts_view_saves_request_without_email(self):
+        resp = self.client.post(
+            reverse('contacts'),
+            {
+                'name': 'Иван',
+                'phone': '+7 (999) 111-22-33',
+                'message': 'Нужна консультация',
+                'agree_personal_data': 'on',
+            },
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp['Location'], reverse('contacts'))
+        req = ContactRequest.objects.first()
+        self.assertIsNotNone(req)
+        self.assertEqual(req.email, '')
+        self.assertIsNotNone(req.legal_accepted_at)
 
 
 class ServicesPageTest(TestCase):

@@ -7,15 +7,38 @@ from ..forms import ContactForm
 from ..legal_consent import build_legal_acceptance_payload
 
 
+def _build_prefilled_contact_message(request):
+    direct_message = (request.GET.get('message') or '').strip()
+    if direct_message:
+        return direct_message
+
+    site_context = (request.GET.get('site_context') or '').strip()
+    site_comment = (request.GET.get('site_comment') or '').strip()
+    parts = []
+    if site_context:
+        parts.append(f'Город и тип площадки: {site_context}')
+    if site_comment:
+        if parts:
+            parts.append('')
+        parts.append(f'Комментарий: {site_comment}')
+    return '\n'.join(parts)
+
+
 def contacts_view(request):
     """Страница контактов: форма обратной связи и контактная информация."""
-    form = ContactForm()
+    initial = {
+        'name': (request.GET.get('name') or '').strip(),
+        'email': (request.GET.get('email') or '').strip(),
+        'phone': (request.GET.get('phone') or '').strip(),
+        'message': _build_prefilled_contact_message(request),
+    }
+    form = ContactForm(initial=initial)
     if request.method == 'POST':
         form = ContactForm(request.POST)
         if form.is_valid():
             ContactRequest.objects.create(
                 name=form.cleaned_data['name'],
-                email=form.cleaned_data['email'],
+                email=form.cleaned_data.get('email', ''),
                 phone=form.cleaned_data.get('phone', ''),
                 message=form.cleaned_data['message'],
                 **build_legal_acceptance_payload(request),

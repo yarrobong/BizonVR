@@ -50,3 +50,25 @@ class ConferenceAttractionsLandingTests(SimpleTestCase):
         response = self.client.get('/conference-attractions/%D0%9A%D0%BE%D0%BD%D1%82%D0%B5%D0%BD%D1%82/missing.png')
 
         self.assertEqual(response.status_code, 404)
+
+    def test_landing_contains_working_contact_form_redirect(self):
+        response = self.client.get(reverse('conference_attractions'))
+        html = self._streaming_content(response).decode('utf-8')
+
+        self.assertIn('<form method="get" action="/contacts/">', html)
+        self.assertIn('name="name"', html)
+        self.assertIn('name="phone"', html)
+        self.assertIn('name="site_context"', html)
+        self.assertIn('name="site_comment"', html)
+
+    def test_landing_contact_links_are_not_placeholders(self):
+        response = self.client.get(reverse('conference_attractions'))
+        html = self._streaming_content(response).decode('utf-8')
+
+        self.assertIn('https://wa.me/79931033610', html)
+        self.assertIn('https://t.me/bizon_order_manager', html)
+        self.assertIn('tel:+79931033610', html)
+        self.assertIn('+7 (993) 103-36-10', html)
+        self.assertNotIn('href="#">WhatsApp</a>', html)
+        self.assertNotIn('href="#">Telegram</a>', html)
+        self.assertNotIn('tel:+70000000000', html)

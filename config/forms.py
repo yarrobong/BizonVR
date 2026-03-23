@@ -17,7 +17,7 @@ class ContactForm(forms.Form):
     )
     email = forms.EmailField(
         label='Email',
-        required=True,
+        required=False,
         widget=forms.EmailInput(attrs={
             'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
             'placeholder': 'email@example.com',
