@@ -37,7 +37,6 @@
         ready: false, 
         cartCount: {{ cart_count|default:0 }}, 
         favoritesCount: {{ favorites_count|default:0 }}, 
-        compareCount: {{ compare_count|default:0 }},
         miniCartOpen: false, 
         miniCartData: null, 
         searchOpen: false, 
@@ -56,7 +55,6 @@
      @open-cart.window="cartOpen = true"
      @cart-updated.window="cartCount = $event.detail.count; if ($event.detail.added_item) { miniCartData = $event.detail; miniCartOpen = true; cartOpen = false; setTimeout(() => miniCartOpen = false, 6000) }"
      @favorites-updated.window="favoritesCount = $event.detail.count"
-     @compare-updated.window="compareCount = $event.detail.count"
     @scroll.window.passive.throttle.50ms="
       if (!ready) return;
       const y = window.scrollY;
@@ -107,7 +105,11 @@
 
   {% include "layout/_catalog_overlay.html" %}
 
-  {% include "layout/_header_mobile.html" %}
+  <div id="mobile-header-slot" hx-swap-oob="outerHTML">
+    {% block mobile_header %}
+    {% include "layout/_header_mobile.html" %}
+    {% endblock %}
+  </div>
 
   {% include "layout/_header_desktop.html" %}
   

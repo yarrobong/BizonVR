@@ -12,7 +12,6 @@
   <div class="bg-dark-800 border border-dark-600 rounded-xl p-6 space-y-6">
     <h1 class="text-2xl font-light text-white">Оплата заказа #{{ order.pk }}</h1>
     <p class="text-gray-400">К оплате за товар: <span class="text-white font-medium">{{ order.total_to_pay|price_format }} ₽</span>{% if order.promo_discount and order.promo_discount > 0 %} (с учётом скидки −{{ order.promo_discount|price_format }} ₽){% endif %}.</p>
-    <p class="text-sm text-gray-500">Доставка CDEK оплачивается отдельно при получении: {{ order.delivery_cost|price_format }} ₽.</p>
     {% if payment_method_label %}
     <p class="text-sm text-gray-300">Выбранный способ оплаты: <span class="text-white">{{ payment_method_label }}</span>.</p>
     {% endif %}

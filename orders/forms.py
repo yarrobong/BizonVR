@@ -55,6 +55,20 @@ class PurchaseRequestForm(forms.Form):
 class CheckoutForm(forms.Form):
     """Форма контактов и доставки при оформлении заказа."""
 
+    PUBLIC_DELIVERY_CHOICES = [
+        (Order.DELIVERY_CDEK_PVZ, 'CDEK до ПВЗ'),
+        (Order.DELIVERY_CDEK_COURIER, 'CDEK курьер'),
+        (Order.DELIVERY_PICKUP, 'Самовывоз'),
+        (Order.DELIVERY_CITY, 'Доставка по городу'),
+        (Order.DELIVERY_OTHER_TRANSPORT, 'Другая ТК'),
+    ]
+    ADDRESS_REQUIRED_DELIVERY_TYPES = {
+        Order.DELIVERY_CDEK_COURIER,
+        Order.DELIVERY_CITY,
+        Order.DELIVERY_COURIER,
+        Order.DELIVERY_POST,
+    }
+
     first_name = forms.CharField(
         label='Имя',
         max_length=150,
@@ -88,12 +102,35 @@ class CheckoutForm(forms.Form):
     )
     email = forms.EmailField(
         label='Email',
-        required=True,
+        required=False,
         widget=forms.EmailInput(attrs={
             'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
             'placeholder': 'email@example.com',
             'autocomplete': 'email',
         }),
+    )
+    contact_channel = forms.ChoiceField(
+        label='Как с вами связаться',
+        required=True,
+        initial=Order.CONTACT_CHANNEL_CALL,
+        choices=Order.CONTACT_CHANNEL_CHOICES,
+        widget=forms.RadioSelect(),
+    )
+    contact_handle = forms.CharField(
+        label='Контакт в мессенджере',
+        max_length=150,
+        required=False,
+        widget=forms.TextInput(attrs={
+            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
+            'placeholder': '@username или номер WhatsApp',
+        }),
+    )
+    delivery_type = forms.ChoiceField(
+        label='Как получить заказ',
+        required=True,
+        initial=Order.DELIVERY_CDEK_PVZ,
+        choices=PUBLIC_DELIVERY_CHOICES,
+        widget=forms.RadioSelect(),
     )
     city_text = forms.CharField(
         label='Город',
@@ -132,27 +169,27 @@ class CheckoutForm(forms.Form):
         }),
     )
     address_line = forms.CharField(
-        label='Адрес ПВЗ CDEK',
-        required=True,
+        label='Адрес доставки',
+        required=False,
         widget=forms.Textarea(attrs={
             'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
             'rows': 3,
-            'placeholder': 'Название или адрес ПВЗ, который удобен для получения',
+            'placeholder': 'Город, улица, дом, офис или ориентир для связи',
         }),
     )
     delivery_comment = forms.CharField(
-        label='Комментарий для CDEK',
+        label='Комментарий для доставки',
         required=False,
         widget=forms.Textarea(attrs={
             'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
             'rows': 2,
-            'placeholder': 'Ориентир по ПВЗ, пожелания по выдаче',
+            'placeholder': 'Ориентир, подъезд, код домофона или пожелания по связи',
         }),
     )
     payment_method = forms.ChoiceField(
-        label='Способ оплаты',
-        required=False,
-        initial=Order.PAYMENT_METHOD_BANK_CARD,
+        label='Как вам удобнее оплатить после подтверждения',
+        required=True,
+        initial=Order.PAYMENT_METHOD_SBP,
         choices=Order.PUBLIC_PAYMENT_METHOD_CHOICES,
         widget=forms.RadioSelect(),
     )
@@ -317,6 +354,12 @@ class CheckoutForm(forms.Form):
     def clean_email(self):
         return (self.cleaned_data.get('email') or '').strip()
 
+    def clean_contact_handle(self):
+        return (self.cleaned_data.get('contact_handle') or '').strip()
+
+    def clean_delivery_type(self):
+        return (self.cleaned_data.get('delivery_type') or '').strip()
+
     def clean_city_text(self):
         return (self.cleaned_data.get('city_text') or '').strip()
 
@@ -396,14 +439,33 @@ class CheckoutForm(forms.Form):
         first_name = (cleaned_data.get('first_name') or '').strip()
         last_name = (cleaned_data.get('last_name') or '').strip()
         phone = (cleaned_data.get('phone') or '').strip()
+        email = (cleaned_data.get('email') or '').strip()
+        contact_channel = (cleaned_data.get('contact_channel') or '').strip()
+        contact_handle = (cleaned_data.get('contact_handle') or '').strip()
+        delivery_type = (cleaned_data.get('delivery_type') or '').strip()
         recipient_is_customer = bool(cleaned_data.get('recipient_is_customer'))
         recipient_name = (cleaned_data.get('recipient_name') or '').strip()
         recipient_phone = (cleaned_data.get('recipient_phone') or '').strip()
 
         if not city_text:
             self.add_error('city_text', 'Укажите город доставки.')
-        if not address_line:
-            self.add_error('address_line', 'Укажите адрес ПВЗ CDEK.')
+        if delivery_type in self.ADDRESS_REQUIRED_DELIVERY_TYPES and not address_line:
+            self.add_error('address_line', 'Укажите адрес доставки.')
+        if contact_channel == Order.CONTACT_CHANNEL_EMAIL and not email:
+            self.add_error('email', 'Укажите email для связи.')
+        if contact_channel in {Order.CONTACT_CHANNEL_TELEGRAM, Order.CONTACT_CHANNEL_WHATSAPP} and not contact_handle:
+            self.add_error('contact_handle', 'Укажите контакт в выбранном мессенджере.')
+
+        if contact_channel == Order.CONTACT_CHANNEL_TELEGRAM and contact_handle:
+            lower_value = contact_handle.lower()
+            if lower_value.startswith('https://t.me/'):
+                contact_handle = contact_handle.split('t.me/', 1)[1]
+            elif lower_value.startswith('http://t.me/'):
+                contact_handle = contact_handle.split('t.me/', 1)[1]
+            elif lower_value.startswith('t.me/'):
+                contact_handle = contact_handle.split('t.me/', 1)[1]
+            contact_handle = contact_handle.strip().lstrip('@')
+            cleaned_data['contact_handle'] = f'@{contact_handle}' if contact_handle else ''
 
         if recipient_is_customer:
             cleaned_data['recipient_name'] = ' '.join(part for part in [first_name, last_name] if part).strip()
@@ -414,14 +476,14 @@ class CheckoutForm(forms.Form):
             if not recipient_phone:
                 self.add_error('recipient_phone', 'Укажите телефон получателя.')
 
-        cleaned_data['delivery_type'] = Order.DELIVERY_CDEK_PVZ
+        if delivery_type == Order.DELIVERY_PICKUP:
+            cleaned_data['address_line'] = ''
         cleaned_data['payment_method'] = (
             cleaned_data.get('payment_method')
-            or Order.PAYMENT_METHOD_BANK_CARD
+            or Order.PAYMENT_METHOD_SBP
         )
-        if cleaned_data['payment_method'] == Order.PAYMENT_METHOD_MANAGER_PAYMENT and not cleaned_data.get('business_phone'):
+        if cleaned_data['payment_method'] == Order.PAYMENT_METHOD_INVOICE and not cleaned_data.get('business_phone'):
             cleaned_data['business_phone'] = phone
         cleaned_data['country'] = 'Россия'
         cleaned_data['postal_code'] = ''
-        cleaned_data['pickup_point'] = None
         return cleaned_data

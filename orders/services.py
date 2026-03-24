@@ -16,8 +16,9 @@ from accounts.services import normalize_email, normalize_phone, send_sms_message
 
 ORDER_STATUS_PRESENTATIONS = {
     'new': {
+        'label': 'Ждёт подтверждения',
         'description': 'Заказ получен. Проверяем детали, наличие и способ получения.',
-        'next_step': 'Дальше: менеджер подтвердит заказ и свяжется по телефону или email.',
+        'next_step': 'Дальше: менеджер проверит наличие, доставку и итоговую сумму и свяжется с вами в течение дня.',
         'badge_class': 'border-amber-400/20 bg-amber-500/10 text-amber-200',
         'tone': 'warning',
         'important_sms': True,
@@ -61,7 +62,7 @@ ORDER_STATUS_PRESENTATIONS = {
 
 PAYMENT_STATUS_PRESENTATIONS = {
     'unpaid': {
-        'description': 'Оплата ещё не поступила.',
+        'description': 'Оплачивать сейчас не нужно. Реквизиты или счёт отправит менеджер после подтверждения заказа.',
         'badge_class': 'border-white/10 bg-white/5 text-gray-300',
     },
     'pending_confirmation': {
@@ -80,9 +81,9 @@ PAYMENT_STATUS_PRESENTATIONS = {
 
 ORDER_EVENT_PRESENTATIONS = {
     'order_created': {
-        'label': 'Заказ оформлен',
-        'description': 'Мы получили заказ и свяжемся с вами после проверки деталей.',
-        'sms_text': 'BizonVR: заказ #{order_id} принят.',
+        'label': 'Заказ принят',
+        'description': 'Мы получили заказ. Менеджер проверит наличие, доставку и итоговую сумму, свяжется с вами в течение дня и пришлёт реквизиты или счёт. Сейчас оплачивать ничего не нужно.',
+        'sms_text': 'BizonVR: заказ #{order_id} принят. Свяжемся с вами в течение дня.',
         'badge_class': ORDER_STATUS_PRESENTATIONS['new']['badge_class'],
     },
     'order_confirmed': {
@@ -126,7 +127,7 @@ def build_order_status_summary(order):
     )
     return {
         'status': order.status,
-        'status_label': order.get_status_display(),
+        'status_label': status_meta.get('label') or order.get_status_display(),
         'status_description': status_meta['description'],
         'status_next_step': status_meta['next_step'],
         'status_badge_class': status_meta['badge_class'],
@@ -367,8 +368,6 @@ def _build_order_url_for_email(order, *, request=None):
         if request is not None:
             return request.build_absolute_uri(path)
         return f"{getattr(settings, 'SITE_URL', '').rstrip('/')}{path}"
-    if order.guest_access_token:
-        return build_guest_order_url(order, request=request)
     return ''
 
 

@@ -119,6 +119,31 @@
       window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
     }
 
+    function getCurrentFullPath() {
+      return `${window.location.pathname}${window.location.search}`;
+    }
+
+    function getFullPathFromUrl(url) {
+      try {
+        const parsed = new URL(url, window.location.origin);
+        return `${parsed.pathname}${parsed.search}`;
+      } catch (e) {
+        return getCurrentFullPath();
+      }
+    }
+
+    function isCatalogListPath(path) {
+      return path.startsWith('/catalog/')
+        && !path.startsWith('/catalog/product/')
+        && !path.startsWith('/catalog/favorites')
+        && !path.startsWith('/catalog/cart')
+        && !path.startsWith('/catalog/set-city/');
+    }
+
+    function isCatalogProductPath(path) {
+      return path.startsWith('/catalog/product/');
+    }
+
     function initCookieConsentBanner() {
       const banner = document.getElementById('cookie-consent-banner');
       const acceptBtn = document.getElementById('cookie-consent-accept');
@@ -307,6 +332,24 @@
         console.warn('document.body is not available yet');
         return;
       }
+
+      document.body.addEventListener('htmx:beforeRequest', function(ev) {
+        if (ev.detail.target?.id !== 'main-content') return;
+
+        const mainContent = document.getElementById('main-content');
+        if (!mainContent) return;
+
+        mainContent.style.minHeight = `${Math.ceil(mainContent.getBoundingClientRect().height)}px`;
+      });
+
+      document.body.addEventListener('htmx:afterRequest', function(ev) {
+        if (ev.detail.target?.id !== 'main-content' || ev.detail.successful) return;
+
+        const mainContent = document.getElementById('main-content');
+        if (mainContent) {
+          mainContent.style.minHeight = '';
+        }
+      });
       
       document.body.addEventListener('htmx:beforeSwap', function(ev) {
         // Обновляем data-active-section перед заменой контента
@@ -317,6 +360,16 @@
           if (newActiveSection) {
             document.body.dataset.activeSection = newActiveSection;
           }
+
+          const sourcePath = getCurrentFullPath();
+          const destinationPath = ev.detail?.xhr?.responseURL
+            ? getFullPathFromUrl(ev.detail.xhr.responseURL)
+            : sourcePath;
+          const isCatalogReturn = isCatalogProductPath(sourcePath) && isCatalogListPath(destinationPath);
+
+          if (!isCatalogReturn) {
+            scrollToTop();
+          }
         }
       });
       document.body.addEventListener('htmx:afterSettle', function(ev) {
@@ -325,10 +378,10 @@
         // После полного обновления DOM
         if (ev.detail.target.id === 'main-content') {
           window.dispatchEvent(new CustomEvent('header-expand'));
-          // Для обычных переходов всегда начинаем страницу сверху.
-          // Если нужно спец-восстановление (каталог -> карточка -> назад),
-          // отдельный обработчик ниже восстановит сохранённую позицию.
-          scrollToTop();
+          const mainContent = document.getElementById('main-content');
+          if (mainContent) {
+            mainContent.style.minHeight = '';
+          }
           // Обновляем активную вкладку в мобильном меню
           updateActiveDockItem();
         }
@@ -367,31 +420,6 @@
     (function() {
       const STORAGE_KEY = 'bizonvr_catalog_list_return_scroll';
       let pendingNavigation = null;
-
-      function getCurrentFullPath() {
-        return `${window.location.pathname}${window.location.search}`;
-      }
-
-      function getFullPathFromUrl(url) {
-        try {
-          const parsed = new URL(url, window.location.origin);
-          return `${parsed.pathname}${parsed.search}`;
-        } catch (e) {
-          return getCurrentFullPath();
-        }
-      }
-
-      function isCatalogListPath(path) {
-        return path.startsWith('/catalog/')
-          && !path.startsWith('/catalog/product/')
-          && !path.startsWith('/catalog/favorites')
-          && !path.startsWith('/catalog/cart')
-          && !path.startsWith('/catalog/set-city/');
-      }
-
-      function isCatalogProductPath(path) {
-        return path.startsWith('/catalog/product/');
-      }
 
       function saveCatalogListScroll(path) {
         try {

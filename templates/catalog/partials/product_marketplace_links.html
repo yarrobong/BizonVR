@@ -1,0 +1,71 @@
+{% load static %}
+{% if product.avito_url or product.ozon_url or product.wildberries_url %}
+  <section class="marketplaces-card" aria-label="Ссылки на товар в маркетплейсах">
+    <div class="marketplaces-card__header">
+      <h3 class="marketplaces-card__title">Также на маркетплейсах</h3>
+      <p class="marketplaces-card__text">Откроем этот же товар на другой площадке.</p>
+    </div>
+    <div class="marketplaces-list">
+      {% if product.avito_url %}
+        <a
+          href="{{ product.avito_url }}"
+          class="marketplace-link"
+          data-marketplace-link="avito"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Открыть товар на Avito"
+          aria-label="Открыть товар на Avito"
+        >
+          <img
+            src="{% static 'images/marketplaces/avito.svg' %}"
+            alt=""
+            class="marketplace-link__icon"
+            loading="lazy"
+            onerror="this.closest('[data-marketplace-link]').dataset.iconMissing='true'; this.remove();"
+          />
+          <span class="marketplace-link__fallback">Avito</span>
+        </a>
+      {% endif %}
+      {% if product.ozon_url %}
+        <a
+          href="{{ product.ozon_url }}"
+          class="marketplace-link"
+          data-marketplace-link="ozon"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Открыть товар на Ozon"
+          aria-label="Открыть товар на Ozon"
+        >
+          <img
+            src="{% static 'images/marketplaces/ozon.svg' %}"
+            alt=""
+            class="marketplace-link__icon"
+            loading="lazy"
+            onerror="this.closest('[data-marketplace-link]').dataset.iconMissing='true'; this.remove();"
+          />
+          <span class="marketplace-link__fallback">Ozon</span>
+        </a>
+      {% endif %}
+      {% if product.wildberries_url %}
+        <a
+          href="{{ product.wildberries_url }}"
+          class="marketplace-link"
+          data-marketplace-link="wildberries"
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Открыть товар на Wildberries"
+          aria-label="Открыть товар на Wildberries"
+        >
+          <img
+            src="{% static 'images/marketplaces/wildberries.svg' %}"
+            alt=""
+            class="marketplace-link__icon"
+            loading="lazy"
+            onerror="this.closest('[data-marketplace-link]').dataset.iconMissing='true'; this.remove();"
+          />
+          <span class="marketplace-link__fallback">WB</span>
+        </a>
+      {% endif %}
+    </div>
+  </section>
+{% endif %}

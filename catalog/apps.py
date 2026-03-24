@@ -12,7 +12,6 @@ class CatalogConfig(AppConfig):
         from . import signals  # noqa: F401
         from .cart_services import (
             merge_session_cart_into_user,
-            merge_session_compare_into_user,
             merge_session_favorites_into_user,
         )
 
@@ -20,7 +19,6 @@ class CatalogConfig(AppConfig):
             request.user = user
             merge_session_cart_into_user(request)
             merge_session_favorites_into_user(request)
-            merge_session_compare_into_user(request)
 
         user_logged_in.connect(
             _merge_cart_and_favorites,

@@ -28,7 +28,7 @@ from config.forms import CallbackForm, ContactForm
 from config.legal_docs import LEGAL_BUNDLE_VERSION
 from orders.models import Order, OrderItem
 
-from .cart_services import get_cart_count, get_cart_items, get_compare_product_ids, get_favorite_product_ids
+from .cart_services import get_cart_count, get_cart_items, get_favorite_product_ids
 from .context_processors import catalog_menu
 from .models import (
     CartItem,
@@ -37,7 +37,6 @@ from .models import (
     CatalogSection,
     Category,
     City,
-    CompareItem,
     ContactRequest,
     Favorite,
     PickupPoint,
@@ -202,6 +201,19 @@ class VariantGalleryAndCatalogCardsTest(TestCase):
             r'<img\s+src="http://testserver/media/products/[^"]+"[^>]*class="main-image"',
         )
         self.assertIn('x-bind:src="effectiveImage ||', html)
+
+    def test_product_detail_renders_mobile_back_header_in_mobile_slot(self):
+        resp = self.client.get(reverse('catalog:product_detail', kwargs={'slug': self.product.slug}))
+        self.assertEqual(resp.status_code, 200)
+        html = resp.content.decode()
+
+        self.assertRegex(
+            html,
+            r'<div id="mobile-header-slot"[^>]*>\s*<div class="pd-mobile-header md:hidden"',
+        )
+        self.assertIn('class="pd-mobile-icon-btn pd-mobile-back-btn"', html)
+        self.assertIn('aria-label="Назад"', html)
+        self.assertNotIn('pd-mobile-back-btn__label', html)
 
     def test_product_video_save_normalizes_public_rutube_url_and_fetches_metadata(self):
         with patch('catalog.models.requests.get') as mock_get:
@@ -370,6 +382,58 @@ class VariantGalleryAndCatalogCardsTest(TestCase):
         self.assertNotIn('selectedCityName', data)
         self.assertNotContains(resp, 'Укажите город')
 
+    def test_product_accepts_empty_marketplace_urls(self):
+        self.product.avito_url = ''
+        self.product.ozon_url = ''
+        self.product.wildberries_url = ''
+        self.product.full_clean()
+        self.product.save(update_fields=['avito_url', 'ozon_url', 'wildberries_url'])
+
+        self.product.refresh_from_db()
+        self.assertEqual(self.product.avito_url, '')
+        self.assertEqual(self.product.ozon_url, '')
+        self.assertEqual(self.product.wildberries_url, '')
+
+    def test_product_detail_hides_marketplace_block_without_links(self):
+        resp = self.client.get(reverse('catalog:product_detail', kwargs={'slug': self.product.slug}))
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotContains(resp, 'Также на маркетплейсах')
+        self.assertNotContains(resp, 'data-marketplace-link=')
+
+    def test_product_detail_renders_single_avito_marketplace_link(self):
+        self.product.avito_url = 'https://www.avito.ru/test-product'
+        self.product.save(update_fields=['avito_url'])
+
+        resp = self.client.get(reverse('catalog:product_detail', kwargs={'slug': self.product.slug}))
+        self.assertEqual(resp.status_code, 200)
+        html = resp.content.decode()
+
+        self.assertContains(resp, 'Также на маркетплейсах')
+        self.assertEqual(html.count('data-marketplace-link='), 1)
+        self.assertIn('data-marketplace-link="avito"', html)
+        self.assertIn('href="https://www.avito.ru/test-product"', html)
+        self.assertIn('target="_blank"', html)
+        self.assertIn('rel="noopener noreferrer"', html)
+        self.assertNotIn('data-marketplace-link="ozon"', html)
+        self.assertNotIn('data-marketplace-link="wildberries"', html)
+
+    def test_product_detail_renders_marketplace_links_in_fixed_order(self):
+        self.product.avito_url = 'https://www.avito.ru/test-product'
+        self.product.ozon_url = 'https://www.ozon.ru/product/test-product/'
+        self.product.wildberries_url = 'https://www.wildberries.ru/catalog/123/detail.aspx'
+        self.product.save(update_fields=['avito_url', 'ozon_url', 'wildberries_url'])
+
+        resp = self.client.get(reverse('catalog:product_detail', kwargs={'slug': self.product.slug}))
+        self.assertEqual(resp.status_code, 200)
+        html = resp.content.decode()
+
+        avito_pos = html.index('data-marketplace-link="avito"')
+        ozon_pos = html.index('data-marketplace-link="ozon"')
+        wildberries_pos = html.index('data-marketplace-link="wildberries"')
+
+        self.assertLess(avito_pos, ozon_pos)
+        self.assertLess(ozon_pos, wildberries_pos)
+
 class ProductContentBlocksTest(TestCase):
     def setUp(self):
         self.media_root = tempfile.mkdtemp()
@@ -444,7 +508,7 @@ class ProductContentBlocksTest(TestCase):
             video_block.full_clean()
         self.assertIn('rutube_url', video_error.exception.message_dict)
 
-    def test_product_detail_renders_active_content_blocks_in_order_and_collapsible_description(self):
+    def test_product_detail_renders_active_content_blocks_in_order_with_full_description(self):
         ProductContentBlock.objects.create(
             product=self.product,
             block_type=ProductContentBlock.BlockType.TEXT,
@@ -501,10 +565,10 @@ class ProductContentBlocksTest(TestCase):
         self.assertEqual(response.status_code, 200)
         html = response.content.decode()
 
-        self.assertContains(response, 'Подробнее')
-        self.assertIn('x-data="{ detailsExpanded: false }"', html)
-        self.assertIn('class="details-collapsible-fade"', html)
-        self.assertIn('class="details-toggle-btn details-toggle-btn--corner"', html)
+        self.assertNotContains(response, 'Подробнее')
+        self.assertNotIn('detailsExpanded', html)
+        self.assertNotIn('class="details-collapsible-fade"', html)
+        self.assertNotIn('class="details-toggle-btn details-toggle-btn--corner"', html)
         self.assertNotIn('Третий блок', html)
         self.assertIn('class="content-block content-block--image-text is-image-right"', html)
         self.assertIn('alt="Первый блок"', html)
@@ -726,7 +790,6 @@ class RequestScopedCartServicesCacheTest(TestCase):
         )
         CartItem.objects.create(user=self.user, product=self.product, quantity=2)
         Favorite.objects.create(user=self.user, product=self.product)
-        CompareItem.objects.create(user=self.user, product=self.product)
 
     def _build_request(self):
         request = self.factory.get('/catalog/')
@@ -748,13 +811,6 @@ class RequestScopedCartServicesCacheTest(TestCase):
         with self.assertNumQueries(1):
             self.assertEqual(get_favorite_product_ids(request), {self.product.pk})
             self.assertEqual(get_favorite_product_ids(request), {self.product.pk})
-
-    def test_get_compare_product_ids_query_db_once_per_request(self):
-        request = self._build_request()
-
-        with self.assertNumQueries(1):
-            self.assertEqual(get_compare_product_ids(request), [self.product.pk])
-            self.assertEqual(get_compare_product_ids(request), [self.product.pk])
 
 
 @override_settings(
@@ -1360,6 +1416,17 @@ class ProductRecommendationsTest(TestCase):
         }]
         session.save()
 
+    def _get_product_response(self, product):
+        return self.client.get(reverse('catalog:product_detail', kwargs={'slug': product.slug}))
+
+    def _get_recommendation_section(self, response, key):
+        return next(section for section in response.context['recommendation_sections'] if section['key'] == key)
+
+    def _get_similar_product_ids(self, product):
+        response = self._get_product_response(product)
+        section = self._get_recommendation_section(response, 'similar_products')
+        return response, [recommended.pk for recommended in section['products']]
+
     def test_recommendations_apply_filters_and_sections(self):
         resp = self.client.get(reverse('catalog:product_detail', kwargs={'slug': self.current.slug}))
         self.assertEqual(resp.status_code, 200)
@@ -1398,6 +1465,173 @@ class ProductRecommendationsTest(TestCase):
             f'href="{reverse("catalog:product_detail", kwargs={"slug": self.strap.slug})}?variant={self.strap_variant.pk}"',
         )
         self.assertContains(resp, '7 900 ₽')
+
+    def test_similar_products_follow_category_first_cascade(self):
+        cases = Category.objects.create(name='Кейсы PDP', slug='pdp-cases')
+        covers = Category.objects.create(name='Защита PDP', slug='pdp-covers')
+        current = Product.objects.create(
+            category=cases,
+            name='BOBOVR C3 Quest 3 кейс',
+            slug='bobovr-c3-quest-3-case',
+            price=7000,
+            is_active=True,
+        )
+        ProductCharacteristic.objects.create(product=current, name='Совместимость', value='Quest 3')
+
+        same_category_compat = Product.objects.create(
+            category=cases,
+            name='Кейс Универсальный для Quest 3',
+            slug='quest-3-universal-case',
+            price=6500,
+            is_active=True,
+        )
+        ProductCharacteristic.objects.create(product=same_category_compat, name='Совместимость', value='Meta Quest 3 и Quest 3S')
+
+        same_category_tokens = Product.objects.create(
+            category=cases,
+            name='BOBOVR Travel Bag',
+            slug='bobovr-travel-bag',
+            price=5000,
+            is_active=True,
+            views_count=500,
+        )
+
+        same_category_lexical = Product.objects.create(
+            category=cases,
+            name='Кейс Народный',
+            slug='narodny-case',
+            price=3500,
+            is_active=True,
+            views_count=900,
+        )
+
+        cross_category_fallback = Product.objects.create(
+            category=covers,
+            name='Quest 3 Face Cover',
+            slug='quest-3-face-cover-pdp',
+            price=2500,
+            is_active=True,
+            views_count=9999,
+        )
+        ProductCharacteristic.objects.create(product=cross_category_fallback, name='Совместимость', value='Quest 3')
+
+        _, similar_ids = self._get_similar_product_ids(current)
+
+        self.assertEqual(
+            similar_ids[:4],
+            [
+                same_category_compat.pk,
+                same_category_tokens.pk,
+                same_category_lexical.pk,
+                cross_category_fallback.pk,
+            ],
+        )
+
+    def test_similar_products_allow_same_category_lexical_fallback_without_compatibility(self):
+        cases = Category.objects.create(name='Кейсы без совместимости', slug='cases-no-compat')
+        current = Product.objects.create(
+            category=cases,
+            name='Кейс Народный',
+            slug='narodny-base-case',
+            price=5000,
+            is_active=True,
+        )
+        lexical_fallback = Product.objects.create(
+            category=cases,
+            name='Кейс Брат',
+            slug='brat-case',
+            price=5200,
+            is_active=True,
+        )
+        Product.objects.create(
+            category=cases,
+            name='Зарядная станция BD3',
+            slug='bd3-dock-case-test',
+            price=8900,
+            is_active=True,
+        )
+
+        _, similar_ids = self._get_similar_product_ids(current)
+
+        self.assertEqual(similar_ids, [lexical_fallback.pk])
+
+    def test_similar_products_use_cross_category_only_as_last_resort(self):
+        cases = Category.objects.create(name='Кейсы fallback', slug='cases-fallback')
+        covers = Category.objects.create(name='Защита fallback', slug='covers-fallback')
+        current = Product.objects.create(
+            category=cases,
+            name='Quest 3 Travel Case',
+            slug='quest-3-travel-case-fallback',
+            price=6000,
+            is_active=True,
+        )
+        ProductCharacteristic.objects.create(product=current, name='Совместимость', value='Quest 3')
+
+        same_category_candidate = Product.objects.create(
+            category=cases,
+            name='Quest 3 Compact Case',
+            slug='quest-3-compact-case',
+            price=5500,
+            is_active=True,
+        )
+
+        cross_category_good = Product.objects.create(
+            category=covers,
+            name='Quest 3 Face Cover',
+            slug='quest-3-face-cover-fallback',
+            price=2300,
+            is_active=True,
+        )
+        ProductCharacteristic.objects.create(product=cross_category_good, name='Совместимость', value='Meta Quest 3')
+
+        cross_category_bad = Product.objects.create(
+            category=covers,
+            name='Universal Comfort Pad',
+            slug='universal-comfort-pad',
+            price=1900,
+            is_active=True,
+        )
+        ProductCharacteristic.objects.create(product=cross_category_bad, name='Совместимость', value='Quest 3')
+
+        _, similar_ids = self._get_similar_product_ids(current)
+
+        self.assertIn(same_category_candidate.pk, similar_ids)
+        self.assertIn(cross_category_good.pk, similar_ids)
+        self.assertIn(cross_category_bad.pk, similar_ids)
+        self.assertLess(similar_ids.index(same_category_candidate.pk), similar_ids.index(cross_category_good.pk))
+        self.assertLess(similar_ids.index(cross_category_good.pk), similar_ids.index(cross_category_bad.pk))
+
+    def test_similar_products_ignore_price_when_other_signals_equal(self):
+        cases = Category.objects.create(name='Кейсы price', slug='cases-price')
+        current = Product.objects.create(
+            category=cases,
+            name='Quest 3 Carry Case',
+            slug='quest-3-carry-case-current',
+            price=6000,
+            is_active=True,
+        )
+        ProductCharacteristic.objects.create(product=current, name='Совместимость', value='Quest 3')
+
+        cheap_first = Product.objects.create(
+            category=cases,
+            name='Quest 3 Carry Case',
+            slug='quest-3-carry-case-cheap',
+            price=1000,
+            is_active=True,
+        )
+        expensive_second = Product.objects.create(
+            category=cases,
+            name='Quest 3 Carry Case',
+            slug='quest-3-carry-case-expensive',
+            price=9000,
+            is_active=True,
+        )
+        ProductCharacteristic.objects.create(product=cheap_first, name='Совместимость', value='Quest 3')
+        ProductCharacteristic.objects.create(product=expensive_second, name='Совместимость', value='Quest 3')
+
+        _, similar_ids = self._get_similar_product_ids(current)
+
+        self.assertEqual(similar_ids[:2], [cheap_first.pk, expensive_second.pk])
 
 
 class FooterProductsFeedTest(TestCase):
@@ -1461,7 +1695,7 @@ class SeoFilesTest(TestCase):
         self.assertIn(f'<loc>http://testserver{bundle.get_absolute_url()}</loc>', body)
 
 
-class CompareFeatureTest(TestCase):
+class CompareRemovalTest(TestCase):
     def setUp(self):
         cache.clear()
         self.client = Client()
@@ -1477,7 +1711,7 @@ class CompareFeatureTest(TestCase):
             contact_name='Иван Иванов',
             privacy_agreed_at=timezone.now(),
         )
-        self.category = Category.objects.create(name='Сравнение', slug='compare-test')
+        self.category = Category.objects.create(name='Тестовая категория', slug='compare-test')
         self.products = [
             Product.objects.create(
                 category=self.category,
@@ -1488,89 +1722,54 @@ class CompareFeatureTest(TestCase):
             )
             for index in range(1, 6)
         ]
-        ProductCharacteristic.objects.create(
-            product=self.products[0],
-            name='Разрешение',
-            value='4K',
-        )
-        ProductCharacteristic.objects.create(
-            product=self.products[1],
-            name='Разрешение',
-            value='2K',
-        )
-        ProductCharacteristic.objects.create(
-            product=self.products[1],
-            name='Вес',
-            value='600 г',
-        )
 
-    def test_toggle_compare_for_anonymous_user_uses_session(self):
-        resp = self.client.post(reverse('catalog:toggle_compare', kwargs={'product_id': self.products[0].pk}))
-        self.assertEqual(resp.status_code, 302)
-        self.assertEqual(self.client.session.get('compare_product_ids'), [self.products[0].pk])
+    def test_compare_page_returns_404(self):
+        resp = self.client.get('/catalog/compare/')
+        self.assertEqual(resp.status_code, 404)
 
-        resp = self.client.post(reverse('catalog:toggle_compare', kwargs={'product_id': self.products[0].pk}))
-        self.assertEqual(resp.status_code, 302)
-        self.assertEqual(self.client.session.get('compare_product_ids'), [])
+    def test_compare_toggle_returns_404(self):
+        resp = self.client.post(f'/catalog/compare/{self.products[0].pk}/')
+        self.assertEqual(resp.status_code, 404)
 
-    def test_toggle_compare_for_authenticated_user_uses_database(self):
+    def test_catalog_page_does_not_contain_compare_ui(self):
+        resp = self.client.get(reverse('catalog:product_list'))
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotContains(resp, 'x-text="compareCount"', html=False)
+        self.assertNotContains(resp, '/catalog/compare/')
+        self.assertNotContains(resp, 'Сравнение')
+
+    def test_product_page_does_not_contain_compare_ui(self):
+        resp = self.client.get(reverse('catalog:product_detail', kwargs={'slug': self.products[0].slug}))
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotContains(resp, f'/catalog/compare/{self.products[0].pk}/')
+        self.assertNotContains(resp, 'Сравнить')
+        self.assertNotContains(resp, 'В сравнении')
+
+    def test_profile_page_does_not_contain_compare_ui(self):
         self.client.force_login(self.user)
-        resp = self.client.post(reverse('catalog:toggle_compare', kwargs={'product_id': self.products[0].pk}))
-        self.assertEqual(resp.status_code, 302)
-        self.assertTrue(
-            CompareItem.objects.filter(user=self.user, product=self.products[0]).exists()
-        )
 
-    def test_toggle_compare_htmx_returns_updated_counter_trigger(self):
-        resp = self.client.post(
-            reverse('catalog:toggle_compare', kwargs={'product_id': self.products[0].pk}),
-            HTTP_HX_REQUEST='true',
-        )
+        resp = self.client.get(reverse('accounts:profile'))
         self.assertEqual(resp.status_code, 200)
-        self.assertIn('compare-updated', resp.headers.get('HX-Trigger', ''))
-        self.assertContains(resp, 'В сравнении')
+        self.assertNotContains(resp, '/catalog/compare/')
+        self.assertNotContains(resp, 'Товаров в сравнении')
+        self.assertNotContains(resp, 'Список сравнения пока пуст')
 
-    def test_compare_limit_is_four_items(self):
-        for product in self.products[:4]:
-            self.client.post(reverse('catalog:toggle_compare', kwargs={'product_id': product.pk}))
-
-        resp = self.client.post(reverse('catalog:toggle_compare', kwargs={'product_id': self.products[4].pk}))
-        self.assertEqual(resp.status_code, 302)
-        self.assertEqual(self.client.session.get('compare_product_ids'), [p.pk for p in self.products[:4]])
-        self.assertNotIn(self.products[4].pk, self.client.session.get('compare_product_ids'))
-
-    def test_compare_page_shows_empty_state(self):
-        resp = self.client.get(reverse('catalog:compare'))
-        self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, 'Пока нечего сравнивать')
-
-    def test_compare_page_shows_single_item_message(self):
+    def test_login_still_merges_cart_and_favorites_without_compare(self):
         session = self.client.session
-        session['compare_product_ids'] = [self.products[0].pk]
-        session.save()
-
-        resp = self.client.get(reverse('catalog:compare'))
-        self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, 'Добавьте ещё хотя бы 1 товар')
-
-    def test_compare_page_renders_table_and_characteristics(self):
-        session = self.client.session
-        session['compare_product_ids'] = [self.products[0].pk, self.products[1].pk]
-        session.save()
-
-        resp = self.client.get(reverse('catalog:compare'))
-        self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, 'Сравнение товаров')
-        self.assertContains(resp, 'Разрешение')
-        self.assertContains(resp, '4K')
-        self.assertContains(resp, '2K')
-        self.assertContains(resp, 'Вес')
-        self.assertContains(resp, '600 г')
-        self.assertContains(resp, 'Открыть товар')
-
-    def test_compare_items_merge_on_login(self):
-        session = self.client.session
-        session['compare_product_ids'] = [self.products[0].pk, self.products[1].pk]
+        session['favorite_product_ids'] = [self.products[0].pk]
+        session['cart_items'] = [{
+            'product_id': self.products[0].pk,
+            'variant_id': None,
+            'variant_name': None,
+            'name': self.products[0].name,
+            'price': float(self.products[0].price),
+            'quantity': 2,
+            'image_url': '',
+            'subtotal': float(self.products[0].price) * 2,
+            'bundle_id': None,
+            'bundle_name': None,
+            'original_price': float(self.products[0].price),
+        }]
         session.save()
 
         resp = self.client.post(reverse('accounts:password_login'), {
@@ -1578,41 +1777,11 @@ class CompareFeatureTest(TestCase):
             'password': 'testpass',
         })
         self.assertEqual(resp.status_code, 302)
-        self.assertEqual(
-            list(
-                CompareItem.objects.filter(user=self.user)
-                .order_by('created_at', 'id')
-                .values_list('product_id', flat=True)
-            ),
-            [self.products[0].pk, self.products[1].pk],
-        )
-        self.assertNotIn('compare_product_ids', self.client.session)
-
-    def test_profile_preview_shows_compare_products(self):
-        CompareItem.objects.create(user=self.user, product=self.products[0])
-        CompareItem.objects.create(user=self.user, product=self.products[1])
-        self.client.force_login(self.user)
-
-        resp = self.client.get(reverse('accounts:profile'))
-        self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, 'Товаров в сравнении')
-        self.assertContains(resp, self.products[0].name)
-        self.assertContains(resp, self.products[1].name)
-
-    def test_catalog_page_contains_compare_badge_binding(self):
-        resp = self.client.get(reverse('catalog:product_list'))
-        self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, 'x-text="compareCount"', html=False)
-        self.assertContains(resp, reverse('catalog:compare'))
-
-    def test_compare_button_is_hidden_on_catalog_cards_but_shown_on_product_page(self):
-        catalog_resp = self.client.get(reverse('catalog:product_list'))
-        self.assertEqual(catalog_resp.status_code, 200)
-        self.assertNotContains(catalog_resp, reverse('catalog:toggle_compare', kwargs={'product_id': self.products[0].pk}))
-
-        detail_resp = self.client.get(reverse('catalog:product_detail', kwargs={'slug': self.products[0].slug}))
-        self.assertEqual(detail_resp.status_code, 200)
-        self.assertContains(detail_resp, reverse('catalog:toggle_compare', kwargs={'product_id': self.products[0].pk}))
+        self.assertTrue(Favorite.objects.filter(user=self.user, product=self.products[0]).exists())
+        cart_item = CartItem.objects.get(user=self.user, product=self.products[0])
+        self.assertEqual(cart_item.quantity, 2)
+        self.assertEqual(self.client.session.get('favorite_product_ids', []), [])
+        self.assertEqual(self.client.session.get('cart_items', []), [])
 
 
 class AdminRestoreSecurityTest(TestCase):

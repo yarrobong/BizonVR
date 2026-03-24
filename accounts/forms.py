@@ -266,18 +266,12 @@ class SavedAddressForm(forms.Form):
             'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
         }),
     )
-    delivery_type = forms.ChoiceField(
-        label='Способ доставки',
-        choices=[('cdek_pvz', 'CDEK до ПВЗ')],
-        initial='cdek_pvz',
-        widget=forms.HiddenInput(),
-    )
     address = forms.CharField(
-        label='Адрес ПВЗ CDEK',
+        label='Адрес',
         required=True,
         widget=forms.Textarea(attrs={
             'rows': 3,
-            'placeholder': 'Название или адрес удобного ПВЗ CDEK',
+            'placeholder': 'Город, улица, дом, офис или удобный ориентир',
             'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
         }),
     )
@@ -335,10 +329,8 @@ class SavedAddressForm(forms.Form):
         if not city:
             self.add_error('city', 'Укажите город.')
         if not address:
-            self.add_error('address', 'Укажите адрес ПВЗ CDEK.')
+            self.add_error('address', 'Укажите адрес доставки.')
 
-        cleaned_data['delivery_type'] = 'cdek_pvz'
-        cleaned_data['pickup_point'] = None
         cleaned_data['comment'] = (cleaned_data.get('comment') or '').strip()
         return cleaned_data
 

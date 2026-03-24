@@ -169,7 +169,6 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
         'image_preview',
         'category',
         'price',
-        'shipping_weight_kg',
         'option_label',
         'is_active',
         'allow_order_on_request',
@@ -193,18 +192,23 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
     save_on_top = False
     fieldsets = (
         ('База карточки', {
-            'fields': ('name', 'sku', 'category', 'price', 'is_active', 'allow_order_on_request'),
+            'fields': (
+                'name',
+                'sku',
+                'category',
+                'price',
+                'is_active',
+                'allow_order_on_request',
+                'avito_url',
+                'ozon_url',
+                'wildberries_url',
+            ),
             'description': 'Минимум для публикации: название, категория и цена.',
             'classes': ('product-fieldset', 'product-fieldset--primary'),
         }),
         ('Публикация и структура', {
             'fields': ('slug', 'option_label', 'tags'),
             'description': 'Slug заполняется автоматически из названия. Подпись к вариантам и теги можно добавить позже.',
-            'classes': ('product-fieldset', 'product-fieldset--secondary'),
-        }),
-        ('Логистика CDEK', {
-            'fields': ('shipping_weight_kg', 'shipping_length_cm', 'shipping_width_cm', 'shipping_height_cm'),
-            'description': 'Вес и габариты используются для расчёта стоимости доставки до ПВЗ CDEK.',
             'classes': ('product-fieldset', 'product-fieldset--secondary'),
         }),
         ('Служебное', {
@@ -222,7 +226,17 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
         if obj is None:
             return (
                 ('База карточки', {
-                    'fields': ('name', 'sku', 'category', 'price', 'is_active', 'allow_order_on_request'),
+                    'fields': (
+                        'name',
+                        'sku',
+                        'category',
+                        'price',
+                        'is_active',
+                        'allow_order_on_request',
+                        'avito_url',
+                        'ozon_url',
+                        'wildberries_url',
+                    ),
                     'description': 'Сначала заполните название, категорию и цену. Описание можно добавить здесь же или на вкладке «Описание».',
                     'classes': ('product-fieldset', 'product-fieldset--primary'),
                 }),
@@ -236,12 +250,8 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
                         'slug',
                         'option_label',
                         'tags',
-                        'shipping_weight_kg',
-                        'shipping_length_cm',
-                        'shipping_width_cm',
-                        'shipping_height_cm',
                     ),
-                    'description': 'Slug сформируется автоматически. Здесь же задаются теги, подпись вариантов и логистические параметры для CDEK.',
+                    'description': 'Slug сформируется автоматически. Здесь же задаются теги и подпись вариантов.',
                     'classes': ('product-fieldset', 'product-fieldset--secondary', 'collapse'),
                 }),
             )

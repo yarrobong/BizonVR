@@ -1,35 +1,31 @@
-  <div id="mobile-header-slot" hx-swap-oob="outerHTML">
-    {% block mobile_header %}
-    <!-- Мобильная шапка: видна только на мобильных; на страницах с собственной шапкой можно переопределить блок `mobile_header` -->
-    {% if not request.resolver_match or request.resolver_match.url_name != 'cart' %}
-    <div class="mobile-header md:hidden" x-data="{ showFixedSearch: false }"
-         x-init="
-           const check = () => { showFixedSearch = window.scrollY > 100 };
-           let raf = null;
-           const throttled = () => { if (!raf) raf = requestAnimationFrame(() => { check(); raf = null; }); };
-           window.addEventListener('scroll', throttled, { passive: true });
-           check();
-           return () => window.removeEventListener('scroll', throttled);
-         ">
-      <div class="mobile-header-wrapper">
-        <form action="{% url 'catalog:product_list' %}" method="get" class="mobile-header-search-form">
-          <button type="submit" class="mobile-header-search-btn" aria-label="Поиск">
-            <i data-lucide="search"></i>
-          </button>
-          <input type="search" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Искать на BizonVR" class="mobile-header-search-input" />
-        </form>
-      </div>
-
-      <!-- Фиксированный поиск: появляется при скролле -->
-      <div class="mobile-header-fixed-search" :class="{ 'visible': showFixedSearch }">
-        <form action="{% url 'catalog:product_list' %}" method="get" class="mobile-header-search-form">
-          <button type="submit" class="mobile-header-search-btn" aria-label="Поиск">
-            <i data-lucide="search"></i>
-          </button>
-          <input type="search" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Искать на BizonVR" class="mobile-header-search-input" />
-        </form>
-      </div>
-    </div>
-    {% endif %}
-    {% endblock %}
+<!-- Мобильная шапка: видна только на мобильных; на страницах с собственной шапкой можно переопределить блок `mobile_header` -->
+{% if not request.resolver_match or request.resolver_match.url_name != 'cart' %}
+<div class="mobile-header md:hidden" x-data="{ showFixedSearch: false }"
+     x-init="
+       const check = () => { showFixedSearch = window.scrollY > 100 };
+       let raf = null;
+       const throttled = () => { if (!raf) raf = requestAnimationFrame(() => { check(); raf = null; }); };
+       window.addEventListener('scroll', throttled, { passive: true });
+       check();
+       return () => window.removeEventListener('scroll', throttled);
+     ">
+  <div class="mobile-header-wrapper">
+    <form action="{% url 'catalog:product_list' %}" method="get" class="mobile-header-search-form">
+      <button type="submit" class="mobile-header-search-btn" aria-label="Поиск">
+        <i data-lucide="search"></i>
+      </button>
+      <input type="search" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Искать на BizonVR" class="mobile-header-search-input" />
+    </form>
   </div>
+
+  <!-- Фиксированный поиск: появляется при скролле -->
+  <div class="mobile-header-fixed-search" :class="{ 'visible': showFixedSearch }">
+    <form action="{% url 'catalog:product_list' %}" method="get" class="mobile-header-search-form">
+      <button type="submit" class="mobile-header-search-btn" aria-label="Поиск">
+        <i data-lucide="search"></i>
+      </button>
+      <input type="search" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Искать на BizonVR" class="mobile-header-search-input" />
+    </form>
+  </div>
+</div>
+{% endif %}

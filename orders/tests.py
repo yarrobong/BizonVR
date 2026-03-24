@@ -61,12 +61,15 @@ class CheckoutTest(TestCase):
             'first_name': 'Иван',
             'last_name': 'Иванов',
             'phone': '+7 999 123 45 67',
-            'email': 'test@example.com',
+            'email': '',
+            'contact_channel': Order.CONTACT_CHANNEL_CALL,
+            'contact_handle': '',
+            'delivery_type': Order.DELIVERY_CDEK_PVZ,
             'city_text': 'Москва',
-            'address_line': 'Москва, ПВЗ CDEK на Тестовой, 1',
-            'delivery_comment': 'Ближе к метро',
+            'address_line': '',
+            'delivery_comment': 'Позвонить перед доставкой',
             'recipient_is_customer': 'on',
-            'payment_method': Order.PAYMENT_METHOD_BANK_CARD,
+            'payment_method': Order.PAYMENT_METHOD_SBP,
             'comment': 'Позвонить за час',
             'agree_personal_data': 'on',
             'agree_offer': 'on',
@@ -88,6 +91,7 @@ class CheckoutTest(TestCase):
         resp = self.client.get(reverse('orders:checkout'))
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, 'Оформление заказа')
+        self.assertNotContains(resp, 'CDEK')
 
     def test_checkout_get_authenticated_returns_200(self):
         add_url = reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk})
@@ -107,17 +111,19 @@ class CheckoutTest(TestCase):
 
         order = Order.objects.first()
         self.assertIsNotNone(order)
-        self.assertEqual(resp.url, reverse('payments:create_payment', kwargs={'order_id': order.pk}))
+        self.assertEqual(resp.url, reverse('orders:order_created', kwargs={'order_id': order.pk}))
         self.assertEqual(order.user, self.user)
         self.assertEqual(order.total, Decimal('200.00'))
         self.assertEqual(order.promo_discount, Decimal('50.00'))
         self.assertEqual(order.total_to_pay, Decimal('150.00'))
         self.assertEqual(order.phone, '+7 999 123 45 67')
         self.assertEqual(order.city_text, 'Москва')
-        self.assertEqual(order.address_line, 'Москва, ПВЗ CDEK на Тестовой, 1')
-        self.assertEqual(order.payment_method, Order.PAYMENT_METHOD_BANK_CARD)
+        self.assertEqual(order.address_line, '')
+        self.assertEqual(order.payment_method, Order.PAYMENT_METHOD_SBP)
+        self.assertEqual(order.contact_channel, Order.CONTACT_CHANNEL_CALL)
+        self.assertEqual(order.contact_handle, '')
         self.assertEqual(order.delivery_type, Order.DELIVERY_CDEK_PVZ)
-        self.assertGreater(order.delivery_cost, Decimal('0.00'))
+        self.assertEqual(order.delivery_cost, Decimal('0.00'))
         self.assertEqual(order.legal_docs_version, LEGAL_BUNDLE_VERSION)
         self.assertIsNotNone(order.legal_accepted_at)
         self.assertEqual(order.items.count(), 1)
@@ -136,7 +142,7 @@ class CheckoutTest(TestCase):
         self.assertIsNone(order.user)
         self.assertTrue(order.guest_access_token)
         self.assertIn('access=', response.url)
-        self.assertTrue(response.url.startswith(reverse('payments:create_payment', kwargs={'order_id': order.pk})))
+        self.assertTrue(response.url.startswith(reverse('orders:order_created', kwargs={'order_id': order.pk})))
 
     def test_add_to_cart_blocks_when_stock_missing_and_order_on_request_disabled(self):
         self.product.allow_order_on_request = False
@@ -188,46 +194,22 @@ class CheckoutTest(TestCase):
         self.assertEqual(order.manager_deal.customer_source, ManagerDeal.SOURCE_WEBSITE)
         self.assertEqual(order.manager_deal.deal_type, ManagerDeal.DEAL_SALE_ON_REQUEST)
 
-    def test_checkout_manager_payment_persists_business_requisites_in_order_and_deal(self):
+    def test_checkout_invoice_marks_manager_deal_as_business_without_requiring_requisites(self):
         self.client.force_login(self.user)
         self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
 
         response = self.client.post(
             reverse('orders:checkout'),
             self._checkout_payload(
-                payment_method=Order.PAYMENT_METHOD_MANAGER_PAYMENT,
-                business_company_name='ООО Вижн',
-                business_checking_account='40702810900000000001',
-                business_inn='6677001122',
-                business_kpp='667701001',
-                business_bank_name='ПАО Сбербанк',
-                business_bik='046577674',
-                business_correspondent_account='30101810500000000674',
-                business_phone='+7 912 000 10 10',
-                business_telegram='vision_finance',
-                business_whatsapp='+7 912 000 10 11',
+                payment_method=Order.PAYMENT_METHOD_INVOICE,
             ),
         )
 
         self.assertEqual(response.status_code, 302)
         order = Order.objects.get()
-        self.assertEqual(order.payment_method, Order.PAYMENT_METHOD_MANAGER_PAYMENT)
-        self.assertEqual(order.business_company_name, 'ООО Вижн')
-        self.assertEqual(order.business_checking_account, '40702810900000000001')
-        self.assertEqual(order.business_bank_name, 'ПАО Сбербанк')
-        self.assertEqual(order.business_bik, '046577674')
-        self.assertEqual(order.business_correspondent_account, '30101810500000000674')
-        self.assertEqual(order.business_phone, '+7 912 000 10 10')
-        self.assertEqual(order.business_telegram, '@vision_finance')
-        self.assertEqual(order.business_whatsapp, '+7 912 000 10 11')
+        self.assertEqual(order.payment_method, Order.PAYMENT_METHOD_INVOICE)
         self.assertEqual(order.manager_deal.buyer_type, ManagerDeal.BUYER_BUSINESS)
-        self.assertEqual(order.manager_deal.business_company_name, 'ООО Вижн')
-        self.assertEqual(order.manager_deal.business_checking_account, '40702810900000000001')
-        self.assertEqual(order.manager_deal.business_bank_name, 'ПАО Сбербанк')
-        self.assertEqual(order.manager_deal.business_bik, '046577674')
-        self.assertEqual(order.manager_deal.business_correspondent_account, '30101810500000000674')
-        self.assertEqual(order.manager_deal.business_telegram, '@vision_finance')
-        self.assertEqual(order.manager_deal.business_whatsapp, '+7 912 000 10 11')
+        self.assertEqual(order.manager_deal.business_phone, '+7 999 123 45 67')
 
     def test_checkout_test_mode_creates_paid_order(self):
         self.client.force_login(self.user)
@@ -237,13 +219,59 @@ class CheckoutTest(TestCase):
         self.assertEqual(resp.status_code, 302)
         self.assertEqual(Order.objects.get().payment_status, Order.PAYMENT_STATUS_PAID)
 
-    def test_checkout_requires_email(self):
+    def test_checkout_allows_call_without_email(self):
         self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
 
         response = self.client.post(reverse('orders:checkout'), self._checkout_payload(email=''))
 
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(Order.objects.count(), 1)
+
+    def test_checkout_requires_email_when_email_channel_selected(self):
+        self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
+
+        response = self.client.post(
+            reverse('orders:checkout'),
+            self._checkout_payload(contact_channel=Order.CONTACT_CHANNEL_EMAIL, email=''),
+        )
+
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Обязательное поле')
+        self.assertContains(response, 'Укажите email для связи.')
+        self.assertEqual(Order.objects.count(), 0)
+
+    def test_checkout_requires_contact_handle_for_telegram(self):
+        self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
+
+        response = self.client.post(
+            reverse('orders:checkout'),
+            self._checkout_payload(contact_channel=Order.CONTACT_CHANNEL_TELEGRAM, contact_handle=''),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Укажите контакт в выбранном мессенджере.')
+        self.assertEqual(Order.objects.count(), 0)
+
+    def test_checkout_pickup_does_not_require_address(self):
+        self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
+
+        response = self.client.post(
+            reverse('orders:checkout'),
+            self._checkout_payload(delivery_type=Order.DELIVERY_PICKUP, address_line=''),
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(Order.objects.get().address_line, '')
+
+    def test_checkout_courier_delivery_requires_address(self):
+        self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
+
+        response = self.client.post(
+            reverse('orders:checkout'),
+            self._checkout_payload(delivery_type=Order.DELIVERY_CDEK_COURIER, address_line=''),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Укажите адрес доставки.')
         self.assertEqual(Order.objects.count(), 0)
 
     def test_checkout_requires_recipient_fields_when_recipient_differs(self):
@@ -275,10 +303,12 @@ class CheckoutFormsLegalValidationTest(TestCase):
             'phone': '+7 999 111 22 33',
             'first_name': 'Иван',
             'last_name': 'Иванов',
-            'email': 'test@example.com',
+            'email': '',
+            'contact_channel': Order.CONTACT_CHANNEL_CALL,
+            'delivery_type': Order.DELIVERY_PICKUP,
             'city_text': 'Москва',
-            'address_line': 'Москва, ПВЗ CDEK на Тестовой, 1',
-            'payment_method': Order.PAYMENT_METHOD_BANK_CARD,
+            'address_line': '',
+            'payment_method': Order.PAYMENT_METHOD_SBP,
             'comment': '',
             'promo_code': '',
         })

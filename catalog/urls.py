@@ -8,7 +8,6 @@ urlpatterns = [
     path('', views.ProductListView.as_view(), name='product_list'),
     path('footer-products/', views.footer_products_feed_view, name='footer_products_feed'),
     path('favorites/', views.favorite_list_view, name='favorites'),
-    path('compare/', views.compare_page_view, name='compare'),
     # slug с кириллицей: [\w-]+ вместо path slug (только ASCII)
     re_path(r'product/(?P<slug>[\w-]+)/', views.ProductDetailView.as_view(), name='product_detail'),
     re_path(r'bundle/(?P<slug>[\w-]+)/', views.BundleDetailView.as_view(), name='bundle_detail'),
@@ -21,5 +20,4 @@ urlpatterns = [
     path('cart/add/<int:product_id>/', views.add_to_cart_view, name='add_to_cart'),
     path('cart/update/', views.cart_update_view, name='cart_update'),
     path('favorite/<int:product_id>/', views.toggle_favorite_view, name='toggle_favorite'),
-    path('compare/<int:product_id>/', views.toggle_compare_view, name='toggle_compare'),
 ]

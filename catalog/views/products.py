@@ -380,10 +380,9 @@ class ProductListView(ListView):
             context['results_count'] = applied_qs.count()
         context['active_filter_chips'] = self._build_active_filter_chips(context)
 
-        from ..cart_services import get_compare_product_ids, get_favorite_product_ids
+        from ..cart_services import get_favorite_product_ids
 
         context['favorite_product_ids'] = get_favorite_product_ids(self.request)
-        context['compare_product_ids'] = set(get_compare_product_ids(self.request))
         product_ids = [product.pk for product in context['products']]
         context['product_stock_total'] = _product_stock_totals(product_ids)
         context['variant_stock_total'] = _variant_stock_totals(product_ids)
@@ -425,18 +424,12 @@ class ProductDetailView(DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         from ..cart_services import (
-            get_compare_count,
-            get_compare_product_ids,
             get_favorite_product_ids,
-            is_compared,
             is_favorite,
         )
 
         context['is_favorite'] = is_favorite(self.request, self.object.pk)
         context['favorite_product_ids'] = get_favorite_product_ids(self.request)
-        context['is_compared'] = is_compared(self.request, self.object.pk)
-        context['compare_product_ids'] = set(get_compare_product_ids(self.request))
-        context['compare_count'] = get_compare_count(self.request)
 
         if self.object.variants.exists():
             context['stock_by_variant'] = {

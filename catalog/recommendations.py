@@ -1,6 +1,7 @@
 """MVP-рекомендации для PDP: правила, совместимость, исключения, ранжирование."""
 from __future__ import annotations
 
+from difflib import SequenceMatcher
 import json
 import re
 from collections import defaultdict
@@ -19,17 +20,6 @@ from .models import Product, ProductBundleItem, ProductStock, ProductVariant
 COMPATIBILITY_KEYS = {
     'compatibility', 'совместимость', 'device', 'устройство', 'устройства', 'для устройства'
 }
-PRODUCT_TYPE_KEYS = {'type', 'тип', 'product_type', 'тип товара'}
-
-TYPE_KEYWORDS = {
-    'headset': ('шлем', 'headset'),
-    'strap': ('креплен', 'strap', 'head strap', 'ремень'),
-    'battery': ('аккумулятор', 'battery', 'power bank'),
-    'dock': ('док', 'dock', 'dock station', 'станц'),
-    'protection': ('защит', 'маска', 'cover', 'grip', 'линза', 'интерфейс'),
-    'case': ('кейс', 'чехол', 'case', 'bag'),
-    'cable': ('кабель', 'cable', 'link'),
-}
 
 DEVICE_ALIASES = {
     'meta quest 3s': 'quest 3s',
@@ -47,6 +37,25 @@ DEVICE_ALIASES = {
     'pico 4': 'pico 4',
     'pico4': 'pico 4',
 }
+
+SIGNAL_TOKEN_IGNORED = {
+    'vr', 'для', 'with', 'and', 'the', 'plus', 'lite', 'pack',
+    'метров', 'метр', 'м', 'на', 'под', 'из', 'в', 'во', 'с', 'со', 'к', 'по',
+    'для', 'и', 'или', 'другие', 'другой', 'other', 'others',
+    'комплект', 'комплекты', 'набор', 'наборы',
+    'кабель', 'кабели', 'кейс', 'кейсы', 'чехол', 'чехлы',
+    'крепление', 'крепления', 'маска', 'маски', 'защита',
+    'аккумулятор', 'акб', 'станция', 'зарядная', 'роутер', 'телевизор',
+    'аттракцион', 'шлем', 'headset', 'strap', 'cover', 'case', 'battery', 'station',
+}
+LEXICAL_TOKEN_IGNORED = {
+    'для', 'with', 'and', 'the', 'метров', 'метр', 'м',
+    'на', 'под', 'из', 'в', 'во', 'с', 'со', 'к', 'по', 'и', 'или',
+    'красный', 'синий', 'black', 'white', 'red', 'blue',
+}
+USELESS_DEVICE_TOKENS = {'другие', 'другое', 'и другие', 'other', 'others'}
+SAME_CATEGORY_LEXICAL_THRESHOLD = 0.22
+CROSS_CATEGORY_LEXICAL_THRESHOLD = 0.3
 
 
 @lru_cache(maxsize=1)
@@ -79,6 +88,15 @@ def _normalize_text(text: str) -> str:
     return re.sub(r'\s+', ' ', s)
 
 
+DEVICE_NAME_PHRASES = tuple(
+    sorted(
+        {_normalize_text(key) for key in DEVICE_ALIASES} | {_normalize_text(value) for value in DEVICE_ALIASES.values()},
+        key=len,
+        reverse=True,
+    )
+)
+
+
 def _normalize_device_token(token: str) -> str:
     t = _normalize_text(token)
     t = re.sub(r'[()\[\],;:+]+', ' ', t)
@@ -89,8 +107,8 @@ def _normalize_device_token(token: str) -> str:
 def _split_multi_values(raw_value: str) -> List[str]:
     if not raw_value:
         return []
-    value = raw_value.replace('\\', '/').replace('|', '/').replace(',', '/').replace(';', '/')
-    parts = [p.strip() for p in value.split('/') if p.strip()]
+    parts = re.split(r'\s*(?:\\|/|\||,|;|&|\+|\band\b|\bи\b)\s*', raw_value, flags=re.IGNORECASE)
+    parts = [p.strip() for p in parts if p.strip()]
     return parts or [raw_value.strip()]
 
 
@@ -112,31 +130,61 @@ def _extract_devices(product: Product) -> Set[str]:
             for raw in values:
                 for token in _split_multi_values(raw):
                     normalized = _normalize_device_token(token)
-                    if normalized:
+                    if normalized and normalized not in USELESS_DEVICE_TOKENS:
                         devices.add(normalized)
     return devices
 
 
-def _normalize_product_type(raw_type: str) -> str:
-    txt = _normalize_text(raw_type)
-    if not txt:
-        return 'accessory'
-    for normalized, keywords in TYPE_KEYWORDS.items():
-        if any(k in txt for k in keywords):
-            return normalized
-    return 'accessory'
+def _tokenize(text: str) -> List[str]:
+    return re.findall(r'[a-zа-я0-9]+', _normalize_text(text))
 
 
-def _extract_product_type(product: Product) -> str:
-    ch_map = _characteristics_map(product)
-    for key, values in ch_map.items():
-        if key in PRODUCT_TYPE_KEYS:
-            for val in values:
-                normalized = _normalize_product_type(val)
-                if normalized:
-                    return normalized
-    haystack = f"{product.name} {product.category.name if product.category_id else ''}"
-    return _normalize_product_type(haystack)
+def _extract_name_signal_tokens(product: Product) -> Set[str]:
+    normalized_name = _normalize_text(product.name)
+    tokens: Set[str] = set()
+
+    for phrase in DEVICE_NAME_PHRASES:
+        if re.search(rf'(?<!\w){re.escape(phrase)}(?!\w)', normalized_name):
+            tokens.add(DEVICE_ALIASES.get(phrase, phrase))
+
+    for token in _tokenize(product.name):
+        if token.isdigit() or len(token) < 2 or token in SIGNAL_TOKEN_IGNORED:
+            continue
+        tokens.add(token)
+    return tokens
+
+
+def _extract_lexical_tokens(text: str) -> Set[str]:
+    tokens = set()
+    for token in _tokenize(text):
+        if token.isdigit() or len(token) < 2 or token in LEXICAL_TOKEN_IGNORED:
+            continue
+        tokens.add(token)
+    return tokens
+
+
+def _lexical_similarity(current_name: str, candidate_name: str) -> float:
+    current_tokens = _extract_lexical_tokens(current_name)
+    candidate_tokens = _extract_lexical_tokens(candidate_name)
+    token_overlap = 0.0
+    if current_tokens and candidate_tokens:
+        token_overlap = len(current_tokens & candidate_tokens) / max(len(current_tokens), len(candidate_tokens))
+    sequence_ratio = SequenceMatcher(None, _normalize_text(current_name), _normalize_text(candidate_name)).ratio()
+    return max(token_overlap, sequence_ratio * 0.55)
+
+
+def _rank_similar_candidates(entries: List[dict], total_map: dict) -> List[Product]:
+    ranked = sorted(
+        entries,
+        key=lambda entry: (
+            entry['level'],
+            -entry['score'],
+            0 if _is_in_stock(entry['product'].pk, total_map) else 1,
+            -(entry['product'].views_count or 0),
+            entry['product'].pk,
+        ),
+    )
+    return [entry['product'] for entry in ranked]
 
 
 def _bundle_excluded_product_ids(product: Product) -> Set[int]:
@@ -175,18 +223,6 @@ def _stock_maps(product_ids: Iterable[int]):
 
 def _is_in_stock(product_id: int, total_map: dict) -> bool:
     return total_map.get(product_id, 0) > 0
-
-
-def _rank_mvp(products: List[Product], total_map: dict) -> List[Product]:
-    return sorted(
-        products,
-        key=lambda p: (
-            0 if _is_in_stock(p.pk, total_map) else 1,
-            -(p.views_count or 0),
-            -float(p.price),
-            p.pk,
-        ),
-    )
 
 
 def _compatible(current_devices: Set[str], candidate_devices: Set[str]) -> bool:
@@ -239,8 +275,8 @@ def build_pdp_recommendations(request, product: Product) -> dict:
     max_per_section = int(cfg.get('default_max_per_section', 6))
     alternatives_limit = int(cfg.get('alternatives_limit', 5))
 
-    current_type = _extract_product_type(product)
     current_devices = _extract_devices(product)
+    current_name_tokens = _extract_name_signal_tokens(product)
 
     excluded_ids = {product.pk}
     excluded_ids.update(_cart_product_ids(request))
@@ -296,12 +332,57 @@ def build_pdp_recommendations(request, product: Product) -> dict:
 
     # 2) Похожие товары
     if cfg.get('sections', {}).get('similar_products', {}).get('enabled', True):
-        similar_pool = [
-            p for p in compat_filtered
-            if (_extract_product_type(p) == current_type or p.category_id == product.category_id)
-        ]
-        similar_sorted = _rank_mvp(similar_pool, total_map)
-        similar_products = similar_sorted[:alternatives_limit]
+        early_entries = []
+        late_entries = []
+        last_resort_entries = []
+        for candidate in compat_filtered:
+            candidate_devices = _extract_devices(candidate)
+            compatibility_overlap = current_devices & candidate_devices
+            name_token_overlap = current_name_tokens & _extract_name_signal_tokens(candidate)
+            lexical_score = _lexical_similarity(product.name, candidate.name)
+
+            if candidate.category_id == product.category_id:
+                if compatibility_overlap:
+                    early_entries.append({
+                        'level': 1,
+                        'score': len(compatibility_overlap) * 10 + len(name_token_overlap) * 2 + lexical_score,
+                        'product': candidate,
+                    })
+                elif name_token_overlap:
+                    early_entries.append({
+                        'level': 2,
+                        'score': len(name_token_overlap) * 10 + lexical_score,
+                        'product': candidate,
+                    })
+                elif lexical_score >= SAME_CATEGORY_LEXICAL_THRESHOLD:
+                    early_entries.append({
+                        'level': 3,
+                        'score': lexical_score,
+                        'product': candidate,
+                    })
+            elif compatibility_overlap and (
+                name_token_overlap or lexical_score >= CROSS_CATEGORY_LEXICAL_THRESHOLD
+            ):
+                late_entries.append({
+                    'level': 4,
+                    'score': len(compatibility_overlap) * 10 + len(name_token_overlap) * 2 + lexical_score,
+                    'product': candidate,
+                })
+            elif compatibility_overlap:
+                last_resort_entries.append({
+                    'level': 5,
+                    'score': len(compatibility_overlap),
+                    'product': candidate,
+                })
+
+        similar_products = _rank_similar_candidates(early_entries, total_map)[:alternatives_limit]
+        if len(similar_products) < alternatives_limit:
+            remaining = alternatives_limit - len(similar_products)
+            similar_products.extend(_rank_similar_candidates(late_entries, total_map)[:remaining])
+        if len(similar_products) < alternatives_limit:
+            remaining = alternatives_limit - len(similar_products)
+            similar_products.extend(_rank_similar_candidates(last_resort_entries, total_map)[:remaining])
+
         if similar_products:
             sections.append({
                 'key': 'similar_products',

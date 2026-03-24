@@ -103,7 +103,17 @@ class OrderAdmin(admin.ModelAdmin):
             'description': 'Статус заказа отвечает за lifecycle, статус оплаты — только за деньги.',
         }),
         ('Контакты', {
-            'fields': ('first_name', 'last_name', 'phone', 'email', 'recipient_is_customer', 'recipient_name', 'recipient_phone'),
+            'fields': (
+                'first_name',
+                'last_name',
+                'phone',
+                'email',
+                'contact_channel',
+                'contact_handle',
+                'recipient_is_customer',
+                'recipient_name',
+                'recipient_phone',
+            ),
         }),
         ('Доставка', {
             'fields': (
@@ -117,9 +127,6 @@ class OrderAdmin(admin.ModelAdmin):
                 'address',
                 'delivery_comment',
                 'delivery_cost',
-                'shipping_weight_kg',
-                'shipping_volume_cm3',
-                'cdek_fallback_to_nearest',
             ),
         }),
         ('Реквизиты юр. лица', {

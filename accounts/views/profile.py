@@ -6,8 +6,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods
 
-from catalog.cart_services import get_compare_product_ids
-from catalog.models import Favorite, Product
+from catalog.models import Favorite
 from config.legal_consent import get_legal_bundle_version
 from orders.models import Order
 
@@ -117,7 +116,7 @@ def _summarize_order(order):
     else:
         items_caption = 'Состав заказа пока не указан'
 
-    delivery_label = order.get_delivery_type_display() if order.delivery_type else 'Способ доставки уточняется'
+    delivery_label = order.public_delivery_label
     destination = order.address or (order.pickup_point.address if order.pickup_point_id and order.pickup_point else '')
 
     return {
@@ -140,8 +139,6 @@ def _saved_address_initial(address=None):
         'phone': _format_phone(address.phone),
         'email': address.email,
         'city': address.city,
-        'delivery_type': address.delivery_type,
-        'pickup_point': address.pickup_point_id,
         'address': address.address,
         'comment': address.comment,
         'is_default': address.is_default,
@@ -171,20 +168,6 @@ def _set_default_saved_address(user, address):
         SavedAddress.objects.filter(pk=address.pk, user=user).update(is_default=True)
         address.is_default = True
     return address
-
-
-def _get_compare_products_preview(request):
-    compare_ids = get_compare_product_ids(request)
-    if not compare_ids:
-        return [], 0
-    products_map = (
-        Product.objects.filter(pk__in=compare_ids, is_active=True)
-        .select_related('category')
-        .prefetch_related('characteristics', 'images', 'tags', 'variants')
-        .in_bulk()
-    )
-    products = [products_map[pid] for pid in compare_ids if pid in products_map]
-    return products[:4], len(compare_ids)
 
 
 def _build_profile_completion(profile, saved_addresses, orders_total, favorites_count, pending_phone_change):
@@ -618,11 +601,9 @@ def _build_profile_context(
     )
     saved_addresses = list(
         SavedAddress.objects.filter(user=request.user)
-        .select_related('pickup_point__city')
         .order_by('-is_default', '-updated_at', '-id')
     )
     default_saved_address = next((address for address in saved_addresses if address.is_default), None)
-    compare_products_preview, compare_count = _get_compare_products_preview(request)
     order_stats = _build_status_stats(request.user)
     active_orders_count = sum(
         item['count'] for item in order_stats
@@ -719,8 +700,6 @@ def _build_profile_context(
         'notifications_edit_mode': notifications_edit_mode,
         'saved_addresses': saved_addresses,
         'default_saved_address': default_saved_address,
-        'compare_products_preview': compare_products_preview,
-        'compare_count': compare_count,
         'order_stats': order_stats,
         'orders_total': sum(item['count'] for item in order_stats),
         'active_orders_count': active_orders_count,
@@ -900,7 +879,7 @@ def _render_profile_settings(request):
         elif action == 'save_address':
             address_id = (request.POST.get('address_id') or '').strip()
             if address_id:
-                editing_address = SavedAddress.objects.filter(pk=address_id, user=request.user).select_related('pickup_point__city').first()
+                editing_address = SavedAddress.objects.filter(pk=address_id, user=request.user).first()
                 if editing_address is None:
                     address_edit_mode = True
                     address_form = SavedAddressForm(request.POST)
@@ -933,8 +912,6 @@ def _render_profile_settings(request):
                     address.phone = address_form.cleaned_data['phone']
                     address.email = address_form.cleaned_data['email']
                     address.city = address_form.cleaned_data['city']
-                    address.delivery_type = address_form.cleaned_data['delivery_type']
-                    address.pickup_point = address_form.cleaned_data['pickup_point']
                     address.address = address_form.cleaned_data['address']
                     address.comment = address_form.cleaned_data['comment']
                     has_other_addresses = SavedAddress.objects.filter(user=request.user).exclude(pk=address.pk).exists()
@@ -1149,7 +1126,7 @@ def _render_profile_settings(request):
             editing_address = SavedAddress.objects.filter(
                 pk=edit_address_id,
                 user=request.user,
-            ).select_related('pickup_point__city').first()
+            ).first()
             if editing_address:
                 address_edit_mode = True
                 address_form = SavedAddressForm(initial=_saved_address_initial(editing_address))

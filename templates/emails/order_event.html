@@ -23,8 +23,9 @@
         </div>
       </div>
       <div style="margin-top:20px;font-size:14px;line-height:1.7;color:#cbd5e1;">
-        <div>Доставка: {{ order.get_delivery_type_display }}</div>
+        <div>Доставка: {{ order.public_delivery_label }}</div>
         <div>Оплата: {{ order.get_payment_method_display }}</div>
+        <div>Канал связи: {{ order.get_contact_channel_display }}{% if order.contact_handle %} — {{ order.contact_handle }}{% endif %}</div>
         {% if order_url %}<div style="margin-top:10px;"><a href="{{ order_url }}" style="color:#67e8f9;text-decoration:none;">Открыть заказ</a></div>{% endif %}
       </div>
       {% if shop_email or shop_phone %}
