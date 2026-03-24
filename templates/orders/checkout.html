@@ -10,12 +10,18 @@
     step: {{ checkout_step|default:1 }},
     maxStep: 5,
     recipientSame: {% if form.recipient_is_customer.value or not form.is_bound %}true{% else %}false{% endif %},
-    managerPayment: 'manager_payment',
     selectedPayment: '{% firstof form.payment_method.value form.payment_method.field.initial %}',
+    selectedDelivery: '{% firstof form.delivery_type.value form.delivery_type.field.initial %}',
+    selectedContactChannel: '{% firstof form.contact_channel.value form.contact_channel.field.initial %}',
+    addressRequired: false,
+    updateAddressRequirement() {
+      this.addressRequired = ['cdek_courier', 'city_delivery'].includes(this.selectedDelivery);
+    },
     scrollTop() { window.scrollTo({ top: 0, behavior: 'smooth' }); },
     nextStep() { if (this.step < this.maxStep) { this.step += 1; this.scrollTop(); } },
     prevStep() { if (this.step > 1) { this.step -= 1; this.scrollTop(); } }
   }"
+  x-init="updateAddressRequirement()"
 >
   <nav class="mb-6">
     <a href="{% url 'catalog:cart' %}" class="flex items-center gap-1 text-sm text-gray-400 hover:text-accent">
@@ -25,10 +31,10 @@
   </nav>
 
   <div class="mb-8">
-    <p class="text-xs uppercase tracking-[0.24em] text-accent/80">Checkout</p>
-    <h1 class="mt-2 text-3xl font-semibold text-white">Оформление заказа</h1>
+    <p class="text-xs uppercase tracking-[0.24em] text-accent/80">Lead Checkout</p>
+    <h1 class="mt-2 text-3xl font-semibold text-white">Оставьте заявку на покупку</h1>
     <p class="mt-2 max-w-3xl text-sm text-gray-400">
-      Заказ можно оформить без регистрации. Для статусов и сервисных писем используем email из заказа, а телефон нужен для связи и важных обновлений.
+      Менеджер проверит наличие, доставку и итоговую сумму, затем свяжется с вами в течение дня. Сейчас оплачивать ничего не нужно.
     </p>
   </div>
 
@@ -48,7 +54,7 @@
       </button>
       <button type="button" @click="step = 2; scrollTop()" :class="step === 2 ? 'border-accent bg-accent/10 text-white' : 'border-white/10 bg-dark-800/70 text-gray-400'" class="rounded-2xl border px-4 py-3 text-left transition">
         <span class="block text-xs uppercase tracking-[0.2em]">Шаг 2</span>
-        <span class="mt-1 block text-sm font-semibold">Доставка</span>
+        <span class="mt-1 block text-sm font-semibold">Получение</span>
       </button>
       <button type="button" @click="step = 3; scrollTop()" :class="step === 3 ? 'border-accent bg-accent/10 text-white' : 'border-white/10 bg-dark-800/70 text-gray-400'" class="rounded-2xl border px-4 py-3 text-left transition">
         <span class="block text-xs uppercase tracking-[0.2em]">Шаг 3</span>
@@ -75,7 +81,7 @@
           <div class="mb-4 flex items-center justify-between gap-4">
             <div>
               <p class="text-xs uppercase tracking-[0.24em] text-accent/80">Шаг 1</p>
-              <h2 class="mt-1 text-xl font-semibold text-white">Контакты покупателя</h2>
+              <h2 class="mt-1 text-xl font-semibold text-white">Как с вами связаться</h2>
             </div>
             {% if not is_authenticated_checkout %}
               <a href="{% url 'accounts:login' %}?next={% url 'orders:checkout' %}" class="text-sm text-accent hover:text-accent-hover">Войти в кабинет</a>
@@ -102,23 +108,55 @@
               {% if form.phone.errors %}<p class="mt-1 text-sm text-red-400">{{ form.phone.errors.0 }}</p>{% endif %}
             </div>
             <div>
-              <label for="{{ form.email.id_for_label }}" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.email.label }} *</label>
+              <label for="{{ form.email.id_for_label }}" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.email.label }}</label>
               {{ form.email }}
               {% if form.email.errors %}<p class="mt-1 text-sm text-red-400">{{ form.email.errors.0 }}</p>{% endif %}
-              <p class="mt-2 text-xs text-gray-500">На этот адрес отправим письмо о заказе и ссылку для сохранения заказа в кабинете.</p>
+              <p class="mt-2 text-xs text-gray-500">Укажите email, если хотите получить письмо с подтверждением заказа.</p>
             </div>
+          </div>
+
+          <div class="mt-6">
+            <p class="mb-3 text-sm font-medium text-gray-200">{{ form.contact_channel.label }} *</p>
+            <div class="grid gap-3 md:grid-cols-2">
+              {% for value, label in form.contact_channel.field.choices %}
+                <label :class="selectedContactChannel === '{{ value }}' ? 'border-accent bg-accent/10' : 'border-white/10 bg-white/5 hover:border-white/20'" class="flex cursor-pointer items-start gap-3 rounded-2xl border p-4 transition-colors">
+                  <input type="radio" name="contact_channel" value="{{ value }}" x-model="selectedContactChannel" class="mt-1 h-4 w-4 border-gray-600 bg-dark-700 text-accent focus:ring-accent focus:ring-offset-0" {% if form.contact_channel.value|default:form.contact_channel.field.initial == value %}checked{% endif %}>
+                  <span class="block">
+                    <span class="block text-sm font-semibold text-white">{{ label }}</span>
+                    <span class="mt-1 block text-sm text-gray-400">
+                      {% if value == 'call' %}
+                        Позвоним по указанному телефону после проверки заказа.
+                      {% elif value == 'email' %}
+                        Напишем письмо с итогами проверки и следующими шагами.
+                      {% else %}
+                        Напишем в удобный для вас мессенджер после проверки деталей.
+                      {% endif %}
+                    </span>
+                  </span>
+                </label>
+              {% endfor %}
+            </div>
+            {% if form.contact_channel.errors %}<p class="mt-3 text-sm text-red-400">{{ form.contact_channel.errors.0 }}</p>{% endif %}
+          </div>
+
+          <div x-show="['telegram', 'whatsapp'].includes(selectedContactChannel)" x-cloak class="mt-5">
+            <label for="{{ form.contact_handle.id_for_label }}" class="mb-1.5 block text-sm font-medium text-gray-200">
+              {% verbatim %}<span x-text="selectedContactChannel === 'telegram' ? 'Telegram' : 'WhatsApp'"></span>{% endverbatim %} *
+            </label>
+            {{ form.contact_handle }}
+            {% if form.contact_handle.errors %}<p class="mt-1 text-sm text-red-400">{{ form.contact_handle.errors.0 }}</p>{% endif %}
           </div>
         </section>
 
         <section x-show="step === 2" x-cloak class="rounded-3xl border border-white/10 bg-dark-800/90 p-6">
           <div class="mb-4">
             <p class="text-xs uppercase tracking-[0.24em] text-accent/80">Шаг 2</p>
-            <h2 class="mt-1 text-xl font-semibold text-white">Доставка CDEK до ПВЗ</h2>
+            <h2 class="mt-1 text-xl font-semibold text-white">Как получить заказ</h2>
           </div>
           {% if saved_addresses %}
             <div class="mb-5 rounded-2xl border border-white/10 bg-white/5 p-4">
               <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <p class="text-sm text-gray-300">Можно подставить сохранённый адрес, а затем при необходимости уточнить данные перед оформлением заказа.</p>
+                <p class="text-sm text-gray-300">Можно подставить сохранённый адрес, а затем при необходимости уточнить его с менеджером.</p>
                 <a href="{% url 'accounts:profile_settings' %}#delivery" class="text-sm text-accent hover:text-accent-hover">Управлять адресами</a>
               </div>
               <div class="mt-4 grid gap-3">
@@ -132,19 +170,40 @@
               </div>
             </div>
           {% endif %}
-          <div class="grid gap-4">
+
+          <div class="grid gap-3">
+            {% for value, label in form.delivery_type.field.choices %}
+              <label :class="selectedDelivery === '{{ value }}' ? 'border-accent bg-accent/10' : 'border-white/10 bg-white/5 hover:border-white/20'" class="flex cursor-pointer items-start gap-3 rounded-2xl border p-4 transition-colors">
+                <input type="radio" name="delivery_type" value="{{ value }}" x-model="selectedDelivery" @change="updateAddressRequirement()" class="mt-1 h-4 w-4 border-gray-600 bg-dark-700 text-accent focus:ring-accent focus:ring-offset-0" {% if form.delivery_type.value|default:form.delivery_type.field.initial == value %}checked{% endif %}>
+                <span class="block">
+                  <span class="block text-sm font-semibold text-white">{{ label }}</span>
+                  <span class="mt-1 block text-sm text-gray-400">
+                    {% if value == 'pickup' %}
+                      Заберёте заказ сами после согласования с менеджером.
+                    {% elif value == 'cdek_pvz' %}
+                      Подберём ПВЗ и уточним детали после подтверждения заказа.
+                    {% elif value == 'cdek_courier' %}
+                      Нужен адрес, чтобы менеджер мог быстро уточнить доставку.
+                    {% else %}
+                      Менеджер уточнит детали маршрута и итоговую стоимость доставки.
+                    {% endif %}
+                  </span>
+                </span>
+              </label>
+            {% endfor %}
+          </div>
+          {% if form.delivery_type.errors %}<p class="mt-3 text-sm text-red-400">{{ form.delivery_type.errors.0 }}</p>{% endif %}
+
+          <div class="mt-5 grid gap-4">
             <div>
               <label for="{{ form.city_text.id_for_label }}" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.city_text.label }} *</label>
               {{ form.city_text }}
               {% if form.city_text.errors %}<p class="mt-1 text-sm text-red-400">{{ form.city_text.errors.0 }}</p>{% endif %}
             </div>
-            <div>
+            <div x-show="addressRequired" x-cloak>
               <label for="{{ form.address_line.id_for_label }}" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.address_line.label }} *</label>
               {{ form.address_line }}
               {% if form.address_line.errors %}<p class="mt-1 text-sm text-red-400">{{ form.address_line.errors.0 }}</p>{% endif %}
-            </div>
-            <div class="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-gray-300">
-              Если указанный ПВЗ не будет найден у CDEK, отправим заказ в ближайший доступный пункт выдачи.
             </div>
             <div>
               <label for="{{ form.delivery_comment.id_for_label }}" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.delivery_comment.label }}</label>
@@ -163,7 +222,7 @@
             <input type="checkbox" name="recipient_is_customer" id="{{ form.recipient_is_customer.id_for_label }}" value="on" {% if form.recipient_is_customer.value %}checked{% endif %} @change="recipientSame = $event.target.checked" class="mt-1 h-4 w-4 rounded border-gray-600 bg-dark-700 text-accent focus:ring-accent focus:ring-offset-0">
             <span>
               <span class="block font-medium text-white">{{ form.recipient_is_customer.label }}</span>
-              <span class="mt-1 block text-gray-400">Если заказ получает другой человек, снимите галочку и укажите его контакты.</span>
+              <span class="mt-1 block text-gray-400">Если заказ будет получать другой человек, укажите его контакты.</span>
             </span>
           </label>
 
@@ -187,95 +246,36 @@
         <section x-show="step === 4" x-cloak class="rounded-3xl border border-white/10 bg-dark-800/90 p-6">
           <div class="mb-4">
             <p class="text-xs uppercase tracking-[0.24em] text-accent/80">Шаг 4</p>
-            <h2 class="mt-1 text-xl font-semibold text-white">Оплата</h2>
+            <h2 class="mt-1 text-xl font-semibold text-white">Как вам удобнее оплатить после подтверждения</h2>
           </div>
-          {% with selected_payment=form.payment_method.value|default:form.payment_method.field.initial %}
-            <div class="grid gap-3">
-              {% for value, label in form.payment_method.field.choices %}
-                <label class="flex cursor-pointer items-start gap-3 rounded-2xl border p-4 transition-colors {% if selected_payment == value %}border-accent bg-accent/10{% else %}border-white/10 bg-white/5 hover:border-white/20{% endif %}">
-                  <input type="radio" name="payment_method" value="{{ value }}" x-model="selectedPayment" class="mt-1 h-4 w-4 border-gray-600 bg-dark-700 text-accent focus:ring-accent focus:ring-offset-0" {% if selected_payment == value %}checked{% endif %}>
-                  <span class="block">
-                    <span class="block text-sm font-semibold text-white">{{ label }}</span>
-                    <span class="mt-1 block text-sm text-gray-400">
-                      {% if value == 'bank_card' %}
-                        После оформления покажем реквизиты карты для оплаты заказа.
-                      {% elif value == 'sbp' %}
-                        После оформления покажем номер для перевода по СБП.
-                      {% else %}
-                        Для оплаты от юридического лица менеджер свяжется с вами, согласует документы и порядок расчёта.
-                      {% endif %}
-                    </span>
+          <div class="grid gap-3">
+            {% for value, label in form.payment_method.field.choices %}
+              <label :class="selectedPayment === '{{ value }}' ? 'border-accent bg-accent/10' : 'border-white/10 bg-white/5 hover:border-white/20'" class="flex cursor-pointer items-start gap-3 rounded-2xl border p-4 transition-colors">
+                <input type="radio" name="payment_method" value="{{ value }}" x-model="selectedPayment" class="mt-1 h-4 w-4 border-gray-600 bg-dark-700 text-accent focus:ring-accent focus:ring-offset-0" {% if form.payment_method.value|default:form.payment_method.field.initial == value %}checked{% endif %}>
+                <span class="block">
+                  <span class="block text-sm font-semibold text-white">{{ label }}</span>
+                  <span class="mt-1 block text-sm text-gray-400">
+                    {% if value == 'sbp' %}
+                      После подтверждения менеджер пришлёт точную сумму и реквизиты для оплаты по СБП.
+                    {% elif value == 'bank_transfer' %}
+                      После подтверждения менеджер пришлёт реквизиты для банковского перевода.
+                    {% elif value == 'cash_on_delivery' %}
+                      Подходит для самовывоза, порядок расчёта подтвердим заранее.
+                    {% else %}
+                      Подготовим счёт и документы после подтверждения заказа.
+                    {% endif %}
                   </span>
-                </label>
-              {% endfor %}
-            </div>
-          {% endwith %}
-          {% if form.payment_method.errors %}<p class="mt-3 text-sm text-red-400">{{ form.payment_method.errors.0 }}</p>{% endif %}
-
-          <div x-show="selectedPayment === managerPayment" x-cloak class="mt-5 rounded-2xl border border-white/10 bg-dark-900/50 p-5">
-            <div class="mb-4">
-              <p class="text-xs uppercase tracking-[0.2em] text-accent/80">Реквизиты клиента</p>
-              <p class="mt-2 text-sm text-gray-400">Эти данные попадут в менеджерскую сделку и помогут быстрее подготовить счёт и документы.</p>
-            </div>
-            <div class="grid gap-4 md:grid-cols-2">
-              <div>
-                <label for="{{ form.business_company_name.id_for_label }}" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.business_company_name.label }}</label>
-                {{ form.business_company_name }}
-                {% if form.business_company_name.errors %}<p class="mt-1 text-sm text-red-400">{{ form.business_company_name.errors.0 }}</p>{% endif %}
-              </div>
-              <div>
-                <label for="{{ form.business_checking_account.id_for_label }}" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.business_checking_account.label }}</label>
-                {{ form.business_checking_account }}
-                {% if form.business_checking_account.errors %}<p class="mt-1 text-sm text-red-400">{{ form.business_checking_account.errors.0 }}</p>{% endif %}
-              </div>
-              <div>
-                <label for="{{ form.business_inn.id_for_label }}" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.business_inn.label }}</label>
-                {{ form.business_inn }}
-                {% if form.business_inn.errors %}<p class="mt-1 text-sm text-red-400">{{ form.business_inn.errors.0 }}</p>{% endif %}
-              </div>
-              <div>
-                <label for="{{ form.business_kpp.id_for_label }}" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.business_kpp.label }}</label>
-                {{ form.business_kpp }}
-                {% if form.business_kpp.errors %}<p class="mt-1 text-sm text-red-400">{{ form.business_kpp.errors.0 }}</p>{% endif %}
-              </div>
-              <div>
-                <label for="{{ form.business_bank_name.id_for_label }}" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.business_bank_name.label }}</label>
-                {{ form.business_bank_name }}
-                {% if form.business_bank_name.errors %}<p class="mt-1 text-sm text-red-400">{{ form.business_bank_name.errors.0 }}</p>{% endif %}
-              </div>
-              <div>
-                <label for="{{ form.business_bik.id_for_label }}" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.business_bik.label }}</label>
-                {{ form.business_bik }}
-                {% if form.business_bik.errors %}<p class="mt-1 text-sm text-red-400">{{ form.business_bik.errors.0 }}</p>{% endif %}
-              </div>
-              <div>
-                <label for="{{ form.business_correspondent_account.id_for_label }}" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.business_correspondent_account.label }}</label>
-                {{ form.business_correspondent_account }}
-                {% if form.business_correspondent_account.errors %}<p class="mt-1 text-sm text-red-400">{{ form.business_correspondent_account.errors.0 }}</p>{% endif %}
-              </div>
-              <div>
-                <label for="{{ form.business_phone.id_for_label }}" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.business_phone.label }}</label>
-                {{ form.business_phone }}
-                {% if form.business_phone.errors %}<p class="mt-1 text-sm text-red-400">{{ form.business_phone.errors.0 }}</p>{% endif %}
-              </div>
-              <div>
-                <label for="{{ form.business_telegram.id_for_label }}" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.business_telegram.label }}</label>
-                {{ form.business_telegram }}
-                {% if form.business_telegram.errors %}<p class="mt-1 text-sm text-red-400">{{ form.business_telegram.errors.0 }}</p>{% endif %}
-              </div>
-              <div>
-                <label for="{{ form.business_whatsapp.id_for_label }}" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.business_whatsapp.label }}</label>
-                {{ form.business_whatsapp }}
-                {% if form.business_whatsapp.errors %}<p class="mt-1 text-sm text-red-400">{{ form.business_whatsapp.errors.0 }}</p>{% endif %}
-              </div>
-            </div>
+                </span>
+              </label>
+            {% endfor %}
           </div>
+          {% if form.payment_method.errors %}<p class="mt-3 text-sm text-red-400">{{ form.payment_method.errors.0 }}</p>{% endif %}
         </section>
 
         <section x-show="step === 5" x-cloak class="rounded-3xl border border-white/10 bg-dark-800/90 p-6">
           <div class="mb-4">
             <p class="text-xs uppercase tracking-[0.24em] text-accent/80">Шаг 5</p>
-            <h2 class="mt-1 text-xl font-semibold text-white">Проверка заказа</h2>
+            <h2 class="mt-1 text-xl font-semibold text-white">Проверьте заявку</h2>
           </div>
           <div class="grid gap-6 md:grid-cols-2">
             <div class="rounded-2xl border border-white/10 bg-dark-900/40 p-4 text-sm text-gray-300">
@@ -283,12 +283,14 @@
               <p class="mt-3 text-white"><span x-text="document.getElementById('{{ form.first_name.id_for_label }}').value || 'Имя не указано'"></span> <span x-text="document.getElementById('{{ form.last_name.id_for_label }}').value"></span></p>
               <p class="mt-1" x-text="document.getElementById('id_phone').value || 'Телефон не указан'"></p>
               <p class="mt-1" x-text="document.getElementById('{{ form.email.id_for_label }}').value || 'Email не указан'"></p>
+              <p class="mt-1" x-text="selectedContactChannel === 'call' ? 'Канал связи: звонок' : (selectedContactChannel === 'email' ? 'Канал связи: email' : 'Канал связи: ' + selectedContactChannel)"></p>
+              <p class="mt-1" x-show="['telegram', 'whatsapp'].includes(selectedContactChannel)" x-text="document.getElementById('{{ form.contact_handle.id_for_label }}').value || 'Контакт в мессенджере не указан'"></p>
             </div>
             <div class="rounded-2xl border border-white/10 bg-dark-900/40 p-4 text-sm text-gray-300">
               <p class="text-xs uppercase tracking-[0.2em] text-gray-500">Получение</p>
-              <p class="mt-3 text-white">CDEK до ПВЗ</p>
+              <p class="mt-3 text-white" x-text="document.querySelector('input[name=delivery_type]:checked')?.parentElement.querySelector('.text-sm.font-semibold.text-white')?.textContent || 'Способ получения не выбран'"></p>
               <p class="mt-1" x-text="document.getElementById('{{ form.city_text.id_for_label }}').value || 'Город не указан'"></p>
-              <p class="mt-1 whitespace-pre-line" x-text="document.getElementById('{{ form.address_line.id_for_label }}').value || 'ПВЗ не указан'"></p>
+              <p class="mt-1 whitespace-pre-line" x-show="addressRequired" x-text="document.getElementById('{{ form.address_line.id_for_label }}').value || 'Адрес не указан'"></p>
             </div>
             <div class="rounded-2xl border border-white/10 bg-dark-900/40 p-4 text-sm text-gray-300">
               <p class="text-xs uppercase tracking-[0.2em] text-gray-500">Получатель</p>
@@ -303,34 +305,28 @@
               </template>
             </div>
             <div class="rounded-2xl border border-white/10 bg-dark-900/40 p-4 text-sm text-gray-300">
-              <p class="text-xs uppercase tracking-[0.2em] text-gray-500">Комментарий и промокод</p>
-              <div class="mt-3">
+              <p class="text-xs uppercase tracking-[0.2em] text-gray-500">Оплата</p>
+              <p class="mt-3 text-white" x-text="document.querySelector('input[name=payment_method]:checked')?.parentElement.querySelector('.text-sm.font-semibold.text-white')?.textContent || 'Способ оплаты не выбран'"></p>
+              <p class="mt-1 text-gray-400">Менеджер пришлёт реквизиты или счёт после подтверждения заказа.</p>
+            </div>
+          </div>
+
+          <details class="mt-5 rounded-2xl border border-white/10 bg-dark-900/50 p-4">
+            <summary class="cursor-pointer text-sm font-medium text-white">Дополнительно: комментарий и промокод</summary>
+            <div class="mt-4 grid gap-4">
+              <div>
                 <label for="{{ form.promo_code.id_for_label }}" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.promo_code.label }}</label>
                 {{ form.promo_code }}
                 {% if form.promo_code.errors %}<p class="mt-1 text-sm text-red-400">{{ form.promo_code.errors.0 }}</p>{% endif %}
               </div>
-              <div class="mt-4">
+              <div>
                 <label for="{{ form.comment.id_for_label }}" class="mb-1.5 block text-sm font-medium text-gray-200">{{ form.comment.label }}</label>
                 {{ form.comment }}
                 {% if form.comment.errors %}<p class="mt-1 text-sm text-red-400">{{ form.comment.errors.0 }}</p>{% endif %}
               </div>
             </div>
-            <div x-show="selectedPayment === managerPayment" x-cloak class="rounded-2xl border border-white/10 bg-dark-900/40 p-4 text-sm text-gray-300 md:col-span-2">
-              <p class="text-xs uppercase tracking-[0.2em] text-gray-500">Реквизиты юр. лица</p>
-              <div class="mt-3 grid gap-3 md:grid-cols-2">
-                <p><span class="text-gray-500">Организация:</span> <span x-text="document.getElementById('{{ form.business_company_name.id_for_label }}').value || '—'"></span></p>
-                <p><span class="text-gray-500">Номер счёта:</span> <span x-text="document.getElementById('{{ form.business_checking_account.id_for_label }}').value || '—'"></span></p>
-                <p><span class="text-gray-500">ИНН:</span> <span x-text="document.getElementById('{{ form.business_inn.id_for_label }}').value || '—'"></span></p>
-                <p><span class="text-gray-500">КПП:</span> <span x-text="document.getElementById('{{ form.business_kpp.id_for_label }}').value || '—'"></span></p>
-                <p><span class="text-gray-500">Банк:</span> <span x-text="document.getElementById('{{ form.business_bank_name.id_for_label }}').value || '—'"></span></p>
-                <p><span class="text-gray-500">БИК:</span> <span x-text="document.getElementById('{{ form.business_bik.id_for_label }}').value || '—'"></span></p>
-                <p><span class="text-gray-500">Корр. счёт банка:</span> <span x-text="document.getElementById('{{ form.business_correspondent_account.id_for_label }}').value || '—'"></span></p>
-                <p><span class="text-gray-500">Телефон:</span> <span x-text="document.getElementById('{{ form.business_phone.id_for_label }}').value || document.getElementById('id_phone').value || '—'"></span></p>
-                <p><span class="text-gray-500">Telegram:</span> <span x-text="document.getElementById('{{ form.business_telegram.id_for_label }}').value || '—'"></span></p>
-                <p><span class="text-gray-500">WhatsApp:</span> <span x-text="document.getElementById('{{ form.business_whatsapp.id_for_label }}').value || '—'"></span></p>
-              </div>
-            </div>
-          </div>
+          </details>
+
           <div class="mt-5 space-y-3 rounded-2xl border border-white/10 bg-dark-900/60 p-4">
             <label for="id_agree_personal_data_checkout" class="flex items-start gap-3 text-sm text-gray-300">
               <input type="checkbox" name="agree_personal_data" id="id_agree_personal_data_checkout" required {% if form.agree_personal_data.value %}checked{% endif %} class="mt-1 h-4 w-4 rounded border-gray-600 bg-dark-700 text-accent focus:ring-accent focus:ring-offset-0">
@@ -362,7 +358,7 @@
             Продолжить
           </button>
           <button type="submit" x-show="step === maxStep" x-cloak class="rounded-full bg-accent px-6 py-3 text-sm font-bold uppercase tracking-wide text-dark-900 transition hover:bg-accent-hover">
-            Оформить заказ
+            Отправить заявку
           </button>
         </div>
 
@@ -375,7 +371,7 @@
               Далее
             </button>
             <button type="submit" x-show="step === maxStep" x-cloak class="flex-1 rounded-full bg-accent px-5 py-3 text-sm font-bold uppercase tracking-wide text-dark-900 transition hover:bg-accent-hover">
-              Оформить заказ
+              Отправить заявку
             </button>
           </div>
         </div>
@@ -402,32 +398,20 @@
               <span>{{ cart_total|price_format }} ₽</span>
             </div>
             <div class="flex items-center justify-between text-gray-300">
-              <span>К оплате за товар</span>
+              <span>Итого</span>
               <span>{{ online_total|price_format }} ₽</span>
-            </div>
-            <div class="flex items-center justify-between text-gray-300">
-              <span>Доставка CDEK при получении</span>
-              <span>{{ delivery_cost|price_format }} ₽</span>
-            </div>
-            <div class="flex items-center justify-between text-gray-400">
-              <span>Вес / объём отправки</span>
-              <span>{{ shipping_weight_kg }} кг / {{ shipping_volume_liters }} л</span>
-            </div>
-            <div class="flex items-center justify-between text-base font-semibold text-white">
-              <span>Полная сумма</span>
-              <span>{{ grand_total|price_format }} ₽</span>
             </div>
           </div>
         </section>
 
         <section class="rounded-3xl border border-white/10 bg-dark-800/90 p-6">
-          <p class="text-sm text-gray-300">После оформления заказа откроются инструкции по выбранному способу оплаты. Доставка CDEK оплачивается отдельно в ПВЗ при получении.</p>
+          <p class="text-sm text-gray-300">После отправки заявки заказ попадёт менеджеру. Мы свяжемся с вами в течение дня и только потом согласуем оплату и доставку.</p>
           {% if not is_authenticated_checkout %}
             <div class="mt-4 flex flex-col gap-3">
               <a href="{% url 'accounts:login' %}?next={% url 'orders:checkout' %}" class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm text-white transition hover:border-white/20 hover:bg-white/10">
                 Войти в кабинет
               </a>
-              <p class="text-center text-xs text-gray-500">Покупка доступна и без регистрации.</p>
+              <p class="text-center text-xs text-gray-500">Отправить заявку можно и без регистрации.</p>
             </div>
           {% endif %}
         </section>

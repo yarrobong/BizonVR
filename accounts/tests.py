@@ -15,7 +15,7 @@ from django.utils.http import urlsafe_base64_encode
 
 from config.env import parse_bool_value
 from config.legal_docs import LEGAL_BUNDLE_VERSION
-from catalog.models import Category, City, PickupPoint, Product
+from catalog.models import Category, Product
 from orders.models import Order
 
 from .models import (
@@ -980,12 +980,6 @@ class SavedAddressAndCheckoutTest(TestCase):
             phone='9991234567',
             contact_name='Иван Иванов',
         )
-        self.city = City.objects.create(name='Екатеринбург', slug='ekb')
-        self.pickup_point = PickupPoint.objects.create(
-            city=self.city,
-            name='Пункт выдачи',
-            address='ул. Мира, 1',
-        )
         self.category = Category.objects.create(name='Тест', slug='test-address')
         self.product = Product.objects.create(
             category=self.category,
@@ -1003,8 +997,7 @@ class SavedAddressAndCheckoutTest(TestCase):
             'phone': '+7 (999) 123-45-67',
             'email': 'user@example.com',
             'city': 'Екатеринбург',
-            'delivery_type': 'cdek_pvz',
-            'address': 'ПВЗ CDEK, ул. Мира, 1',
+            'address': 'ул. Мира, 1',
             'comment': 'Позвонить заранее',
             'is_default': 'on',
         }
@@ -1039,7 +1032,6 @@ class SavedAddressAndCheckoutTest(TestCase):
             phone='9991234567',
             email='old@example.com',
             city='Екатеринбург',
-            delivery_type='cdek_pvz',
             address='Старый адрес',
             is_default=True,
         )
@@ -1066,7 +1058,6 @@ class SavedAddressAndCheckoutTest(TestCase):
             recipient_name='Иван Иванов',
             phone='9991234567',
             city='Екатеринбург',
-            delivery_type='cdek_pvz',
             address='Домашний адрес',
             is_default=True,
         )
@@ -1076,7 +1067,6 @@ class SavedAddressAndCheckoutTest(TestCase):
             recipient_name='Иван Иванов',
             phone='9991234567',
             city='Екатеринбург',
-            delivery_type='cdek_pvz',
             address='Офисный адрес',
             is_default=False,
         )
@@ -1098,7 +1088,6 @@ class SavedAddressAndCheckoutTest(TestCase):
             recipient_name='Иван Иванов',
             phone='9991234567',
             city='Екатеринбург',
-            delivery_type='cdek_pvz',
             address='Домашний адрес',
             is_default=True,
         )
@@ -1108,7 +1097,6 @@ class SavedAddressAndCheckoutTest(TestCase):
             recipient_name='Иван Иванов',
             phone='9991234567',
             city='Екатеринбург',
-            delivery_type='cdek_pvz',
             address='Офисный адрес',
             is_default=False,
         )
@@ -1132,7 +1120,6 @@ class SavedAddressAndCheckoutTest(TestCase):
             recipient_name='Другой пользователь',
             phone='9990000000',
             city='Екатеринбург',
-            delivery_type='cdek_pvz',
             address='Чужой адрес',
             is_default=True,
         )
@@ -1162,8 +1149,7 @@ class SavedAddressAndCheckoutTest(TestCase):
             phone='9991234567',
             email='delivery@example.com',
             city='Екатеринбург',
-            delivery_type='cdek_pvz',
-            address='ПВЗ CDEK, ул. Мира, 1',
+            address='ул. Мира, 1',
             comment='Комментарий к доставке',
             is_default=True,
         )
@@ -1173,14 +1159,14 @@ class SavedAddressAndCheckoutTest(TestCase):
         resp = self.client.get(reverse('orders:checkout'))
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.context['selected_saved_address_id'], SavedAddress.objects.get(user=self.user).pk)
-        self.assertEqual(resp.context['form'].initial['delivery_type'], 'cdek_pvz')
         self.assertEqual(resp.context['form'].initial['first_name'], 'Петров')
         self.assertEqual(resp.context['form'].initial['last_name'], 'Петр')
         self.assertEqual(resp.context['form'].initial['city_text'], 'Екатеринбург')
-        self.assertEqual(resp.context['form'].initial['address_line'], 'ПВЗ CDEK, ул. Мира, 1')
+        self.assertEqual(resp.context['form'].initial['address_line'], 'ул. Мира, 1')
         self.assertEqual(resp.context['form'].initial['email'], 'delivery@example.com')
         self.assertEqual(resp.context['form'].initial['recipient_name'], 'Петров Петр')
         self.assertContains(resp, 'Комментарий к доставке')
+        self.assertNotContains(resp, 'CDEK')
 
     def test_checkout_prefills_verified_account_email_when_no_saved_address(self):
         self.user.email = 'client@example.com'
@@ -1208,7 +1194,7 @@ class SavedAddressAndCheckoutTest(TestCase):
             'phone': '+7 999 123 45 67',
             'email': 'client@example.com',
             'city_text': 'Екатеринбург',
-            'address_line': 'ПВЗ CDEK, ул. Мира, 1',
+            'address_line': 'ул. Мира, 1',
             'delivery_comment': '',
             'comment': '',
             'recipient_is_customer': 'on',

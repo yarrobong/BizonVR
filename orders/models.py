@@ -114,6 +114,16 @@ class Order(models.Model):
     PAYMENT_METHOD_MANAGER_PAYMENT = 'manager_payment'
     PAYMENT_METHOD_ONLINE = 'online_payment'
     PAYMENT_METHOD_CASH_ON_DELIVERY = 'cash_on_delivery'
+    CONTACT_CHANNEL_CALL = 'call'
+    CONTACT_CHANNEL_TELEGRAM = 'telegram'
+    CONTACT_CHANNEL_WHATSAPP = 'whatsapp'
+    CONTACT_CHANNEL_EMAIL = 'email'
+    CONTACT_CHANNEL_CHOICES = [
+        (CONTACT_CHANNEL_CALL, 'Звонок'),
+        (CONTACT_CHANNEL_TELEGRAM, 'Telegram'),
+        (CONTACT_CHANNEL_WHATSAPP, 'WhatsApp'),
+        (CONTACT_CHANNEL_EMAIL, 'Email'),
+    ]
     STATUS_NEW = 'new'
     STATUS_CONFIRMED = 'confirmed'
     STATUS_PAID = STATUS_CONFIRMED
@@ -175,15 +185,15 @@ class Order(models.Model):
     PAYMENT_METHOD_BANK_TRANSFER = 'bank_transfer'
     PAYMENT_METHOD_INVOICE = 'invoice'
     PUBLIC_PAYMENT_METHOD_CHOICES = [
-        (PAYMENT_METHOD_BANK_CARD, 'Банковская карта'),
-        (PAYMENT_METHOD_SBP, 'СБП'),
-        (PAYMENT_METHOD_MANAGER_PAYMENT, 'Для юридических лиц через менеджера'),
+        (PAYMENT_METHOD_SBP, 'СБП после подтверждения менеджером'),
+        (PAYMENT_METHOD_BANK_TRANSFER, 'Перевод по реквизитам после подтверждения'),
+        (PAYMENT_METHOD_CASH_ON_DELIVERY, 'Наличные при самовывозе'),
+        (PAYMENT_METHOD_INVOICE, 'Счёт для юрлица'),
     ]
     LEGACY_PAYMENT_METHOD_CHOICES = [
+        (PAYMENT_METHOD_BANK_CARD, 'Перевод на карту (архивный способ)'),
+        (PAYMENT_METHOD_MANAGER_PAYMENT, 'Через менеджера для юрлиц (архивный способ)'),
         (PAYMENT_METHOD_ONLINE, 'Банковская карта (архивный способ)'),
-        (PAYMENT_METHOD_CASH_ON_DELIVERY, 'Расчёт с менеджером (архивный способ)'),
-        (PAYMENT_METHOD_BANK_TRANSFER, 'Перевод по реквизитам (архивный способ)'),
-        (PAYMENT_METHOD_INVOICE, 'Через менеджера для юрлиц (архивный способ)'),
     ]
     PAYMENT_METHOD_CHOICES = PUBLIC_PAYMENT_METHOD_CHOICES + LEGACY_PAYMENT_METHOD_CHOICES
     PAYMENT_STATUS_UNPAID = 'unpaid'
@@ -218,7 +228,18 @@ class Order(models.Model):
         'Способ оплаты',
         max_length=32,
         choices=PAYMENT_METHOD_CHOICES,
-        default=PAYMENT_METHOD_BANK_CARD,
+        default=PAYMENT_METHOD_SBP,
+    )
+    contact_channel = models.CharField(
+        'Предпочтительный канал связи',
+        max_length=20,
+        choices=CONTACT_CHANNEL_CHOICES,
+        default=CONTACT_CHANNEL_CALL,
+    )
+    contact_handle = models.CharField(
+        'Контакт в выбранном канале',
+        max_length=150,
+        blank=True,
     )
     payment_status = models.CharField(
         'Статус оплаты',
@@ -279,20 +300,6 @@ class Order(models.Model):
         decimal_places=2,
         default=Decimal('0'),
     )
-    shipping_weight_kg = models.DecimalField(
-        'Вес отправки, кг',
-        max_digits=9,
-        decimal_places=3,
-        default=Decimal('0'),
-    )
-    shipping_volume_cm3 = models.PositiveIntegerField(
-        'Объём отправки, см3',
-        default=0,
-    )
-    cdek_fallback_to_nearest = models.BooleanField(
-        'Если ПВЗ не найден, отправить в ближайший',
-        default=True,
-    )
     comment = models.TextField('Комментарий', blank=True)
     guest_access_token = models.CharField('Токен гостевого доступа', max_length=64, blank=True, db_index=True)
     guest_access_expires_at = models.DateTimeField('Гостевой доступ действует до', null=True, blank=True)
@@ -337,6 +344,24 @@ class Order(models.Model):
     @property
     def display_address(self):
         return self.address_line or self.address
+
+    @property
+    def public_delivery_label(self):
+        if self.delivery_type == self.DELIVERY_PICKUP:
+            return 'Самовывоз'
+        if self.delivery_type == self.DELIVERY_CDEK_PVZ:
+            return 'CDEK до ПВЗ'
+        if self.delivery_type == self.DELIVERY_CDEK_COURIER:
+            return 'CDEK курьер'
+        if self.delivery_type in {self.DELIVERY_COURIER, self.DELIVERY_CITY}:
+            return 'Доставка по адресу'
+        if self.delivery_type == self.DELIVERY_POST:
+            return 'Почтовая доставка'
+        if self.delivery_type == self.DELIVERY_OTHER_TRANSPORT:
+            return 'Другая транспортная компания'
+        if self.delivery_type:
+            return 'Доставка'
+        return 'Способ доставки уточняется'
 
     def refresh_guest_access(self, *, ttl_days=30):
         self.guest_access_token = secrets.token_urlsafe(24)

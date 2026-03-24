@@ -394,8 +394,6 @@
                         </div>
                       </div>
 
-                      {{ address_form.delivery_type }}
-
                       <div>
                         <label for="{{ address_form.city.id_for_label }}" class="block text-sm text-gray-300">{{ address_form.city.label }}</label>
                         <div class="mt-2">{{ address_form.city }}</div>
@@ -407,7 +405,6 @@
                         <div class="mt-2">{{ address_form.address }}</div>
                         {% if address_form.address.errors %}<p class="mt-1 text-sm text-red-400">{{ address_form.address.errors.0 }}</p>{% endif %}
                       </div>
-                      <p class="text-sm text-gray-400">Если ПВЗ не будет найден у CDEK, отправим заказ в ближайший доступный пункт.</p>
                       <div>
                         <label for="{{ address_form.comment.id_for_label }}" class="block text-sm text-gray-300">{{ address_form.comment.label }}</label>
                         <div class="mt-2">{{ address_form.comment }}</div>

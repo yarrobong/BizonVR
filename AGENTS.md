@@ -4,7 +4,7 @@
 - BizonVR — Django-магазин VR-оборудования и VR-аттракционов.
 - Основной стек: Django 6, PostgreSQL, Tailwind CSS, серверные Django templates, немного JS, WhiteNoise.
 - Основные бизнес-потоки: каталог -> корзина -> заказ -> оплата по СБП, банковской карте или через менеджера для юрлиц.
-- Вторичные потоки: вход по SMS-коду, избранное, сравнение, шаринг корзины, заявки с лендингов и страницы контактов.
+- Вторичные потоки: вход по SMS-коду, избранное, шаринг корзины, заявки с лендингов и страницы контактов.
 
 ## Быстрый старт для агента
 - Сначала прочитай [README.md](/Users/Yaroslav/Documents/dev/BizonVR/README.md), [config/settings.py](/Users/Yaroslav/Documents/dev/BizonVR/config/settings.py) и [config/urls.py](/Users/Yaroslav/Documents/dev/BizonVR/config/urls.py).
@@ -14,7 +14,7 @@
 
 ## Структура репозитория
 - [config/](/Users/Yaroslav/Documents/dev/BizonVR/config) — настройки проекта, корневые URL, статические и legal views.
-- [catalog/](/Users/Yaroslav/Documents/dev/BizonVR/catalog) — основной каталог, остатки, корзина, избранное, сравнение, рекомендации.
+- [catalog/](/Users/Yaroslav/Documents/dev/BizonVR/catalog) — основной каталог, остатки, корзина, избранное, рекомендации.
 - [orders/](/Users/Yaroslav/Documents/dev/BizonVR/orders) — checkout, заказы, промокоды, legacy purchase requests.
 - [payments/](/Users/Yaroslav/Documents/dev/BizonVR/payments) — инструкции по оплате заказа, платёжные данные и webhook-процессинг.
 - [accounts/](/Users/Yaroslav/Documents/dev/BizonVR/accounts) — вход по SMS, профиль, баланс, сохранённые адреса.
@@ -30,8 +30,8 @@
 ## Приложения и source of truth
 
 ### catalog
-- Главные сущности: `CatalogSection`, `Category`, `Product`, `ProductVariant`, `ProductImage`, `ProductCharacteristic`, `ProductBundle`, `City`, `PickupPoint`, `ProductStock`, `CartItem`, `CartShare`, `Favorite`, `CompareItem`, `Service`, `ContactRequest`, `CallbackRequest`.
-- Корзина, избранное и сравнение работают по двум режимам:
+- Главные сущности: `CatalogSection`, `Category`, `Product`, `ProductVariant`, `ProductImage`, `ProductCharacteristic`, `ProductBundle`, `City`, `PickupPoint`, `ProductStock`, `CartItem`, `CartShare`, `Favorite`, `Service`, `ContactRequest`, `CallbackRequest`.
+- Корзина и избранное работают по двум режимам:
 - Анонимный пользователь: состояние хранится в сессии.
 - Авторизованный пользователь: состояние хранится в БД.
 - Ключевой файл для этого поведения: [catalog/cart_services.py](/Users/Yaroslav/Documents/dev/BizonVR/catalog/cart_services.py).
@@ -66,7 +66,6 @@
 - `/catalog/` -> [catalog/views/products.py](/Users/Yaroslav/Documents/dev/BizonVR/catalog/views/products.py)
 - `/catalog/cart/*` -> [catalog/views/cart.py](/Users/Yaroslav/Documents/dev/BizonVR/catalog/views/cart.py), [catalog/views/cart_mutations.py](/Users/Yaroslav/Documents/dev/BizonVR/catalog/views/cart_mutations.py), [catalog/views/cart_share.py](/Users/Yaroslav/Documents/dev/BizonVR/catalog/views/cart_share.py)
 - `/catalog/favorites/` -> [catalog/views/favorites.py](/Users/Yaroslav/Documents/dev/BizonVR/catalog/views/favorites.py)
-- `/catalog/compare/` -> [catalog/views/compare.py](/Users/Yaroslav/Documents/dev/BizonVR/catalog/views/compare.py)
 - `/orders/checkout/` -> [orders/views/checkout.py](/Users/Yaroslav/Documents/dev/BizonVR/orders/views/checkout.py)
 - `/payments/order/<id>/create/` -> [payments/views/checkout.py](/Users/Yaroslav/Documents/dev/BizonVR/payments/views/checkout.py)
 - `/accounts/*` -> [accounts/views/auth.py](/Users/Yaroslav/Documents/dev/BizonVR/accounts/views/auth.py), [accounts/views/profile.py](/Users/Yaroslav/Documents/dev/BizonVR/accounts/views/profile.py), [accounts/views/registration.py](/Users/Yaroslav/Documents/dev/BizonVR/accounts/views/registration.py)

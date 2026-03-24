@@ -484,7 +484,7 @@
         <div class="text-[10px] text-gray-500 uppercase tracking-widest mb-2">BizonVR Media</div>
         <h2 class="text-2xl md:text-4xl font-black text-white leading-tight">
           Мы в соцсетях
-          <span class="text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-white to-pink-300">Telegram / YouTube / TikTok</span>
+          <span class="text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-white to-pink-300">Telegram / YouTube / TikTok / Avito</span>
         </h2>
       </div>
       <p class="text-sm text-gray-300 max-w-xl md:text-right">
@@ -492,7 +492,7 @@
       </p>
     </div>
 
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
       {% if site_contact_telegram %}
       <a href="{{ site_contact_telegram }}" target="_blank" rel="noopener noreferrer" class="group relative overflow-hidden rounded-2xl border border-cyan-300/30 bg-gradient-to-br from-cyan-400/20 via-sky-400/10 to-dark-900 p-5 md:p-6 shadow-[0_0_0_1px_rgba(255,255,255,.03)] hover:-translate-y-1 hover:shadow-[0_14px_40px_rgba(34,211,238,.18)] transition-all duration-300">
         <div class="absolute -top-8 -right-8 w-24 h-24 rounded-full bg-cyan-300/30 blur-2xl group-hover:scale-125 transition-transform duration-500"></div>
@@ -571,6 +571,33 @@
         <div class="text-xs uppercase tracking-[0.2em] text-gray-400 mb-2">TikTok</div>
         <h3 class="text-xl font-bold text-white mb-2">Короткие видео</h3>
         <p class="text-sm text-gray-300 leading-relaxed">Добавьте `SITE_TIKTOK_URL`, и карточка станет кликабельной.</p>
+      </div>
+      {% endif %}
+
+      {% if site_avito_url %}
+      <a href="{{ site_avito_url }}" target="_blank" rel="noopener noreferrer" class="group relative overflow-hidden rounded-2xl border border-amber-300/30 bg-gradient-to-br from-amber-400/20 via-orange-400/10 to-dark-900 p-5 md:p-6 shadow-[0_0_0_1px_rgba(255,255,255,.03)] hover:-translate-y-1 hover:shadow-[0_14px_40px_rgba(251,191,36,.2)] transition-all duration-300">
+        <div class="absolute -top-8 -right-8 w-24 h-24 rounded-full bg-amber-300/30 blur-2xl group-hover:scale-125 transition-transform duration-500"></div>
+        <div class="relative">
+          <div class="w-11 h-11 rounded-xl bg-amber-300/20 border border-amber-200/30 flex items-center justify-center mb-4">
+            <i data-lucide="store" class="w-5 h-5 text-amber-100"></i>
+          </div>
+          <div class="text-xs uppercase tracking-[0.2em] text-amber-200/80 mb-2">Avito</div>
+          <h3 class="text-xl font-bold text-white mb-2">Профиль BizonVR</h3>
+          <p class="text-sm text-gray-200/90 leading-relaxed mb-5">Актуальные объявления, быстрый переход к предложениям и дополнительный канал связи.</p>
+          <div class="inline-flex items-center gap-2 text-sm font-semibold text-white">
+            <span class="px-3 py-1.5 rounded-full bg-white/10 border border-white/10 group-hover:bg-white/15 transition-colors">Открыть Avito</span>
+            <i data-lucide="arrow-up-right" class="w-4 h-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform"></i>
+          </div>
+        </div>
+      </a>
+      {% else %}
+      <div class="relative overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-5 md:p-6 opacity-70">
+        <div class="w-11 h-11 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center mb-4">
+          <i data-lucide="store" class="w-5 h-5 text-white"></i>
+        </div>
+        <div class="text-xs uppercase tracking-[0.2em] text-gray-400 mb-2">Avito</div>
+        <h3 class="text-xl font-bold text-white mb-2">Профиль BizonVR</h3>
+        <p class="text-sm text-gray-300 leading-relaxed">Добавьте `SITE_AVITO_URL`, и карточка станет кликабельной.</p>
       </div>
       {% endif %}
     </div>

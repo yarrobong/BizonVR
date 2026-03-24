@@ -465,6 +465,33 @@
     .header-nav a:hover::after {
       width: 100%;
     }
+
+    .header-icon-link {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 44px;
+      height: 44px;
+      border-radius: 9999px;
+      flex: 0 0 44px;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+      transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+    }
+
+    .header-icon-link:hover {
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .header-icon-link:active {
+      transform: scale(0.97);
+    }
+
+    .header-icon-link i,
+    .header-icon-link svg {
+      pointer-events: none;
+    }
     
     /* Hero Carousel: базово 16:5, mobile — “подглядывает” следующий, desktop — один слайд */
     .hero-carousel {
@@ -737,7 +764,7 @@
   color: var(--text-muted);
   padding-top: 3rem;
   padding-bottom: 3rem;
-  font-family: 'Inter', sans-serif; /* Или твой шрифт */
+  font-family: var(--font-sans-primary);
 }
 
 .vr-footer h3, 
@@ -799,7 +826,8 @@
 .mobile-dock {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: stretch;
+  gap: 0.25rem;
   
   position: fixed;
   bottom: 0;
@@ -826,11 +854,13 @@
 
 .dock-item {
   flex: 1 1 0;
-  min-width: 0;
-  min-height: 44px;
+  min-width: 52px;
+  min-height: 52px;
+  width: 100%;
+  height: 52px;
   color: var(--text-muted);
-  padding: 0.5rem;
-  border-radius: 12px;
+  padding: 0.5rem 0.25rem;
+  border-radius: 16px;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
   display: flex;
@@ -860,6 +890,11 @@
 
 .dock-item i {
   transition: transform 0.2s;
+  pointer-events: none;
+}
+
+.dock-item svg,
+.dock-item svg * {
   pointer-events: none;
 }
 

@@ -233,6 +233,27 @@ class Product(models.Model):
         default=True,
         help_text='Если товара нет в наличии, покупатель может оформить заказ под заказ',
     )
+    avito_url = models.URLField(
+        'Ссылка на Avito',
+        max_length=500,
+        blank=True,
+        default='',
+        help_text='Прямая ссылка на этот же товар в Avito.',
+    )
+    ozon_url = models.URLField(
+        'Ссылка на Ozon',
+        max_length=500,
+        blank=True,
+        default='',
+        help_text='Прямая ссылка на этот же товар в Ozon.',
+    )
+    wildberries_url = models.URLField(
+        'Ссылка на Wildberries',
+        max_length=500,
+        blank=True,
+        default='',
+        help_text='Прямая ссылка на этот же товар в Wildberries.',
+    )
     tags = models.ManyToManyField(
         ProductTag,
         related_name='products',
@@ -245,28 +266,6 @@ class Product(models.Model):
         max_length=100,
         blank=True,
         help_text='Например: Цвет, Размер, Модель. Показывается над выбором варианта.',
-    )
-    shipping_weight_kg = models.DecimalField(
-        'Вес отправки, кг',
-        max_digits=7,
-        decimal_places=3,
-        default=Decimal('0.500'),
-        help_text='Используется для расчёта доставки CDEK на один товар.',
-    )
-    shipping_length_cm = models.PositiveIntegerField(
-        'Длина упаковки, см',
-        default=25,
-        help_text='Используется для расчёта доставки CDEK на один товар.',
-    )
-    shipping_width_cm = models.PositiveIntegerField(
-        'Ширина упаковки, см',
-        default=20,
-        help_text='Используется для расчёта доставки CDEK на один товар.',
-    )
-    shipping_height_cm = models.PositiveIntegerField(
-        'Высота упаковки, см',
-        default=15,
-        help_text='Используется для расчёта доставки CDEK на один товар.',
     )
     views_count = models.PositiveIntegerField(
         'Просмотры',
@@ -311,11 +310,6 @@ class Product(models.Model):
         if first_extra and first_extra.image:
             return first_extra.image
         return None
-
-    @property
-    def shipping_volume_cm3(self):
-        return self.shipping_length_cm * self.shipping_width_cm * self.shipping_height_cm
-
 
 class ProductVariant(models.Model):
     """Вариант товара: цвет, размер, модель и т.п. Своё фото и цена (опционально)."""
@@ -909,35 +903,6 @@ class Favorite(models.Model):
         verbose_name_plural = 'Избранное'
         constraints = [
             models.UniqueConstraint(fields=['user', 'product'], name='catalog_favorite_user_product_unique'),
-        ]
-        ordering = ['-created_at']
-
-    def __str__(self):
-        return f'{self.user} — {self.product.name}'
-
-
-class CompareItem(models.Model):
-    """Товар пользователя в списке сравнения."""
-
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name='compare_items',
-        verbose_name='Пользователь',
-    )
-    product = models.ForeignKey(
-        Product,
-        on_delete=models.CASCADE,
-        related_name='compared_by',
-        verbose_name='Товар',
-    )
-    created_at = models.DateTimeField('Добавлено', auto_now_add=True)
-
-    class Meta:
-        verbose_name = 'Сравнение'
-        verbose_name_plural = 'Сравнение'
-        constraints = [
-            models.UniqueConstraint(fields=['user', 'product'], name='catalog_compareitem_user_product_unique'),
         ]
         ordering = ['-created_at']
 

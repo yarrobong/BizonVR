@@ -47,33 +47,27 @@
 
       <!-- Иконки -->
       <div class="flex items-center gap-4 flex-shrink-0">
-        <a href="{% url 'catalog:favorites' %}" class="flex flex-col items-center group flex-shrink-0" title="Избранное">
+        <a href="{% url 'catalog:favorites' %}" class="header-icon-link group flex-shrink-0" title="Избранное" aria-label="Избранное">
           <div class="relative">
             <i data-lucide="heart" class="text-white group-hover:text-accent transition-colors w-6 h-6 inline-block"></i>
             <span class="absolute -top-1 -right-1 w-4 h-4 bg-dark-700 rounded-full text-[10px] flex items-center justify-center border border-dark-800" x-text="favoritesCount" x-show="favoritesCount > 0">{{ favorites_count|default:0 }}</span>
           </div>
         </a>
-        <a href="{% url 'catalog:compare' %}" class="flex flex-col items-center group flex-shrink-0" title="Сравнение">
-          <div class="relative">
-            <i data-lucide="scale" class="text-white group-hover:text-accent transition-colors w-6 h-6 inline-block"></i>
-            <span class="absolute -top-1 -right-1 w-4 h-4 bg-dark-700 rounded-full text-[10px] flex items-center justify-center border border-dark-800" x-text="compareCount" x-show="compareCount > 0">{{ compare_count|default:0 }}</span>
-          </div>
-        </a>
 
         <!-- Профиль -->
         {% if user.is_authenticated %}
-          <a href="{% url 'accounts:profile' %}" class="flex items-center gap-1.5 text-gray-400 hover:text-accent transition-colors flex-shrink-0">
+          <a href="{% url 'accounts:profile' %}" class="header-icon-link text-gray-400 hover:text-accent transition-colors flex-shrink-0" aria-label="Профиль">
             <i data-lucide="user" class="w-5 h-5 inline-block"></i>
           </a>
         {% else %}
-          <a href="{% url 'accounts:login' %}" class="flex items-center gap-1.5 text-gray-400 hover:text-accent transition-colors flex-shrink-0" hx-boost="false">
+          <a href="{% url 'accounts:login' %}" class="header-icon-link text-gray-400 hover:text-accent transition-colors flex-shrink-0" hx-boost="false" aria-label="Войти">
             <i data-lucide="log-in" class="w-5 h-5 inline-block"></i>
           </a>
         {% endif %}
 
         <!-- Корзина -->
         <div class="relative">
-          <a href="{% url 'catalog:cart' %}" class="flex items-center group focus:outline-none">
+          <a href="{% url 'catalog:cart' %}" class="header-icon-link group focus:outline-none" aria-label="Корзина">
             <div class="relative">
               <i data-lucide="shopping-cart" class="text-white group-hover:text-accent transition-colors w-6 h-6 inline-block"></i>
               <span class="absolute -top-1 -right-1 w-4 h-4 bg-dark-700 rounded-full text-[10px] flex items-center justify-center border border-dark-800" x-text="cartCount">{{ cart_count|default:0 }}</span>
@@ -90,7 +84,7 @@
     <div class="hidden md:block header-top-row bg-dark-800 border-b border-dark-600/50">
       <div class="flex justify-between items-center container mx-auto px-4 py-1.5 text-xs text-gray-400">
       <div class="flex items-center space-x-6">
-        <a href="https://www.avito.ru/user/bizonvr" target="_blank" rel="noopener noreferrer" class="flex items-center space-x-1 hover:text-white text-gray-400 transition-colors">
+        <a href="{{ site_avito_url }}" target="_blank" rel="noopener noreferrer" class="flex items-center space-x-1 hover:text-white text-gray-400 transition-colors">
           <i data-lucide="shopping-bag" class="w-3.5 h-3.5 text-accent inline-block"></i>
           <span>Авито</span>
         </a>
@@ -157,31 +151,26 @@
         </form>
 
         <div class="flex items-center gap-4 flex-shrink-0">
-          <a href="{% url 'catalog:favorites' %}" class="flex flex-col items-center group flex-shrink-0" title="Избранное">
+          <a href="{% url 'catalog:favorites' %}" class="header-icon-link group flex-shrink-0" title="Избранное" aria-label="Избранное">
             <div class="relative">
               <i data-lucide="heart" class="text-white group-hover:text-accent transition-colors w-6 h-6 inline-block"></i>
               <span id="favorites-count" class="absolute -top-1 -right-1 w-4 h-4 bg-dark-700 rounded-full text-[10px] flex items-center justify-center border border-dark-800" x-text="favoritesCount" x-show="favoritesCount > 0">{{ favorites_count|default:0 }}</span>
             </div>
           </a>
-          <a href="{% url 'catalog:compare' %}" class="flex flex-col items-center group flex-shrink-0" title="Сравнение">
-            <div class="relative">
-              <i data-lucide="scale" class="text-white group-hover:text-accent transition-colors w-6 h-6 inline-block"></i>
-              <span class="absolute -top-1 -right-1 w-4 h-4 bg-dark-700 rounded-full text-[10px] flex items-center justify-center border border-dark-800" x-text="compareCount" x-show="compareCount > 0">{{ compare_count|default:0 }}</span>
-            </div>
-          </a>
           <!-- Профиль -->
           {% if user.is_authenticated %}
-            <a href="{% url 'accounts:profile' %}" class="flex items-center gap-1.5 text-gray-400 hover:text-accent transition-colors flex-shrink-0">
+            <a href="{% url 'accounts:profile' %}" class="header-icon-link text-gray-400 hover:text-accent transition-colors flex-shrink-0" aria-label="Профиль">
               <i data-lucide="user" class="w-5 h-5 inline-block"></i>
             </a>
           {% else %}
-            <a href="{% url 'accounts:login' %}" class="flex items-center gap-1.5 text-gray-400 hover:text-accent transition-colors flex-shrink-0" hx-boost="false">
+            <a href="{% url 'accounts:login' %}" class="header-icon-link text-gray-400 hover:text-accent transition-colors flex-shrink-0" hx-boost="false" aria-label="Войти">
               <i data-lucide="log-in" class="w-5 h-5 inline-block"></i>
             </a>
           {% endif %}
           <div class="relative">
             <a href="{% url 'catalog:cart' %}"
-               class="flex items-center group focus:outline-none">
+               class="header-icon-link group focus:outline-none"
+               aria-label="Корзина">
               <div class="relative">
                 <i data-lucide="shopping-cart" class="text-white group-hover:text-accent transition-colors w-6 h-6 inline-block"></i>
                 <span id="cart-count" class="absolute -top-1 -right-1 w-4 h-4 bg-dark-700 rounded-full text-[10px] flex items-center justify-center border border-dark-800" x-text="cartCount">{{ cart_count|default:0 }}</span>

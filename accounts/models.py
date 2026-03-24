@@ -101,14 +101,6 @@ class CommercialProposalContact(models.Model):
 class SavedAddress(models.Model):
     """Сохранённый адрес/сценарий доставки пользователя для повторных заказов."""
 
-    DELIVERY_CDEK_PVZ = 'cdek_pvz'
-    DELIVERY_CHOICES = [
-        (DELIVERY_CDEK_PVZ, 'CDEK до ПВЗ'),
-        ('courier', 'Курьером'),
-        ('pickup', 'Самовывоз'),
-        ('post', 'Почтой'),
-    ]
-
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -120,19 +112,6 @@ class SavedAddress(models.Model):
     phone = models.CharField('Телефон', max_length=40)
     email = models.EmailField('Email', blank=True)
     city = models.CharField('Город', max_length=120, blank=True)
-    delivery_type = models.CharField(
-        'Способ доставки',
-        max_length=20,
-        choices=DELIVERY_CHOICES,
-    )
-    pickup_point = models.ForeignKey(
-        'catalog.PickupPoint',
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='saved_addresses',
-        verbose_name='Точка выдачи',
-    )
     address = models.TextField('Адрес', blank=True)
     comment = models.TextField('Комментарий', blank=True)
     is_default = models.BooleanField('Адрес по умолчанию', default=False)

@@ -23,10 +23,9 @@ from catalog.views.common import _get_stock_total
 from config.legal_consent import build_legal_acceptance_payload
 from config.legal_consent import get_legal_bundle_version
 
-from ..cdek import calculate_cdek_delivery_for_lines
 from ..forms import CheckoutForm
 from ..models import Order, OrderItem, PromoCode, resolve_order_item_image_url
-from ..services import issue_guest_access, send_order_event_notifications, sync_order_state_side_effects
+from ..services import build_order_status_summary, issue_guest_access, send_order_event_notifications, sync_order_state_side_effects
 from .utils import _discount_for_promo
 
 
@@ -40,7 +39,6 @@ def _split_contact_name(full_name):
 def _get_saved_addresses(user):
     return list(
         SavedAddress.objects.filter(user=user)
-        .select_related('pickup_point__city')
         .order_by('-is_default', '-updated_at', '-id')
     )
 
@@ -65,8 +63,9 @@ def _get_selected_saved_address(request, saved_addresses):
 def _get_checkout_initial(request, saved_address):
     initial = {
         'country': 'Россия',
+        'payment_method': Order.PAYMENT_METHOD_SBP,
+        'contact_channel': Order.CONTACT_CHANNEL_CALL,
         'delivery_type': Order.DELIVERY_CDEK_PVZ,
-        'payment_method': Order.PAYMENT_METHOD_BANK_CARD,
         'recipient_is_customer': True,
     }
     if not request.user.is_authenticated:
@@ -87,7 +86,6 @@ def _get_checkout_initial(request, saved_address):
             'last_name': saved_last_name or initial.get('last_name', ''),
             'phone': saved_address.phone or initial.get('phone', ''),
             'email': saved_address.email or initial.get('email', ''),
-            'delivery_type': saved_address.delivery_type,
             'address_line': saved_address.address,
             'city_text': saved_address.city,
             'comment': saved_address.comment,
@@ -134,21 +132,12 @@ def _sync_profile_from_checkout(user, cleaned_data):
 
 def _build_checkout_context(request, form, cart_items, saved_addresses, selected_saved_address):
     lines, _ = _build_checkout_lines(cart_items)
-    shipping_quote = calculate_cdek_delivery_for_lines(lines) if lines else {
-        'delivery_cost': Decimal('0.00'),
-        'total_weight_kg': Decimal('0.000'),
-        'total_volume_cm3': 0,
-        'total_volume_liters': Decimal('0.00'),
-    }
     cart_total = sum(Decimal(str(item.get('subtotal', 0))) for item in cart_items)
     return {
         'cart_items': cart_items,
         'cart_total': cart_total,
-        'delivery_cost': shipping_quote['delivery_cost'],
         'online_total': cart_total,
-        'grand_total': cart_total + shipping_quote['delivery_cost'],
-        'shipping_weight_kg': shipping_quote['total_weight_kg'],
-        'shipping_volume_liters': shipping_quote['total_volume_liters'],
+        'grand_total': cart_total,
         'form': form,
         'cart_empty': not cart_items,
         'request_mode': False,
@@ -165,22 +154,10 @@ def _get_checkout_step(form):
         return 1
 
     step_fields = {
-        1: {'first_name', 'last_name', 'phone', 'email'},
-        2: {'city_text', 'address_line', 'delivery_comment'},
+        1: {'first_name', 'last_name', 'phone', 'email', 'contact_channel', 'contact_handle'},
+        2: {'delivery_type', 'city_text', 'address_line', 'delivery_comment'},
         3: {'recipient_is_customer', 'recipient_name', 'recipient_phone'},
-        4: {
-            'payment_method',
-            'business_company_name',
-            'business_checking_account',
-            'business_inn',
-            'business_kpp',
-            'business_bank_name',
-            'business_bik',
-            'business_correspondent_account',
-            'business_phone',
-            'business_telegram',
-            'business_whatsapp',
-        },
+        4: {'payment_method'},
         5: {'promo_code', 'comment', 'agree_personal_data', 'agree_offer', '__all__'},
     }
     errored_fields = set(form.errors.keys())
@@ -283,7 +260,6 @@ def checkout_view(request):
 
     subtotal = sum(line['price'] * line['quantity'] for line in lines)
     promo_discount = _discount_for_promo(subtotal, promo)
-    shipping_quote = calculate_cdek_delivery_for_lines(lines)
     payment_status = (
         Order.PAYMENT_STATUS_PAID
         if getattr(settings, 'TEST_ORDER_NO_PAYMENT', False)
@@ -298,6 +274,8 @@ def checkout_view(request):
             promo_code=promo,
             promo_discount=promo_discount,
             payment_method=form.cleaned_data['payment_method'],
+            contact_channel=form.cleaned_data['contact_channel'],
+            contact_handle=(form.cleaned_data.get('contact_handle') or '').strip(),
             payment_status=payment_status,
             delivery_type=form.cleaned_data['delivery_type'],
             city=None,
@@ -325,10 +303,7 @@ def checkout_view(request):
             business_phone=(form.cleaned_data.get('business_phone') or '').strip(),
             business_telegram=(form.cleaned_data.get('business_telegram') or '').strip(),
             business_whatsapp=(form.cleaned_data.get('business_whatsapp') or '').strip(),
-            delivery_cost=shipping_quote['delivery_cost'],
-            shipping_weight_kg=shipping_quote['total_weight_kg'],
-            shipping_volume_cm3=shipping_quote['total_volume_cm3'],
-            cdek_fallback_to_nearest=True,
+            delivery_cost=Decimal('0'),
             comment=(form.cleaned_data.get('comment') or '').strip(),
             **build_legal_acceptance_payload(request),
         )
@@ -362,10 +337,7 @@ def checkout_view(request):
     params = {}
     if order.is_guest_order:
         params['access'] = order.guest_access_token
-    if getattr(settings, 'TEST_ORDER_NO_PAYMENT', False):
-        success_url = reverse('orders:order_created', kwargs={'order_id': order.pk})
-    else:
-        success_url = reverse('payments:create_payment', kwargs={'order_id': order.pk})
+    success_url = reverse('orders:order_created', kwargs={'order_id': order.pk})
     if params:
         success_url = f'{success_url}?{urlencode(params)}'
     return redirect(success_url)
@@ -390,6 +362,7 @@ def order_created_view(request, order_id):
 
     return render(request, 'orders/order_created.html', {
         'order': order,
+        'order_summary': build_order_status_summary(order) if order else None,
         'access_token': access_token if order and order.is_guest_order else '',
         'test_order_no_payment': getattr(settings, 'TEST_ORDER_NO_PAYMENT', False),
     })

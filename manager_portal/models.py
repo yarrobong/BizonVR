@@ -754,7 +754,10 @@ class ManagerDeal(models.Model):
     def requires_documents(self):
         return not self.is_avito and bool(
             self.buyer_type == self.BUYER_BUSINESS
-            or self.order.payment_method == self.order.PAYMENT_METHOD_MANAGER_PAYMENT
+            or self.order.payment_method in {
+                self.order.PAYMENT_METHOD_MANAGER_PAYMENT,
+                self.order.PAYMENT_METHOD_INVOICE,
+            }
         )
 
     @property

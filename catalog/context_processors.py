@@ -5,7 +5,7 @@ from datetime import date
 from django.conf import settings
 
 from .cache_utils import get_catalog_category_previews, get_catalog_sections
-from .cart_services import get_cart_items, get_compare_product_ids, get_favorite_product_ids
+from .cart_services import get_cart_items, get_favorite_product_ids
 
 
 def _get_active_section(request):
@@ -39,12 +39,9 @@ def catalog_menu(request):
     result['catalog_category_previews'] = get_catalog_category_previews()
 
     favorite_product_ids = get_favorite_product_ids(request)
-    compare_product_ids = get_compare_product_ids(request)
     items = get_cart_items(request)
 
     result['favorites_count'] = len(favorite_product_ids)
-    result['compare_count'] = len(compare_product_ids)
-    result['compare_product_ids'] = set(compare_product_ids)
     result['cart_count'] = sum(item.get('quantity', 0) for item in items)
     result['cart_total'] = sum(i.get('subtotal', 0) for i in items)
 
@@ -60,6 +57,7 @@ def catalog_menu(request):
     result['site_contact_address'] = getattr(settings, 'SITE_CONTACT_ADDRESS', '')
     result['site_contact_telegram'] = getattr(settings, 'SITE_CONTACT_TELEGRAM', '')
     result['site_contact_telegram_handle'] = getattr(settings, 'SITE_CONTACT_TELEGRAM_HANDLE', '')
+    result['site_avito_url'] = getattr(settings, 'SITE_AVITO_URL', '')
     result['site_work_hours'] = getattr(settings, 'SITE_WORK_HOURS', '')
     result['site_blog_url'] = getattr(settings, 'SITE_BLOG_URL', '')
     result['site_clubs_url'] = getattr(settings, 'SITE_CLUBS_URL', '')

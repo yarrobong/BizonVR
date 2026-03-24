@@ -42,7 +42,7 @@ The project is aimed at a VR store team: customers browse and order products, ma
 - Каталог товаров. Иерархия разделов, категорий, товаров, вариантов, тегов, характеристик и наборов.
 - Карточка товара. Галерея, варианты товара, остатки, характеристики, рекомендации и добавление в корзину.
 - Корзина. Работает в сессии для гостя и в БД для авторизованного пользователя, умеет хранить количество и вариант товара.
-- Избранное и сравнение. Для гостя состояние хранится в сессии, для пользователя в БД.
+- Избранное. Для гостя состояние хранится в сессии, для пользователя в БД.
 - Оформление заказа (`checkout`). Создаёт заказ из корзины, валидирует остатки, записывает контакты, доставку, промокод и юридические согласия.
 - Заказы. История, детали заказа, расчёт суммы к оплате, статусы и связка с платежами.
 - Оплата. Выбор способа оплаты, показ реквизитов и обработка платёжных событий.
@@ -70,7 +70,7 @@ The project is aimed at a VR store team: customers browse and order products, ma
 - `phone`;
 - `first_name`;
 - `city_text`;
-- `address_line` для ПВЗ CDEK;
+- `address_line`;
 - `agree_personal_data`;
 - `agree_offer`.
 
@@ -217,7 +217,7 @@ The project is aimed at a VR store team: customers browse and order products, ma
 ```text
 BizonVR/
 ├── accounts/      # аккаунт, SMS-вход, профиль, адреса, безопасность
-├── catalog/       # каталог, остатки, корзина, избранное, сравнение, обращения
+├── catalog/       # каталог, остатки, корзина, избранное, обращения
 ├── config/        # settings, root urls, home/legal/support views
 ├── docs/          # локальная документация по бизнес-логике и данным
 ├── manager_portal/# внутренний портал, финансы, логистика, договоры, импорт legacy-данных
@@ -458,7 +458,7 @@ npm run build:css
 
 - Гость:
   - может смотреть каталог, карточки, услуги, контакты, legal pages;
-  - может пользоваться корзиной, избранным и сравнением в рамках сессии;
+  - может пользоваться корзиной и избранным в рамках сессии;
   - может отправлять формы контактов и обратного звонка;
   - не может пройти текущее оформление заказа без входа.
 - Пользователь:
@@ -501,7 +501,7 @@ npm run build:css
 
 Основные сущности:
 
-- `catalog`: `CatalogSection`, `Category`, `Product`, `ProductVariant`, `ProductStock`, `CartItem`, `Favorite`, `CompareItem`, `ProductBundle`;
+- `catalog`: `CatalogSection`, `Category`, `Product`, `ProductVariant`, `ProductStock`, `CartItem`, `Favorite`, `ProductBundle`;
 - `orders`: `Order`, `OrderItem`, `PromoCode`, `PurchaseRequest`;
 - `payments`: `Payment`;
 - `accounts`: `Profile`, `SavedAddress`, `PhoneVerificationCode`, `EmailVerificationCode`.
@@ -520,7 +520,7 @@ npm run build:css
 
 Ключевые внутренние сервисы:
 
-- `catalog/cart_services.py` — корзина, избранное, сравнение для сессии и БД;
+- `catalog/cart_services.py` — корзина и избранное для сессии и БД;
 - `orders/services.py` — бонусы, списание остатков;
 - `payments/services.py` — создание платежей и валидация webhook;
 - `accounts/services.py` — SMS/email коды, верификация, восстановление доступа;
@@ -574,7 +574,7 @@ make test-manager-smoke
 - оформление заказа, юридические согласия и очистка корзины;
 - поведение промокодов;
 - ограничения гостевого доступа к заказам;
-- каталог, поиск, варианты товаров, корзина, избранное, сравнение;
+- каталог, поиск, варианты товаров, корзина, избранное;
 - часть логики профиля и email verification.
 
 Что стоит покрывать дальше:

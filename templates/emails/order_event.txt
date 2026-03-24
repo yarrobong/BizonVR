@@ -7,8 +7,9 @@
 {% endfor %}
 
 Сумма к оплате: {{ order.total_to_pay|rub }}
-Способ доставки: {{ order.get_delivery_type_display }}
+Способ доставки: {{ order.public_delivery_label }}
 Способ оплаты: {{ order.get_payment_method_display }}
+Канал связи: {{ order.get_contact_channel_display }}{% if order.contact_handle %} — {{ order.contact_handle }}{% endif %}
 {% if order_url %}
 Ссылка на заказ: {{ order_url }}
 {% endif %}

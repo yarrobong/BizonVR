@@ -2406,13 +2406,18 @@ def reservation_effective_warehouse(reservation):
 def ensure_manager_client_for_order(order):
     business_name = (order.business_company_name or '').strip()
     business_phone = (order.business_phone or '').strip()
+    telegram = ''
+    if order.contact_channel == Order.CONTACT_CHANNEL_TELEGRAM:
+        telegram = (order.contact_handle or '').strip()
+    elif order.business_telegram:
+        telegram = (order.business_telegram or '').strip()
     return resolve_manager_client(
         user=order.user,
         name=business_name or order.shipping_contact_name or f'Клиент по заказу #{order.pk}',
         phone=business_phone or order.shipping_phone or order.phone,
         email=order.email,
         address=order.display_address,
-        telegram=(order.business_telegram or '').strip(),
+        telegram=telegram,
         order=order,
     )
 
@@ -2460,8 +2465,14 @@ def _order_business_deal_defaults(order):
         'business_kpp': (order.business_kpp or '').strip(),
         'business_contact_person': order.shipping_contact_name,
         'business_phone': (order.business_phone or order.shipping_phone or order.phone or '').strip(),
-        'business_telegram': (order.business_telegram or '').strip(),
-        'business_whatsapp': (order.business_whatsapp or '').strip(),
+        'business_telegram': (
+            (order.business_telegram or '').strip()
+            or ((order.contact_handle or '').strip() if order.contact_channel == Order.CONTACT_CHANNEL_TELEGRAM else '')
+        ),
+        'business_whatsapp': (
+            (order.business_whatsapp or '').strip()
+            or ((order.contact_handle or '').strip() if order.contact_channel == Order.CONTACT_CHANNEL_WHATSAPP else '')
+        ),
         'business_email': (order.email or '').strip(),
         'business_city': (order.city_text or '').strip(),
         'business_delivery_address': (order.display_address or '').strip(),
@@ -2490,6 +2501,11 @@ def ensure_manager_deal_for_order(order, *, customer_source=ManagerDeal.SOURCE_W
         'individual_phone': order.shipping_phone,
         'individual_city': order.city_text,
         'individual_delivery_address': order.display_address,
+        'individual_messenger': (
+            (order.contact_handle or '').strip()
+            if order.contact_channel in {Order.CONTACT_CHANNEL_TELEGRAM, Order.CONTACT_CHANNEL_WHATSAPP}
+            else ''
+        ),
         'customer_request': ', '.join(
             item.display_name for item in order.items.select_related('product', 'variant').all()
         ),
@@ -2502,7 +2518,7 @@ def ensure_manager_deal_for_order(order, *, customer_source=ManagerDeal.SOURCE_W
         'last_payment_at': order.updated_at if initial_paid_amount > MONEY_ZERO else None,
         'last_activity_at': order.created_at or timezone.now(),
     }
-    if order.payment_method == Order.PAYMENT_METHOD_MANAGER_PAYMENT:
+    if order.payment_method in {Order.PAYMENT_METHOD_MANAGER_PAYMENT, Order.PAYMENT_METHOD_INVOICE}:
         defaults.update(_order_business_deal_defaults(order))
     deal, created = ManagerDeal.objects.get_or_create(order=order, defaults=defaults)
     if created:
@@ -2511,7 +2527,7 @@ def ensure_manager_deal_for_order(order, *, customer_source=ManagerDeal.SOURCE_W
         return deal
 
     update_fields = []
-    if order.payment_method != Order.PAYMENT_METHOD_MANAGER_PAYMENT:
+    if order.payment_method not in {Order.PAYMENT_METHOD_MANAGER_PAYMENT, Order.PAYMENT_METHOD_INVOICE}:
         for field, value in (
             ('deal_type', deal_type),
             ('deal_status', deal_status),
@@ -2519,6 +2535,12 @@ def ensure_manager_deal_for_order(order, *, customer_source=ManagerDeal.SOURCE_W
             ('individual_phone', order.shipping_phone),
             ('individual_city', order.city_text),
             ('individual_delivery_address', order.display_address),
+            (
+                'individual_messenger',
+                (order.contact_handle or '').strip()
+                if order.contact_channel in {Order.CONTACT_CHANNEL_TELEGRAM, Order.CONTACT_CHANNEL_WHATSAPP}
+                else '',
+            ),
             ('customer_request', defaults['customer_request']),
             ('delivery_method', _manager_delivery_method_for_order(order)),
             ('delivery_to_city', order.city_text),

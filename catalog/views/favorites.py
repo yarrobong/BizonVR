@@ -10,7 +10,7 @@ from .common import _product_stock_totals
 
 def favorite_list_view(request):
     """Страница «Моё избранное»: список товаров, добавленных в избранное. Поддержка анонимов (сессия)."""
-    from ..cart_services import get_compare_product_ids, get_favorite_product_ids
+    from ..cart_services import get_favorite_product_ids
 
     favorite_ids = get_favorite_product_ids(request)
     if not favorite_ids:
@@ -25,7 +25,6 @@ def favorite_list_view(request):
     return render(request, 'catalog/favorite_list.html', {
         'products': products,
         'favorite_product_ids': set(p.pk for p in products),
-        'compare_product_ids': set(get_compare_product_ids(request)),
         'product_stock_total': product_stock_total,
     })
 

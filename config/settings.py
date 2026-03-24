@@ -205,11 +205,6 @@ LOGIN_REDIRECT_URL = '/accounts/profile/'
 # В продакшене безопаснее держать выключенным по умолчанию.
 TEST_ORDER_NO_PAYMENT = config_bool('TEST_ORDER_NO_PAYMENT', default=False)
 
-# Расчёт доставки CDEK до ПВЗ. Это внутренняя оценка на основе веса и объёма товара.
-CDEK_BASE_DELIVERY_COST = config('CDEK_BASE_DELIVERY_COST', default=350, cast=int)
-CDEK_DELIVERY_COST_PER_KG = config('CDEK_DELIVERY_COST_PER_KG', default=120, cast=int)
-CDEK_DELIVERY_COST_PER_LITER = config('CDEK_DELIVERY_COST_PER_LITER', default=12, cast=int)
-
 # Платёжный провайдер для legacy-интеграции. Без ключа создание платежа не выполняется.
 _LEGACY_PAYMENT_ENV_PREFIX = ''.join(['NOW', 'PAYMENTS'])
 _LEGACY_PAYMENT_API_BASE = ''.join(['https://api.', 'now', 'payments', '.io/v1'])
@@ -238,6 +233,10 @@ SITE_CONTACT_EMAIL = config('SITE_CONTACT_EMAIL', default='korrypc@gmail.com')
 SITE_CONTACT_ADDRESS = config('SITE_CONTACT_ADDRESS', default='')
 SITE_CONTACT_TELEGRAM = config('SITE_CONTACT_TELEGRAM', default='https://t.me/bizon_order_manager')
 SITE_CONTACT_TELEGRAM_HANDLE = config('SITE_CONTACT_TELEGRAM_HANDLE', default='@bizon_order_manager')
+SITE_AVITO_URL = config(
+    'SITE_AVITO_URL',
+    default='https://www.avito.ru/user/a933d26a360016c146b6326f33aa18d1/profile/all?src=search_seller_info&iid=7888196703&sellerId=a933d26a360016c146b6326f33aa18d1',
+).strip()
 SITE_WORK_HOURS = config('SITE_WORK_HOURS', default='Пн-Пт: 10:00-19:00')
 SITE_BLOG_URL = config('SITE_BLOG_URL', default='').strip()
 SITE_CLUBS_URL = config('SITE_CLUBS_URL', default='').strip()

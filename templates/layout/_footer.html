@@ -50,6 +50,9 @@
             {% if site_contact_telegram %}
               <li><a href="{{ site_contact_telegram }}" target="_blank" rel="noopener noreferrer">{{ site_contact_telegram_handle|default:site_contact_telegram }}</a></li>
             {% endif %}
+            {% if site_avito_url %}
+              <li><a href="{{ site_avito_url }}" target="_blank" rel="noopener noreferrer">Avito</a></li>
+            {% endif %}
           </ul>
         </div>
       </div>
@@ -71,25 +74,25 @@
   </div>
   
   <div class="mobile-dock" data-mobile-dock>
-    <a href="{% url 'home' %}" class="dock-item {% if active_section == 'home' %}active{% endif %}" title="Главная">
+    <a href="{% url 'home' %}" class="dock-item {% if active_section == 'home' %}active{% endif %}" title="Главная" aria-label="Главная" hx-boost="false">
       <i data-lucide="home" width="24" height="24"></i>
     </a>
     
-    <a href="{% url 'catalog:product_list' %}" class="dock-item {% if active_section == 'catalog' %}active{% endif %}" title="Каталог">
+    <a href="{% url 'catalog:product_list' %}" class="dock-item {% if active_section == 'catalog' %}active{% endif %}" title="Каталог" aria-label="Каталог" hx-boost="false">
       <i data-lucide="search" width="24" height="24"></i>
     </a>
     
-    <a href="{% url 'catalog:favorites' %}" class="dock-item {% if active_section == 'favorites' %}active{% endif %}" title="Избранное">
+    <a href="{% url 'catalog:favorites' %}" class="dock-item {% if active_section == 'favorites' %}active{% endif %}" title="Избранное" aria-label="Избранное" hx-boost="false">
       <i data-lucide="heart" width="24" height="24"></i>
       <span class="badge badge-gray" x-text="favoritesCount" x-show="favoritesCount > 0">{{ favorites_count|default:0 }}</span>
     </a>
     
-    <a href="{% url 'catalog:cart' %}" class="dock-item {% if active_section == 'cart' %}active{% endif %}" title="Корзина">
+    <a href="{% url 'catalog:cart' %}" class="dock-item {% if active_section == 'cart' %}active{% endif %}" title="Корзина" aria-label="Корзина" hx-boost="false">
       <i data-lucide="shopping-cart" width="24" height="24"></i>
       <span class="badge badge-accent" x-text="cartCount">{{ cart_count|default:0 }}</span>
     </a>
     
-    <a href="{% url 'accounts:profile' %}" class="dock-item {% if active_section == 'profile' %}active{% endif %}" title="Профиль">
+    <a href="{% url 'accounts:profile' %}" class="dock-item {% if active_section == 'profile' %}active{% endif %}" title="Профиль" aria-label="Профиль" hx-boost="false">
       <i data-lucide="user" width="24" height="24"></i>
     </a>
   </div>
