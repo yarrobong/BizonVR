@@ -17,8 +17,13 @@ except ImportError:
 
 from accounts.models import SavedAddress
 from accounts.services import ensure_profile, get_user_phone
-from catalog.cart_services import clear_cart, get_cart_items
-from catalog.models import Product, ProductVariant
+from catalog.cart_services import (
+    clear_buy_now_checkout_items,
+    clear_cart,
+    get_buy_now_checkout_items,
+    get_cart_items,
+)
+from catalog.models import City, Product, ProductVariant
 from catalog.views.common import _get_stock_total
 from config.legal_consent import build_legal_acceptance_payload
 from config.legal_consent import get_legal_bundle_version
@@ -27,13 +32,6 @@ from ..forms import CheckoutForm
 from ..models import Order, OrderItem, PromoCode, resolve_order_item_image_url
 from ..services import build_order_status_summary, issue_guest_access, send_order_event_notifications, sync_order_state_side_effects
 from .utils import _discount_for_promo
-
-
-def _split_contact_name(full_name):
-    parts = [part for part in (full_name or '').strip().split() if part]
-    if not parts:
-        return '', ''
-    return parts[0], ' '.join(parts[1:])
 
 
 def _get_saved_addresses(user):
@@ -72,23 +70,17 @@ def _get_checkout_initial(request, saved_address):
         return initial
 
     profile = ensure_profile(request.user)
-    first_name, last_name = _split_contact_name(profile.contact_name)
-    initial['first_name'] = first_name
-    initial['last_name'] = last_name
+    initial['first_name'] = (profile.contact_name or '').strip()
+    initial['last_name'] = ''
     initial['phone'] = get_user_phone(request.user, profile)
-    initial['email'] = (request.user.email or '').strip()
     initial['business_phone'] = initial['phone']
 
     if saved_address:
-        saved_first_name, saved_last_name = _split_contact_name(saved_address.recipient_name)
         initial.update({
-            'first_name': saved_first_name or initial.get('first_name', ''),
-            'last_name': saved_last_name or initial.get('last_name', ''),
+            'first_name': saved_address.recipient_name or initial.get('first_name', ''),
+            'last_name': '',
             'phone': saved_address.phone or initial.get('phone', ''),
-            'email': saved_address.email or initial.get('email', ''),
-            'address_line': saved_address.address,
             'city_text': saved_address.city,
-            'comment': saved_address.comment,
             'recipient_name': saved_address.recipient_name or '',
             'recipient_phone': saved_address.phone or '',
             'recipient_is_customer': True,
@@ -101,13 +93,7 @@ def _sync_profile_from_checkout(user, cleaned_data):
     profile = ensure_profile(user)
     update_fields = []
 
-    contact_name = ' '.join(
-        part for part in [
-            (cleaned_data.get('first_name') or '').strip(),
-            (cleaned_data.get('last_name') or '').strip(),
-        ]
-        if part
-    ).strip()
+    contact_name = (cleaned_data.get('first_name') or '').strip()
     existing_name = ' '.join((profile.contact_name or '').split())
     if contact_name and (
         not existing_name
@@ -124,15 +110,12 @@ def _sync_profile_from_checkout(user, cleaned_data):
     if update_fields:
         profile.save(update_fields=update_fields)
 
-    email = (cleaned_data.get('email') or '').strip().lower()
-    if email and user.email != email:
-        user.email = email
-        user.save(update_fields=['email'])
-
 
 def _build_checkout_context(request, form, cart_items, saved_addresses, selected_saved_address):
     lines, _ = _build_checkout_lines(cart_items)
     cart_total = sum(Decimal(str(item.get('subtotal', 0))) for item in cart_items)
+    checkout_mode = (request.GET.get('mode') or '').strip()
+    session_city = _get_session_selected_city(request)
     return {
         'cart_items': cart_items,
         'cart_total': cart_total,
@@ -145,7 +128,16 @@ def _build_checkout_context(request, form, cart_items, saved_addresses, selected
         'selected_saved_address_id': selected_saved_address.pk if selected_saved_address else None,
         'selected_saved_address': selected_saved_address,
         'is_authenticated_checkout': request.user.is_authenticated,
+        'checkout_mode': checkout_mode,
+        'is_buy_now_checkout': checkout_mode == 'buy_now',
         'checkout_step': _get_checkout_step(form),
+        'cdek_widget_enabled': _is_cdek_widget_enabled(),
+        'cdek_widget_config': _build_cdek_widget_config(
+            request,
+            form,
+            selected_saved_address=selected_saved_address,
+            session_city=session_city,
+        ),
     }
 
 
@@ -154,11 +146,10 @@ def _get_checkout_step(form):
         return 1
 
     step_fields = {
-        1: {'first_name', 'last_name', 'phone', 'email', 'contact_channel', 'contact_handle'},
-        2: {'delivery_type', 'city_text', 'address_line', 'delivery_comment'},
+        1: {'first_name', 'phone', 'contact_handle'},
+        2: {'city_text', 'address_line', 'cdek_office_snapshot_raw'},
         3: {'recipient_is_customer', 'recipient_name', 'recipient_phone'},
-        4: {'payment_method'},
-        5: {'promo_code', 'comment', 'agree_personal_data', 'agree_offer', '__all__'},
+        4: {'agree_personal_data', 'agree_offer', '__all__'},
     }
     errored_fields = set(form.errors.keys())
     for step, fields in step_fields.items():
@@ -211,10 +202,97 @@ def _build_checkout_lines(cart_items):
     return lines, unavailable_lines
 
 
+def _get_checkout_items_source(request):
+    checkout_mode = (request.GET.get('mode') or '').strip()
+    if checkout_mode == 'buy_now':
+        buy_now_items = get_buy_now_checkout_items(request)
+        if buy_now_items:
+            return buy_now_items, 'buy_now'
+    return get_cart_items(request), 'cart'
+
+
+def _get_session_selected_city(request):
+    city_id = request.session.get('selected_city_id')
+    if not city_id:
+        return None
+    try:
+        return City.objects.filter(pk=int(city_id)).only('name').first()
+    except (TypeError, ValueError):
+        return None
+
+
+def _is_cdek_widget_enabled():
+    return bool(
+        getattr(settings, 'CDEK_WIDGET_ACCOUNT', '').strip()
+        and getattr(settings, 'CDEK_WIDGET_PASSWORD', '').strip()
+        and getattr(settings, 'YANDEX_MAPS_API_KEY', '').strip()
+    )
+
+
+def _extract_bound_office_snapshot(form):
+    if not getattr(form, 'is_bound', False):
+        return {}
+    raw_value = (form.data.get('cdek_office_snapshot_raw') or '').strip()
+    if not raw_value:
+        return {}
+    try:
+        import json
+        parsed = json.loads(raw_value)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _resolve_cdek_default_location(form, *, selected_saved_address, session_city):
+    office_snapshot = _extract_bound_office_snapshot(form)
+    if office_snapshot.get('location'):
+        return office_snapshot['location']
+    if office_snapshot.get('address'):
+        return office_snapshot['address']
+    if office_snapshot.get('city'):
+        return office_snapshot['city']
+    if selected_saved_address and (selected_saved_address.city or '').strip():
+        return selected_saved_address.city.strip()
+    if session_city and (session_city.name or '').strip():
+        return session_city.name.strip()
+    # Координаты Екатеринбурга как безопасный fallback:
+    # widget не пытается геокодировать строку при первом рендере.
+    return [60.597465, 56.838011]
+
+
+def _build_cdek_widget_config(request, form, *, selected_saved_address, session_city):
+    return {
+        'enabled': _is_cdek_widget_enabled(),
+        'apiKey': getattr(settings, 'YANDEX_MAPS_API_KEY', '').strip(),
+        'servicePath': request.build_absolute_uri(reverse('orders:cdek_widget_service')),
+        'defaultLocation': _resolve_cdek_default_location(
+            form,
+            selected_saved_address=selected_saved_address,
+            session_city=session_city,
+        ),
+        'forceFilters': {
+            'type': 'PVZ',
+        },
+        'hideFilters': {
+            'have_cashless': True,
+            'have_cash': True,
+            'is_dressing_room': True,
+            'type': True,
+        },
+        'hideDeliveryOptions': {
+            'door': True,
+            'office': False,
+        },
+        'canChoose': True,
+        'lang': 'rus',
+        'currency': 'RUB',
+    }
+
+
 @ratelimit(key='ip', rate='15/m', method='POST')
 def checkout_view(request):
     """Оформление заказа для гостя или авторизованного пользователя."""
-    cart_items = get_cart_items(request)
+    cart_items, items_source = _get_checkout_items_source(request)
     saved_addresses = _get_saved_addresses(request.user) if request.user.is_authenticated else []
     selected_saved_address = _get_selected_saved_address(request, saved_addresses) if request.user.is_authenticated else None
 
@@ -228,7 +306,7 @@ def checkout_view(request):
         )
 
     form = CheckoutForm(request.POST, user=request.user)
-    cart_items = get_cart_items(request)
+    cart_items, items_source = _get_checkout_items_source(request)
     if not cart_items:
         return redirect('orders:checkout')
 
@@ -293,6 +371,8 @@ def checkout_view(request):
             address_line=(form.cleaned_data.get('address_line') or '').strip(),
             address=(form.cleaned_data.get('address_line') or '').strip(),
             delivery_comment=(form.cleaned_data.get('delivery_comment') or '').strip(),
+            cdek_office_snapshot=form.cleaned_data.get('cdek_office_snapshot') or {},
+            cdek_tariff_snapshot=form.cleaned_data.get('cdek_tariff_snapshot') or {},
             business_company_name=(form.cleaned_data.get('business_company_name') or '').strip(),
             business_inn=(form.cleaned_data.get('business_inn') or '').strip(),
             business_kpp=(form.cleaned_data.get('business_kpp') or '').strip(),
@@ -327,7 +407,10 @@ def checkout_view(request):
         if order.is_guest_order:
             issue_guest_access(order)
 
-    clear_cart(request)
+    if items_source == 'buy_now':
+        clear_buy_now_checkout_items(request)
+    else:
+        clear_cart(request)
     if request.user.is_authenticated:
         _sync_profile_from_checkout(request.user, form.cleaned_data)
 

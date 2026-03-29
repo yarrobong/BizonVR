@@ -13,3 +13,7 @@ MIDDLEWARE = [
     for middleware in MIDDLEWARE
     if middleware != 'whitenoise.middleware.WhiteNoiseMiddleware'
 ]
+
+CDEK_WIDGET_ACCOUNT = 'test-cdek-account'
+CDEK_WIDGET_PASSWORD = 'test-cdek-password'
+YANDEX_MAPS_API_KEY = 'test-yandex-api-key'

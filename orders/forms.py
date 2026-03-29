@@ -2,6 +2,7 @@
 Формы оформления заказа (Фаза 4).
 Временно: PurchaseRequestForm — заявка на покупку (телефон + Telegram).
 """
+import json
 import re
 
 from django import forms
@@ -55,46 +56,28 @@ class PurchaseRequestForm(forms.Form):
 class CheckoutForm(forms.Form):
     """Форма контактов и доставки при оформлении заказа."""
 
-    PUBLIC_DELIVERY_CHOICES = [
-        (Order.DELIVERY_CDEK_PVZ, 'CDEK до ПВЗ'),
-        (Order.DELIVERY_CDEK_COURIER, 'CDEK курьер'),
-        (Order.DELIVERY_PICKUP, 'Самовывоз'),
-        (Order.DELIVERY_CITY, 'Доставка по городу'),
-        (Order.DELIVERY_OTHER_TRANSPORT, 'Другая ТК'),
-    ]
-    ADDRESS_REQUIRED_DELIVERY_TYPES = {
-        Order.DELIVERY_CDEK_COURIER,
-        Order.DELIVERY_CITY,
-        Order.DELIVERY_COURIER,
-        Order.DELIVERY_POST,
-    }
-
     first_name = forms.CharField(
-        label='Имя',
+        label='ФИО',
         max_length=150,
         required=True,
         widget=forms.TextInput(attrs={
-            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
-            'placeholder': 'Иван',
-            'autocomplete': 'given-name',
+            'class': 'w-full rounded-2xl border border-white/10 bg-dark-700/80 px-4 py-3 text-white placeholder:text-gray-500 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30',
+            'placeholder': 'Иван Иванов',
+            'autocomplete': 'name',
         }),
     )
     last_name = forms.CharField(
         label='Фамилия',
         max_length=150,
         required=False,
-        widget=forms.TextInput(attrs={
-            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
-            'placeholder': 'Иванов',
-            'autocomplete': 'family-name',
-        }),
+        widget=forms.HiddenInput(),
     )
     phone = forms.CharField(
         label='Телефон',
         max_length=20,
         required=True,
         widget=forms.TextInput(attrs={
-            'class': 'js-phone-mask w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
+            'class': 'js-phone-mask w-full rounded-2xl border border-white/10 bg-dark-700/80 px-4 py-3 text-white placeholder:text-gray-500 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30',
             'placeholder': '+7 (999) 999-99-99',
             'inputmode': 'tel',
             'autocomplete': 'tel',
@@ -103,43 +86,37 @@ class CheckoutForm(forms.Form):
     email = forms.EmailField(
         label='Email',
         required=False,
-        widget=forms.EmailInput(attrs={
-            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
-            'placeholder': 'email@example.com',
-            'autocomplete': 'email',
-        }),
+        widget=forms.HiddenInput(),
     )
     contact_channel = forms.ChoiceField(
         label='Как с вами связаться',
         required=True,
         initial=Order.CONTACT_CHANNEL_CALL,
         choices=Order.CONTACT_CHANNEL_CHOICES,
-        widget=forms.RadioSelect(),
+        widget=forms.HiddenInput(),
     )
     contact_handle = forms.CharField(
-        label='Контакт в мессенджере',
+        label='Telegram или WhatsApp',
         max_length=150,
         required=False,
         widget=forms.TextInput(attrs={
-            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
+            'class': 'w-full rounded-2xl border border-white/10 bg-dark-700/80 px-4 py-3 text-white placeholder:text-gray-500 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30',
             'placeholder': '@username или номер WhatsApp',
+            'autocomplete': 'off',
         }),
     )
     delivery_type = forms.ChoiceField(
         label='Как получить заказ',
         required=True,
         initial=Order.DELIVERY_CDEK_PVZ,
-        choices=PUBLIC_DELIVERY_CHOICES,
-        widget=forms.RadioSelect(),
+        choices=[(Order.DELIVERY_CDEK_PVZ, 'CDEK до ПВЗ')],
+        widget=forms.HiddenInput(),
     )
     city_text = forms.CharField(
         label='Город',
         max_length=120,
-        required=True,
-        widget=forms.TextInput(attrs={
-            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
-            'placeholder': 'Екатеринбург',
-        }),
+        required=False,
+        widget=forms.HiddenInput(),
     )
     recipient_is_customer = forms.BooleanField(
         label='Получатель совпадает с покупателем',
@@ -148,11 +125,11 @@ class CheckoutForm(forms.Form):
         widget=forms.CheckboxInput(),
     )
     recipient_name = forms.CharField(
-        label='Имя и фамилия получателя',
+        label='ФИО получателя',
         max_length=255,
         required=False,
         widget=forms.TextInput(attrs={
-            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
+            'class': 'w-full rounded-2xl border border-white/10 bg-dark-700/80 px-4 py-3 text-white placeholder:text-gray-500 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30',
             'placeholder': 'Иванов Иван',
             'autocomplete': 'name',
         }),
@@ -162,151 +139,107 @@ class CheckoutForm(forms.Form):
         max_length=20,
         required=False,
         widget=forms.TextInput(attrs={
-            'class': 'js-phone-mask w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
+            'class': 'js-phone-mask w-full rounded-2xl border border-white/10 bg-dark-700/80 px-4 py-3 text-white placeholder:text-gray-500 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30',
             'placeholder': '+7 (999) 999-99-99',
             'inputmode': 'tel',
             'autocomplete': 'tel',
         }),
     )
     address_line = forms.CharField(
-        label='Адрес доставки',
+        label='Код ПВЗ СДЭК',
         required=False,
-        widget=forms.Textarea(attrs={
-            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
-            'rows': 3,
-            'placeholder': 'Город, улица, дом, офис или ориентир для связи',
-        }),
+        widget=forms.HiddenInput(),
+    )
+    cdek_office_snapshot_raw = forms.CharField(
+        required=False,
+        widget=forms.HiddenInput(),
+    )
+    cdek_tariff_snapshot_raw = forms.CharField(
+        required=False,
+        widget=forms.HiddenInput(),
     )
     delivery_comment = forms.CharField(
         label='Комментарий для доставки',
         required=False,
-        widget=forms.Textarea(attrs={
-            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
-            'rows': 2,
-            'placeholder': 'Ориентир, подъезд, код домофона или пожелания по связи',
-        }),
+        widget=forms.HiddenInput(),
     )
     payment_method = forms.ChoiceField(
         label='Как вам удобнее оплатить после подтверждения',
         required=True,
         initial=Order.PAYMENT_METHOD_SBP,
         choices=Order.PUBLIC_PAYMENT_METHOD_CHOICES,
-        widget=forms.RadioSelect(),
+        widget=forms.HiddenInput(),
     )
     business_company_name = forms.CharField(
         label='Организация',
         max_length=255,
         required=False,
-        widget=forms.TextInput(attrs={
-            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
-            'placeholder': 'ООО Виртуальный Мир',
-            'autocomplete': 'organization',
-        }),
+        widget=forms.HiddenInput(),
     )
     business_checking_account = forms.CharField(
         label='Номер счёта',
         max_length=64,
         required=False,
-        widget=forms.TextInput(attrs={
-            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
-            'placeholder': '40702810900000000001',
-            'inputmode': 'numeric',
-        }),
+        widget=forms.HiddenInput(),
     )
     business_inn = forms.CharField(
         label='ИНН',
         max_length=32,
         required=False,
-        widget=forms.TextInput(attrs={
-            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
-            'placeholder': '6677001122',
-            'inputmode': 'numeric',
-        }),
+        widget=forms.HiddenInput(),
     )
     business_kpp = forms.CharField(
         label='КПП',
         max_length=32,
         required=False,
-        widget=forms.TextInput(attrs={
-            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
-            'placeholder': '667701001',
-            'inputmode': 'numeric',
-        }),
+        widget=forms.HiddenInput(),
     )
     business_bank_name = forms.CharField(
         label='Банк',
         max_length=255,
         required=False,
-        widget=forms.TextInput(attrs={
-            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
-            'placeholder': 'ПАО Сбербанк',
-        }),
+        widget=forms.HiddenInput(),
     )
     business_bik = forms.CharField(
         label='БИК',
         max_length=20,
         required=False,
-        widget=forms.TextInput(attrs={
-            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
-            'placeholder': '046577674',
-            'inputmode': 'numeric',
-        }),
+        widget=forms.HiddenInput(),
     )
     business_correspondent_account = forms.CharField(
         label='Корр. счёт банка',
         max_length=64,
         required=False,
-        widget=forms.TextInput(attrs={
-            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
-            'placeholder': '30101810500000000674',
-            'inputmode': 'numeric',
-        }),
+        widget=forms.HiddenInput(),
     )
     business_phone = forms.CharField(
         label='Телефон контактного лица',
         max_length=40,
         required=False,
-        widget=forms.TextInput(attrs={
-            'class': 'js-phone-mask w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
-            'placeholder': '+7 (999) 999-99-99',
-            'inputmode': 'tel',
-            'autocomplete': 'tel',
-        }),
+        widget=forms.HiddenInput(),
     )
     business_telegram = forms.CharField(
         label='Telegram',
         max_length=120,
         required=False,
-        widget=forms.TextInput(attrs={
-            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
-            'placeholder': '@username или t.me/username',
-        }),
+        widget=forms.HiddenInput(),
     )
     business_whatsapp = forms.CharField(
         label='WhatsApp',
         max_length=120,
         required=False,
-        widget=forms.TextInput(attrs={
-            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
-            'placeholder': '+7 (999) 999-99-99 или wa.me/79991234567',
-        }),
+        widget=forms.HiddenInput(),
     )
     comment = forms.CharField(
         label='Комментарий к заказу',
         required=False,
-        widget=forms.Textarea(attrs={
-            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
-            'rows': 2,
-        }),
+        widget=forms.HiddenInput(),
     )
     promo_code = forms.CharField(
         label='Промокод',
         max_length=64,
         required=False,
-        widget=forms.TextInput(attrs={
-            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
-            'placeholder': 'Необязательно',
-        }),
+        widget=forms.HiddenInput(),
     )
     agree_personal_data = forms.BooleanField(
         label='Согласие на обработку персональных данных',
@@ -335,7 +268,7 @@ class CheckoutForm(forms.Form):
     def clean_first_name(self):
         value = ' '.join((self.cleaned_data.get('first_name') or '').split())
         if not value:
-            raise forms.ValidationError('Укажите имя.')
+            raise forms.ValidationError('Укажите имя и фамилию.')
         return value
 
     def clean_last_name(self):
@@ -380,6 +313,12 @@ class CheckoutForm(forms.Form):
 
     def clean_delivery_comment(self):
         return (self.cleaned_data.get('delivery_comment') or '').strip()
+
+    def clean_cdek_office_snapshot_raw(self):
+        return (self.cleaned_data.get('cdek_office_snapshot_raw') or '').strip()
+
+    def clean_cdek_tariff_snapshot_raw(self):
+        return (self.cleaned_data.get('cdek_tariff_snapshot_raw') or '').strip()
 
     def clean_business_company_name(self):
         return ' '.join((self.cleaned_data.get('business_company_name') or '').split())
@@ -434,56 +373,103 @@ class CheckoutForm(forms.Form):
 
     def clean(self):
         cleaned_data = super().clean()
-        address_line = (cleaned_data.get('address_line') or '').strip()
-        city_text = (cleaned_data.get('city_text') or '').strip()
         first_name = (cleaned_data.get('first_name') or '').strip()
         last_name = (cleaned_data.get('last_name') or '').strip()
         phone = (cleaned_data.get('phone') or '').strip()
-        email = (cleaned_data.get('email') or '').strip()
-        contact_channel = (cleaned_data.get('contact_channel') or '').strip()
         contact_handle = (cleaned_data.get('contact_handle') or '').strip()
         delivery_type = (cleaned_data.get('delivery_type') or '').strip()
         recipient_is_customer = bool(cleaned_data.get('recipient_is_customer'))
         recipient_name = (cleaned_data.get('recipient_name') or '').strip()
         recipient_phone = (cleaned_data.get('recipient_phone') or '').strip()
 
-        if not city_text:
-            self.add_error('city_text', 'Укажите город доставки.')
-        if delivery_type in self.ADDRESS_REQUIRED_DELIVERY_TYPES and not address_line:
-            self.add_error('address_line', 'Укажите адрес доставки.')
-        if contact_channel == Order.CONTACT_CHANNEL_EMAIL and not email:
-            self.add_error('email', 'Укажите email для связи.')
-        if contact_channel in {Order.CONTACT_CHANNEL_TELEGRAM, Order.CONTACT_CHANNEL_WHATSAPP} and not contact_handle:
-            self.add_error('contact_handle', 'Укажите контакт в выбранном мессенджере.')
+        office_snapshot = self._parse_cdek_snapshot(
+            cleaned_data.get('cdek_office_snapshot_raw'),
+            required=True,
+            field_name='cdek_office_snapshot_raw',
+            missing_message='Выберите ПВЗ СДЭК на карте.',
+            invalid_message='Выберите ПВЗ СДЭК на карте.',
+        )
+        tariff_snapshot = self._parse_cdek_snapshot(
+            cleaned_data.get('cdek_tariff_snapshot_raw'),
+            required=False,
+            field_name='cdek_tariff_snapshot_raw',
+            missing_message='',
+            invalid_message='Не удалось прочитать данные тарифа CDEK.',
+        )
 
-        if contact_channel == Order.CONTACT_CHANNEL_TELEGRAM and contact_handle:
+        if office_snapshot:
+            office_city = str(office_snapshot.get('city') or '').strip()
+            office_postal_code = str(office_snapshot.get('postal_code') or '').strip()
+            office_code = str(office_snapshot.get('code') or '').strip()
+            office_name = str(office_snapshot.get('name') or '').strip()
+            office_address = str(office_snapshot.get('address') or '').strip()
+            if not office_city or not office_code or not office_name or not office_address:
+                self.add_error('cdek_office_snapshot_raw', 'Выберите ПВЗ СДЭК на карте.')
+            else:
+                cleaned_data['city_text'] = office_city
+                cleaned_data['postal_code'] = office_postal_code
+                cleaned_data['address_line'] = f'{office_code} — {office_name}, {office_address}'
+                cleaned_data['address'] = cleaned_data['address_line']
+                cleaned_data['cdek_office_snapshot'] = office_snapshot
+        else:
+            cleaned_data['cdek_office_snapshot'] = {}
+
+        cleaned_data['cdek_tariff_snapshot'] = tariff_snapshot or {}
+        if delivery_type != Order.DELIVERY_CDEK_PVZ:
+            cleaned_data['delivery_type'] = Order.DELIVERY_CDEK_PVZ
+
+        cleaned_data['email'] = ''
+        cleaned_data['comment'] = ''
+        cleaned_data['delivery_comment'] = ''
+        cleaned_data['last_name'] = last_name
+        cleaned_data['payment_method'] = Order.PAYMENT_METHOD_SBP
+
+        if contact_handle:
             lower_value = contact_handle.lower()
-            if lower_value.startswith('https://t.me/'):
+            if lower_value.startswith(('https://t.me/', 'http://t.me/', 't.me/')):
                 contact_handle = contact_handle.split('t.me/', 1)[1]
-            elif lower_value.startswith('http://t.me/'):
-                contact_handle = contact_handle.split('t.me/', 1)[1]
-            elif lower_value.startswith('t.me/'):
-                contact_handle = contact_handle.split('t.me/', 1)[1]
-            contact_handle = contact_handle.strip().lstrip('@')
-            cleaned_data['contact_handle'] = f'@{contact_handle}' if contact_handle else ''
+                contact_handle = contact_handle.strip().lstrip('@')
+                cleaned_data['contact_channel'] = Order.CONTACT_CHANNEL_TELEGRAM
+                cleaned_data['contact_handle'] = f'@{contact_handle}' if contact_handle else ''
+            elif contact_handle.strip().startswith('@'):
+                cleaned_data['contact_channel'] = Order.CONTACT_CHANNEL_TELEGRAM
+                cleaned_data['contact_handle'] = f"@{contact_handle.strip().lstrip('@')}"
+            else:
+                cleaned_data['contact_channel'] = Order.CONTACT_CHANNEL_WHATSAPP
+                cleaned_data['contact_handle'] = contact_handle.strip()
+        else:
+            cleaned_data['contact_channel'] = Order.CONTACT_CHANNEL_CALL
+            cleaned_data['contact_handle'] = ''
 
         if recipient_is_customer:
             cleaned_data['recipient_name'] = ' '.join(part for part in [first_name, last_name] if part).strip()
             cleaned_data['recipient_phone'] = phone
         else:
             if not recipient_name:
-                self.add_error('recipient_name', 'Укажите имя и фамилию получателя.')
+                self.add_error('recipient_name', 'Укажите ФИО получателя.')
             if not recipient_phone:
                 self.add_error('recipient_phone', 'Укажите телефон получателя.')
 
-        if delivery_type == Order.DELIVERY_PICKUP:
-            cleaned_data['address_line'] = ''
-        cleaned_data['payment_method'] = (
-            cleaned_data.get('payment_method')
-            or Order.PAYMENT_METHOD_SBP
-        )
+        cleaned_data['delivery_type'] = Order.DELIVERY_CDEK_PVZ
         if cleaned_data['payment_method'] == Order.PAYMENT_METHOD_INVOICE and not cleaned_data.get('business_phone'):
             cleaned_data['business_phone'] = phone
         cleaned_data['country'] = 'Россия'
-        cleaned_data['postal_code'] = ''
+        if 'postal_code' not in cleaned_data:
+            cleaned_data['postal_code'] = ''
         return cleaned_data
+
+    def _parse_cdek_snapshot(self, raw_value, *, required, field_name, missing_message, invalid_message):
+        raw_value = (raw_value or '').strip()
+        if not raw_value:
+            if required:
+                self.add_error(field_name, missing_message)
+            return None
+        try:
+            parsed = json.loads(raw_value)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            self.add_error(field_name, invalid_message)
+            return None
+        if not isinstance(parsed, dict):
+            self.add_error(field_name, invalid_message)
+            return None
+        return parsed

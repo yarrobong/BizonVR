@@ -88,6 +88,8 @@ class OrderAdmin(admin.ModelAdmin):
         'stock_decreased',
         'guest_access_token',
         'guest_access_expires_at',
+        'cdek_office_snapshot',
+        'cdek_tariff_snapshot',
     )
     raw_id_fields = ('user', 'promo_code', 'city', 'pickup_point')
     actions = (
@@ -125,6 +127,8 @@ class OrderAdmin(admin.ModelAdmin):
                 'pickup_point',
                 'address_line',
                 'address',
+                'cdek_office_snapshot',
+                'cdek_tariff_snapshot',
                 'delivery_comment',
                 'delivery_cost',
             ),

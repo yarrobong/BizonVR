@@ -163,8 +163,10 @@
                   <ul class="mt-3 space-y-2 text-sm text-gray-300">
                     <li>Способ: {{ order.public_delivery_label }}</li>
                     {% if order.country %}<li>Страна: {{ order.country }}</li>{% endif %}
-                    {% if order.city_text %}<li>Город: {{ order.city_text }}</li>{% endif %}
-                    {% if order.display_address %}<li>Адрес: {{ order.display_address }}</li>{% endif %}
+                    {% if order.cdek_office_snapshot.city or order.city_text %}<li>Город: {{ order.cdek_office_snapshot.city|default:order.city_text }}</li>{% endif %}
+                    {% if order.cdek_office_code or order.cdek_office_name %}<li>ПВЗ: {{ order.cdek_office_code }}{% if order.cdek_office_name %} · {{ order.cdek_office_name }}{% endif %}</li>{% endif %}
+                    {% if order.cdek_office_address or order.display_address %}<li>Адрес: {{ order.cdek_office_address|default:order.display_address }}</li>{% endif %}
+                    {% if order.cdek_office_work_time %}<li>Режим работы: {{ order.cdek_office_work_time }}</li>{% endif %}
                     {% if order.delivery_comment %}<li>Комментарий для доставки: {{ order.delivery_comment }}</li>{% endif %}
                   </ul>
                 </div>

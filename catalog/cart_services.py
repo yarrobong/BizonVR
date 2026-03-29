@@ -10,6 +10,7 @@ _MISSING = object()
 _REQUEST_CART_ITEMS_ATTR = '_catalog_cart_items_cache'
 _REQUEST_CART_COUNT_ATTR = '_catalog_cart_count_cache'
 _REQUEST_FAVORITES_ATTR = '_catalog_favorite_product_ids_cache'
+BUY_NOW_CHECKOUT_SESSION_KEY = 'buy_now_checkout'
 
 
 def _get_request_cached_value(request, attr_name):
@@ -129,6 +130,27 @@ def clear_cart(request):
         request.session.pop('cart_items', None)
         request.session.modified = True
     invalidate_cart_request_cache(request)
+
+
+def get_buy_now_checkout_items(request):
+    """Получить одноразовый состав заказа для сценария `Купить сейчас`."""
+    payload = request.session.get(BUY_NOW_CHECKOUT_SESSION_KEY) or {}
+    items = payload.get('items')
+    return items if isinstance(items, list) else []
+
+
+def save_buy_now_checkout_items(request, cart_items):
+    """Сохранить одноразовый состав заказа для сценария `Купить сейчас`."""
+    request.session[BUY_NOW_CHECKOUT_SESSION_KEY] = {
+        'items': cart_items,
+    }
+    request.session.modified = True
+
+
+def clear_buy_now_checkout_items(request):
+    """Очистить одноразовый состав заказа для сценария `Купить сейчас`."""
+    request.session.pop(BUY_NOW_CHECKOUT_SESSION_KEY, None)
+    request.session.modified = True
 
 
 def save_cart_to_db(request, cart_items):

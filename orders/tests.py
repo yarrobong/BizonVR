@@ -1,12 +1,14 @@
 """Базовые тесты заказов (Фаза 6)."""
 from decimal import Decimal
+import json
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.core import mail
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from accounts.models import NotificationPreference, Profile
 from catalog.models import CartItem, Category, City, PickupPoint, Product, ProductStock
@@ -24,6 +26,7 @@ class OrderViewsTest(TestCase):
     """Список заказов доступен только авторизованным."""
 
     def setUp(self):
+        cache.clear()
         self.client = Client()
         self.user = User.objects.create_user(username='79991234567', password='testpass')
 
@@ -39,6 +42,7 @@ class OrderViewsTest(TestCase):
         self.assertContains(resp, 'Фильтр меняет только список заказов')
 
 
+@override_settings(RATELIMIT_ENABLE=False)
 class CheckoutTest(TestCase):
     """Checkout создаёт заказ и очищает корзину (Фаза 6)."""
 
@@ -53,24 +57,33 @@ class CheckoutTest(TestCase):
             price=Decimal('100.00'),
             is_active=True,
         )
+        self.product_second = Product.objects.create(
+            category=cat,
+            name='Товар 2',
+            slug='product-2',
+            price=Decimal('200.00'),
+            is_active=True,
+        )
         self.promo = PromoCode.objects.create(code='BIZON500', discount_amount=Decimal('50.00'))
 
     def _checkout_payload(self, **overrides):
         payload = {
             'promo_code': '',
-            'first_name': 'Иван',
-            'last_name': 'Иванов',
+            'first_name': 'Иван Иванов',
+            'last_name': '',
             'phone': '+7 999 123 45 67',
             'email': '',
             'contact_channel': Order.CONTACT_CHANNEL_CALL,
             'contact_handle': '',
             'delivery_type': Order.DELIVERY_CDEK_PVZ,
-            'city_text': 'Москва',
+            'city_text': '',
             'address_line': '',
-            'delivery_comment': 'Позвонить перед доставкой',
+            'delivery_comment': '',
+            'cdek_office_snapshot_raw': json.dumps(self._office_snapshot()),
+            'cdek_tariff_snapshot_raw': json.dumps(self._tariff_snapshot()),
             'recipient_is_customer': 'on',
             'payment_method': Order.PAYMENT_METHOD_SBP,
-            'comment': 'Позвонить за час',
+            'comment': '',
             'agree_personal_data': 'on',
             'agree_offer': 'on',
             'business_company_name': '',
@@ -87,11 +100,54 @@ class CheckoutTest(TestCase):
         payload.update(overrides)
         return payload
 
+    def _office_snapshot(self, **overrides):
+        payload = {
+            'city_code': 44,
+            'city': 'Москва',
+            'type': 'PVZ',
+            'postal_code': '125009',
+            'country_code': 'RU',
+            'have_cashless': True,
+            'have_cash': False,
+            'allowed_cod': True,
+            'is_dressing_room': False,
+            'code': 'MSK201',
+            'name': 'ПВЗ СДЭК Тверская',
+            'address': 'Москва, ул. Тверская, 10',
+            'work_time': 'Пн-Вс 10:00-20:00',
+            'location': [37.605, 55.757],
+        }
+        payload.update(overrides)
+        return payload
+
+    def _tariff_snapshot(self, **overrides):
+        payload = {
+            'tariff_code': 136,
+            'tariff_name': 'Посылка склад-склад',
+            'tariff_description': 'Доставка до ПВЗ',
+            'delivery_mode': 1,
+            'period_min': 2,
+            'period_max': 4,
+            'delivery_sum': 0,
+        }
+        payload.update(overrides)
+        return payload
+
+    def _set_buy_now_items(self, items):
+        session = self.client.session
+        session['buy_now_checkout'] = {'items': items}
+        session.save()
+
+    def _set_session_cart(self, items):
+        session = self.client.session
+        session['cart_items'] = items
+        session.save()
+
     def test_checkout_available_for_guest(self):
         resp = self.client.get(reverse('orders:checkout'))
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, 'Оформление заказа')
-        self.assertNotContains(resp, 'CDEK')
+        self.assertContains(resp, 'Оформление заявки')
+        self.assertContains(resp, 'Корзина пуста')
 
     def test_checkout_get_authenticated_returns_200(self):
         add_url = reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk})
@@ -99,7 +155,40 @@ class CheckoutTest(TestCase):
         self.client.post(add_url, {'quantity': 1})
         resp = self.client.get(reverse('orders:checkout'))
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, 'Оформление заказа')
+        self.assertContains(resp, 'Оформление заявки')
+        self.assertContains(resp, 'cdek-widget-inline-root')
+        self.assertContains(resp, 'cdek-widget-mobile-modal')
+        self.assertNotContains(resp, '<label for="id_city_text"', html=False)
+        self.assertNotContains(resp, '<label for="id_address_line"', html=False)
+
+    def test_buy_now_checkout_get_uses_draft_instead_of_regular_cart(self):
+        self._set_session_cart([{
+            'product_id': self.product.pk,
+            'variant_id': None,
+            'variant_name': None,
+            'name': self.product.name,
+            'price': 100.0,
+            'quantity': 1,
+            'image_url': '',
+            'subtotal': 100.0,
+        }])
+        self._set_buy_now_items([{
+            'product_id': self.product_second.pk,
+            'variant_id': None,
+            'variant_name': None,
+            'name': self.product_second.name,
+            'price': 200.0,
+            'quantity': 1,
+            'image_url': '',
+            'subtotal': 200.0,
+        }])
+
+        resp = self.client.get(reverse('orders:checkout'), {'mode': 'buy_now'})
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.context['cart_items']), 1)
+        self.assertEqual(resp.context['cart_items'][0]['product_id'], self.product_second.pk)
+        self.assertTrue(resp.context['is_buy_now_checkout'])
 
     def test_checkout_creates_order_and_clears_cart(self):
         add_url = reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk})
@@ -118,7 +207,12 @@ class CheckoutTest(TestCase):
         self.assertEqual(order.total_to_pay, Decimal('150.00'))
         self.assertEqual(order.phone, '+7 999 123 45 67')
         self.assertEqual(order.city_text, 'Москва')
-        self.assertEqual(order.address_line, '')
+        self.assertEqual(order.postal_code, '125009')
+        self.assertEqual(order.address_line, 'MSK201 — ПВЗ СДЭК Тверская, Москва, ул. Тверская, 10')
+        self.assertEqual(order.cdek_office_code, 'MSK201')
+        self.assertEqual(order.cdek_office_address, 'Москва, ул. Тверская, 10')
+        self.assertEqual(order.cdek_office_snapshot['name'], 'ПВЗ СДЭК Тверская')
+        self.assertEqual(order.cdek_tariff_snapshot['tariff_code'], 136)
         self.assertEqual(order.payment_method, Order.PAYMENT_METHOD_SBP)
         self.assertEqual(order.contact_channel, Order.CONTACT_CHANNEL_CALL)
         self.assertEqual(order.contact_handle, '')
@@ -143,6 +237,62 @@ class CheckoutTest(TestCase):
         self.assertTrue(order.guest_access_token)
         self.assertIn('access=', response.url)
         self.assertTrue(response.url.startswith(reverse('orders:order_created', kwargs={'order_id': order.pk})))
+
+    def test_buy_now_checkout_creates_guest_order_and_preserves_regular_cart(self):
+        self._set_session_cart([{
+            'product_id': self.product.pk,
+            'variant_id': None,
+            'variant_name': None,
+            'name': self.product.name,
+            'price': 100.0,
+            'quantity': 1,
+            'image_url': '',
+            'subtotal': 100.0,
+        }])
+        self._set_buy_now_items([{
+            'product_id': self.product_second.pk,
+            'variant_id': None,
+            'variant_name': None,
+            'name': self.product_second.name,
+            'price': 200.0,
+            'quantity': 1,
+            'image_url': '',
+            'subtotal': 200.0,
+        }])
+
+        response = self.client.post(f"{reverse('orders:checkout')}?mode=buy_now", self._checkout_payload())
+
+        self.assertEqual(response.status_code, 302)
+        order = Order.objects.get()
+        self.assertIsNone(order.user)
+        self.assertEqual(order.items.count(), 1)
+        self.assertEqual(order.items.first().product, self.product_second)
+        self.assertEqual(len(self.client.session.get('cart_items', [])), 1)
+        self.assertNotIn('buy_now_checkout', self.client.session)
+
+    def test_buy_now_checkout_creates_authenticated_order_and_preserves_regular_cart(self):
+        self.client.force_login(self.user)
+        self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
+        self._set_buy_now_items([{
+            'product_id': self.product_second.pk,
+            'variant_id': None,
+            'variant_name': None,
+            'name': self.product_second.name,
+            'price': 200.0,
+            'quantity': 1,
+            'image_url': '',
+            'subtotal': 200.0,
+        }])
+
+        response = self.client.post(f"{reverse('orders:checkout')}?mode=buy_now", self._checkout_payload())
+
+        self.assertEqual(response.status_code, 302)
+        order = Order.objects.get()
+        self.assertEqual(order.user, self.user)
+        self.assertEqual(order.items.count(), 1)
+        self.assertEqual(order.items.first().product, self.product_second)
+        self.assertTrue(CartItem.objects.filter(user=self.user, product=self.product).exists())
+        self.assertNotIn('buy_now_checkout', self.client.session)
 
     def test_add_to_cart_blocks_when_stock_missing_and_order_on_request_disabled(self):
         self.product.allow_order_on_request = False
@@ -194,7 +344,7 @@ class CheckoutTest(TestCase):
         self.assertEqual(order.manager_deal.customer_source, ManagerDeal.SOURCE_WEBSITE)
         self.assertEqual(order.manager_deal.deal_type, ManagerDeal.DEAL_SALE_ON_REQUEST)
 
-    def test_checkout_invoice_marks_manager_deal_as_business_without_requiring_requisites(self):
+    def test_checkout_ignores_public_payment_override(self):
         self.client.force_login(self.user)
         self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
 
@@ -207,9 +357,8 @@ class CheckoutTest(TestCase):
 
         self.assertEqual(response.status_code, 302)
         order = Order.objects.get()
-        self.assertEqual(order.payment_method, Order.PAYMENT_METHOD_INVOICE)
-        self.assertEqual(order.manager_deal.buyer_type, ManagerDeal.BUYER_BUSINESS)
-        self.assertEqual(order.manager_deal.business_phone, '+7 999 123 45 67')
+        self.assertEqual(order.payment_method, Order.PAYMENT_METHOD_SBP)
+        self.assertEqual(order.manager_deal.buyer_type, ManagerDeal.BUYER_INDIVIDUAL)
 
     def test_checkout_test_mode_creates_paid_order(self):
         self.client.force_login(self.user)
@@ -219,60 +368,91 @@ class CheckoutTest(TestCase):
         self.assertEqual(resp.status_code, 302)
         self.assertEqual(Order.objects.get().payment_status, Order.PAYMENT_STATUS_PAID)
 
-    def test_checkout_allows_call_without_email(self):
+    def test_checkout_discards_public_email_override(self):
         self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
 
-        response = self.client.post(reverse('orders:checkout'), self._checkout_payload(email=''))
+        response = self.client.post(reverse('orders:checkout'), self._checkout_payload(email='client@example.com'))
 
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(Order.objects.count(), 1)
+        self.assertEqual(Order.objects.get().email, '')
 
-    def test_checkout_requires_email_when_email_channel_selected(self):
+    def test_checkout_infers_telegram_contact_from_username(self):
         self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
 
         response = self.client.post(
             reverse('orders:checkout'),
-            self._checkout_payload(contact_channel=Order.CONTACT_CHANNEL_EMAIL, email=''),
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Укажите email для связи.')
-        self.assertEqual(Order.objects.count(), 0)
-
-    def test_checkout_requires_contact_handle_for_telegram(self):
-        self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
-
-        response = self.client.post(
-            reverse('orders:checkout'),
-            self._checkout_payload(contact_channel=Order.CONTACT_CHANNEL_TELEGRAM, contact_handle=''),
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Укажите контакт в выбранном мессенджере.')
-        self.assertEqual(Order.objects.count(), 0)
-
-    def test_checkout_pickup_does_not_require_address(self):
-        self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
-
-        response = self.client.post(
-            reverse('orders:checkout'),
-            self._checkout_payload(delivery_type=Order.DELIVERY_PICKUP, address_line=''),
+            self._checkout_payload(contact_handle='@bizonvr'),
         )
 
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(Order.objects.get().address_line, '')
+        order = Order.objects.get()
+        self.assertEqual(order.contact_channel, Order.CONTACT_CHANNEL_TELEGRAM)
+        self.assertEqual(order.contact_handle, '@bizonvr')
 
-    def test_checkout_courier_delivery_requires_address(self):
+    def test_checkout_infers_whatsapp_contact_from_phone(self):
         self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
 
         response = self.client.post(
             reverse('orders:checkout'),
-            self._checkout_payload(delivery_type=Order.DELIVERY_CDEK_COURIER, address_line=''),
+            self._checkout_payload(contact_handle='+7 999 555 44 33'),
+        )
+
+        self.assertEqual(response.status_code, 302)
+        order = Order.objects.get()
+        self.assertEqual(order.contact_channel, Order.CONTACT_CHANNEL_WHATSAPP)
+        self.assertEqual(order.contact_handle, '+7 999 555 44 33')
+
+    def test_checkout_requires_pvz_code(self):
+        self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
+
+        response = self.client.post(
+            reverse('orders:checkout'),
+            self._checkout_payload(cdek_office_snapshot_raw=''),
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Укажите адрес доставки.')
+        self.assertContains(response, 'Выберите ПВЗ СДЭК на карте.')
         self.assertEqual(Order.objects.count(), 0)
+
+    def test_checkout_rejects_invalid_cdek_snapshot_json(self):
+        self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
+
+        response = self.client.post(
+            reverse('orders:checkout'),
+            self._checkout_payload(cdek_office_snapshot_raw='{bad json'),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Выберите ПВЗ СДЭК на карте.')
+        self.assertEqual(Order.objects.count(), 0)
+
+    def test_checkout_uses_snapshot_over_legacy_manual_values(self):
+        self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
+
+        response = self.client.post(
+            reverse('orders:checkout'),
+            self._checkout_payload(
+                city_text='Подмена',
+                address_line='LEGACY123',
+            ),
+        )
+
+        self.assertEqual(response.status_code, 302)
+        order = Order.objects.get()
+        self.assertEqual(order.city_text, 'Москва')
+        self.assertEqual(order.address_line, 'MSK201 — ПВЗ СДЭК Тверская, Москва, ул. Тверская, 10')
+
+    def test_order_created_page_prefers_structured_pvz_snapshot(self):
+        self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
+
+        response = self.client.post(reverse('orders:checkout'), self._checkout_payload())
+
+        self.assertEqual(response.status_code, 302)
+        created = self.client.get(response.url)
+        self.assertEqual(created.status_code, 200)
+        self.assertContains(created, 'MSK201')
+        self.assertContains(created, 'ПВЗ СДЭК Тверская')
+        self.assertContains(created, 'Москва, ул. Тверская, 10')
 
     def test_checkout_requires_recipient_fields_when_recipient_differs(self):
         self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
@@ -284,7 +464,7 @@ class CheckoutTest(TestCase):
         ))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Укажите имя и фамилию получателя.')
+        self.assertContains(response, 'Укажите ФИО получателя.')
         self.assertContains(response, 'Укажите телефон получателя.')
         self.assertEqual(Order.objects.count(), 0)
 
@@ -301,13 +481,23 @@ class CheckoutFormsLegalValidationTest(TestCase):
     def test_checkout_form_requires_offer_and_personal_data_consents(self):
         form = CheckoutForm(data={
             'phone': '+7 999 111 22 33',
-            'first_name': 'Иван',
-            'last_name': 'Иванов',
+            'first_name': 'Иван Иванов',
+            'last_name': '',
             'email': '',
             'contact_channel': Order.CONTACT_CHANNEL_CALL,
-            'delivery_type': Order.DELIVERY_PICKUP,
-            'city_text': 'Москва',
+            'delivery_type': Order.DELIVERY_CDEK_PVZ,
+            'city_text': '',
             'address_line': '',
+            'cdek_office_snapshot_raw': json.dumps({
+                'city': 'Москва',
+                'postal_code': '125009',
+                'code': 'MSK201',
+                'name': 'ПВЗ СДЭК Тверская',
+                'address': 'Москва, ул. Тверская, 10',
+            }),
+            'cdek_tariff_snapshot_raw': json.dumps({
+                'tariff_code': 136,
+            }),
             'payment_method': Order.PAYMENT_METHOD_SBP,
             'comment': '',
             'promo_code': '',
@@ -315,6 +505,53 @@ class CheckoutFormsLegalValidationTest(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn('agree_personal_data', form.errors)
         self.assertIn('agree_offer', form.errors)
+
+    def test_checkout_form_requires_cdek_office_snapshot(self):
+        form = CheckoutForm(data={
+            'phone': '+7 999 111 22 33',
+            'first_name': 'Иван Иванов',
+            'last_name': '',
+            'email': '',
+            'contact_channel': Order.CONTACT_CHANNEL_CALL,
+            'delivery_type': Order.DELIVERY_CDEK_PVZ,
+            'payment_method': Order.PAYMENT_METHOD_SBP,
+            'comment': '',
+            'promo_code': '',
+            'agree_personal_data': 'on',
+            'agree_offer': 'on',
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn('cdek_office_snapshot_raw', form.errors)
+
+    def test_checkout_form_uses_snapshot_to_fill_legacy_fields(self):
+        form = CheckoutForm(data={
+            'phone': '+7 999 111 22 33',
+            'first_name': 'Иван Иванов',
+            'last_name': '',
+            'email': '',
+            'contact_channel': Order.CONTACT_CHANNEL_CALL,
+            'delivery_type': Order.DELIVERY_CDEK_PVZ,
+            'city_text': 'Подмена',
+            'address_line': 'LEGACY999',
+            'cdek_office_snapshot_raw': json.dumps({
+                'city': 'Москва',
+                'postal_code': '125009',
+                'code': 'MSK201',
+                'name': 'ПВЗ СДЭК Тверская',
+                'address': 'Москва, ул. Тверская, 10',
+            }),
+            'cdek_tariff_snapshot_raw': json.dumps({'tariff_code': 136}),
+            'recipient_is_customer': 'on',
+            'payment_method': Order.PAYMENT_METHOD_SBP,
+            'comment': '',
+            'promo_code': '',
+            'agree_personal_data': 'on',
+            'agree_offer': 'on',
+        })
+        self.assertTrue(form.is_valid())
+        self.assertEqual(form.cleaned_data['city_text'], 'Москва')
+        self.assertEqual(form.cleaned_data['postal_code'], '125009')
+        self.assertEqual(form.cleaned_data['address_line'], 'MSK201 — ПВЗ СДЭК Тверская, Москва, ул. Тверская, 10')
 
 
 class GuestOrderTest(TestCase):
@@ -377,6 +614,89 @@ class GuestOrderTest(TestCase):
         response = self.client.get(reverse('orders:guest_order_detail', kwargs={'token': self.order.guest_access_token}))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, f'Заказ #{self.order.pk}')
+
+
+@override_settings(
+    CDEK_WIDGET_ACCOUNT='widget-account',
+    CDEK_WIDGET_PASSWORD='widget-password',
+    CDEK_WIDGET_API_BASE='https://api.cdek.test/v2',
+)
+class CdekWidgetProxyTest(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.client = Client()
+        self.url = reverse('orders:cdek_widget_service')
+
+    def _auth_response(self):
+        response = Mock()
+        response.raise_for_status = Mock()
+        response.json.return_value = {'access_token': 'cached-token', 'expires_in': 3600}
+        response.headers = {}
+        response.text = json.dumps({'access_token': 'cached-token'})
+        return response
+
+    def _json_response(self, text):
+        response = Mock()
+        response.raise_for_status = Mock()
+        response.headers = {'X-Test-Upstream': '1'}
+        response.text = text
+        return response
+
+    def test_proxy_rejects_unknown_action(self):
+        response = self.client.get(self.url, {'action': 'unknown'})
+        self.assertEqual(response.status_code, 400)
+        self.assertJSONEqual(response.content, {'message': 'Unknown action'})
+
+    @patch('orders.views.cdek_widget.requests.get')
+    @patch('orders.views.cdek_widget.requests.post')
+    def test_proxy_forwards_offices_request(self, mock_post, mock_get):
+        mock_post.return_value = self._auth_response()
+        mock_get.return_value = self._json_response('[{"code":"MSK201"}]')
+
+        response = self.client.get(self.url, {'action': 'offices', 'city_code': '44'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['X-Service-Version'], '3.11.1')
+        self.assertEqual(response['X-Test-Upstream'], '1')
+        self.assertJSONEqual(response.content, [{'code': 'MSK201'}])
+        self.assertEqual(mock_post.call_count, 1)
+        mock_get.assert_called_once()
+        self.assertEqual(mock_get.call_args.kwargs['params']['action'], 'offices')
+
+    @patch('orders.views.cdek_widget.requests.get')
+    @patch('orders.views.cdek_widget.requests.post')
+    def test_proxy_forwards_calculate_request(self, mock_post, mock_get):
+        mock_post.side_effect = [
+            self._auth_response(),
+            self._json_response('{"office":[{"tariff_code":136}]}'),
+        ]
+
+        response = self.client.post(
+            self.url,
+            data=json.dumps({'action': 'calculate', 'city_code': 44}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertJSONEqual(response.content, {'office': [{'tariff_code': 136}]})
+        self.assertEqual(mock_post.call_count, 2)
+        self.assertFalse(mock_get.called)
+        calculate_call = mock_post.call_args_list[1]
+        self.assertEqual(calculate_call.kwargs['json']['action'], 'calculate')
+
+    @patch('orders.views.cdek_widget.requests.get')
+    @patch('orders.views.cdek_widget.requests.post')
+    def test_proxy_reuses_cached_auth_token(self, mock_post, mock_get):
+        mock_post.return_value = self._auth_response()
+        mock_get.return_value = self._json_response('[]')
+
+        first = self.client.get(self.url, {'action': 'offices', 'city_code': '44'})
+        second = self.client.get(self.url, {'action': 'offices', 'city_code': '44'})
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(mock_post.call_count, 1)
+        self.assertEqual(mock_get.call_count, 2)
 
 
 class OrderSecurityRegressionTest(TestCase):
