@@ -18,6 +18,8 @@ urlpatterns = [
     path('cart/share/add-all/', views.cart_share_add_all_view, name='cart_share_add_all'),
     path('cart/add-bundle/', views.add_bundle_to_cart_view, name='add_bundle_to_cart'),
     path('cart/add/<int:product_id>/', views.add_to_cart_view, name='add_to_cart'),
+    path('buy-now-bundle/', views.buy_now_bundle_view, name='buy_now_bundle'),
+    path('buy-now/<int:product_id>/', views.buy_now_product_view, name='buy_now_product'),
     path('cart/update/', views.cart_update_view, name='cart_update'),
     path('favorite/<int:product_id>/', views.toggle_favorite_view, name='toggle_favorite'),
 ]

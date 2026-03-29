@@ -1,11 +1,18 @@
 import json
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 from django_ratelimit.decorators import ratelimit
 
-from ..cart_services import get_cart_count, get_cart_items, save_cart_to_db, save_cart_to_session
+from ..cart_services import (
+    get_cart_count,
+    get_cart_items,
+    save_buy_now_checkout_items,
+    save_cart_to_db,
+    save_cart_to_session,
+)
 from ..models import Product, ProductBundle, ProductVariant
 from .cart import cart_partial
 from .common import _get_stock_total
@@ -21,6 +28,57 @@ def _cart_item_matches(item, product_id, variant_id=None):
     return item_vid == variant_id
 
 
+def _get_next_url(request, fallback_url):
+    return request.POST.get('next') or request.GET.get('next') or fallback_url
+
+
+def _with_cart_error_flag(url):
+    parts = urlsplit(url)
+    query = dict(parse_qsl(parts.query, keep_blank_values=True))
+    query['cart_error'] = '1'
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
+
+
+def _render_cart_error(request, cart_items, message):
+    total = sum(i.get('subtotal', 0) for i in cart_items)
+    resp = render(request, 'catalog/partials/cart_content.html', {
+        'cart_items': cart_items,
+        'total': total,
+        'cart_error': message,
+    })
+    resp['HX-Trigger'] = json.dumps({'cart-updated': {'count': get_cart_count(request)}})
+    return resp
+
+
+def _render_or_redirect_cart_error(request, *, cart_items, message, fallback_url):
+    if request.headers.get('HX-Request'):
+        return _render_cart_error(request, cart_items, message)
+    return redirect(_with_cart_error_flag(_get_next_url(request, fallback_url)))
+
+
+def _get_requested_quantity(request):
+    try:
+        return max(1, int(request.POST.get('quantity', 1)))
+    except (TypeError, ValueError):
+        return 1
+
+
+def _get_product_variant(product, product_id, raw_variant_id):
+    variant = None
+    variant_id = None
+    if raw_variant_id:
+        try:
+            variant_id = int(raw_variant_id)
+            variant = ProductVariant.objects.filter(product_id=product_id, pk=variant_id).first()
+            if not variant:
+                variant_id = None
+        except (TypeError, ValueError):
+            variant_id = None
+    if not variant:
+        variant = None
+    return variant_id, variant
+
+
 @ratelimit(key='ip', rate='60/m', method='POST')
 @require_POST
 def add_to_cart_view(request, product_id):
@@ -30,34 +88,15 @@ def add_to_cart_view(request, product_id):
     Если выбран город — ограничиваем количество доступным остатком по городу.
     """
     product = get_object_or_404(Product, pk=product_id, is_active=True)
-    variant_id = request.POST.get('variant_id')
-    variant = None
-    if variant_id:
-        try:
-            variant_id = int(variant_id)
-            variant = ProductVariant.objects.filter(product_id=product_id, pk=variant_id).first()
-            if not variant:
-                variant_id = None
-                variant = None
-        except (TypeError, ValueError):
-            variant_id = None
+    variant_id, variant = _get_product_variant(product, product_id, request.POST.get('variant_id'))
     if product.variants.exists() and not variant:
-        if request.headers.get('HX-Request'):
-            cart_items_err = get_cart_items(request)
-            total = sum(i.get('subtotal', 0) for i in cart_items_err)
-            resp = render(request, 'catalog/partials/cart_content.html', {
-                'cart_items': cart_items_err,
-                'total': total,
-                'cart_error': 'Выберите вариант товара.',
-            })
-            resp['HX-Trigger'] = json.dumps({'cart-updated': {'count': get_cart_count(request)}})
-            return resp
-        next_url = request.POST.get('next') or request.GET.get('next') or product.get_absolute_url()
-        return redirect(next_url + '?cart_error=1')
-    try:
-        quantity = max(1, int(request.POST.get('quantity', 1)))
-    except (TypeError, ValueError):
-        quantity = 1
+        return _render_or_redirect_cart_error(
+            request,
+            cart_items=get_cart_items(request),
+            message='Выберите вариант товара.',
+            fallback_url=product.get_absolute_url(),
+        )
+    quantity = _get_requested_quantity(request)
 
     cart_items = list(get_cart_items(request))
     current_in_cart = sum(
@@ -70,38 +109,19 @@ def add_to_cart_view(request, product_id):
         if quantity > available:
             quantity = available
         if quantity <= 0:
-            if request.headers.get('HX-Request'):
-                total = sum(i.get('subtotal', 0) for i in cart_items)
-                resp = render(request, 'catalog/partials/cart_content.html', {
-                    'cart_items': cart_items,
-                    'total': total,
-                    'cart_error': 'Недостаточно товара.',
-                })
-                resp['HX-Trigger'] = json.dumps({'cart-updated': {'count': get_cart_count(request)}})
-                return resp
-            next_url = request.POST.get('next') or request.GET.get('next') or product.get_absolute_url()
-            return redirect(next_url + '?cart_error=1')
+            return _render_or_redirect_cart_error(
+                request,
+                cart_items=cart_items,
+                message='Недостаточно товара.',
+                fallback_url=product.get_absolute_url(),
+            )
     elif not getattr(product, 'allow_order_on_request', True):
-        if request.headers.get('HX-Request'):
-            total = sum(i.get('subtotal', 0) for i in cart_items)
-            resp = render(request, 'catalog/partials/cart_content.html', {
-                'cart_items': cart_items,
-                'total': total,
-                'cart_error': 'Товар недоступен для заказа.',
-            })
-            resp['HX-Trigger'] = json.dumps({'cart-updated': {'count': get_cart_count(request)}})
-            return resp
-        next_url = request.POST.get('next') or request.GET.get('next') or product.get_absolute_url()
-        return redirect(next_url + '?cart_error=1')
-
-    if variant:
-        display_name = f'{product.name} ({variant.name})'
-        price = float(variant.price)
-        image_url = variant.image.url if variant.image else (product.image.url if product.image else '')
-    else:
-        display_name = product.name
-        price = float(product.price)
-        image_url = product.image.url if product.image else ''
+        return _render_or_redirect_cart_error(
+            request,
+            cart_items=cart_items,
+            message='Товар недоступен для заказа.',
+            fallback_url=product.get_absolute_url(),
+        )
 
     for item in cart_items:
         if _cart_item_matches(item, product_id, variant_id):
@@ -109,16 +129,18 @@ def add_to_cart_view(request, product_id):
             item['subtotal'] = item['price'] * item['quantity']
             break
     else:
-        cart_items.append({
-            'product_id': product.pk,
-            'variant_id': variant_id,
-            'variant_name': variant.name if variant else None,
-            'name': display_name,
-            'price': price,
-            'quantity': quantity,
-            'image_url': image_url,
-            'subtotal': price * quantity,
-        })
+        cart_items, added_item = _add_product_to_cart_items(
+            cart_items,
+            product,
+            variant_id,
+            variant,
+            quantity,
+        )
+    if 'added_item' not in locals():
+        _, added_item = _add_product_to_cart_items([], product, variant_id, variant, quantity)
+    display_name = added_item['name']
+    price = added_item['price']
+    image_url = added_item['image_url']
 
     if request.user.is_authenticated:
         save_cart_to_db(request, cart_items)
@@ -154,8 +176,7 @@ def add_to_cart_view(request, product_id):
         })
         return resp
 
-    next_url = request.POST.get('next') or request.GET.get('next') or product.get_absolute_url()
-    return redirect(next_url)
+    return redirect(_get_next_url(request, product.get_absolute_url()))
 
 
 @require_POST
@@ -303,6 +324,37 @@ def _add_product_to_cart_items(
     return cart_items, new_item
 
 
+def _get_bundle_with_items(raw_bundle_id):
+    try:
+        bundle_id = int(raw_bundle_id)
+    except (TypeError, ValueError):
+        return None, []
+    bundle = ProductBundle.objects.filter(pk=bundle_id).prefetch_related('items__product', 'items__product__variants').first()
+    items = list(bundle.items.select_related('product').all()) if bundle else []
+    return bundle, items
+
+
+def _build_bundle_cart_items(bundle, items, *, base_cart_items=None):
+    cart_items = list(base_cart_items or [])
+    for item in items:
+        product = item.product
+        if not product.is_active:
+            continue
+        variant = product.variants.first()
+        variant_id = variant.pk if variant else None
+        cart_items, _ = _add_product_to_cart_items(
+            cart_items,
+            product,
+            variant_id,
+            variant,
+            item.quantity,
+            price_override=float(item.effective_price),
+            bundle_id=bundle.pk,
+            bundle_name=bundle.name or f'Набор #{bundle.pk}',
+        )
+    return cart_items
+
+
 @ratelimit(key='ip', rate='30/m', method='POST')
 @require_POST
 def add_bundle_to_cart_view(request):
@@ -311,41 +363,18 @@ def add_bundle_to_cart_view(request):
     POST: bundle_id — добавить все товары набора (наборы задаются в админке).
     """
     cart_items = list(get_cart_items(request))
-    bundle_id = request.POST.get('bundle_id')
+    bundle, items = _get_bundle_with_items(request.POST.get('bundle_id'))
 
-    if bundle_id:
-        try:
-            bundle_id = int(bundle_id)
-        except (TypeError, ValueError):
-            bundle_id = None
-        bundle = ProductBundle.objects.filter(pk=bundle_id).prefetch_related('items__product', 'items__product__variants').first()
-        items = list(bundle.items.select_related('product').all()) if bundle else []
-        if not bundle or len(items) < 2:
-            if request.headers.get('HX-Request'):
-                total = sum(i.get('subtotal', 0) for i in cart_items)
-                resp = render(request, 'catalog/partials/cart_content.html', {
-                    'cart_items': cart_items,
-                    'total': total,
-                    'cart_error': 'Набор не найден или содержит менее 2 позиций.',
-                })
-                resp['HX-Trigger'] = json.dumps({'cart-updated': {'count': get_cart_count(request)}})
-                return resp
-            return redirect('catalog:product_list')
-
-        for item in items:
-            product = item.product
-            if not product.is_active:
-                continue
-            variant = product.variants.first()
-            variant_id = variant.pk if variant else None
-            price_in_bundle = float(item.effective_price)
-            qty = item.quantity
-            cart_items, _ = _add_product_to_cart_items(
-                cart_items, product, variant_id, variant, qty,
-                price_override=price_in_bundle,
-                bundle_id=bundle.pk,
-                bundle_name=bundle.name or f'Набор #{bundle.pk}',
+    if bundle:
+        if len(items) < 2:
+            return _render_or_redirect_cart_error(
+                request,
+                cart_items=cart_items,
+                message='Набор не найден или содержит менее 2 позиций.',
+                fallback_url=reverse('catalog:product_list'),
             )
+
+        cart_items = _build_bundle_cart_items(bundle, items, base_cart_items=cart_items)
 
         if request.user.is_authenticated:
             save_cart_to_db(request, cart_items)
@@ -391,16 +420,67 @@ def add_bundle_to_cart_view(request):
                 }
             })
             return resp
-        next_url = request.POST.get('next') or request.GET.get('next') or reverse('catalog:product_list')
-        return redirect(next_url)
+        return redirect(_get_next_url(request, reverse('catalog:product_list')))
 
-    if request.headers.get('HX-Request'):
-        total = sum(i.get('subtotal', 0) for i in cart_items)
-        resp = render(request, 'catalog/partials/cart_content.html', {
-            'cart_items': cart_items,
-            'total': total,
-            'cart_error': 'Укажите набор (bundle_id).',
-        })
-        resp['HX-Trigger'] = json.dumps({'cart-updated': {'count': get_cart_count(request)}})
-        return resp
-    return redirect('catalog:product_list')
+    return _render_or_redirect_cart_error(
+        request,
+        cart_items=cart_items,
+        message='Укажите набор (bundle_id).',
+        fallback_url=reverse('catalog:product_list'),
+    )
+
+
+@ratelimit(key='ip', rate='30/m', method='POST')
+@require_POST
+def buy_now_product_view(request, product_id):
+    """Подготовить одноразовый checkout только для выбранного товара."""
+    product = get_object_or_404(Product, pk=product_id, is_active=True)
+    variant_id, variant = _get_product_variant(product, product_id, request.POST.get('variant_id'))
+    if product.variants.exists() and not variant:
+        return _render_or_redirect_cart_error(
+            request,
+            cart_items=get_cart_items(request),
+            message='Выберите вариант товара.',
+            fallback_url=product.get_absolute_url(),
+        )
+
+    quantity = _get_requested_quantity(request)
+    stock_total = _get_stock_total(product_id, variant_id)
+    if stock_total > 0 and quantity > stock_total:
+        quantity = stock_total
+    if stock_total > 0 and quantity <= 0:
+        return _render_or_redirect_cart_error(
+            request,
+            cart_items=get_cart_items(request),
+            message='Недостаточно товара.',
+            fallback_url=product.get_absolute_url(),
+        )
+    if stock_total <= 0 and not getattr(product, 'allow_order_on_request', True):
+        return _render_or_redirect_cart_error(
+            request,
+            cart_items=get_cart_items(request),
+            message='Товар недоступен для заказа.',
+            fallback_url=product.get_absolute_url(),
+        )
+
+    buy_now_items, _ = _add_product_to_cart_items([], product, variant_id, variant, quantity)
+    save_buy_now_checkout_items(request, buy_now_items)
+    return redirect(f"{reverse('orders:checkout')}?mode=buy_now")
+
+
+@ratelimit(key='ip', rate='30/m', method='POST')
+@require_POST
+def buy_now_bundle_view(request):
+    """Подготовить одноразовый checkout только для выбранного набора."""
+    bundle, items = _get_bundle_with_items(request.POST.get('bundle_id'))
+    if not bundle or len(items) < 2:
+        return _render_or_redirect_cart_error(
+            request,
+            cart_items=get_cart_items(request),
+            message='Набор не найден или содержит менее 2 позиций.',
+            fallback_url=_get_next_url(request, reverse('catalog:product_list')),
+        )
+
+    buy_now_items = _build_bundle_cart_items(bundle, items)
+    save_buy_now_checkout_items(request, buy_now_items)
+    return redirect(f"{reverse('orders:checkout')}?mode=buy_now")

@@ -214,12 +214,12 @@
             <input type="hidden" name="next" value="{{ request.get_full_path }}" />
             <button type="submit" class="add-cart-btn" :class="{ 'in-cart': bundleInCart }" :disabled="bundleAddBusy"><span x-text="bundleAddBusy ? 'Добавление...' : (bundleInCart ? 'В корзине' : 'В корзину')"></span></button>
           </form>
-          <form action="{% url 'catalog:add_bundle_to_cart' %}" method="post"
+          <form action="{% url 'catalog:buy_now_bundle' %}" method="post"
                 @htmx:before-request="bundleAddBusy = true"
                 @htmx:after-request="bundleAddBusy = false">
             {% csrf_token %}
             <input type="hidden" name="bundle_id" value="{{ bundle.pk }}" />
-            <input type="hidden" name="next" value="{% url 'orders:checkout' %}" />
+            <input type="hidden" name="next" value="{{ request.get_full_path }}" />
             <button type="submit" class="buy-now-btn" :disabled="bundleAddBusy">Купить сейчас</button>
           </form>
         </div>

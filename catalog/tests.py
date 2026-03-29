@@ -1063,6 +1063,12 @@ class CartTest(TestCase):
             price=200,
             is_active=True,
         )
+        self.bundle = ProductBundle.objects.create(
+            name='Набор для теста',
+            slug='test-bundle',
+        )
+        ProductBundleItem.objects.create(bundle=self.bundle, product=self.product, quantity=1)
+        ProductBundleItem.objects.create(bundle=self.bundle, product=self.product_second, quantity=2)
 
     def _set_session_cart(self, items):
         session = self.client.session
@@ -1086,6 +1092,43 @@ class CartTest(TestCase):
         self.assertIn('HX-Trigger', resp)
         trigger = json.loads(resp['HX-Trigger'])
         self.assertEqual(trigger['cart-updated']['count'], 1)
+
+    def test_buy_now_product_redirects_to_checkout_without_touching_regular_cart(self):
+        url = reverse('catalog:buy_now_product', kwargs={'product_id': self.product.pk})
+
+        resp = self.client.post(url, {'quantity': 1})
+
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.url, f"{reverse('orders:checkout')}?mode=buy_now")
+        self.assertEqual(self.client.session.get('cart_items', []), [])
+        buy_now_checkout = self.client.session.get('buy_now_checkout', {})
+        self.assertEqual(len(buy_now_checkout.get('items', [])), 1)
+        self.assertEqual(buy_now_checkout['items'][0]['product_id'], self.product.pk)
+
+    def test_buy_now_product_requires_variant_like_add_to_cart(self):
+        url = reverse('catalog:buy_now_product', kwargs={'product_id': self.product_with_variant.pk})
+
+        resp = self.client.post(url, {'next': self.product_with_variant.get_absolute_url()})
+
+        self.assertEqual(resp.status_code, 302)
+        self.assertTrue(resp.url.startswith(self.product_with_variant.get_absolute_url()))
+        self.assertIn('cart_error=1', resp.url)
+        self.assertNotIn('buy_now_checkout', self.client.session)
+
+    def test_buy_now_bundle_creates_one_click_draft_without_touching_regular_cart(self):
+        url = reverse('catalog:buy_now_bundle')
+
+        resp = self.client.post(url, {'bundle_id': self.bundle.pk, 'next': self.bundle.get_absolute_url()})
+
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.url, f"{reverse('orders:checkout')}?mode=buy_now")
+        self.assertEqual(self.client.session.get('cart_items', []), [])
+        buy_now_checkout = self.client.session.get('buy_now_checkout', {})
+        self.assertEqual(len(buy_now_checkout.get('items', [])), 2)
+        self.assertEqual(
+            {item['product_id'] for item in buy_now_checkout['items']},
+            {self.product.pk, self.product_second.pk},
+        )
 
     def test_cart_update_changes_quantity_and_remove_item(self):
         add_url = reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk})

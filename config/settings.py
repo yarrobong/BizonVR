@@ -220,6 +220,11 @@ PAYMENT_GATEWAY_API_BASE = config(
     'PAYMENT_GATEWAY_API_BASE',
     default=os.getenv(f'{_LEGACY_PAYMENT_ENV_PREFIX}_API_BASE', _LEGACY_PAYMENT_API_BASE),
 )
+# Интеграция CDEK widget 3.x
+CDEK_WIDGET_ACCOUNT = config('CDEK_WIDGET_ACCOUNT', default='').strip()
+CDEK_WIDGET_PASSWORD = config('CDEK_WIDGET_PASSWORD', default='').strip()
+YANDEX_MAPS_API_KEY = config('YANDEX_MAPS_API_KEY', default='').strip()
+CDEK_WIDGET_API_BASE = config('CDEK_WIDGET_API_BASE', default='https://api.cdek.ru/v2').rstrip('/')
 # Для IPN webhook и callback нужен абсолютный URL сайта (в продакшене обязательно)
 SITE_URL = config('SITE_URL', default='http://localhost:8000').rstrip('/')
 

@@ -600,10 +600,10 @@
           {% endif %}
         </form>
 
-        <form action="{% url 'catalog:add_to_cart' product.pk %}" method="post">
+        <form action="{% url 'catalog:buy_now_product' product.pk %}" method="post">
           {% csrf_token %}
           <input type="hidden" name="quantity" value="1" />
-          <input type="hidden" name="next" value="{% url 'orders:checkout' %}" />
+          <input type="hidden" name="next" value="{{ request.get_full_path }}" />
           {% if product.variants.all %}
           <input type="hidden" name="variant_id" :value="selectedVariant ? selectedVariant.id : ''" />
           <button type="submit" class="buy-now-btn" :disabled="!selectedVariant">Купить сейчас</button>

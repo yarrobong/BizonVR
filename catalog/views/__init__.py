@@ -1,5 +1,11 @@
 from .cart import cart_clear_view, cart_page_view, cart_partial
-from .cart_mutations import add_bundle_to_cart_view, add_to_cart_view, cart_update_view
+from .cart_mutations import (
+    add_bundle_to_cart_view,
+    add_to_cart_view,
+    buy_now_bundle_view,
+    buy_now_product_view,
+    cart_update_view,
+)
 from .cart_share import cart_share_add_all_view, cart_share_create_view
 from .favorites import favorite_list_view, toggle_favorite_view
 from .footer import footer_products_feed_view
@@ -11,6 +17,8 @@ __all__ = [
     'ProductListView',
     'add_bundle_to_cart_view',
     'add_to_cart_view',
+    'buy_now_bundle_view',
+    'buy_now_product_view',
     'cart_clear_view',
     'cart_page_view',
     'cart_partial',

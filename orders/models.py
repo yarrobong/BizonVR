@@ -285,6 +285,8 @@ class Order(models.Model):
     address_line = models.TextField('Адрес доставки (структурированный)', blank=True)
     delivery_comment = models.TextField('Комментарий для доставки', blank=True)
     address = models.TextField('Адрес доставки', blank=True)
+    cdek_office_snapshot = models.JSONField('Снимок ПВЗ CDEK', default=dict, blank=True)
+    cdek_tariff_snapshot = models.JSONField('Снимок тарифа CDEK', default=dict, blank=True)
     business_company_name = models.CharField('Организация', max_length=255, blank=True)
     business_inn = models.CharField('ИНН организации', max_length=32, blank=True)
     business_kpp = models.CharField('КПП организации', max_length=32, blank=True)
@@ -345,6 +347,22 @@ class Order(models.Model):
     @property
     def display_address(self):
         return self.address_line or self.address
+
+    @property
+    def cdek_office_code(self):
+        return (self.cdek_office_snapshot or {}).get('code', '')
+
+    @property
+    def cdek_office_name(self):
+        return (self.cdek_office_snapshot or {}).get('name', '')
+
+    @property
+    def cdek_office_address(self):
+        return (self.cdek_office_snapshot or {}).get('address', '')
+
+    @property
+    def cdek_office_work_time(self):
+        return (self.cdek_office_snapshot or {}).get('work_time', '')
 
     @property
     def public_delivery_label(self):
