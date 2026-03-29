@@ -130,6 +130,7 @@ def _build_checkout_context(request, form, cart_items, saved_addresses, selected
         'is_authenticated_checkout': request.user.is_authenticated,
         'checkout_mode': checkout_mode,
         'is_buy_now_checkout': checkout_mode == 'buy_now',
+        'hide_footer_products': True,
         'checkout_step': _get_checkout_step(form),
         'cdek_widget_enabled': _is_cdek_widget_enabled(),
         'cdek_widget_config': _build_cdek_widget_config(

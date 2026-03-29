@@ -447,10 +447,21 @@
     }
     
     function initHtmxHandlers() {
+      function syncLayoutState() {
+        const mainContent = document.getElementById('main-content');
+        const stickyHeaderMarker = mainContent?.querySelector('[data-layout-sticky-header]');
+        const stickyHeaderEnabled = stickyHeaderMarker?.dataset.layoutStickyHeader !== 'off';
+
+        window.dispatchEvent(new CustomEvent('layout-sticky-header', {
+          detail: { enabled: stickyHeaderEnabled }
+        }));
+      }
+
       initLucide(); // иконки в шапке (каталог и др.) сразу при загрузке
       ensureLucideObserver();
       initPhoneMasks(document);
       initCookieConsentBanner();
+      syncLayoutState();
       // Проверяем, что body уже существует
       if (!document.body) {
         console.warn('document.body is not available yet');
@@ -501,6 +512,7 @@
         initPhoneMasks(document);
         // После полного обновления DOM
         if (ev.detail.target.id === 'main-content') {
+          syncLayoutState();
           window.dispatchEvent(new CustomEvent('header-expand'));
           const mainContent = document.getElementById('main-content');
           if (mainContent) {
@@ -519,6 +531,7 @@
           // НЕ скроллим вверх автоматически - позицию восстановит скрипт ниже
           // Alpine.js автоматически обнаружит новые элементы с x-data через MutationObserver
           // Поэтому initTree вызывать не обязательно и это может вызвать ошибки
+          syncLayoutState();
           scheduleLucideRetry(0);
           initPhoneMasks(document);
         }
