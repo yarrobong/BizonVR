@@ -11,6 +11,7 @@
 - Nginx
 - Certbot
 - Домен `bizonvr.ru`, направленный на IP сервера
+- Если нужен редирект со старого домена, `bizon-business.ru` и `www.bizon-business.ru` тоже должны указывать на этот же сервер
 
 ### Cloud-init при создании сервера
 
@@ -151,6 +152,8 @@ curl -I http://127.0.0.1:8000/
 
 ### 8. Nginx
 
+Если переносите трафик со старого домена, сначала направьте DNS записей `bizon-business.ru` и `www.bizon-business.ru` на тот же IP, что и `bizonvr.ru`. Без этого Nginx не сможет отдать редирект, потому что запросы просто не попадут на сервер.
+
 Скопируйте пример конфига:
 
 ```bash
@@ -164,6 +167,13 @@ sudo rm -f /etc/nginx/sites-enabled/default
 - `/opt/BizonVR/staticfiles/`
 - `/opt/BizonVR/media/`
 
+В примере `deploy/nginx.conf.example` уже есть отдельные `server` blocks для:
+
+- основного сайта `bizonvr.ru`;
+- постоянного `301`-редиректа с `bizon-business.ru` и `www.bizon-business.ru` на главную страницу `https://bizonvr.ru/`.
+
+Старый домен не нужно добавлять в `ALLOWED_HOSTS`, если редирект выполняется через `return 301` на уровне Nginx и трафик не проксируется в Django.
+
 Затем:
 
 ```bash
@@ -175,9 +185,14 @@ sudo systemctl reload nginx
 
 ```bash
 sudo certbot --nginx -d bizonvr.ru -d www.bizonvr.ru
+sudo certbot --nginx -d bizon-business.ru -d www.bizon-business.ru
 ```
 
+Сертификат для старого домена нужен тоже: без него `https://bizon-business.ru` не сможет корректно открыть TLS-соединение и дойти до редиректа.
+
 ## Обновление деплоя
+
+Для повторных выкладок см. отдельную инструкцию: [DEPLOY_UPDATE.md](/Users/Yaroslav/Documents/dev/BizonVR/DEPLOY_UPDATE.md).
 
 После `git push` локально:
 
@@ -192,6 +207,17 @@ npm run build:css
 .venv/bin/python manage.py collectstatic --noinput
 sudo systemctl restart bizonvr
 sudo systemctl reload nginx
+```
+
+Если вместе с обновлением вы включали редирект со старого домена, после `nginx reload` проверьте:
+
+```bash
+curl -I http://bizon-business.ru/
+curl -I https://bizon-business.ru/
+curl -I "http://bizon-business.ru/catalog/?page=2"
+curl -I http://www.bizon-business.ru/
+curl -I https://www.bizon-business.ru/
+curl -I https://bizonvr.ru/
 ```
 
 ## Медиафайлы
@@ -223,5 +249,6 @@ tar -czvf media-backup-$(date +%Y%m%d).tar.gz -C /opt/BizonVR media/
 - [ ] Gunicorn отвечает на `127.0.0.1:8000`
 - [ ] Nginx проксирует трафик на Gunicorn
 - [ ] HTTPS выпущен и работает
+- [ ] `http://bizon-business.ru`, `https://bizon-business.ru` и `www`-вариант отдают `301` на `https://bizonvr.ru/`, если старый домен подключён
 - [ ] Админка, каталог, корзина и checkout открываются без ошибок
 - [ ] Никакие архивные директории из `legacy` не запускаются как отдельные сервисы

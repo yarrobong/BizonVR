@@ -1,8 +1,10 @@
 from django.urls import reverse
 
 from django.conf import settings
-from django.test import SimpleTestCase
+from django.contrib.auth.models import AnonymousUser
+from django.test import RequestFactory, SimpleTestCase, TestCase
 
+from config.views.static_pages import not_found_view
 from manager_portal.single_db_contract import collect_single_db_contract_violations
 
 
@@ -72,3 +74,20 @@ class ConferenceAttractionsLandingTests(SimpleTestCase):
         self.assertNotIn('href="#">WhatsApp</a>', html)
         self.assertNotIn('href="#">Telegram</a>', html)
         self.assertNotIn('tel:+70000000000', html)
+
+
+class PublicSiteMetrikaTemplateTests(TestCase):
+    def test_home_page_includes_yandex_metrika_counter(self):
+        response = self.client.get(reverse('home'))
+
+        self.assertContains(response, 'https://mc.yandex.ru/metrika/tag.js?id=108292006', html=False)
+        self.assertContains(response, 'https://mc.yandex.ru/watch/108292006', html=False)
+
+    def test_custom_404_page_includes_yandex_metrika_counter(self):
+        request = RequestFactory().get('/missing-page/')
+        request.user = AnonymousUser()
+        request.session = {}
+        response = not_found_view(request, unmatched_path='missing-page/')
+
+        self.assertEqual(response.status_code, 404)
+        self.assertIn('https://mc.yandex.ru/metrika/tag.js?id=108292006', response.content.decode('utf-8'))
