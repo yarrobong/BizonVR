@@ -7,6 +7,7 @@ from django import forms
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.contrib.messages.storage.base import Message
 from django.core.paginator import Paginator
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
@@ -18,9 +19,10 @@ from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
 
 from catalog.admin.proposal_html import build_commercial_proposal_html
-from catalog.models import Product, ProductStock
+from catalog.models import Product
 from catalog.stock import public_stock_status
 from config.formatting import format_currency_amount
 from orders.models import Order, OrderItem, resolve_order_item_image_url
@@ -55,7 +57,11 @@ from .forms import (
     DealSavedViewForm,
     ExpenseForm,
     FinanceDealForm,
+    FinanceDealLineForm,
+    FinanceDealShareOverrideForm,
     FinanceDealTypeForm,
+    FinanceDistributionRuleForm,
+    FinanceDistributionSchemeForm,
     FinanceExpenseCategoryForm,
     FinanceExpenseForm,
     FinancePayoutForm,
@@ -93,7 +99,11 @@ from .models import (
     ContractTemplate,
     Expense,
     FinanceDeal,
+    FinanceDealLine,
+    FinanceDealShare,
     FinanceDealType,
+    FinanceDistributionRule,
+    FinanceDistributionScheme,
     FinanceExpense,
     FinanceExpenseCategory,
     FinancePayout,
@@ -131,14 +141,18 @@ from .services import (
     finance_case_missing_fields,
     finance_dashboard_data,
     finance_report_archive,
+    active_finance_distribution_scheme,
+    clone_finance_distribution_scheme,
     inventory_snapshot,
     inventory_snapshot_for_warehouse,
     inventory_summary,
     manager_portal_now,
     manager_portal_stale_after,
+    order_supply_state_snapshot,
     prefill_contract_document_from_manager_deal,
     prefill_finance_deal_from_manager_deal,
     create_or_update_shipment_for_order,
+    dispatch_shipment,
     ensure_order_reservations,
     fulfill_reservation,
     receive_cargo_item,
@@ -146,6 +160,10 @@ from .services import (
     reservation_coverage_snapshot,
     reservation_prefill_lines_for_deal,
     receipt_inventory,
+    recalculate_finance_deal_distribution,
+    recalculate_finance_deal_totals,
+    reactivate_reservation_items,
+    reverse_shipment_for_manager_deal,
     resolve_manager_client,
     restore_avito_return_to_stock,
     shipment_checklist,
@@ -154,6 +172,8 @@ from .services import (
     shipments_rows,
     split_cargo,
     sync_public_stock_for_warehouse,
+    sync_finance_deal_lines_from_manager_deal,
+    sync_order_item_planned_cost,
     record_deal_activity,
     recompute_deal_workflow,
     update_order_state,
@@ -602,6 +622,16 @@ def _deal_activity_title(activity):
         return f'Бронь #{payload.get("reservation_id")} создана'
     if activity.event_type == 'shipment.created':
         return f'Отгрузка #{payload.get("shipment_id")} создана'
+    if activity.event_type == 'shipment.return_requested':
+        return 'Возврат после shipment запрошен'
+    if activity.event_type == 'shipment.return_received':
+        return 'Возврат после shipment принят'
+    if activity.event_type == 'shipment.reversed':
+        return 'Shipment развёрнут'
+    if activity.event_type == 'replacement.recorded':
+        return 'Замена позиции зафиксирована'
+    if activity.event_type == 'finance.adjustment_posted':
+        return 'Финансовые корректировки проведены'
     if activity.event_type == 'finance.created':
         return f'Финансовая сделка #{payload.get("finance_deal_id")} создана'
     if activity.event_type == 'document.created':
@@ -663,6 +693,16 @@ def _deal_activity_body(activity):
         if payload.get('released_reservation_ids'):
             return 'Резерв снят, товар снова доступен на складе.'
         return 'Складской возврат подтвержден.'
+    if activity.event_type == 'shipment.return_requested':
+        return 'Создан reverse event для возврата после отгрузки.'
+    if activity.event_type == 'shipment.return_received':
+        return 'Созданы return lot, складская приёмка и reverse document.'
+    if activity.event_type == 'shipment.reversed':
+        return 'История shipment сохранена, финансовый и складской reverse-flow зафиксирован.'
+    if activity.event_type == 'replacement.recorded':
+        return 'Исходная строка сохранена в истории, замена проведена отдельным adjustment path.'
+    if activity.event_type == 'finance.adjustment_posted':
+        return 'Корректировки прибыли и refundable direct expenses записаны в кейс.'
     if activity.event_type in {'reservation.created', 'shipment.created', 'finance.created', 'document.created'}:
         return 'Связанная сущность создана из карточки заказа.'
     if activity.event_type == 'order.synced':
@@ -818,7 +858,7 @@ def _deal_assign_self_action(deal, *, scope, return_query=''):
 
 
 def _deal_next_step_action(deal, *, scope, return_query='', finance_deal=None):
-    if deal.avito_return_pending:
+    if deal.deal_status == ManagerDeal.DEAL_STATUS_RETURNED and deal.returned_to_stock_at is None:
         return {
             'label': 'Вернуть на склад',
             'kind': 'form',
@@ -896,7 +936,7 @@ def _deal_primary_cta(deal, *, scope, return_query='', finance_deal=None):
 
 def _deal_secondary_ctas(deal, *, deal_client=None):
     actions = []
-    if deal.avito_return_pending:
+    if deal.deal_status == ManagerDeal.DEAL_STATUS_RETURNED and deal.returned_to_stock_at is None:
         actions.append({'label': 'Остатки', 'url': reverse('manager_portal:inventory')})
     elif deal.next_step_code == ManagerDeal.NEXT_STEP_NEEDS_AVAILABILITY_CONFIRMATION:
         actions.append({'label': 'Склад', 'url': '#goods'})
@@ -1334,6 +1374,7 @@ def _deal_guided_flow(
     remote_urls = _deal_remote_action_urls(deal)
     latest_event = _deal_latest_event_summary(activities)
     strip_by_label = {item['label']: item for item in workflow_strip}
+    coverage = reservation_coverage_snapshot(deal.order)
 
     created = False
     next_step_action = _normalize_guided_action(next_step_panel['primary_action'], detail_url=detail_url, remote_urls=remote_urls)
@@ -1372,11 +1413,24 @@ def _deal_guided_flow(
             'target': '#deal-management-drawer',
         }
 
-    if deal.fulfillment_status == ManagerDeal.FULFILLMENT_STATUS_PROCUREMENT_REQUIRED:
+    if coverage['tracked_line_count'] == 0:
+        supply_status = 'Supply contour не нужен'
+        supply_detail = 'В сделке только ручные строки. Склад, резерв и закупка не требуются.'
+        supply_tone = 'neutral'
+        supply_action = {'label': 'Открыть сделку', 'url': supply_url}
+    elif deal.fulfillment_status == ManagerDeal.FULFILLMENT_STATUS_PROCUREMENT_REQUIRED and coverage['uncovered_count'] > 0:
         supply_status = 'Нужна закупка'
         supply_detail = (
             'Текущего покрытия по позициям недостаточно. '
             f'{supply_summary["risk_label"]}.'
+        )
+        supply_tone = 'working'
+        supply_action = {'label': 'Открыть снабжение', 'url': f'{supply_url}#supply'}
+    elif coverage['covered_by_procurement_count'] > 0:
+        supply_status = 'Закупка запущена'
+        supply_detail = (
+            f'В работе {coverage["covered_by_procurement_count"]} строк(и). '
+            'Поставка уже заведена, ждём дальнейшее покрытие.'
         )
         supply_tone = 'working'
         supply_action = {'label': 'Открыть снабжение', 'url': f'{supply_url}#supply'}
@@ -1458,7 +1512,9 @@ def _deal_guided_flow(
         f' · Остаток {format_currency_amount(deal.balance_due)}'
     )
 
-    if deal.fulfillment_status == ManagerDeal.FULFILLMENT_STATUS_PROCUREMENT_REQUIRED:
+    if coverage['tracked_line_count'] == 0:
+        supply_support_action = {'label': 'Открыть сделку', 'url': detail_url}
+    elif deal.fulfillment_status == ManagerDeal.FULFILLMENT_STATUS_PROCUREMENT_REQUIRED or coverage['covered_by_procurement_count'] > 0:
         supply_support_action = {'label': 'Открыть снабжение', 'url': f'{supply_url}#supply'}
     elif deal.fulfillment_status == ManagerDeal.FULFILLMENT_STATUS_NOT_RESERVED:
         supply_support_action = {'label': 'Создать бронь', 'url': reverse('manager_portal:deal_reservation_action', kwargs={'pk': deal.pk})}
@@ -1898,14 +1954,14 @@ def _sidebar_module_map():
         'finance_dashboard': {
             'eyebrow': 'Раздел',
             'title': 'Финансовый обзор',
-            'description': 'Сводка периода: выручка, маржа, OPEX, доля партнера и остаток к выплате.',
+            'description': 'Сводка периода: выручка, валовая и распределяемая прибыль, OPEX, доля партнера и остаток к выплате.',
             'status': 'Рабочий',
             'chips': ['KPI', 'OPEX', 'Payout'],
         },
         'finance_deals': {
             'eyebrow': 'Раздел',
             'title': 'Сделки',
-            'description': 'Реестр сделок с расчетом маржи, партнерской доли и расходами по сделке.',
+            'description': 'Реестр сделок с расчетом валовой и распределяемой прибыли, партнерской доли и расходами по сделке.',
             'status': 'Рабочий',
             'chips': ['Revenue', 'Margin', 'Deals'],
         },
@@ -2197,6 +2253,48 @@ def _redirect_back_to_deal(request, *, fallback, anchor=''):
     return fallback
 
 
+def _finance_scheme_rows():
+    rows = []
+    schemes = FinanceDistributionScheme.objects.prefetch_related('rules__participant_alias', 'rules__owner_alias', 'rules__reference_rule').order_by('name', '-version')
+    for scheme in schemes:
+        rule_rows = []
+        for rule in scheme.rules.order_by('position', 'id'):
+            rule_rows.append(
+                {
+                    'item': rule,
+                    'form': FinanceDistributionRuleForm(instance=rule, prefix=f'rule-{rule.pk}'),
+                }
+            )
+        rows.append(
+            {
+                'item': scheme,
+                'form': FinanceDistributionSchemeForm(instance=scheme, prefix=f'scheme-{scheme.pk}'),
+                'rule_rows': rule_rows,
+            }
+        )
+    return rows
+
+
+def _finance_deal_line_rows(finance_deal):
+    return [
+        {
+            'line': line,
+            'form': FinanceDealLineForm(instance=line, prefix=f'line-{line.pk}'),
+        }
+        for line in finance_deal.lines.select_related('owner_alias', 'order_item').order_by('sort_order', 'id')
+    ]
+
+
+def _finance_deal_share_rows(finance_deal):
+    return [
+        {
+            'share': share,
+            'form': FinanceDealShareOverrideForm(instance=share, prefix=f'share-{share.pk}'),
+        }
+        for share in finance_deal.shares.select_related('participant_alias', 'rule').order_by('id')
+    ]
+
+
 @login_required
 def entry_view(request):
     has_staff_access = has_manager_portal_access(request.user)
@@ -2238,7 +2336,7 @@ def finance_view(request):
         active_tab='finance_dashboard',
         finance_period_form=finance_period_form,
         finance_data=finance_data,
-        finance_recent_daily_rows=finance_data['daily_rows'][-14:],
+        finance_recent_cashflow_rows=finance_data['cashflow_activity_rows'][-14:],
         finance_has_setup=FinanceDealType.objects.exists() and FinanceExpenseCategory.objects.exists(),
     )
 
@@ -2272,8 +2370,11 @@ def finance_deal_list_view(request):
             if create_from_deal is not None:
                 finance_deal.manager_deal = create_from_deal
                 finance_deal.responsible_manager = create_from_deal.responsible_manager or request.user
-                finance_deal.expected_margin_snapshot = create_from_deal.expected_margin
+                finance_deal.expected_distributable_profit_snapshot = create_from_deal.expected_margin
             finance_deal.save()
+            if create_from_deal is not None:
+                sync_finance_deal_lines_from_manager_deal(finance_deal)
+            recalculate_finance_deal_totals(finance_deal, sync_lines=False)
             if create_from_deal is not None:
                 record_deal_activity(
                     create_from_deal,
@@ -2313,6 +2414,7 @@ def finance_deal_detail_view(request, pk):
         pk=pk,
     )
     deal_form = FinanceDealForm(instance=finance_deal, prefix='deal')
+    line_form = FinanceDealLineForm(prefix='new-line')
     expense_form = FinanceExpenseForm(
         prefix='expense',
         deal=finance_deal,
@@ -2326,7 +2428,8 @@ def finance_deal_detail_view(request, pk):
         if action == 'update_deal':
             deal_form = FinanceDealForm(request.POST, instance=finance_deal, prefix='deal')
             if deal_form.is_valid():
-                deal_form.save()
+                finance_deal = deal_form.save()
+                recalculate_finance_deal_totals(finance_deal, sync_lines=False)
                 messages.success(request, 'Сделка обновлена.')
                 finance_deal_manager = finance_deal.manager_deal
                 if finance_deal_manager is not None:
@@ -2337,6 +2440,24 @@ def finance_deal_detail_view(request, pk):
                     anchor='finance',
                 )
             messages.error(request, 'Не удалось обновить сделку.')
+        elif action == 'sync_lines':
+            sync_finance_deal_lines_from_manager_deal(finance_deal)
+            recalculate_finance_deal_totals(finance_deal, sync_lines=False)
+            messages.success(request, 'Строки сделки синхронизированы из заказа.')
+            return redirect('manager_portal:finance_deal_detail', pk=finance_deal.pk)
+        elif action == 'update_share':
+            share = get_object_or_404(FinanceDealShare, pk=request.POST.get('share_id'), finance_deal=finance_deal)
+            share_form = FinanceDealShareOverrideForm(request.POST, instance=share, prefix=f'share-{share.pk}')
+            if share_form.is_valid():
+                share_form.save()
+                recalculate_finance_deal_distribution(finance_deal)
+                messages.success(request, 'Override участника сохранён.')
+                return redirect('manager_portal:finance_deal_detail', pk=finance_deal.pk)
+            messages.error(request, 'Не удалось сохранить override участника.')
+        elif action == 'recalculate_distribution':
+            recalculate_finance_deal_totals(finance_deal, sync_lines=False)
+            messages.success(request, 'Распределение пересчитано.')
+            return redirect('manager_portal:finance_deal_detail', pk=finance_deal.pk)
         elif action == 'add_expense':
             expense_form = FinanceExpenseForm(request.POST, prefix='expense', deal=finance_deal)
             if expense_form.is_valid():
@@ -2344,6 +2465,7 @@ def finance_deal_detail_view(request, pk):
                 finance_expense.deal = finance_deal
                 finance_expense.created_by = request.user
                 finance_expense.save()
+                recalculate_finance_deal_totals(finance_deal, sync_lines=False)
                 messages.success(request, 'Расход по сделке добавлен.')
                 if finance_deal.manager_deal_id:
                     recompute_deal_workflow(finance_deal.manager_deal, actor=request.user)
@@ -2359,10 +2481,22 @@ def finance_deal_detail_view(request, pk):
         active_tab='finance_deals',
         finance_deal=finance_deal,
         finance_deal_form=deal_form,
+        finance_line_form=line_form,
         finance_expense_form=expense_form,
         finance_deal_expenses=finance_deal.expenses.select_related('category', 'created_by').order_by('-date', '-id'),
+        finance_line_rows=_finance_deal_line_rows(finance_deal),
+        finance_share_rows=_finance_deal_share_rows(finance_deal),
+        finance_adjustments=finance_deal.adjustments.select_related(
+            'finance_line',
+            'related_expense',
+            'related_shipment',
+            'related_activity',
+            'related_document',
+            'created_by',
+        ).order_by('-created_at', '-id'),
         finance_missing_fields=finance_case_missing_fields(finance_deal),
         finance_snapshot=finance_deal.snapshot_data or {},
+        finance_distribution_state=(finance_deal.snapshot_data or {}).get('distribution', {}),
     )
 
 
@@ -2454,6 +2588,11 @@ def finance_report_view(request):
 def finance_settings_view(request):
     finance_settings_readonly = not has_finance_admin_access(request.user)
     finance_deal_type_form = FinanceDealTypeForm(prefix='deal-type')
+    finance_distribution_scheme_form = FinanceDistributionSchemeForm(prefix='distribution-scheme')
+    finance_distribution_rule_form = FinanceDistributionRuleForm(
+        prefix='distribution-rule',
+        initial={'scheme': active_finance_distribution_scheme()},
+    )
     finance_expense_category_form = FinanceExpenseCategoryForm(prefix='expense-category')
     if request.method == 'POST':
         if finance_settings_readonly:
@@ -2466,6 +2605,71 @@ def finance_settings_view(request):
                 messages.success(request, 'Тип сделки добавлен.')
                 return redirect('manager_portal:finance_settings')
             messages.error(request, 'Не удалось добавить тип сделки.')
+        elif action == 'create_distribution_scheme':
+            finance_distribution_scheme_form = FinanceDistributionSchemeForm(request.POST, prefix='distribution-scheme')
+            if finance_distribution_scheme_form.is_valid():
+                active_scheme = active_finance_distribution_scheme()
+                scheme_name = finance_distribution_scheme_form.cleaned_data['name']
+                if active_scheme is not None and active_scheme.name == scheme_name:
+                    scheme = clone_finance_distribution_scheme(
+                        active_scheme,
+                        activate=finance_distribution_scheme_form.cleaned_data.get('is_active', False),
+                    )
+                    scheme.description = finance_distribution_scheme_form.cleaned_data.get('description', '')
+                    scheme.save(update_fields=['description', 'updated_at'])
+                else:
+                    next_version = (
+                        FinanceDistributionScheme.objects.filter(name=scheme_name).aggregate(max_version=Max('version')).get('max_version')
+                        or 0
+                    ) + 1
+                    scheme = FinanceDistributionScheme.objects.create(
+                        name=scheme_name,
+                        version=next_version,
+                        description=finance_distribution_scheme_form.cleaned_data.get('description', ''),
+                        is_active=finance_distribution_scheme_form.cleaned_data.get('is_active', False),
+                    )
+                messages.success(request, f'Схема распределения {scheme} сохранена.')
+                return redirect('manager_portal:finance_settings')
+            messages.error(request, 'Не удалось сохранить схему распределения.')
+        elif action == 'clone_distribution_scheme':
+            source_scheme = get_object_or_404(FinanceDistributionScheme, pk=request.POST.get('scheme_id'))
+            cloned = clone_finance_distribution_scheme(source_scheme, activate=False)
+            messages.success(request, f'Создана новая версия {cloned}.')
+            return redirect('manager_portal:finance_settings')
+        elif action == 'activate_distribution_scheme':
+            scheme = get_object_or_404(FinanceDistributionScheme, pk=request.POST.get('scheme_id'))
+            scheme.is_active = True
+            scheme.save(update_fields=['is_active', 'updated_at'])
+            messages.success(request, f'Активирована схема {scheme}.')
+            return redirect('manager_portal:finance_settings')
+        elif action == 'update_distribution_scheme':
+            scheme = get_object_or_404(FinanceDistributionScheme, pk=request.POST.get('scheme_id'))
+            form = FinanceDistributionSchemeForm(request.POST, instance=scheme, prefix=f'scheme-{scheme.pk}')
+            if form.is_valid():
+                form.save()
+                messages.success(request, 'Схема распределения обновлена.')
+                return redirect('manager_portal:finance_settings')
+            messages.error(request, 'Не удалось обновить схему распределения.')
+        elif action == 'create_distribution_rule':
+            finance_distribution_rule_form = FinanceDistributionRuleForm(request.POST, prefix='distribution-rule')
+            if finance_distribution_rule_form.is_valid():
+                finance_distribution_rule_form.save()
+                messages.success(request, 'Правило распределения добавлено.')
+                return redirect('manager_portal:finance_settings')
+            messages.error(request, 'Не удалось добавить правило распределения.')
+        elif action == 'update_distribution_rule':
+            rule = get_object_or_404(FinanceDistributionRule, pk=request.POST.get('rule_id'))
+            form = FinanceDistributionRuleForm(request.POST, instance=rule, prefix=f'rule-{rule.pk}')
+            if form.is_valid():
+                form.save()
+                messages.success(request, 'Правило распределения обновлено.')
+                return redirect('manager_portal:finance_settings')
+            messages.error(request, 'Не удалось обновить правило распределения.')
+        elif action == 'delete_distribution_rule':
+            rule = get_object_or_404(FinanceDistributionRule, pk=request.POST.get('rule_id'))
+            rule.delete()
+            messages.success(request, 'Правило распределения удалено.')
+            return redirect('manager_portal:finance_settings')
         elif action == 'update_deal_type':
             deal_type = get_object_or_404(FinanceDealType, pk=request.POST.get('deal_type_id'))
             form = FinanceDealTypeForm(request.POST, instance=deal_type)
@@ -2511,10 +2715,23 @@ def finance_settings_view(request):
         active_tab='finance_settings',
         finance_settings_readonly=finance_settings_readonly,
         finance_deal_type_form=finance_deal_type_form,
+        finance_distribution_scheme_form=finance_distribution_scheme_form,
+        finance_distribution_rule_form=finance_distribution_rule_form,
         finance_expense_category_form=finance_expense_category_form,
-        finance_deal_types=FinanceDealType.objects.order_by('name'),
-        finance_our_categories=FinanceExpenseCategory.objects.filter(expense_side=FinanceExpenseCategory.SIDE_OURS).order_by('name'),
-        finance_partner_categories=FinanceExpenseCategory.objects.filter(expense_side=FinanceExpenseCategory.SIDE_PARTNER).order_by('name'),
+        finance_active_distribution_scheme=active_finance_distribution_scheme(),
+        finance_distribution_scheme_rows=_finance_scheme_rows(),
+        finance_deal_type_rows=[
+            {'item': item, 'form': FinanceDealTypeForm(instance=item)}
+            for item in FinanceDealType.objects.order_by('name')
+        ],
+        finance_our_category_rows=[
+            {'item': item, 'form': FinanceExpenseCategoryForm(instance=item)}
+            for item in FinanceExpenseCategory.objects.filter(expense_side=FinanceExpenseCategory.SIDE_OURS).order_by('name')
+        ],
+        finance_partner_category_rows=[
+            {'item': item, 'form': FinanceExpenseCategoryForm(instance=item)}
+            for item in FinanceExpenseCategory.objects.filter(expense_side=FinanceExpenseCategory.SIDE_PARTNER).order_by('name')
+        ],
     )
 
 def _contract_profile_initial():
@@ -3175,14 +3392,16 @@ def _manual_order_item_payloads(formset):
         product = form.cleaned_data.get('product')
         variant = form.cleaned_data.get('variant')
         payloads.append({
+            'line_type': form.cleaned_data.get('line_type') or OrderItem.LINE_TYPE_CATALOG,
             'product': product,
             'product_name': (form.cleaned_data.get('product_name') or '').strip() or (product.name if product else ''),
+            'custom_sku': (form.cleaned_data.get('custom_sku') or '').strip(),
             'product_image_url': resolve_order_item_image_url(product=product, variant=variant) if product else '',
             'variant': variant if product else None,
             'configuration': (form.cleaned_data.get('configuration') or '').strip(),
             'condition': form.cleaned_data.get('condition') or OrderItem.CONDITION_NEW,
             'quantity': form.cleaned_data['quantity'],
-            'purchase_price': form.cleaned_data.get('purchase_price') or Decimal('0'),
+            'planned_unit_cost': form.cleaned_data.get('planned_unit_cost') or Decimal('0'),
             'sale_price': form.cleaned_data.get('sale_price') or Decimal('0'),
             'discount_amount': form.cleaned_data.get('discount_amount') or Decimal('0'),
             'comment': (form.cleaned_data.get('comment') or '').strip(),
@@ -3444,15 +3663,19 @@ def _create_manual_deal(
             [
                 OrderItem(
                     order=order,
+                    line_type=item['line_type'],
                     product=item['product'],
                     product_name=item['product_name'],
+                    custom_sku=item['custom_sku'],
                     product_image_url=item['product_image_url'],
                     variant=item['variant'],
                     quantity=item['quantity'],
                     price=item['sale_price'],
                     variant_name=item['configuration'] or (item['variant'].name if item['variant'] else ''),
                     condition=item['condition'] or OrderItem.CONDITION_NEW,
-                    purchase_price=item['purchase_price'],
+                    purchase_price=item['planned_unit_cost'],
+                    planned_unit_cost=item['planned_unit_cost'],
+                    cost_status=OrderItem.COST_STATUS_PLANNED if item['planned_unit_cost'] else OrderItem.COST_STATUS_NONE,
                     discount_amount=item['discount_amount'],
                     comment=item['comment'],
                     is_on_request=cleaned_data['deal_type'] == ManagerDeal.DEAL_SALE_ON_REQUEST,
@@ -3697,12 +3920,15 @@ def _manual_order_prefill_for_client(*, client, user):
         item_initial = [
             {
                 'product_name': item.product_name or (item.product.name if item.product_id else ''),
+                'line_type': item.line_type,
                 'product': item.product_id,
                 'variant': item.variant_id,
+                'custom_sku': item.custom_sku,
                 'configuration': item.variant_name or (item.variant.name if item.variant_id else ''),
                 'condition': item.condition,
                 'quantity': item.quantity,
-                'purchase_price': item.purchase_price,
+                'planned_unit_cost': item.planned_unit_cost,
+                'purchase_price': item.planned_unit_cost,
                 'sale_price': item.price,
                 'discount_amount': item.discount_amount,
                 'comment': item.comment,
@@ -4772,10 +4998,12 @@ def _deal_linked_entities_strip(deal, *, documents, reservations, shipments, fin
     latest_document = documents[0] if documents else None
     latest_shipment = shipments[0] if shipments else None
 
-    if reservations and coverage['is_complete']:
+    if coverage['tracked_line_count'] == 0:
+        reservation_chip = {'label': 'Бронь', 'tone': 'neutral', 'status': 'Не нужна', 'url': '#reservation'}
+    elif reservations and coverage['uncovered_count'] == 0:
         reservation_chip = {'label': 'Бронь', 'tone': 'ready', 'status': 'Есть', 'url': '#reservation'}
-    elif reservations:
-        reservation_chip = {'label': 'Бронь', 'tone': 'working', 'status': 'Частично', 'url': '#reservation'}
+    elif reservations or coverage['covered_by_procurement_count'] or coverage['covered_by_incoming_count']:
+        reservation_chip = {'label': 'Бронь', 'tone': 'working', 'status': 'В работе', 'url': '#reservation'}
     else:
         reservation_chip = {'label': 'Бронь', 'tone': 'blocked', 'status': 'Нет', 'url': '#reservation'}
 
@@ -4820,6 +5048,7 @@ def _deal_linked_entities_strip(deal, *, documents, reservations, shipments, fin
 
 
 def _deal_supply_summary(deal, *, reservations, purchase_items, cargo_items):
+    coverage = reservation_coverage_snapshot(deal.order)
     purchase_quantity = sum(item.quantity for item in purchase_items)
     purchase_received = sum(item.received_quantity for item in purchase_items)
     cargo_quantity = sum(item.quantity for item in cargo_items)
@@ -4833,7 +5062,14 @@ def _deal_supply_summary(deal, *, reservations, purchase_items, cargo_items):
     risk_tone = 'ready'
     problem_source = 'Обеспечение собрано'
     primary_cta = {'label': 'Открыть снабжение', 'url': reverse('manager_portal:purchase_list')}
-    if cargo_items and cargo_received < cargo_quantity:
+    reserve_status_label = deal.get_fulfillment_status_display()
+    if coverage['tracked_line_count'] == 0:
+        risk_label = 'Supply contour не требуется'
+        risk_tone = 'neutral'
+        problem_source = 'Только ручные строки'
+        reserve_status_label = 'Вне supply contour'
+        primary_cta = {'label': 'Открыть сделку', 'url': reverse('manager_portal:deal_detail', kwargs={'pk': deal.pk})}
+    elif cargo_items and cargo_received < cargo_quantity:
         risk_label = 'Есть груз, который не принят полностью'
         risk_tone = 'working'
         problem_source = 'Груз в пути'
@@ -4860,7 +5096,7 @@ def _deal_supply_summary(deal, *, reservations, purchase_items, cargo_items):
     return {
         'reservation_count': len(reservations),
         'primary_reservation': primary_reservation,
-        'reserve_status_label': deal.get_fulfillment_status_display(),
+        'reserve_status_label': reserve_status_label,
         'reserve_source_label': (
             deal.stock_warehouse.name
             if deal.stock_warehouse
@@ -4884,6 +5120,9 @@ def _deal_supply_summary(deal, *, reservations, purchase_items, cargo_items):
         'risk_tone': risk_tone,
         'problem_source': problem_source,
         'primary_cta': primary_cta,
+        'tracked_line_count': coverage['tracked_line_count'],
+        'excluded_line_count': coverage['excluded_line_count'],
+        'uncovered_count': coverage['uncovered_count'],
         'linked_entities': [
             entity for entity in [
                 {
@@ -5061,7 +5300,7 @@ def _deal_finance_summary(deal, *, finance_deal, finance_expenses, finance_payou
         missing_items.append('Нет расходов')
     if not finance_payouts:
         missing_items.append('Нет выплат')
-    if finance_deal is None or finance_deal.cost_price <= 0:
+    if finance_deal is None or finance_deal.cost_of_goods <= 0:
         missing_items.append('Нет себестоимости')
 
     finance_case_url = (
@@ -5075,24 +5314,27 @@ def _deal_finance_summary(deal, *, finance_deal, finance_expenses, finance_payou
         if missing_items or finance_case_missing_fields(finance_deal):
             status_label = 'Частично'
 
-    cost_total = finance_deal.cost_price if finance_deal is not None else deal.outgoing_cost_total
+    cost_total = finance_deal.cost_of_goods if finance_deal is not None else deal.outgoing_cost_total
     operating_expenses_total = finance_deal.direct_expenses if finance_deal is not None else Decimal('0')
-    margin_total = finance_deal.margin if finance_deal is not None else deal.expected_margin
+    gross_profit_total = finance_deal.gross_profit if finance_deal is not None else (deal.grand_total - deal.outgoing_cost_total)
+    distributable_profit_total = finance_deal.distributable_profit if finance_deal is not None else deal.expected_margin
 
     return {
         'status_label': status_label,
         'missing_items': missing_items,
         'revenue': finance_deal.revenue if finance_deal is not None else None,
-        'margin': finance_deal.margin if finance_deal is not None else None,
+        'gross_profit': finance_deal.gross_profit if finance_deal is not None else None,
+        'distributable_profit': finance_deal.distributable_profit if finance_deal is not None else None,
         'sum_total': deal.grand_total,
         'paid_total': deal.amount_paid,
         'remaining_total': deal.balance_due,
         'cost_total': cost_total,
         'operating_expenses_total': operating_expenses_total,
-        'margin_total': margin_total,
+        'gross_profit_total': gross_profit_total,
+        'distributable_profit_total': distributable_profit_total,
         'expenses_total': expenses_total,
         'payouts_total': payouts_total,
-        'balance': (finance_deal.margin - payouts_total) if finance_deal is not None else None,
+        'balance': (finance_deal.distributable_profit - payouts_total) if finance_deal is not None else None,
         'updated_at': finance_deal.updated_at if finance_deal is not None else None,
         'uses_finance_case': finance_deal is not None,
         'payment_method_label': deal.order.get_payment_method_display(),
@@ -5119,7 +5361,8 @@ def _deal_finance_summary_compact(finance_summary):
         'sum_total': finance_summary['sum_total'],
         'paid_total': finance_summary['paid_total'],
         'remaining_total': finance_summary['remaining_total'],
-        'margin_total': finance_summary['margin_total'],
+        'gross_profit_total': finance_summary['gross_profit_total'],
+        'distributable_profit_total': finance_summary['distributable_profit_total'],
         'payment_method_label': finance_summary['payment_method_label'],
         'payment_status_label': finance_summary['payment_status_label'],
         'workflow_payment_status_label': finance_summary['workflow_payment_status_label'],
@@ -5158,6 +5401,7 @@ def _process_card(title, status, detail, *, tone, anchor_id, cta, secondary):
 
 
 def _deal_workflow_strip(deal, *, documents, shipments, finance_deal, purchase_items, cargo_items):
+    coverage = reservation_coverage_snapshot(deal.order)
     payment_tone = 'blocked'
     if deal.payment_state in {ManagerDeal.PAYMENT_STATE_PAID, ManagerDeal.PAYMENT_STATE_REFUNDED} or deal.balance_due <= 0:
         payment_tone = 'ready'
@@ -5165,7 +5409,9 @@ def _deal_workflow_strip(deal, *, documents, shipments, finance_deal, purchase_i
         payment_tone = 'working'
 
     fulfillment_tone = 'blocked'
-    if deal.fulfillment_status in {
+    if coverage['tracked_line_count'] == 0:
+        fulfillment_tone = 'neutral'
+    elif deal.fulfillment_status in {
         ManagerDeal.FULFILLMENT_STATUS_FULFILLED,
         ManagerDeal.FULFILLMENT_STATUS_RESERVED_STOCK,
         ManagerDeal.FULFILLMENT_STATUS_RESERVED_INCOMING,
@@ -5354,8 +5600,8 @@ def _deal_subject_summary(deal, *, order_item_rows, finance_deal=None):
         'discount_total': total_discount,
         'delivery_total': deal.order.delivery_cost,
         'grand_total': deal.grand_total,
-        'internal_margin': finance_deal.margin if finance_deal is not None else deal.expected_margin,
-        'margin_source': 'Финансовый кейс' if finance_deal is not None else 'Карточка сделки',
+        'internal_distributable_profit': finance_deal.distributable_profit if finance_deal is not None else deal.expected_margin,
+        'profit_source': 'Финансовый кейс' if finance_deal is not None else 'Карточка сделки',
         'rows': rows,
     }
 
@@ -5391,11 +5637,19 @@ def _deal_logistics_summary(deal, *, reservations, shipments, purchase_items, ca
             or 'Источник не определён'
         ),
         'warehouse_label': deal.stock_warehouse.name if deal.stock_warehouse else 'Склад не выбран',
-        'coverage_status': 'Полное покрытие' if coverage['is_complete'] else 'Нужно покрытие',
+        'coverage_status': (
+            'Вне supply contour'
+            if coverage['tracked_line_count'] == 0
+            else 'Полное покрытие'
+            if coverage['uncovered_count'] == 0
+            else 'Нужно покрытие'
+        ),
         'coverage_detail': (
-            'Все строки заказа закрыты резервом или отгрузкой.'
-            if coverage['is_complete']
-            else f'Не покрыто строк: {len(coverage["missing_lines"])}.'
+            'В сделке только ручные строки, складской контур не используется.'
+            if coverage['tracked_line_count'] == 0
+            else 'Все каталоговые строки закрыты покрытием, incoming или закупкой.'
+            if coverage['uncovered_count'] == 0
+            else f'Не обеспечено строк: {coverage["uncovered_count"]}.'
         ),
         'availability_rows': [
             {
@@ -5438,7 +5692,9 @@ def _deal_related_process_cards(
     latest_shipment = shipments[0] if shipments else None
 
     supply_detail = 'Обеспечение ещё не собрано.'
-    if supply_summary['cargo_count']:
+    if coverage['tracked_line_count'] == 0:
+        supply_detail = 'В сделке только ручные строки. Supply contour не требуется.'
+    elif supply_summary['cargo_count']:
         supply_detail = (
             f'Закупок {supply_summary["purchase_count"]}, грузов {supply_summary["cargo_count"]}. '
             f'ETA {supply_summary["earliest_eta"]:%d.%m.%Y}.' if supply_summary['earliest_eta']
@@ -5455,7 +5711,9 @@ def _deal_related_process_cards(
             f'Источник: {supply_summary["reserve_source_label"] or "не определён"}.' 
         )
     supply_tone = 'blocked'
-    if deal.fulfillment_status in {
+    if coverage['tracked_line_count'] == 0:
+        supply_tone = 'neutral'
+    elif deal.fulfillment_status in {
         ManagerDeal.FULFILLMENT_STATUS_FULFILLED,
         ManagerDeal.FULFILLMENT_STATUS_RESERVED_STOCK,
         ManagerDeal.FULFILLMENT_STATUS_RESERVED_INCOMING,
@@ -5464,15 +5722,20 @@ def _deal_related_process_cards(
     elif supply_summary['purchase_count'] or supply_summary['cargo_count'] or deal.fulfillment_status == ManagerDeal.FULFILLMENT_STATUS_PROCUREMENT_REQUIRED:
         supply_tone = 'working'
 
-    if reservations:
+    if coverage['tracked_line_count'] == 0:
+        reservation_status = 'Не требуется'
+        reservation_detail = 'Каталоговых строк нет, резерв не нужен.'
+        reservation_cta = {'label': 'Открыть сделку', 'url': reverse('manager_portal:deal_detail', kwargs={'pk': deal.pk})}
+        reservation_tone = 'neutral'
+    elif reservations:
         reservation_status = reservations[0].get_status_display()
         reservation_detail = (
-            'Все строки заказа покрыты резервом.'
-            if coverage['is_complete']
-            else f'Не покрыто строк: {len(coverage["missing_lines"])}.'
+            'Все каталоговые строки закрыты supply-покрытием.'
+            if coverage['uncovered_count'] == 0
+            else f'Не обеспечено строк: {coverage["uncovered_count"]}.'
         )
         reservation_cta = {'label': 'Открыть бронь', 'url': reverse('manager_portal:deal_reservation_action', kwargs={'pk': deal.pk})}
-        reservation_tone = 'ready' if coverage['is_complete'] else 'working'
+        reservation_tone = 'ready' if coverage['uncovered_count'] == 0 else 'working'
     else:
         reservation_status = 'Не создана'
         reservation_detail = 'Товара под сделку ещё не зарезервировано.'
@@ -5525,7 +5788,7 @@ def _deal_related_process_cards(
         missing_finance_fields = finance_case_missing_fields(finance_deal)
         finance_status = 'Заполнен' if not missing_finance_fields else 'Нужно дозаполнить'
         finance_detail = (
-            f'Выручка {format_currency_amount(finance_deal.revenue)} · маржа {format_currency_amount(finance_deal.margin)}.'
+            f'Выручка {format_currency_amount(finance_deal.revenue)} · распределяемая прибыль {format_currency_amount(finance_deal.distributable_profit)}.'
             if not missing_finance_fields
             else f'Не хватает: {", ".join(missing_finance_fields[:3])}.'
         )
@@ -5589,71 +5852,34 @@ def _deal_related_process_cards(
 def _deal_order_item_rows(order_items, *, deal, reservations, purchase_items, cargo_items, shipments):
     if not order_items:
         return []
-
-    catalog_product_ids = [item.product_id for item in order_items if item.product_id]
-    stock_rows = (
-        ProductStock.objects
-        .filter(
-            product_id__in=catalog_product_ids,
-        )
-        .values('product_id', 'variant_id')
-        .annotate(total=Sum('quantity'))
-    )
-    stock_map = {
-        (row['product_id'], row['variant_id']): int(row['total'] or 0)
-        for row in stock_rows
+    supply_rows = {
+        row['order_item_id']: row
+        for row in order_supply_state_snapshot(deal.order)['lines']
     }
-    reserved_stock_rows = (
-        ReservationItem.objects.filter(
-            reservation__status__in=ACTIVE_RESERVATION_STATUSES,
-            reservation__source_type=Reservation.SOURCE_WAREHOUSE,
-            product_id__in=catalog_product_ids,
-        )
-        .values('product_id', 'variant_id')
-        .annotate(total=Sum('quantity'))
-    )
-    reserved_stock_map = {
-        (row['product_id'], row['variant_id']): int(row['total'] or 0)
-        for row in reserved_stock_rows
-    }
-
-    reserved_by_item = defaultdict(int)
-    reserved_from_stock_by_item = defaultdict(int)
     reservation_labels_by_item = defaultdict(list)
     for reservation in reservations:
         for reservation_item in reservation.items.select_related('product', 'variant').all():
             if reservation_item.order_item_id:
-                reserved_by_item[reservation_item.order_item_id] += reservation_item.quantity
-                if reservation.source_type == Reservation.SOURCE_WAREHOUSE:
-                    reserved_from_stock_by_item[reservation_item.order_item_id] += reservation_item.quantity
                 reservation_labels_by_item[reservation_item.order_item_id].append(
                     f'{reservation.code or f"RSV #{reservation.pk}"} · {reservation_item.quantity} шт.'
                 )
 
-    purchased_by_item = defaultdict(int)
-    purchase_received_by_item = defaultdict(int)
     purchase_labels_by_item = defaultdict(list)
-    cargo_qty_by_item = defaultdict(int)
-    cargo_received_by_item = defaultdict(int)
     cargo_labels_by_item = defaultdict(list)
 
     for purchase_item in purchase_items:
         if purchase_item.order_item_id:
-            purchased_by_item[purchase_item.order_item_id] += purchase_item.quantity
-            purchase_received_by_item[purchase_item.order_item_id] += purchase_item.received_quantity
             purchase_labels_by_item[purchase_item.order_item_id].append(
                 f'{purchase_item.purchase.code or f"PO #{purchase_item.purchase_id}"} · {purchase_item.received_quantity}/{purchase_item.quantity}'
             )
         for cargo_item in purchase_item.cargo_items.all():
             if purchase_item.order_item_id:
-                cargo_qty_by_item[purchase_item.order_item_id] += cargo_item.quantity
-                cargo_received_by_item[purchase_item.order_item_id] += cargo_item.received_quantity
                 cargo_labels_by_item[purchase_item.order_item_id].append(
                     f'Груз {cargo_item.cargo.cargo_number} · {cargo_item.received_quantity}/{cargo_item.quantity}'
                 )
 
-    shipment_qty_by_item = defaultdict(int)
     shipment_labels_by_item = defaultdict(list)
+    shipment_document_quantity_by_item = defaultdict(int)
     for shipment in shipments:
         for shipment_item in shipment.items.select_related('product', 'variant', 'reservation_item__order_item').all():
             order_item_id = shipment_item.order_item_id or (
@@ -5662,14 +5888,17 @@ def _deal_order_item_rows(order_items, *, deal, reservations, purchase_items, ca
                 else None
             )
             if order_item_id:
-                shipment_qty_by_item[order_item_id] += shipment_item.quantity
+                shipment_document_quantity_by_item[order_item_id] += int(shipment_item.quantity or 0)
                 shipment_labels_by_item[order_item_id].append(
                     f'{shipment.code or f"SHP #{shipment.pk}"} · {shipment_item.quantity} шт.'
                 )
 
     rows = []
     for item in order_items:
-        if not item.product_id:
+        supply_line = supply_rows.get(item.id)
+        if supply_line is None:
+            continue
+        if not supply_line['is_supply_tracked']:
             rows.append(
                 {
                     'item': item,
@@ -5680,9 +5909,10 @@ def _deal_order_item_rows(order_items, *, deal, reservations, purchase_items, ca
                     'availability_code': 'manual',
                     'free_stock': 0,
                     'reserved_from_stock': 0,
-                    'coverage_summary': 'Позиция введена вручную и не участвует в складском контуре.',
-                    'coverage_label': 'Ручная позиция',
-                    'coverage_tone': 'neutral',
+                    'coverage_state': None,
+                    'coverage_summary': supply_line['coverage_summary'],
+                    'coverage_label': supply_line['coverage_label'],
+                    'coverage_tone': supply_line['coverage_tone'],
                     'position_status': 'Ручная',
                     'position_status_detail': 'Для этой строки нет каталожного товара, поэтому бронь, склад и закупка не создаются автоматически.',
                     'position_status_tone': 'neutral',
@@ -5696,16 +5926,19 @@ def _deal_order_item_rows(order_items, *, deal, reservations, purchase_items, ca
                 }
             )
             continue
-        stock_total = stock_map.get((item.product_id, item.variant_id), 0)
+        stock_total = supply_line['stock_total']
         stock_status = public_stock_status(stock_total)
-        free_stock = max(stock_total - reserved_stock_map.get((item.product_id, item.variant_id), 0), 0)
-        reserved_quantity = reserved_by_item.get(item.id, 0)
-        reserved_from_stock = reserved_from_stock_by_item.get(item.id, 0)
-        purchase_quantity = purchased_by_item.get(item.id, 0)
-        purchase_received = purchase_received_by_item.get(item.id, 0)
-        cargo_quantity = cargo_qty_by_item.get(item.id, 0)
-        cargo_received = cargo_received_by_item.get(item.id, 0)
-        shipment_quantity = shipment_qty_by_item.get(item.id, 0)
+        free_stock = supply_line['free_stock']
+        reserved_quantity = supply_line['reserved_quantity']
+        reserved_from_stock = supply_line['reserved_stock_quantity']
+        reserved_from_incoming = supply_line['reserved_incoming_quantity']
+        purchase_quantity = supply_line['purchase_quantity']
+        purchase_received = supply_line['purchase_received_quantity']
+        cargo_quantity = supply_line['cargo_quantity']
+        cargo_received = supply_line['cargo_received_quantity']
+        shipment_quantity = supply_line['shipment_quantity']
+        shipment_document_quantity = shipment_document_quantity_by_item.get(item.id, 0)
+        coverage_state = supply_line['coverage_state']
         reserve_gap = max(item.quantity - reserved_quantity, 0)
 
         scenario = 'Под заказ' if item.is_on_request else 'Из наличия'
@@ -5713,9 +5946,9 @@ def _deal_order_item_rows(order_items, *, deal, reservations, purchase_items, ca
         shipment_url = reverse('manager_portal:deal_shipment_action', kwargs={'pk': deal.pk})
         purchase_url = reverse('manager_portal:purchase_list')
         cargo_url = reverse('manager_portal:cargo_list')
-        if shipment_quantity >= item.quantity:
+        if shipment_document_quantity >= item.quantity:
             position_status = 'В отгрузке'
-            position_status_detail = f'В shipment уже {shipment_quantity}/{item.quantity} шт.'
+            position_status_detail = f'В shipment уже {shipment_document_quantity}/{item.quantity} шт.'
             position_status_tone = 'ready'
             next_step = 'Контролировать доставку'
             primary_action = {
@@ -5724,7 +5957,7 @@ def _deal_order_item_rows(order_items, *, deal, reservations, purchase_items, ca
                 'tone': 'ready',
                 'is_drawer': True,
             }
-        elif reserved_quantity >= item.quantity:
+        elif coverage_state == 'covered_by_stock':
             position_status = 'В резерве'
             position_status_detail = f'Резерв покрывает {reserved_quantity}/{item.quantity} шт.'
             position_status_tone = 'ready'
@@ -5735,19 +5968,19 @@ def _deal_order_item_rows(order_items, *, deal, reservations, purchase_items, ca
                 'tone': 'ready',
                 'is_drawer': True,
             }
-        elif cargo_quantity and cargo_received < cargo_quantity:
-            position_status = 'В грузе'
-            position_status_detail = f'В пути {cargo_received}/{cargo_quantity} шт.'
+        elif coverage_state == 'covered_by_incoming':
+            position_status = 'Резерв incoming'
+            position_status_detail = f'Incoming покрывает {reserved_from_incoming}/{item.quantity} шт.'
             position_status_tone = 'working'
-            next_step = 'Контролировать груз'
+            next_step = 'Контролировать приход'
             primary_action = {
-                'label': 'Открыть грузы',
-                'url': cargo_url,
+                'label': 'Открыть грузы' if cargo_quantity else 'Открыть снабжение',
+                'url': cargo_url if cargo_quantity else purchase_url,
                 'tone': 'working',
                 'is_drawer': False,
             }
-        elif purchase_quantity and purchase_received < purchase_quantity:
-            position_status = 'Под заказ'
+        elif coverage_state == 'covered_by_procurement':
+            position_status = 'В закупке'
             position_status_detail = f'В закупке {purchase_received}/{purchase_quantity} шт.'
             position_status_tone = 'working'
             next_step = 'Контролировать закупку'
@@ -5807,36 +6040,6 @@ def _deal_order_item_rows(order_items, *, deal, reservations, purchase_items, ca
                 'is_drawer': False,
             }
 
-        coverage_tone = 'blocked'
-        coverage_label = 'Не обеспечена'
-        if shipment_quantity >= item.quantity:
-            coverage_tone = 'ready'
-            coverage_label = 'В отгрузке'
-        elif reserved_quantity >= item.quantity:
-            coverage_tone = 'ready'
-            coverage_label = 'Обеспечена'
-        elif cargo_quantity and cargo_received < cargo_quantity:
-            coverage_tone = 'working'
-            coverage_label = 'В поставке'
-        elif purchase_quantity:
-            coverage_tone = 'working'
-            coverage_label = 'В закупке'
-        elif stock_total >= item.quantity and not item.is_on_request:
-            coverage_tone = 'working'
-            coverage_label = 'Можно резервировать'
-
-        coverage_parts = []
-        if reserved_quantity:
-            coverage_parts.append(f'Резерв {reserved_quantity}/{item.quantity}')
-        if purchase_quantity:
-            coverage_parts.append(f'Закупка {purchase_received}/{purchase_quantity}')
-        if cargo_quantity:
-            coverage_parts.append(f'Груз {cargo_received}/{cargo_quantity}')
-        if shipment_quantity:
-            coverage_parts.append(f'Отгрузка {shipment_quantity}/{item.quantity}')
-        if not coverage_parts:
-            coverage_parts.append('Связей пока нет')
-
         sku_value = item.sku
         inventory_query = sku_value or ' '.join(
             part
@@ -5870,8 +6073,14 @@ def _deal_order_item_rows(order_items, *, deal, reservations, purchase_items, ca
             },
             {
                 'label': 'SHP',
-                'status': f'{shipment_quantity}/{item.quantity}',
-                'tone': 'ready' if shipment_quantity >= item.quantity else 'working' if shipment_quantity else 'blocked',
+                'status': f'{shipment_document_quantity}/{item.quantity}',
+                'tone': (
+                    'ready'
+                    if shipment_document_quantity >= item.quantity
+                    else 'working'
+                    if shipment_document_quantity
+                    else 'blocked'
+                ),
                 'url': shipment_url,
             },
         ]
@@ -5911,9 +6120,10 @@ def _deal_order_item_rows(order_items, *, deal, reservations, purchase_items, ca
                 'availability_code': stock_status['code'],
                 'free_stock': free_stock,
                 'reserved_from_stock': reserved_from_stock,
-                'coverage_summary': ' · '.join(coverage_parts),
-                'coverage_label': coverage_label,
-                'coverage_tone': coverage_tone,
+                'coverage_state': coverage_state,
+                'coverage_summary': supply_line['coverage_summary'],
+                'coverage_label': supply_line['coverage_label'],
+                'coverage_tone': supply_line['coverage_tone'],
                 'position_status': position_status,
                 'position_status_detail': position_status_detail,
                 'position_status_tone': position_status_tone,
@@ -6427,6 +6637,9 @@ def deal_detail_view(request, pk):
     if deal_tab_initial not in {'overview', 'supply', 'documents', 'finance', 'history'}:
         deal_tab_initial = 'overview'
     is_just_created = request.GET.get('created') == '1'
+    forced_messages = None
+    if request.method == 'GET' and request.GET.get('state_updated') == '1':
+        forced_messages = [Message(messages.SUCCESS, 'Состояние заказа обновлено.')]
     management_form = DealManagementForm(deal=deal)
     comment_form = DealCommentForm()
     comment_widget_class = comment_form.fields['comment'].widget.attrs.get('class', '')
@@ -6526,12 +6739,16 @@ def deal_detail_view(request, pk):
             return redirect('manager_portal:deal_detail', pk=deal.pk)
         elif action == 'return_to_stock':
             try:
-                result = restore_avito_return_to_stock(deal, actor=request.user)
-                restored_quantity = sum(int(position['quantity']) for position in result['positions'])
-                if restored_quantity > 0:
-                    messages.success(request, f'Возврат принят на склад: {restored_quantity} шт.')
+                result = (
+                    restore_avito_return_to_stock(deal, actor=request.user)
+                    if deal.is_avito
+                    else reverse_shipment_for_manager_deal(deal, actor=request.user)
+                )
+                return_lot_ids = result.get('return_lot_ids') or []
+                if return_lot_ids:
+                    messages.success(request, f'Reverse-flow зафиксирован: создано return lot {len(return_lot_ids)}.')
                 else:
-                    messages.success(request, 'Резерв снят, товар снова доступен на складе.')
+                    messages.success(request, 'Финансовые корректировки и reverse-flow зафиксированы.')
             except ValueError as exc:
                 messages.error(request, str(exc))
             return redirect('manager_portal:deal_detail', pk=deal.pk)
@@ -6634,15 +6851,12 @@ def deal_detail_view(request, pk):
         participant_summary=participant_summary,
         latest_payment=latest_payment,
     )
-    return _render(
-        request,
-        'manager_portal/deal_detail.html',
-        active_tab='deals',
-        deal_tab_initial=deal_tab_initial,
-        deal=deal,
-        next_step_panel=next_step_panel,
-        guided_flow=guided_flow,
-        operation_hub=_deal_operation_hub(
+    render_kwargs = {
+        'deal_tab_initial': deal_tab_initial,
+        'deal': deal,
+        'next_step_panel': next_step_panel,
+        'guided_flow': guided_flow,
+        'operation_hub': _deal_operation_hub(
             deal,
             next_step_panel=next_step_panel,
             workflow_strip=workflow_strip,
@@ -6650,7 +6864,7 @@ def deal_detail_view(request, pk):
             activities=activities,
             finance_deal=finance_deal,
         ),
-        deal_header=_deal_header_summary(
+        'deal_header': _deal_header_summary(
             deal,
             deal_client=deal_client,
             blockers=blockers,
@@ -6660,17 +6874,17 @@ def deal_detail_view(request, pk):
             shipments=shipments,
             finance_deal=finance_deal,
         ),
-        deal_client=deal_client,
-        client_comment=client_comment,
-        operational_summary=_deal_operational_summary(deal, next_step_panel=next_step_panel, blockers=blockers),
-        client_summary=_deal_client_summary(
+        'deal_client': deal_client,
+        'client_comment': client_comment,
+        'operational_summary': _deal_operational_summary(deal, next_step_panel=next_step_panel, blockers=blockers),
+        'client_summary': _deal_client_summary(
             deal,
             deal_client=deal_client,
             activities=activities,
             client_comment=client_comment,
         ),
-        subject_summary=_deal_subject_summary(deal, order_item_rows=order_item_rows, finance_deal=finance_deal),
-        logistics_summary=_deal_logistics_summary(
+        'subject_summary': _deal_subject_summary(deal, order_item_rows=order_item_rows, finance_deal=finance_deal),
+        'logistics_summary': _deal_logistics_summary(
             deal,
             reservations=reservations,
             shipments=shipments,
@@ -6679,24 +6893,24 @@ def deal_detail_view(request, pk):
             order_item_rows=order_item_rows,
             supply_summary=supply_summary,
         ),
-        management_form=management_form,
-        comment_form=comment_form,
-        order_items=order_item_rows,
-        purchase_items=purchase_items,
-        cargo_items=cargo_items,
-        supply_summary=supply_summary,
-        documents_summary=_deal_documents_summary(deal, documents=documents),
-        finance_summary=finance_summary,
-        finance_summary_compact=_deal_finance_summary_compact(finance_summary),
-        linked_entities_strip=_deal_linked_entities_strip(
+        'management_form': management_form,
+        'comment_form': comment_form,
+        'order_items': order_item_rows,
+        'purchase_items': purchase_items,
+        'cargo_items': cargo_items,
+        'supply_summary': supply_summary,
+        'documents_summary': _deal_documents_summary(deal, documents=documents),
+        'finance_summary': finance_summary,
+        'finance_summary_compact': _deal_finance_summary_compact(finance_summary),
+        'linked_entities_strip': _deal_linked_entities_strip(
             deal,
             documents=documents,
             reservations=reservations,
             shipments=shipments,
             finance_deal=finance_deal,
         ),
-        workflow_strip=workflow_strip,
-        related_process_cards=_deal_related_process_cards(
+        'workflow_strip': workflow_strip,
+        'related_process_cards': _deal_related_process_cards(
             deal,
             documents=documents,
             reservations=reservations,
@@ -6706,21 +6920,29 @@ def deal_detail_view(request, pk):
             cargo_items=cargo_items,
             supply_summary=supply_summary,
         ),
-        blockers=blockers,
-        documents=documents,
-        reservations=reservations,
-        shipments=shipments,
-        finance_deal=finance_deal,
-        finance_expenses=finance_expenses,
-        finance_payouts=finance_payouts,
-        deal_participants_summary=participant_summary,
-        activities=activities,
-        timeline_entries=timeline_entries,
-        timeline_preview=timeline_entries[:5],
-        history_summary=_deal_history_summary(deal, activities=activities, timeline_entries=timeline_entries),
-        latest_event_summary=_deal_latest_event_summary(activities),
-        management_summary=_deal_management_summary(deal, activities),
-        customer_label=_deal_customer_label(deal),
+        'blockers': blockers,
+        'documents': documents,
+        'reservations': reservations,
+        'shipments': shipments,
+        'finance_deal': finance_deal,
+        'finance_expenses': finance_expenses,
+        'finance_payouts': finance_payouts,
+        'deal_participants_summary': participant_summary,
+        'activities': activities,
+        'timeline_entries': timeline_entries,
+        'timeline_preview': timeline_entries[:5],
+        'history_summary': _deal_history_summary(deal, activities=activities, timeline_entries=timeline_entries),
+        'latest_event_summary': _deal_latest_event_summary(activities),
+        'management_summary': _deal_management_summary(deal, activities),
+        'customer_label': _deal_customer_label(deal),
+    }
+    if forced_messages is not None:
+        render_kwargs['messages'] = forced_messages
+    return _render(
+        request,
+        'manager_portal/deal_detail.html',
+        active_tab='deals',
+        **render_kwargs,
     )
 
 
@@ -6800,6 +7022,7 @@ def order_detail_view(request, pk):
 @staff_required
 def order_state_update_view(request, pk):
     order = get_object_or_404(Order, pk=pk)
+    state_updated = False
     try:
         manager_deal = order.manager_deal
     except ManagerDeal.DoesNotExist:
@@ -6828,12 +7051,15 @@ def order_state_update_view(request, pk):
                     request=request,
                 )
                 recompute_deal_workflow(manager_deal, actor=request.user)
-                messages.success(request, 'Состояние заказа обновлено.')
+                state_updated = True
             except ValueError as exc:
                 messages.error(request, str(exc))
         else:
             messages.error(request, 'Не удалось обновить заказ.')
-    return redirect('manager_portal:deal_detail', pk=manager_deal.pk)
+    detail_url = reverse('manager_portal:deal_detail', kwargs={'pk': manager_deal.pk})
+    if state_updated:
+        detail_url = f'{detail_url}?state_updated=1'
+    return redirect(detail_url)
 
 
 @staff_required
@@ -7333,6 +7559,7 @@ def inventory_receipt_view(request):
             product=form.cleaned_data['product'],
             variant=form.cleaned_data['variant'],
             quantity=form.cleaned_data['quantity'],
+            unit_cost=form.cleaned_data['unit_cost'],
             author=request.user,
             comment=form.cleaned_data['comment'],
         )
@@ -7419,6 +7646,8 @@ def purchase_add_item_view(request, pk):
         item = form.save(commit=False)
         item.purchase = purchase
         item.save()
+        if item.order_item_id:
+            sync_order_item_planned_cost(item.order_item)
         messages.success(request, 'Позиция закупки добавлена.')
     else:
         messages.error(request, 'Не удалось добавить позицию закупки.')
@@ -7811,6 +8040,7 @@ def reservation_status_update_view(request, pk):
                 comment='Снятие резерва по смене статуса',
             )
         elif old_status not in ACTIVE_RESERVATION_STATUSES and reservation.status in ACTIVE_RESERVATION_STATUSES:
+            reactivate_reservation_items(reservation)
             create_or_update_reservation_movements(
                 reservation,
                 movement_type='reserve',
@@ -7828,6 +8058,23 @@ def reservation_status_update_view(request, pk):
         request,
         fallback=redirect('manager_portal:reservation_detail', pk=reservation.pk),
         anchor='reservation',
+    )
+
+
+@staff_required
+@require_POST
+def shipment_dispatch_view(request, pk):
+    shipment = get_object_or_404(Shipment, pk=pk)
+    try:
+        dispatch_shipment(shipment, author=request.user)
+    except ValueError as exc:
+        messages.error(request, str(exc))
+    else:
+        messages.success(request, 'Складской эффект по отгрузке проведен.')
+    return _redirect_back_to_deal(
+        request,
+        fallback=redirect('manager_portal:shipment_detail', pk=shipment.pk),
+        anchor='shipment',
     )
 
 

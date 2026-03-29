@@ -14,6 +14,26 @@
     {% endif %}
     <section class="space-y-8">
       <div class="manager-panel rounded-3xl p-6">
+        <h2 class="text-2xl font-semibold text-white">Новая версия схемы распределения</h2>
+        <p class="mt-2 text-sm text-slate-400">Схема хранит версии правил расчёта. Старые сделки остаются на своей версии, новые берут активную.</p>
+        <form method="post" class="mt-5 grid gap-4">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="create_distribution_scheme">
+          {% include "manager_portal/_form_fields.html" with form=finance_distribution_scheme_form %}
+          <button type="submit" class="rounded-xl bg-cyan-400 px-4 py-3 text-sm font-semibold text-slate-950" {% if finance_settings_readonly %}disabled{% endif %}>Сохранить схему</button>
+        </form>
+      </div>
+      <div class="manager-panel rounded-3xl p-6">
+        <h2 class="text-2xl font-semibold text-white">Новое правило распределения</h2>
+        <p class="mt-2 text-sm text-slate-400">Правило задаёт участника, тип расчёта, процент и опорные параметры в рамках выбранной схемы.</p>
+        <form method="post" class="mt-5 grid gap-4">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="create_distribution_rule">
+          {% include "manager_portal/_form_fields.html" with form=finance_distribution_rule_form %}
+          <button type="submit" class="rounded-xl bg-cyan-400 px-4 py-3 text-sm font-semibold text-slate-950" {% if finance_settings_readonly %}disabled{% endif %}>Добавить правило</button>
+        </form>
+      </div>
+      <div class="manager-panel rounded-3xl p-6">
         <h2 class="text-2xl font-semibold text-white">Новый тип сделки</h2>
         <p class="mt-2 text-sm text-slate-400">Создавайте новые типы только когда они реально отличаются по распределению дохода или роли партнёра.</p>
         <form method="post" class="mt-5 grid gap-4">
@@ -36,6 +56,73 @@
     </section>
 
     <section class="space-y-8">
+      <div class="manager-panel rounded-3xl p-6">
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <h2 class="text-2xl font-semibold text-white">Схемы распределения</h2>
+            <p class="mt-2 text-sm text-slate-400">Активная версия используется для новых и явно пересчитанных сделок. Старые сделки остаются на своём snapshot.</p>
+          </div>
+          {% if finance_active_distribution_scheme %}
+            <span class="manager-pill">Активна: {{ finance_active_distribution_scheme }}</span>
+          {% endif %}
+        </div>
+        <div class="mt-5 space-y-4">
+          {% for row in finance_distribution_scheme_rows %}
+            <article class="rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p class="text-base font-semibold text-white">{{ row.item }}</p>
+                  <p class="mt-1 text-sm text-slate-400">{{ row.item.description|default:"Без комментария" }}</p>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  {% if row.item.is_active %}
+                    <span class="manager-pill border-emerald-500/30 text-emerald-200">Активна</span>
+                  {% else %}
+                    <form method="post">
+                      {% csrf_token %}
+                      <input type="hidden" name="action" value="activate_distribution_scheme">
+                      <input type="hidden" name="scheme_id" value="{{ row.item.pk }}">
+                      <button type="submit" class="rounded-xl border border-slate-700 px-4 py-2 text-xs text-slate-300 hover:bg-slate-800" {% if finance_settings_readonly %}disabled{% endif %}>Активировать</button>
+                    </form>
+                  {% endif %}
+                  <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="clone_distribution_scheme">
+                    <input type="hidden" name="scheme_id" value="{{ row.item.pk }}">
+                    <button type="submit" class="rounded-xl border border-slate-700 px-4 py-2 text-xs text-slate-300 hover:bg-slate-800" {% if finance_settings_readonly %}disabled{% endif %}>Новая версия</button>
+                  </form>
+                </div>
+              </div>
+              <form method="post" class="mt-4 grid gap-4 rounded-2xl border border-slate-800/80 bg-slate-950/40 p-4">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="update_distribution_scheme">
+                <input type="hidden" name="scheme_id" value="{{ row.item.pk }}">
+                {% include "manager_portal/_form_fields.html" with form=row.form %}
+                <button type="submit" class="rounded-xl border border-slate-700 px-4 py-3 text-sm text-slate-200 hover:bg-slate-800" {% if finance_settings_readonly %}disabled{% endif %}>Сохранить схему</button>
+              </form>
+              <div class="mt-4 space-y-3">
+                {% for rule_row in row.rule_rows %}
+                  <form method="post" class="grid gap-4 rounded-2xl border border-slate-800/80 bg-slate-950/30 p-4">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="update_distribution_rule">
+                    <input type="hidden" name="rule_id" value="{{ rule_row.item.pk }}">
+                    {% include "manager_portal/_form_fields.html" with form=rule_row.form %}
+                    <div class="flex gap-2">
+                      <button type="submit" class="rounded-xl border border-slate-700 px-4 py-3 text-sm text-slate-200 hover:bg-slate-800" {% if finance_settings_readonly %}disabled{% endif %}>Сохранить правило</button>
+                      <button type="submit" name="action" value="delete_distribution_rule" class="rounded-xl border border-rose-500/40 px-4 py-3 text-sm text-rose-200 hover:bg-rose-500/10" {% if finance_settings_readonly %}disabled{% endif %}>Удалить правило</button>
+                    </div>
+                  </form>
+                {% empty %}
+                  <p class="text-sm text-slate-500">Правил пока нет.</p>
+                {% endfor %}
+              </div>
+            </article>
+          {% empty %}
+            <p class="text-sm text-slate-500">Схемы распределения ещё не созданы.</p>
+          {% endfor %}
+        </div>
+      </div>
+
       <div class="manager-panel rounded-3xl p-6">
         <h2 class="text-2xl font-semibold text-white">Типы сделок</h2>
         <p class="mt-2 text-sm text-slate-400">В строках ниже видно, какие поля обязательны. Изменения сохраняются по одной строке, без перегруженной общей формы.</p>

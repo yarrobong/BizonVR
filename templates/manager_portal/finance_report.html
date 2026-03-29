@@ -25,9 +25,10 @@
         </form>
       </div>
     </section>
-    <section class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+    <section class="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
       <div class="manager-panel rounded-3xl p-5"><p class="text-xs uppercase tracking-[0.18em] text-slate-500">Оборот</p><p class="mt-3 text-2xl font-semibold text-white">{{ finance_data.turnover|decimal_format }}</p></div>
-      <div class="manager-panel rounded-3xl p-5"><p class="text-xs uppercase tracking-[0.18em] text-slate-500">Маржа</p><p class="mt-3 text-2xl font-semibold text-white">{{ finance_data.company_profit|decimal_format }}</p></div>
+      <div class="manager-panel rounded-3xl p-5"><p class="text-xs uppercase tracking-[0.18em] text-slate-500">Валовая прибыль</p><p class="mt-3 text-2xl font-semibold text-white">{{ finance_data.gross_profit_total|decimal_format }}</p></div>
+      <div class="manager-panel rounded-3xl p-5"><p class="text-xs uppercase tracking-[0.18em] text-slate-500">Распределяемая прибыль</p><p class="mt-3 text-2xl font-semibold text-white">{{ finance_data.distributable_profit_total|decimal_format }}</p></div>
       <div class="manager-panel rounded-3xl p-5"><p class="text-xs uppercase tracking-[0.18em] text-slate-500">Партнер</p><p class="mt-3 text-2xl font-semibold text-white">{{ finance_data.partner_profit|decimal_format }}</p></div>
       <div class="manager-panel rounded-3xl p-5"><p class="text-xs uppercase tracking-[0.18em] text-slate-500">К выплате</p><p class="mt-3 text-2xl font-semibold text-white">{{ finance_data.final_payout|decimal_format }}</p></div>
     </section>

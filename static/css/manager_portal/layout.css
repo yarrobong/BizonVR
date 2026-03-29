@@ -937,10 +937,10 @@
 
 /* Desktop sidebar base — overrides the generic .manager-sidebar above */
 .manager-sidebar {
-  position: sticky;
-  top: 0;
-  height: 100vh;
-  overflow: hidden;
+  position: relative;
+  top: auto;
+  height: auto;
+  overflow: visible;
   background:
     radial-gradient(circle at top left, rgba(34, 211, 238, 0.1), transparent 26%),
     linear-gradient(180deg, rgba(5, 10, 28, 0.98), rgba(2, 6, 23, 0.98));
@@ -952,9 +952,9 @@
 /* Desktop sidebar inner — scoped so the mobile .manager-sidebar-inner keeps its padding/gap */
 .manager-sidebar .manager-sidebar-inner {
   position: static;
-  min-height: unset;
-  height: 100%;
-  overflow: hidden;
+  min-height: 100vh;
+  height: auto;
+  overflow: visible;
   width: 19rem;
   min-width: 0;
   gap: 1rem;

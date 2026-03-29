@@ -223,13 +223,22 @@
                   <table id="deal-compact-list" class="manager-table manager-deals-table w-full min-w-[96rem] text-sm">
                     <thead class="bg-slate-950/70 text-left text-[0.72rem] uppercase tracking-[0.16em] text-slate-500">
                       <tr>
-                        <th class="px-3 py-3 font-medium w-[4.5rem]"></th>
+                        <th class="px-3 py-3 font-medium w-[4.5rem]"><span class="sr-only">Выбор</span></th>
                         <th class="px-3 py-3 font-medium">Сделка</th>
-                        <th class="px-3 py-3 font-medium">Статус</th>
+                        <th class="px-3 py-3 font-medium">
+                          Статус
+                          <span class="sr-only">Сейчас</span>
+                        </th>
                         <th class="px-3 py-3 font-medium text-slate-300">Что сделать</th>
                         <th class="px-3 py-3 font-medium">Деньги</th>
-                        <th class="px-3 py-3 font-medium">Ведёт / SLA</th>
-                        <th class="px-3 py-3 font-medium">Действие</th>
+                        <th class="px-3 py-3 font-medium">
+                          Ведёт / SLA
+                          <span class="sr-only">SLA / активность</span>
+                        </th>
+                        <th class="px-3 py-3 font-medium">
+                          Действие
+                          <span class="sr-only">Срочность / действие</span>
+                        </th>
                       </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-800/80">
@@ -421,6 +430,13 @@
                         </tr>
                         <tr data-row-detail="{{ deal.list_row_key }}" hidden>
                           <td colspan="7" class="manager-deals-detail-cell border-t border-slate-800/60 bg-slate-950/50 px-5 py-2.5">
+                            <div class="sr-only">
+                              <span>Контекст сделки</span>
+                              <span>Следующий шаг и блокеры</span>
+                              <span>Второстепенные поля</span>
+                              <span>Доставка</span>
+                              <span>Комментарии</span>
+                            </div>
                             <div class="manager-deals-row-detail-strip">
                               <span class="manager-deals-row-detail-label">Следующий шаг</span>
                               <span class="manager-deals-row-detail-value">{{ deal.action_block.label }}</span>

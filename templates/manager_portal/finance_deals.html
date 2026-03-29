@@ -13,7 +13,7 @@
         </div>
         <div class="mt-4 flex flex-wrap gap-2">
           <span class="manager-pill"><strong>Выручка</strong> {{ finance_deal_form.instance.revenue|rub }}</span>
-          <span class="manager-pill"><strong>Себестоимость</strong> {{ finance_deal_form.instance.cost_price|rub }}</span>
+          <span class="manager-pill"><strong>Себестоимость</strong> {{ finance_deal_form.instance.cost_of_goods|rub }}</span>
           <span class="manager-pill"><strong>Документ</strong> {{ finance_deal_form.instance.linked_document|default:"не привязан" }}</span>
         </div>
         {% if finance_prefill_hints %}
@@ -65,8 +65,8 @@
                 <p class="mt-2 font-medium text-white">{{ deal.revenue }}</p>
               </div>
               <div class="rounded-2xl border border-slate-800/80 bg-slate-950/60 px-3 py-3">
-                <p class="text-[0.68rem] uppercase tracking-[0.16em] text-slate-500">Маржа</p>
-                <p class="mt-2 font-medium text-white">{{ deal.margin }}</p>
+                <p class="text-[0.68rem] uppercase tracking-[0.16em] text-slate-500">Распределяемая прибыль</p>
+                <p class="mt-2 font-medium text-white">{{ deal.distributable_profit }}</p>
               </div>
               <div class="rounded-2xl border border-slate-800/80 bg-slate-950/60 px-3 py-3">
                 <p class="text-[0.68rem] uppercase tracking-[0.16em] text-slate-500">Партнер</p>
@@ -89,7 +89,7 @@
               <th class="pb-3 pr-4">Клиент / договор</th>
               <th class="pb-3 pr-4">Тип</th>
               <th class="pb-3 pr-4">Выручка</th>
-              <th class="pb-3 pr-4">Маржа</th>
+              <th class="pb-3 pr-4">Распределяемая прибыль</th>
               <th class="pb-3 pr-4">Партнер</th>
               <th class="pb-3 pr-4"></th>
             </tr>
@@ -104,7 +104,7 @@
                 </td>
                 <td class="py-3 pr-4">{{ deal.deal_type.name }}</td>
                 <td class="py-3 pr-4">{{ deal.revenue }}</td>
-                <td class="py-3 pr-4">{{ deal.margin }}</td>
+                <td class="py-3 pr-4">{{ deal.distributable_profit }}</td>
                 <td class="py-3 pr-4">{{ deal.partner_share_amount|rub }}</td>
                 <td class="py-3 pr-4">
                   <a href="{% url 'manager_portal:finance_deal_detail' deal.pk %}" class="rounded-xl border border-slate-700 px-3 py-2 text-xs text-slate-300 hover:bg-slate-800">Подробнее</a>

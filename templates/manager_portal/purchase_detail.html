@@ -18,7 +18,7 @@
                 <p>{{ item.product.name }}{% if item.variant %} <span class="text-slate-500">/ {{ item.variant.name }}</span>{% endif %}</p>
                 <span>{{ item.quantity }} шт.</span>
               </div>
-              <p class="mt-1 text-sm text-slate-400">{{ item.price|currency_amount:purchase.currency }} · получено {{ item.received_quantity }}</p>
+              <p class="mt-1 text-sm text-slate-400">{{ item.unit_cost|currency_amount:purchase.currency }} · получено {{ item.received_quantity }}</p>
               <p class="mt-1 text-sm text-slate-500">
                 Заказ:
                 {% if item.order_item %}

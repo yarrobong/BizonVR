@@ -161,9 +161,14 @@
                     <button type="button" data-order-item-remove class="rounded-lg border border-slate-700 px-3 py-2 text-xs hover:bg-slate-800">Удалить</button>
                   </div>
                   <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                    <div>{{ item_form.line_type.label_tag }}{{ item_form.line_type }}{% if item_form.line_type.errors %}<p class="mt-1 text-xs text-rose-300">{{ item_form.line_type.errors|join:', ' }}</p>{% endif %}</div>
                     <div class="xl:col-span-2">{{ item_form.product.label_tag }}{{ item_form.product }}{% if item_form.product.errors %}<p class="mt-1 text-xs text-rose-300">{{ item_form.product.errors|join:', ' }}</p>{% endif %}</div>
+                    <div>{{ item_form.variant.label_tag }}{{ item_form.variant }}{% if item_form.variant.errors %}<p class="mt-1 text-xs text-rose-300">{{ item_form.variant.errors|join:', ' }}</p>{% endif %}</div>
+                    <div class="xl:col-span-2">{{ item_form.product_name.label_tag }}{{ item_form.product_name }}{% if item_form.product_name.errors %}<p class="mt-1 text-xs text-rose-300">{{ item_form.product_name.errors|join:', ' }}</p>{% endif %}</div>
+                    <div>{{ item_form.custom_sku.label_tag }}{{ item_form.custom_sku }}{% if item_form.custom_sku.errors %}<p class="mt-1 text-xs text-rose-300">{{ item_form.custom_sku.errors|join:', ' }}</p>{% endif %}</div>
                     <div class="xl:col-span-2">{{ item_form.configuration.label_tag }}{{ item_form.configuration }}{% if item_form.configuration.errors %}<p class="mt-1 text-xs text-rose-300">{{ item_form.configuration.errors|join:', ' }}</p>{% endif %}</div>
                     <div>{{ item_form.quantity.label_tag }}{{ item_form.quantity }}{% if item_form.quantity.errors %}<p class="mt-1 text-xs text-rose-300">{{ item_form.quantity.errors|join:', ' }}</p>{% endif %}</div>
+                    <div>{{ item_form.planned_unit_cost.label_tag }}{{ item_form.planned_unit_cost }}{% if item_form.planned_unit_cost.errors %}<p class="mt-1 text-xs text-rose-300">{{ item_form.planned_unit_cost.errors|join:', ' }}</p>{% endif %}</div>
                     <div>{{ item_form.sale_price.label_tag }}{{ item_form.sale_price }}{% if item_form.sale_price.errors %}<p class="mt-1 text-xs text-rose-300">{{ item_form.sale_price.errors|join:', ' }}</p>{% endif %}</div>
                     <div>
                       <label class="block text-sm font-medium text-slate-200">Итог по позиции</label>
@@ -205,9 +210,14 @@
             <button type="button" data-order-item-remove class="rounded-lg border border-slate-700 px-3 py-2 text-xs hover:bg-slate-800">Удалить</button>
           </div>
           <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div>{{ formset.empty_form.line_type.label_tag }}{{ formset.empty_form.line_type }}</div>
             <div class="xl:col-span-2">{{ formset.empty_form.product.label_tag }}{{ formset.empty_form.product }}</div>
+            <div>{{ formset.empty_form.variant.label_tag }}{{ formset.empty_form.variant }}</div>
+            <div class="xl:col-span-2">{{ formset.empty_form.product_name.label_tag }}{{ formset.empty_form.product_name }}</div>
+            <div>{{ formset.empty_form.custom_sku.label_tag }}{{ formset.empty_form.custom_sku }}</div>
             <div class="xl:col-span-2">{{ formset.empty_form.configuration.label_tag }}{{ formset.empty_form.configuration }}</div>
             <div>{{ formset.empty_form.quantity.label_tag }}{{ formset.empty_form.quantity }}</div>
+            <div>{{ formset.empty_form.planned_unit_cost.label_tag }}{{ formset.empty_form.planned_unit_cost }}</div>
             <div>{{ formset.empty_form.sale_price.label_tag }}{{ formset.empty_form.sale_price }}</div>
             <div>
               <label class="block text-sm font-medium text-slate-200">Итог по позиции</label>
@@ -426,30 +436,20 @@
             {% for item_form in formset %}
               <div class="manager-item-card rounded-3xl border border-slate-800 bg-slate-950/70 p-4" data-order-item-row>
                 {{ item_form.DELETE.as_hidden }}
-                {{ item_form.product }}
                 <div class="mb-4 flex items-center justify-between gap-3">
                   <p class="text-sm font-medium text-slate-200">Позиция {{ forloop.counter }}</p>
                   <button type="button" data-order-item-remove class="rounded-lg border border-slate-700 px-3 py-2 text-xs hover:bg-slate-800">Удалить</button>
                 </div>
                 <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                  <div class="xl:col-span-2">
-                    {{ item_form.product_name.label_tag }}{{ item_form.product_name }}
-                    {% if item_form.product_name.errors %}<p class="mt-1 text-xs text-rose-300">{{ item_form.product_name.errors|join:', ' }}</p>{% endif %}
-                    <div class="manager-summary-box mt-3 hidden" data-order-product-preview>
-                      <div class="flex items-center gap-3">
-                        <img src="" alt="" class="hidden h-14 w-14 rounded-xl object-cover" data-order-product-preview-image>
-                        <div class="min-w-0">
-                          <p class="text-sm font-medium text-slate-100" data-order-product-preview-title>Позиция без каталога</p>
-                          <p class="text-xs text-slate-400" data-order-product-preview-status>Если товара нет в каталоге, укажите полное наименование и цену вручную.</p>
-                          <p class="mt-1 text-sm text-cyan-300" data-order-product-preview-price></p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  <div>{{ item_form.line_type.label_tag }}{{ item_form.line_type }}{% if item_form.line_type.errors %}<p class="mt-1 text-xs text-rose-300">{{ item_form.line_type.errors|join:', ' }}</p>{% endif %}</div>
+                  <div class="xl:col-span-2">{{ item_form.product.label_tag }}{{ item_form.product }}{% if item_form.product.errors %}<p class="mt-1 text-xs text-rose-300">{{ item_form.product.errors|join:', ' }}</p>{% endif %}</div>
+                  <div>{{ item_form.variant.label_tag }}{{ item_form.variant }}{% if item_form.variant.errors %}<p class="mt-1 text-xs text-rose-300">{{ item_form.variant.errors|join:', ' }}</p>{% endif %}</div>
+                  <div class="xl:col-span-2">{{ item_form.product_name.label_tag }}{{ item_form.product_name }}{% if item_form.product_name.errors %}<p class="mt-1 text-xs text-rose-300">{{ item_form.product_name.errors|join:', ' }}</p>{% endif %}</div>
+                  <div>{{ item_form.custom_sku.label_tag }}{{ item_form.custom_sku }}{% if item_form.custom_sku.errors %}<p class="mt-1 text-xs text-rose-300">{{ item_form.custom_sku.errors|join:', ' }}</p>{% endif %}</div>
                   <div class="xl:col-span-2">{{ item_form.configuration.label_tag }}{{ item_form.configuration }}{% if item_form.configuration.errors %}<p class="mt-1 text-xs text-rose-300">{{ item_form.configuration.errors|join:', ' }}</p>{% endif %}</div>
                   <div>{{ item_form.condition.label_tag }}{{ item_form.condition }}{% if item_form.condition.errors %}<p class="mt-1 text-xs text-rose-300">{{ item_form.condition.errors|join:', ' }}</p>{% endif %}</div>
                   <div>{{ item_form.quantity.label_tag }}{{ item_form.quantity }}{% if item_form.quantity.errors %}<p class="mt-1 text-xs text-rose-300">{{ item_form.quantity.errors|join:', ' }}</p>{% endif %}</div>
-                  <div>{{ item_form.purchase_price.label_tag }}{{ item_form.purchase_price }}{% if item_form.purchase_price.errors %}<p class="mt-1 text-xs text-rose-300">{{ item_form.purchase_price.errors|join:', ' }}</p>{% endif %}</div>
+                  <div>{{ item_form.planned_unit_cost.label_tag }}{{ item_form.planned_unit_cost }}{% if item_form.planned_unit_cost.errors %}<p class="mt-1 text-xs text-rose-300">{{ item_form.planned_unit_cost.errors|join:', ' }}</p>{% endif %}</div>
                   <div>{{ item_form.sale_price.label_tag }}{{ item_form.sale_price }}{% if item_form.sale_price.errors %}<p class="mt-1 text-xs text-rose-300">{{ item_form.sale_price.errors|join:', ' }}</p>{% endif %}</div>
                   <div>{{ item_form.discount_amount.label_tag }}{{ item_form.discount_amount }}{% if item_form.discount_amount.errors %}<p class="mt-1 text-xs text-rose-300">{{ item_form.discount_amount.errors|join:', ' }}</p>{% endif %}</div>
                   <div>
@@ -525,29 +525,20 @@
   <template data-order-item-template>
     <div class="manager-item-card rounded-3xl border border-slate-800 bg-slate-950/70 p-4" data-order-item-row>
       {{ formset.empty_form.DELETE.as_hidden }}
-      {{ formset.empty_form.product }}
       <div class="mb-4 flex items-center justify-between gap-3">
         <p class="text-sm font-medium text-slate-200">Новая позиция</p>
         <button type="button" data-order-item-remove class="rounded-lg border border-slate-700 px-3 py-2 text-xs hover:bg-slate-800">Удалить</button>
       </div>
       <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <div class="xl:col-span-2">
-          {{ formset.empty_form.product_name.label_tag }}{{ formset.empty_form.product_name }}
-          <div class="manager-summary-box mt-3 hidden" data-order-product-preview>
-            <div class="flex items-center gap-3">
-              <img src="" alt="" class="hidden h-14 w-14 rounded-xl object-cover" data-order-product-preview-image>
-              <div class="min-w-0">
-                <p class="text-sm font-medium text-slate-100" data-order-product-preview-title>Позиция без каталога</p>
-                <p class="text-xs text-slate-400" data-order-product-preview-status>Если товара нет в каталоге, укажите полное наименование и цену вручную.</p>
-                <p class="mt-1 text-sm text-cyan-300" data-order-product-preview-price></p>
-              </div>
-            </div>
-          </div>
-        </div>
+        <div>{{ formset.empty_form.line_type.label_tag }}{{ formset.empty_form.line_type }}</div>
+        <div class="xl:col-span-2">{{ formset.empty_form.product.label_tag }}{{ formset.empty_form.product }}</div>
+        <div>{{ formset.empty_form.variant.label_tag }}{{ formset.empty_form.variant }}</div>
+        <div class="xl:col-span-2">{{ formset.empty_form.product_name.label_tag }}{{ formset.empty_form.product_name }}</div>
+        <div>{{ formset.empty_form.custom_sku.label_tag }}{{ formset.empty_form.custom_sku }}</div>
         <div class="xl:col-span-2">{{ formset.empty_form.configuration.label_tag }}{{ formset.empty_form.configuration }}</div>
         <div>{{ formset.empty_form.condition.label_tag }}{{ formset.empty_form.condition }}</div>
         <div>{{ formset.empty_form.quantity.label_tag }}{{ formset.empty_form.quantity }}</div>
-        <div>{{ formset.empty_form.purchase_price.label_tag }}{{ formset.empty_form.purchase_price }}</div>
+        <div>{{ formset.empty_form.planned_unit_cost.label_tag }}{{ formset.empty_form.planned_unit_cost }}</div>
         <div>{{ formset.empty_form.sale_price.label_tag }}{{ formset.empty_form.sale_price }}</div>
         <div>{{ formset.empty_form.discount_amount.label_tag }}{{ formset.empty_form.discount_amount }}</div>
         <div>
@@ -558,13 +549,6 @@
       </div>
     </div>
   </template>
-
-  <datalist id="manual-order-product-names">
-    {% for product in product_catalog %}
-      <option value="{{ product.name }}"></option>
-    {% endfor %}
-  </datalist>
-  {{ product_catalog|json_script:"manual-order-product-catalog" }}
 
   <template data-tradein-item-template>
     <div class="manager-item-card rounded-3xl border border-slate-800 bg-slate-950/70 p-4" data-tradein-item-row>

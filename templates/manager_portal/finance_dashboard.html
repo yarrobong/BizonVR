@@ -13,12 +13,16 @@
         </div>
         <form method="get" class="manager-finance-period-form">
           <div class="manager-finance-period-field">
-            <label for="{{ finance_period_form.period.id_for_label }}" class="manager-finance-period-label">{{ finance_period_form.period.label }}</label>
-            {{ finance_period_form.period }}
+            <label for="{{ finance_period_form.year.id_for_label }}" class="manager-finance-period-label">{{ finance_period_form.year.label }}</label>
+            {{ finance_period_form.year }}
+          </div>
+          <div class="manager-finance-period-field">
+            <label for="{{ finance_period_form.month.id_for_label }}" class="manager-finance-period-label">{{ finance_period_form.month.label }}</label>
+            {{ finance_period_form.month }}
           </div>
           <button type="submit" class="manager-finance-period-button">Показать</button>
-          {% if finance_period_form.period.errors %}
-            <p class="manager-finance-period-error">{{ finance_period_form.period.errors|join:', ' }}</p>
+          {% if finance_period_form.year.errors or finance_period_form.month.errors %}
+            <p class="manager-finance-period-error">{{ finance_period_form.year.errors|join:', ' }} {{ finance_period_form.month.errors|join:', ' }}</p>
           {% endif %}
         </form>
       </div>
@@ -182,7 +186,7 @@
       </div>
     </section>
 
-    <section class="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+    <section class="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
       <div class="manager-panel manager-kpi rounded-3xl p-5">
         <p class="manager-card-kicker">Оборот</p>
         <p class="mt-3 text-3xl font-semibold text-white">{{ finance_data.turnover|decimal_format }}</p>
@@ -192,8 +196,12 @@
         <p class="mt-3 text-3xl font-semibold text-white">{{ finance_data.cost_of_goods|decimal_format }}</p>
       </div>
       <div class="manager-panel manager-kpi rounded-3xl p-5">
-        <p class="manager-card-kicker">Маржа</p>
-        <p class="mt-3 text-3xl font-semibold text-white">{{ finance_data.company_profit|decimal_format }}</p>
+        <p class="manager-card-kicker">Валовая прибыль</p>
+        <p class="mt-3 text-3xl font-semibold text-white">{{ finance_data.gross_profit_total|decimal_format }}</p>
+      </div>
+      <div class="manager-panel manager-kpi rounded-3xl p-5">
+        <p class="manager-card-kicker">Распределяемая прибыль</p>
+        <p class="mt-3 text-3xl font-semibold text-white">{{ finance_data.distributable_profit_total|decimal_format }}</p>
       </div>
       <div class="manager-panel manager-kpi rounded-3xl p-5">
         <p class="manager-card-kicker">Чистая прибыль</p>
@@ -206,6 +214,42 @@
     </section>
 
     <section class="grid gap-6 xl:grid-cols-[1.1fr_1fr]">
+      <div class="manager-panel rounded-3xl p-6">
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <p class="manager-section-kicker">Участники</p>
+            <h3 class="manager-section-title mt-2">Итог распределения за {{ finance_data.period_label }}</h3>
+          </div>
+          <span class="rounded-full border border-slate-700 px-3 py-1 text-[0.7rem] uppercase tracking-[0.18em] text-slate-400">
+            {{ finance_data.participant_share_rows|length }} участников
+          </span>
+        </div>
+        <div class="mt-5 space-y-3">
+          {% for row in finance_data.participant_share_rows %}
+            <article class="rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
+              <div class="flex items-start justify-between gap-4">
+                <div>
+                  <p class="text-base font-semibold text-white">{{ row.participant }}</p>
+                  <p class="mt-1 text-sm text-slate-400">{{ row.deal_count }} сделок в периоде</p>
+                </div>
+                <span class="manager-pill shrink-0">{{ row.amount|rub }}</span>
+              </div>
+              {% if row.deals %}
+                <div class="mt-4 grid gap-2">
+                  {% for deal in row.deals %}
+                    <a href="{% url 'manager_portal:finance_deal_detail' deal.id %}" class="flex items-center justify-between rounded-xl border border-slate-800/80 px-3 py-2 text-sm text-slate-300 hover:bg-slate-900">
+                      <span class="truncate pr-4">{{ deal.label }}</span>
+                      <span class="shrink-0 text-white">{{ deal.amount|rub }}</span>
+                    </a>
+                  {% endfor %}
+                </div>
+              {% endif %}
+            </article>
+          {% empty %}
+            {% include "manager_portal/_empty_state.html" with empty_state_title="Распределения пока нет" empty_state_description="Суммы по участникам появятся после расчётов по сделкам." %}
+          {% endfor %}
+        </div>
+      </div>
       <div class="manager-panel rounded-3xl p-6">
         <p class="manager-section-kicker">Расчет с партнером</p>
         <div class="mt-4 space-y-3">
@@ -270,8 +314,8 @@
             </div>
             <div class="mt-4 grid grid-cols-2 gap-3 text-sm">
               <div class="rounded-2xl border border-slate-800/80 bg-slate-950/60 px-3 py-3">
-                <p class="text-[0.68rem] uppercase tracking-[0.16em] text-slate-500">Маржа</p>
-                <p class="mt-2 font-medium text-white">{{ row.margin|decimal_format }}</p>
+                <p class="text-[0.68rem] uppercase tracking-[0.16em] text-slate-500">Распределяемая прибыль</p>
+                <p class="mt-2 font-medium text-white">{{ row.distributable_profit|default:row.margin|decimal_format }}</p>
               </div>
               <div class="rounded-2xl border border-slate-800/80 bg-slate-950/60 px-3 py-3">
                 <p class="text-[0.68rem] uppercase tracking-[0.16em] text-slate-500">OPEX</p>
@@ -293,7 +337,7 @@
             <tr>
               <th class="pb-3 pr-4">Типы</th>
               <th class="pb-3 pr-4">Доля</th>
-              <th class="pb-3 pr-4">Маржа</th>
+              <th class="pb-3 pr-4">Распределяемая прибыль</th>
               <th class="pb-3 pr-4">OPEX</th>
               <th class="pb-3 pr-4">Чистая прибыль</th>
               <th class="pb-3 pr-4">Партнер</th>
@@ -304,7 +348,7 @@
               <tr>
                 <td class="py-3 pr-4">{{ row.deal_type }}</td>
                 <td class="py-3 pr-4">{{ row.share }}</td>
-                <td class="py-3 pr-4">{{ row.margin|decimal_format }}</td>
+                <td class="py-3 pr-4">{{ row.distributable_profit|default:row.margin|decimal_format }}</td>
                 <td class="py-3 pr-4">{{ row.opex_allocated|decimal_format }}</td>
                 <td class="py-3 pr-4">{{ row.net_profit|decimal_format }}</td>
                 <td class="py-3 pr-4">{{ row.partner_profit|decimal_format }}</td>

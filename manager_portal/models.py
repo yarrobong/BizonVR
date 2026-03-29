@@ -781,8 +781,16 @@ class ManagerDeal(models.Model):
         return sum((item.subtotal for item in self.order.items.all()), Decimal('0'))
 
     @property
+    def planned_outgoing_cost_total(self):
+        return sum((item.planned_cost_total for item in self.order.items.all()), Decimal('0'))
+
+    @property
+    def actual_outgoing_cost_total(self):
+        return sum((item.actual_cost_total for item in self.order.items.all()), Decimal('0'))
+
+    @property
     def outgoing_cost_total(self):
-        return sum((item.purchase_price * item.quantity for item in self.order.items.all()), Decimal('0'))
+        return sum((item.effective_cost_total for item in self.order.items.all()), Decimal('0'))
 
     @property
     def trade_in_value(self):
@@ -802,7 +810,11 @@ class ManagerDeal(models.Model):
 
     @property
     def expected_margin(self):
-        return self.goods_total - self.outgoing_cost_total - self.avito_commission - self.trade_in_value
+        return self.goods_total - self.planned_outgoing_cost_total - self.avito_commission - self.trade_in_value
+
+    @property
+    def actual_margin(self):
+        return self.goods_total - self.actual_outgoing_cost_total - self.avito_commission - self.trade_in_value
 
     @property
     def overpayment_to_client(self):
@@ -1005,6 +1017,110 @@ class FinanceDealType(models.Model):
         return self.name
 
 
+class FinanceDistributionScheme(models.Model):
+    name = models.CharField('Название схемы', max_length=255)
+    version = models.PositiveIntegerField('Версия', default=1)
+    is_active = models.BooleanField('Активна', default=False, db_index=True)
+    description = models.TextField('Комментарий', blank=True)
+    created_at = models.DateTimeField('Создана', auto_now_add=True)
+    updated_at = models.DateTimeField('Обновлена', auto_now=True)
+
+    class Meta:
+        verbose_name = 'Финансы: схема распределения'
+        verbose_name_plural = 'Финансы: схемы распределения'
+        ordering = ['name', '-version', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['name', 'version'],
+                name='manager_finance_distribution_scheme_name_version_unique',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.name} v{self.version}'
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if self.is_active:
+            self.__class__.objects.exclude(pk=self.pk).filter(is_active=True).update(is_active=False)
+
+
+class FinanceDistributionRule(models.Model):
+    RULE_PERCENT_OWNER_MARGIN = 'percent_owner_margin'
+    RULE_PERCENT_TOTAL_MARGIN = 'percent_total_margin'
+    RULE_PERCENT_REMAINDER_AFTER_RULE = 'percent_remainder_after_rule'
+    RULE_EQUAL_SPLIT_REMAINDER = 'equal_split_remainder'
+    RULE_TYPE_CHOICES = [
+        (RULE_PERCENT_OWNER_MARGIN, 'Процент от маржи владельца строк'),
+        (RULE_PERCENT_TOTAL_MARGIN, 'Процент от общей маржи'),
+        (RULE_PERCENT_REMAINDER_AFTER_RULE, 'Процент от остатка после правила'),
+        (RULE_EQUAL_SPLIT_REMAINDER, 'Равная доля остатка'),
+    ]
+
+    scheme = models.ForeignKey(
+        FinanceDistributionScheme,
+        on_delete=models.CASCADE,
+        related_name='rules',
+        verbose_name='Схема',
+    )
+    participant_alias = models.ForeignKey(
+        ManagerPersonAlias,
+        on_delete=models.PROTECT,
+        related_name='finance_distribution_rules',
+        verbose_name='Участник',
+    )
+    position = models.PositiveIntegerField('Порядок', default=100)
+    rule_type = models.CharField('Тип правила', max_length=40, choices=RULE_TYPE_CHOICES, db_index=True)
+    percent = models.DecimalField('Процент / коэффициент', max_digits=7, decimal_places=4, default=Decimal('0'))
+    owner_alias = models.ForeignKey(
+        ManagerPersonAlias,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='finance_distribution_owner_rules',
+        verbose_name='Владелец строк',
+    )
+    reference_rule = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='dependent_rules',
+        verbose_name='Опорное правило',
+    )
+    note = models.CharField('Комментарий', max_length=255, blank=True)
+    is_active = models.BooleanField('Активно', default=True, db_index=True)
+    created_at = models.DateTimeField('Создано', auto_now_add=True)
+    updated_at = models.DateTimeField('Обновлено', auto_now=True)
+
+    class Meta:
+        verbose_name = 'Финансы: правило распределения'
+        verbose_name_plural = 'Финансы: правила распределения'
+        ordering = ['scheme_id', 'position', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['scheme', 'participant_alias'],
+                name='manager_finance_distribution_rule_scheme_participant_unique',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.scheme} · {self.participant_alias}'
+
+    def clean(self):
+        super().clean()
+        if self.rule_type == self.RULE_PERCENT_OWNER_MARGIN and not self.owner_alias_id:
+            raise ValidationError({'owner_alias': 'Укажите владельца строк для этого правила.'})
+        if self.rule_type == self.RULE_PERCENT_REMAINDER_AFTER_RULE and not self.reference_rule_id:
+            raise ValidationError({'reference_rule': 'Укажите правило, после которого считается остаток.'})
+        if self.reference_rule_id and self.pk and self.reference_rule_id == self.pk:
+            raise ValidationError({'reference_rule': 'Правило не может ссылаться само на себя.'})
+        if self.reference_rule_id and self.reference_rule and self.reference_rule.scheme_id != self.scheme_id:
+            raise ValidationError({'reference_rule': 'Опорное правило должно принадлежать той же схеме.'})
+        if self.rule_type == self.RULE_EQUAL_SPLIT_REMAINDER and self.percent not in {None, Decimal('0'), Decimal('0.0000')}:
+            raise ValidationError({'percent': 'Для равного деления остатка процент не используется.'})
+
+
 class FinanceExpenseCategory(models.Model):
     SIDE_OURS = 'ours'
     SIDE_PARTNER = 'partner'
@@ -1062,6 +1178,14 @@ class FinanceDeal(models.Model):
         related_name='finance_deals',
         verbose_name='Связанный документ',
     )
+    distribution_scheme = models.ForeignKey(
+        FinanceDistributionScheme,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='finance_deals',
+        verbose_name='Схема распределения',
+    )
     date = models.DateField('Дата сделки', default=timezone.localdate, db_index=True)
     contract_number = models.CharField('Договор / клиент', max_length=255, blank=True)
     deal_type = models.ForeignKey(
@@ -1073,16 +1197,31 @@ class FinanceDeal(models.Model):
     payment_method = models.CharField('Способ оплаты', max_length=32, blank=True)
     payment_state = models.CharField('Платежный статус заказа', max_length=32, blank=True)
     revenue = models.DecimalField('Выручка', max_digits=14, decimal_places=2, default=Decimal('0'))
-    cost_price = models.DecimalField('Закуп / себестоимость', max_digits=14, decimal_places=2, default=Decimal('0'))
-    direct_expenses = models.DecimalField('Прямые расходы', max_digits=14, decimal_places=2, default=Decimal('0'))
-    manager_bonus = models.DecimalField('Бонус менеджера', max_digits=14, decimal_places=2, default=Decimal('0'))
-    margin = models.DecimalField('Маржа', max_digits=14, decimal_places=2, default=Decimal('0'))
-    partner_share_amount = models.DecimalField('Доля партнера', max_digits=14, decimal_places=2, default=Decimal('0'))
-    expected_margin_snapshot = models.DecimalField(
-        'Ожидаемая маржа сделки',
+    cost_of_goods = models.DecimalField(
+        'Закуп / себестоимость',
         max_digits=14,
         decimal_places=2,
         default=Decimal('0'),
+        db_column='cost_price',
+    )
+    direct_expenses = models.DecimalField('Прямые расходы', max_digits=14, decimal_places=2, default=Decimal('0'))
+    manager_bonus = models.DecimalField('Бонус менеджера', max_digits=14, decimal_places=2, default=Decimal('0'))
+    distributable_profit = models.DecimalField(
+        'Распределяемая прибыль',
+        max_digits=14,
+        decimal_places=2,
+        default=Decimal('0'),
+        db_column='margin',
+    )
+    partner_share_amount = models.DecimalField('Доля партнера', max_digits=14, decimal_places=2, default=Decimal('0'))
+    distribution_scheme_name_snapshot = models.CharField('Название схемы распределения', max_length=255, blank=True)
+    distribution_scheme_version_snapshot = models.PositiveIntegerField('Версия схемы распределения', null=True, blank=True)
+    expected_distributable_profit_snapshot = models.DecimalField(
+        'Ожидаемая распределяемая прибыль сделки',
+        max_digits=14,
+        decimal_places=2,
+        default=Decimal('0'),
+        db_column='expected_margin_snapshot',
     )
     snapshot_data = models.JSONField('Снимок финкейса', default=dict, blank=True)
     comment = models.TextField('Комментарий', blank=True)
@@ -1124,12 +1263,13 @@ class FinanceDeal(models.Model):
 
     def recalculate(self):
         revenue = Decimal(self.revenue or 0)
-        cost_price = Decimal(self.cost_price or 0)
+        cost_of_goods = Decimal(self.cost_of_goods or 0)
         direct_expenses = Decimal(self.direct_expenses or 0)
         manager_bonus = Decimal(self.manager_bonus or 0)
-        self.margin = revenue - cost_price - direct_expenses - manager_bonus
-        share = Decimal(self.deal_type.partner_share if self.deal_type_id else 0)
-        self.partner_share_amount = self.margin * share
+        self.distributable_profit = revenue - cost_of_goods - direct_expenses - manager_bonus
+        if not self.distribution_scheme_id:
+            share = Decimal(self.deal_type.partner_share if self.deal_type_id else 0)
+            self.partner_share_amount = self.distributable_profit * share
 
     def save(self, *args, **kwargs):
         update_fields = kwargs.get('update_fields')
@@ -1139,15 +1279,368 @@ class FinanceDeal(models.Model):
             self.contract_number = self.linked_document.number or self.linked_document.title or ''
         if self.manager_deal_id and not self.contract_number:
             self.contract_number = f'Сделка #{self.manager_deal.order_id}'
+        if self.distribution_scheme_id:
+            self.distribution_scheme_name_snapshot = self.distribution_scheme.name
+            self.distribution_scheme_version_snapshot = self.distribution_scheme.version
         if update_fields is not None:
             normalized_fields = set(update_fields)
-            normalized_fields.update({'margin', 'partner_share_amount', 'code', 'title', 'short_label', 'contract_number'})
+            normalized_fields.update(
+                {
+                    'distributable_profit',
+                    'partner_share_amount',
+                    'code',
+                    'title',
+                    'short_label',
+                    'contract_number',
+                    'distribution_scheme_name_snapshot',
+                    'distribution_scheme_version_snapshot',
+                }
+            )
             kwargs['update_fields'] = list(normalized_fields)
         super().save(*args, **kwargs)
 
     @property
     def expense_total(self):
         return sum((expense.amount for expense in self.expenses.all()), Decimal('0'))
+
+    def _base_lines(self):
+        return self.lines.filter(replacement_of__isnull=True)
+
+    @property
+    def planned_cost_total(self):
+        return sum((line.planned_cost_total for line in self._base_lines()), Decimal('0'))
+
+    @property
+    def actual_cost_total(self):
+        return sum((line.actual_cost_total for line in self._base_lines()), Decimal('0'))
+
+    @property
+    def gross_profit(self):
+        return Decimal(self.revenue or 0) - Decimal(self.cost_of_goods or 0)
+
+    @property
+    def planned_distributable_profit_total(self):
+        revenue = sum((line.sale_total for line in self._base_lines()), Decimal('0')) or Decimal(self.revenue or 0)
+        return revenue - self.planned_cost_total - Decimal(self.direct_expenses or 0) - Decimal(self.manager_bonus or 0)
+
+    @property
+    def actual_distributable_profit_total(self):
+        revenue = sum((line.sale_total for line in self._base_lines()), Decimal('0')) or Decimal(self.revenue or 0)
+        return revenue - self.actual_cost_total - Decimal(self.direct_expenses or 0) - Decimal(self.manager_bonus or 0)
+
+    @property
+    def cost_price(self):
+        return self.cost_of_goods
+
+    @cost_price.setter
+    def cost_price(self, value):
+        self.cost_of_goods = value
+
+    @property
+    def margin(self):
+        return self.distributable_profit
+
+    @margin.setter
+    def margin(self, value):
+        self.distributable_profit = value
+
+    @property
+    def expected_margin_snapshot(self):
+        return self.expected_distributable_profit_snapshot
+
+    @expected_margin_snapshot.setter
+    def expected_margin_snapshot(self, value):
+        self.expected_distributable_profit_snapshot = value
+
+    @property
+    def planned_margin_total(self):
+        return self.planned_distributable_profit_total
+
+    @property
+    def actual_margin_total(self):
+        return self.actual_distributable_profit_total
+
+
+class FinanceDealLine(models.Model):
+    LINE_TYPE_CATALOG = 'catalog'
+    LINE_TYPE_CUSTOM = 'custom'
+    LINE_TYPE_CHOICES = [
+        (LINE_TYPE_CATALOG, 'Каталог'),
+        (LINE_TYPE_CUSTOM, 'Произвольный товар'),
+    ]
+
+    COST_STATUS_NONE = 'none'
+    COST_STATUS_PLANNED = 'planned'
+    COST_STATUS_ACTUAL = 'actual'
+    COST_STATUS_CHOICES = [
+        (COST_STATUS_NONE, 'Нет'),
+        (COST_STATUS_PLANNED, 'План'),
+        (COST_STATUS_ACTUAL, 'Факт'),
+    ]
+
+    finance_deal = models.ForeignKey(
+        FinanceDeal,
+        on_delete=models.CASCADE,
+        related_name='lines',
+        verbose_name='Финансовая сделка',
+    )
+    order_item = models.ForeignKey(
+        'orders.OrderItem',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='finance_deal_lines',
+        verbose_name='Строка заказа',
+    )
+    replacement_of = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='replacement_lines',
+        verbose_name='Замена для строки',
+    )
+    line_type = models.CharField(
+        'Тип строки',
+        max_length=16,
+        choices=LINE_TYPE_CHOICES,
+        default=LINE_TYPE_CATALOG,
+        db_index=True,
+    )
+    product = models.ForeignKey(
+        'catalog.Product',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='manager_finance_lines',
+        verbose_name='Товар',
+    )
+    variant = models.ForeignKey(
+        'catalog.ProductVariant',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='manager_finance_lines',
+        verbose_name='Вариант',
+    )
+    sort_order = models.PositiveIntegerField('Порядок', default=0)
+    product_name = models.CharField('Товар', max_length=255)
+    custom_sku = models.CharField('Произвольный SKU', max_length=64, blank=True)
+    quantity = models.PositiveIntegerField('Количество', default=1)
+    unit_cost_price = models.DecimalField('Себестоимость за единицу', max_digits=14, decimal_places=2, default=Decimal('0'))
+    unit_sale_price = models.DecimalField('Продажа за единицу', max_digits=14, decimal_places=2, default=Decimal('0'))
+    planned_unit_cost = models.DecimalField('Плановая себестоимость за единицу', max_digits=14, decimal_places=2, default=Decimal('0'))
+    actual_unit_cost = models.DecimalField('Фактическая себестоимость за единицу', max_digits=14, decimal_places=2, default=Decimal('0'))
+    cost_status = models.CharField(
+        'Статус себестоимости',
+        max_length=16,
+        choices=COST_STATUS_CHOICES,
+        default=COST_STATUS_NONE,
+        db_index=True,
+    )
+    owner_alias = models.ForeignKey(
+        ManagerPersonAlias,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='finance_deal_lines',
+        verbose_name='Владелец строки',
+    )
+    line_status = models.CharField('Статус', max_length=120, blank=True)
+    delivery_status = models.CharField('Доставка', max_length=120, blank=True)
+    source_payload = models.JSONField('Payload источника', default=dict, blank=True)
+    created_at = models.DateTimeField('Создана', auto_now_add=True)
+    updated_at = models.DateTimeField('Обновлена', auto_now=True)
+
+    class Meta:
+        verbose_name = 'Финансы: строка сделки'
+        verbose_name_plural = 'Финансы: строки сделки'
+        ordering = ['sort_order', 'id']
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    (
+                        Q(line_type='catalog')
+                        & Q(product__isnull=False)
+                        & ~Q(product_name='')
+                        & Q(custom_sku='')
+                    )
+                    | (
+                        Q(line_type='custom')
+                        & Q(product__isnull=True)
+                        & Q(variant__isnull=True)
+                        & ~Q(product_name='')
+                    )
+                ),
+                name='finance_line_line_type_integrity',
+            ),
+            models.CheckConstraint(
+                condition=Q(planned_unit_cost__gte=0),
+                name='finance_line_planned_unit_cost_gte_zero',
+            ),
+            models.CheckConstraint(
+                condition=Q(actual_unit_cost__gte=0),
+                name='finance_line_actual_unit_cost_gte_zero',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.finance_deal_id}: {self.product_name}'
+
+    def save(self, *args, **kwargs):
+        if self.order_item_id and not self.product_name:
+            self.product_name = self.order_item.resolved_product_name
+        if self.order_item_id and not self.product_id:
+            self.product = self.order_item.product
+            self.variant = self.order_item.variant
+            self.line_type = self.order_item.line_type
+            self.custom_sku = self.order_item.custom_sku
+        if self.product_id:
+            self.line_type = self.LINE_TYPE_CATALOG
+            if not (self.product_name or '').strip():
+                self.product_name = self.product.name
+        else:
+            self.line_type = self.LINE_TYPE_CUSTOM
+            self.variant = None
+        if self.planned_unit_cost in (None, Decimal('0')) and self.unit_cost_price:
+            self.planned_unit_cost = self.unit_cost_price
+        if self.actual_unit_cost and self.actual_unit_cost > 0:
+            self.cost_status = self.COST_STATUS_ACTUAL
+        elif self.planned_unit_cost and self.planned_unit_cost > 0 and self.cost_status == self.COST_STATUS_NONE:
+            self.cost_status = self.COST_STATUS_PLANNED
+        self.unit_cost_price = self.effective_unit_cost
+        super().save(*args, **kwargs)
+
+    @property
+    def gross_profit_per_unit(self):
+        return Decimal(self.unit_sale_price or 0) - self.effective_unit_cost
+
+    @property
+    def gross_profit_total(self):
+        return self.sale_total - self.cost_total
+
+    @property
+    def sale_total(self):
+        if self.order_item_id:
+            return Decimal(self.unit_sale_price or 0) * Decimal(self.order_item.active_quantity)
+        return Decimal(self.unit_sale_price or 0) * Decimal(self.quantity or 0)
+
+    @property
+    def actual_sale_total(self):
+        if self.order_item_id:
+            return Decimal(self.unit_sale_price or 0) * Decimal(self.order_item.shipped_quantity)
+        return Decimal('0')
+
+    @property
+    def cost_total(self):
+        if self.order_item_id:
+            return self.effective_unit_cost * Decimal(self.order_item.active_quantity)
+        return self.effective_unit_cost * Decimal(self.quantity or 0)
+
+    @property
+    def effective_unit_cost(self):
+        if self.cost_status == self.COST_STATUS_ACTUAL and Decimal(self.actual_unit_cost or 0) > 0:
+            return Decimal(self.actual_unit_cost or 0)
+        if self.cost_status in {self.COST_STATUS_PLANNED, self.COST_STATUS_ACTUAL} and Decimal(self.planned_unit_cost or 0) > 0:
+            return Decimal(self.planned_unit_cost or 0)
+        return Decimal(self.unit_cost_price or 0)
+
+    @property
+    def planned_cost_total(self):
+        if self.order_item_id:
+            return Decimal(self.planned_unit_cost or 0) * Decimal(self.order_item.active_quantity)
+        return Decimal(self.planned_unit_cost or 0) * Decimal(self.quantity or 0)
+
+    @property
+    def actual_cost_total(self):
+        if self.order_item_id:
+            return Decimal(self.actual_unit_cost or 0) * Decimal(self.order_item.shipped_quantity)
+        return Decimal(self.actual_unit_cost or 0) * Decimal(self.quantity or 0)
+
+    @property
+    def planned_gross_profit_total(self):
+        return self.sale_total - self.planned_cost_total
+
+    @property
+    def actual_gross_profit_total(self):
+        return self.actual_sale_total - self.actual_cost_total
+
+    @property
+    def margin_per_unit(self):
+        return self.gross_profit_per_unit
+
+    @property
+    def margin_total(self):
+        return self.gross_profit_total
+
+    @property
+    def planned_margin_total(self):
+        return self.planned_gross_profit_total
+
+    @property
+    def actual_margin_total(self):
+        return self.actual_gross_profit_total
+
+
+class FinanceDealShare(models.Model):
+    finance_deal = models.ForeignKey(
+        FinanceDeal,
+        on_delete=models.CASCADE,
+        related_name='shares',
+        verbose_name='Финансовая сделка',
+    )
+    rule = models.ForeignKey(
+        FinanceDistributionRule,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='deal_shares',
+        verbose_name='Правило',
+    )
+    participant_alias = models.ForeignKey(
+        ManagerPersonAlias,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='finance_deal_shares',
+        verbose_name='Участник',
+    )
+    participant_name_snapshot = models.CharField('Имя участника', max_length=255)
+    calculation_type = models.CharField('Тип расчета', max_length=40, blank=True)
+    formula_label = models.CharField('Пояснение формулы', max_length=255, blank=True)
+    base_amount = models.DecimalField('База расчета', max_digits=14, decimal_places=2, default=Decimal('0'))
+    calculated_amount = models.DecimalField('Рассчитанная сумма', max_digits=14, decimal_places=2, default=Decimal('0'))
+    final_amount = models.DecimalField('Итоговая сумма', max_digits=14, decimal_places=2, default=Decimal('0'))
+    quantity_basis = models.PositiveIntegerField('База по количеству', null=True, blank=True)
+    breakdown = models.JSONField('Расшифровка', default=dict, blank=True)
+    is_manual_override = models.BooleanField('Ручная корректировка', default=False)
+    manual_amount_override = models.DecimalField('Ручная сумма', max_digits=14, decimal_places=2, null=True, blank=True)
+    rule_params_override = models.JSONField('Переопределение параметров правила', default=dict, blank=True)
+    scheme_name_snapshot = models.CharField('Название схемы', max_length=255, blank=True)
+    scheme_version_snapshot = models.PositiveIntegerField('Версия схемы', null=True, blank=True)
+    created_at = models.DateTimeField('Создано', auto_now_add=True)
+    updated_at = models.DateTimeField('Обновлено', auto_now=True)
+
+    class Meta:
+        verbose_name = 'Финансы: доля участника'
+        verbose_name_plural = 'Финансы: доли участников'
+        ordering = ['finance_deal_id', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['finance_deal', 'participant_alias'],
+                condition=Q(participant_alias__isnull=False),
+                name='manager_finance_deal_share_finance_deal_participant_unique',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.finance_deal_id}: {self.participant_name_snapshot}'
+
+    @property
+    def effective_amount(self):
+        if self.manual_amount_override is not None:
+            return self.manual_amount_override
+        return self.final_amount
 
 
 class FinanceExpense(models.Model):
@@ -1159,6 +1652,14 @@ class FinanceExpense(models.Model):
     SIDE_CHOICES = [
         (SIDE_OURS, 'Наши'),
         (SIDE_PARTNER, 'Партнера'),
+    ]
+    REFUND_POLICY_NON_REFUNDABLE = 'non_refundable'
+    REFUND_POLICY_PROPORTIONAL = 'proportional_to_reversal'
+    REFUND_POLICY_ON_FULL_REVERSAL = 'on_full_reversal'
+    REFUND_POLICY_CHOICES = [
+        (REFUND_POLICY_NON_REFUNDABLE, 'Не возвращается'),
+        (REFUND_POLICY_PROPORTIONAL, 'Пропорционально развороту'),
+        (REFUND_POLICY_ON_FULL_REVERSAL, 'Только при полном развороте'),
     ]
 
     WHO_PAID_OURS = 'Я (Из кассы бизнеса/свои)'
@@ -1192,6 +1693,27 @@ class FinanceExpense(models.Model):
         related_name='expenses',
         verbose_name='Сделка',
     )
+    finance_line = models.ForeignKey(
+        FinanceDealLine,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='expenses',
+        verbose_name='Строка сделки',
+    )
+    affects_direct_expenses = models.BooleanField(
+        'Учитывать в прямых расходах',
+        null=True,
+        blank=True,
+        default=None,
+    )
+    refund_policy = models.CharField(
+        'Политика возврата',
+        max_length=40,
+        choices=REFUND_POLICY_CHOICES,
+        default=REFUND_POLICY_NON_REFUNDABLE,
+        db_index=True,
+    )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -1224,15 +1746,119 @@ class FinanceExpense(models.Model):
     def clean(self):
         if self.category_id and self.expense_side and self.category.expense_side != self.expense_side:
             raise ValidationError({'category': 'Категория должна совпадать со стороной расхода.'})
+        if self.finance_line_id and self.deal_id and self.finance_line.finance_deal_id != self.deal_id:
+            raise ValidationError({'finance_line': 'Строка расхода должна принадлежать той же финансовой сделке.'})
 
     def save(self, *args, **kwargs):
         self.populate_identity_fields()
+        if self.finance_line_id and not self.deal_id:
+            self.deal = self.finance_line.finance_deal
         if self.deal_id and not self.manager_deal_id:
             self.manager_deal = self.deal.manager_deal
         if not self.who_paid:
             self.who_paid = self.WHO_PAID_PARTNER if self.expense_side == self.SIDE_PARTNER else self.WHO_PAID_OURS
-        _extend_update_fields(kwargs, 'code', 'title', 'short_label', 'manager_deal', 'who_paid')
+        if self.affects_direct_expenses is None:
+            self.affects_direct_expenses = self.expense_side == self.SIDE_OURS
+        _extend_update_fields(
+            kwargs,
+            'code',
+            'title',
+            'short_label',
+            'deal',
+            'manager_deal',
+            'who_paid',
+            'affects_direct_expenses',
+        )
         super().save(*args, **kwargs)
+
+
+class FinanceDealAdjustment(models.Model):
+    KIND_SHIPMENT_RETURN = 'shipment_return'
+    KIND_SHIPMENT_CANCELLATION = 'shipment_cancellation'
+    KIND_REPLACEMENT_REVERSAL = 'replacement_reversal'
+    KIND_REPLACEMENT_ADDITION = 'replacement_addition'
+    KIND_DIRECT_EXPENSE_REFUND = 'direct_expense_refund'
+    KIND_MANUAL_CORRECTION = 'manual_correction'
+    KIND_CHOICES = [
+        (KIND_SHIPMENT_RETURN, 'Возврат после отгрузки'),
+        (KIND_SHIPMENT_CANCELLATION, 'Отмена до отгрузки'),
+        (KIND_REPLACEMENT_REVERSAL, 'Разворот заменяемой строки'),
+        (KIND_REPLACEMENT_ADDITION, 'Добавление строки замены'),
+        (KIND_DIRECT_EXPENSE_REFUND, 'Возврат прямого расхода'),
+        (KIND_MANUAL_CORRECTION, 'Ручная корректировка'),
+    ]
+
+    finance_deal = models.ForeignKey(
+        FinanceDeal,
+        on_delete=models.CASCADE,
+        related_name='adjustments',
+        verbose_name='Финансовая сделка',
+    )
+    finance_line = models.ForeignKey(
+        FinanceDealLine,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='adjustments',
+        verbose_name='Строка сделки',
+    )
+    related_expense = models.ForeignKey(
+        FinanceExpense,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='adjustments',
+        verbose_name='Связанный расход',
+    )
+    related_shipment = models.ForeignKey(
+        'manager_portal.Shipment',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='finance_adjustments',
+        verbose_name='Связанная отгрузка',
+    )
+    related_activity = models.ForeignKey(
+        DealActivity,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='finance_adjustments',
+        verbose_name='Связанное событие',
+    )
+    related_document = models.ForeignKey(
+        'manager_portal.ContractDocument',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='finance_adjustments',
+        verbose_name='Связанный документ',
+    )
+    adjustment_kind = models.CharField('Тип корректировки', max_length=40, choices=KIND_CHOICES, db_index=True)
+    reason_code = models.CharField('Причина', max_length=80, blank=True)
+    quantity_delta = models.DecimalField('Изменение количества', max_digits=14, decimal_places=2, default=Decimal('0'))
+    revenue_delta = models.DecimalField('Изменение выручки', max_digits=14, decimal_places=2, default=Decimal('0'))
+    cost_of_goods_delta = models.DecimalField('Изменение себестоимости', max_digits=14, decimal_places=2, default=Decimal('0'))
+    direct_expenses_delta = models.DecimalField('Изменение прямых расходов', max_digits=14, decimal_places=2, default=Decimal('0'))
+    manager_bonus_delta = models.DecimalField('Изменение бонуса менеджера', max_digits=14, decimal_places=2, default=Decimal('0'))
+    payload = models.JSONField('Payload', default=dict, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='manager_finance_adjustments',
+        verbose_name='Создал',
+    )
+    created_at = models.DateTimeField('Создана', auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Финансы: корректировка'
+        verbose_name_plural = 'Финансы: корректировки'
+        ordering = ['finance_deal_id', '-created_at', '-id']
+
+    def __str__(self):
+        return f'{self.finance_deal_id}: {self.adjustment_kind}'
 
 
 class FinancePayout(models.Model):
@@ -1411,6 +2037,114 @@ class InventoryMovement(models.Model):
         ordering = ['-created_at', '-id']
 
 
+class InventoryLot(models.Model):
+    purchase_item = models.ForeignKey(
+        'manager_portal.PurchaseItem',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='inventory_lots',
+        verbose_name='Позиция закупки',
+    )
+    warehouse = models.ForeignKey(
+        Warehouse,
+        on_delete=models.CASCADE,
+        related_name='inventory_lots',
+        verbose_name='Склад',
+    )
+    product = models.ForeignKey(
+        'catalog.Product',
+        on_delete=models.CASCADE,
+        related_name='inventory_lots',
+        verbose_name='Товар',
+    )
+    variant = models.ForeignKey(
+        'catalog.ProductVariant',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='inventory_lots',
+        verbose_name='Вариант',
+    )
+    received_qty = models.PositiveIntegerField('Получено')
+    remaining_qty = models.PositiveIntegerField('Остаток в лоте')
+    unit_cost = models.DecimalField('Себестоимость за единицу', max_digits=12, decimal_places=2, default=Decimal('0'))
+    unit_cost_base = models.DecimalField('Базовая себестоимость за единицу', max_digits=12, decimal_places=2, default=Decimal('0'))
+    unit_cost_final = models.DecimalField('Итоговая себестоимость за единицу', max_digits=12, decimal_places=2, default=Decimal('0'))
+    received_at = models.DateTimeField('Дата приемки', default=timezone.now, db_index=True)
+    reference_type = models.CharField('Тип документа', max_length=40, blank=True)
+    reference_id = models.PositiveIntegerField('ID документа', null=True, blank=True)
+    created_at = models.DateTimeField('Создан', auto_now_add=True)
+    updated_at = models.DateTimeField('Обновлен', auto_now=True)
+
+    class Meta:
+        verbose_name = 'Лот склада'
+        verbose_name_plural = 'Лоты склада'
+        ordering = ['received_at', 'id']
+        constraints = [
+            models.CheckConstraint(condition=Q(received_qty__gt=0), name='inventory_lot_received_qty_gt_zero'),
+            models.CheckConstraint(condition=Q(remaining_qty__gte=0), name='inventory_lot_remaining_qty_gte_zero'),
+            models.CheckConstraint(condition=Q(remaining_qty__lte=models.F('received_qty')), name='inventory_lot_remaining_qty_lte_received_qty'),
+            models.CheckConstraint(condition=Q(unit_cost__gte=0), name='inventory_lot_unit_cost_gte_zero'),
+            models.CheckConstraint(condition=Q(unit_cost_base__gte=0), name='inventory_lot_unit_cost_base_gte_zero'),
+            models.CheckConstraint(condition=Q(unit_cost_final__gte=0), name='inventory_lot_unit_cost_final_gte_zero'),
+        ]
+
+    def clean(self):
+        if self.variant_id and self.variant.product_id != self.product_id:
+            raise ValidationError({'variant': 'Вариант должен относиться к выбранному товару.'})
+
+    def save(self, *args, **kwargs):
+        if self.unit_cost_base in (None, Decimal('0')) and self.unit_cost:
+            self.unit_cost_base = self.unit_cost
+        if self.unit_cost_final in (None, Decimal('0')) and self.unit_cost:
+            self.unit_cost_final = self.unit_cost
+        if self.unit_cost in (None, Decimal('0')):
+            self.unit_cost = self.unit_cost_final or self.unit_cost_base or Decimal('0')
+        super().save(*args, **kwargs)
+
+
+class SaleLineAllocation(models.Model):
+    STATUS_RESERVED = 'reserved'
+    STATUS_SHIPPED = 'shipped'
+    STATUS_RELEASED = 'released'
+    STATUS_CHOICES = [
+        (STATUS_RESERVED, 'Зарезервировано'),
+        (STATUS_SHIPPED, 'Отгружено'),
+        (STATUS_RELEASED, 'Освобождено'),
+    ]
+
+    order_item = models.ForeignKey(
+        'orders.OrderItem',
+        on_delete=models.CASCADE,
+        related_name='allocations',
+        verbose_name='Строка заказа',
+    )
+    inventory_lot = models.ForeignKey(
+        InventoryLot,
+        on_delete=models.CASCADE,
+        related_name='allocations',
+        verbose_name='Лот',
+    )
+    reserved_qty = models.PositiveIntegerField('Зарезервировано', default=0)
+    shipped_qty = models.PositiveIntegerField('Отгружено', default=0)
+    unit_cost_snapshot = models.DecimalField('Снимок себестоимости', max_digits=12, decimal_places=2, default=Decimal('0'))
+    status = models.CharField('Статус', max_length=16, choices=STATUS_CHOICES, default=STATUS_RESERVED, db_index=True)
+    created_at = models.DateTimeField('Создано', auto_now_add=True)
+    updated_at = models.DateTimeField('Обновлено', auto_now=True)
+
+    class Meta:
+        verbose_name = 'Аллокация строки сделки'
+        verbose_name_plural = 'Аллокации строк сделки'
+        ordering = ['order_item_id', 'inventory_lot_id', 'id']
+        constraints = [
+            models.CheckConstraint(condition=Q(reserved_qty__gte=0), name='sale_line_alloc_reserved_qty_gte_zero'),
+            models.CheckConstraint(condition=Q(shipped_qty__gte=0), name='sale_line_alloc_shipped_qty_gte_zero'),
+            models.CheckConstraint(condition=Q(reserved_qty__gte=models.F('shipped_qty')), name='sale_line_alloc_reserved_qty_gte_shipped_qty'),
+            models.UniqueConstraint(fields=['order_item', 'inventory_lot', 'status'], name='sale_line_alloc_order_item_lot_status_unique'),
+        ]
+
+
 class Purchase(models.Model):
     STATUS_DRAFT = 'draft'
     STATUS_ORDERED = 'ordered'
@@ -1463,6 +2197,11 @@ class Purchase(models.Model):
 
 
 class PurchaseItem(models.Model):
+    def __init__(self, *args, **kwargs):
+        if 'price' in kwargs and 'unit_cost' not in kwargs:
+            kwargs['unit_cost'] = kwargs.pop('price')
+        super().__init__(*args, **kwargs)
+
     purchase = models.ForeignKey(
         Purchase,
         on_delete=models.CASCADE,
@@ -1492,7 +2231,8 @@ class PurchaseItem(models.Model):
         verbose_name='Строка заказа',
     )
     quantity = models.PositiveIntegerField('Количество')
-    price = models.DecimalField('Цена', max_digits=12, decimal_places=2, default=Decimal('0'))
+    cancelled_quantity = models.PositiveIntegerField('Операционно отменено', default=0)
+    unit_cost = models.DecimalField('Себестоимость за единицу', max_digits=12, decimal_places=2, default=Decimal('0'))
     received_quantity = models.PositiveIntegerField('Получено', default=0)
     received_at = models.DateTimeField('Дата приемки', null=True, blank=True)
     arrival_photo = models.ImageField('Фото приемки', upload_to='manager/purchases/', blank=True)
@@ -1501,6 +2241,14 @@ class PurchaseItem(models.Model):
         verbose_name = 'Позиция закупки'
         verbose_name_plural = 'Позиции закупки'
         ordering = ['id']
+        constraints = [
+            models.CheckConstraint(condition=Q(unit_cost__gte=0), name='purchase_item_unit_cost_gte_zero'),
+            models.CheckConstraint(condition=Q(cancelled_quantity__gte=0), name='purchase_item_cancelled_quantity_gte_zero'),
+            models.CheckConstraint(
+                condition=Q(cancelled_quantity__lte=models.F('quantity')),
+                name='purchase_item_cancelled_quantity_lte_quantity',
+            ),
+        ]
 
     def __str__(self):
         return f'{self.product} x {self.quantity}'
@@ -1508,15 +2256,45 @@ class PurchaseItem(models.Model):
     def clean(self):
         if self.variant_id and self.variant.product_id != self.product_id:
             raise ValidationError({'variant': 'Вариант должен относиться к выбранному товару.'})
+        if self.product_id and self.product.variants.exists() and not self.variant_id:
+            raise ValidationError({'variant': 'Для товара с вариантами выберите конкретный вариант.'})
         if self.order_item_id:
             if self.order_item.product_id != self.product_id:
                 raise ValidationError({'order_item': 'Строка заказа должна ссылаться на тот же товар.'})
             if self.variant_id != self.order_item.variant_id:
                 raise ValidationError({'order_item': 'Строка заказа должна ссылаться на тот же вариант.'})
+            if self.order_item.line_type != self.order_item.LINE_TYPE_CATALOG:
+                raise ValidationError({'order_item': 'С закупкой можно связать только каталоговую строку сделки.'})
 
     @property
     def linked_order(self):
         return self.order_item.order if self.order_item_id else None
+
+    @property
+    def active_quantity(self):
+        return max(self.quantity - self.cancelled_quantity, 0)
+
+    @property
+    def remaining_quantity(self):
+        return max(self.active_quantity - self.received_quantity, 0)
+
+    @property
+    def receipt_status(self):
+        if self.active_quantity <= 0:
+            return 'cancelled'
+        if self.received_quantity <= 0:
+            return 'ordered'
+        if self.received_quantity >= self.active_quantity:
+            return 'fully_received'
+        return 'partially_received'
+
+    @property
+    def price(self):
+        return self.unit_cost
+
+    @price.setter
+    def price(self, value):
+        self.unit_cost = value
 
 
 class Cargo(models.Model):
@@ -1833,6 +2611,7 @@ class Shipment(models.Model):
     )
     tracking_number = models.CharField('Трек', max_length=120, blank=True)
     status = models.CharField('Статус', max_length=20, choices=STATUS_CHOICES, default=STATUS_DRAFT, db_index=True)
+    inventory_consumed_at = models.DateTimeField('Складской эффект проведен', null=True, blank=True, db_index=True)
     shipped_at = models.DateTimeField('Отправлено', null=True, blank=True)
     delivered_at = models.DateTimeField('Доставлено', null=True, blank=True)
     comments = models.TextField('Комментарий', blank=True)
@@ -1929,10 +2708,16 @@ class ShipmentItem(models.Model):
     def __str__(self):
         return f'{self.product} x {self.quantity}'
 
+    @property
+    def shipment_status(self):
+        return self.shipment.status
+
     def clean(self):
         if self.variant_id and self.variant.product_id != self.product_id:
             raise ValidationError({'variant': 'Вариант должен относиться к выбранному товару.'})
         if self.order_item_id:
+            if self.order_item.line_type != self.order_item.LINE_TYPE_CATALOG:
+                raise ValidationError({'order_item': 'С бронью можно связать только каталоговую строку сделки.'})
             if self.order_item.product_id != self.product_id:
                 raise ValidationError({'order_item': 'Строка заказа должна ссылаться на тот же товар.'})
             if self.variant_id != self.order_item.variant_id:
@@ -1948,6 +2733,7 @@ class Reservation(models.Model):
     STATUS_DRAFT = 'draft'
     STATUS_ACTIVE = 'active'
     STATUS_PARTIAL = 'partial'
+    STATUS_RELEASED = 'released'
     STATUS_FULFILLED = 'fulfilled'
     STATUS_CANCELLED = 'cancelled'
     STATUS_EXPIRED = 'expired'
@@ -1955,6 +2741,7 @@ class Reservation(models.Model):
         (STATUS_DRAFT, 'Черновик'),
         (STATUS_ACTIVE, 'Активно'),
         (STATUS_PARTIAL, 'Частично выдано'),
+        (STATUS_RELEASED, 'Освобождено'),
         (STATUS_FULFILLED, 'Выполнено'),
         (STATUS_CANCELLED, 'Отменено'),
         (STATUS_EXPIRED, 'Истекло'),
@@ -2095,11 +2882,29 @@ class ReservationItem(models.Model):
         verbose_name='Строка заказа',
     )
     quantity = models.PositiveIntegerField('Количество')
+    fulfilled_quantity = models.PositiveIntegerField('Исполнено отгрузками', default=0)
+    released_quantity = models.PositiveIntegerField('Освобождено', default=0)
 
     class Meta:
         verbose_name = 'Позиция брони'
         verbose_name_plural = 'Позиции брони'
         ordering = ['id']
+        constraints = [
+            models.CheckConstraint(condition=Q(fulfilled_quantity__gte=0), name='reservation_item_fulfilled_quantity_gte_zero'),
+            models.CheckConstraint(condition=Q(released_quantity__gte=0), name='reservation_item_released_quantity_gte_zero'),
+            models.CheckConstraint(
+                condition=Q(fulfilled_quantity__lte=models.F('quantity')),
+                name='reservation_item_fulfilled_quantity_lte_quantity',
+            ),
+            models.CheckConstraint(
+                condition=Q(released_quantity__lte=models.F('quantity')),
+                name='reservation_item_released_quantity_lte_quantity',
+            ),
+            models.CheckConstraint(
+                condition=Q(fulfilled_quantity__lte=models.F('quantity') - models.F('released_quantity')),
+                name='reservation_item_combined_quantity_lte_quantity',
+            ),
+        ]
 
     def clean(self):
         if self.variant_id and self.variant.product_id != self.product_id:
@@ -2109,6 +2914,26 @@ class ReservationItem(models.Model):
                 raise ValidationError({'order_item': 'Строка заказа должна ссылаться на тот же товар.'})
             if self.variant_id != self.order_item.variant_id:
                 raise ValidationError({'order_item': 'Строка заказа должна ссылаться на тот же вариант.'})
+        if self.fulfilled_quantity + self.released_quantity > self.quantity:
+            raise ValidationError('Сумма исполненного и освобожденного количества не может превышать количество брони.')
+
+    @property
+    def active_reserved_quantity(self):
+        return max(self.quantity - self.fulfilled_quantity - self.released_quantity, 0)
+
+    @property
+    def reservation_status(self):
+        if self.quantity <= 0:
+            return 'pending'
+        if self.fulfilled_quantity >= self.quantity:
+            return 'fulfilled'
+        if self.released_quantity >= self.quantity:
+            return 'released'
+        if self.fulfilled_quantity > 0 or self.released_quantity > 0:
+            return 'partially_fulfilled'
+        if self.active_reserved_quantity > 0:
+            return 'reserved'
+        return 'pending'
 
 
 class ContractCompanyProfile(models.Model):

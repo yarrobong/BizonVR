@@ -11,11 +11,17 @@ from .models import (
     ContractTemplate,
     Expense,
     FinanceDeal,
+    FinanceDealAdjustment,
+    FinanceDealLine,
+    FinanceDealShare,
     FinanceDealType,
+    FinanceDistributionRule,
+    FinanceDistributionScheme,
     FinanceExpense,
     FinanceExpenseCategory,
     FinancePayout,
     InventoryBalance,
+    InventoryLot,
     InventoryMovement,
     ManagerDeal,
     ManagerClient,
@@ -23,6 +29,7 @@ from .models import (
     PurchaseItem,
     Reservation,
     ReservationItem,
+    SaleLineAllocation,
     TradeInItem,
     TransportLeg,
     Warehouse,
@@ -121,6 +128,20 @@ class InventoryMovementAdmin(admin.ModelAdmin):
     search_fields = ('product__name', 'warehouse__name', 'reference_type')
 
 
+@admin.register(InventoryLot)
+class InventoryLotAdmin(admin.ModelAdmin):
+    list_display = ('warehouse', 'product', 'variant', 'received_qty', 'remaining_qty', 'unit_cost_final', 'received_at')
+    list_filter = ('warehouse',)
+    search_fields = ('product__name', 'warehouse__name')
+
+
+@admin.register(SaleLineAllocation)
+class SaleLineAllocationAdmin(admin.ModelAdmin):
+    list_display = ('order_item', 'inventory_lot', 'reserved_qty', 'shipped_qty', 'unit_cost_snapshot', 'status')
+    list_filter = ('status', 'inventory_lot__warehouse')
+    search_fields = ('order_item__order__id', 'inventory_lot__product__name')
+
+
 class PurchaseItemInline(admin.TabularInline):
     model = PurchaseItem
     extra = 0
@@ -171,6 +192,20 @@ class FinanceDealTypeAdmin(admin.ModelAdmin):
     search_fields = ('name',)
 
 
+@admin.register(FinanceDistributionScheme)
+class FinanceDistributionSchemeAdmin(admin.ModelAdmin):
+    list_display = ('name', 'version', 'is_active', 'updated_at')
+    list_filter = ('is_active',)
+    search_fields = ('name', 'description')
+
+
+@admin.register(FinanceDistributionRule)
+class FinanceDistributionRuleAdmin(admin.ModelAdmin):
+    list_display = ('scheme', 'participant_alias', 'rule_type', 'percent', 'position', 'is_active')
+    list_filter = ('scheme', 'rule_type', 'is_active')
+    search_fields = ('scheme__name', 'participant_alias__display_name', 'note')
+
+
 @admin.register(FinanceExpenseCategory)
 class FinanceExpenseCategoryAdmin(admin.ModelAdmin):
     list_display = ('name', 'expense_side', 'is_active', 'updated_at')
@@ -180,16 +215,55 @@ class FinanceExpenseCategoryAdmin(admin.ModelAdmin):
 
 @admin.register(FinanceDeal)
 class FinanceDealAdmin(admin.ModelAdmin):
-    list_display = ('date', 'contract_number', 'manager_deal', 'deal_type', 'revenue', 'margin', 'partner_share_amount')
+    list_display = (
+        'date',
+        'contract_number',
+        'manager_deal',
+        'deal_type',
+        'revenue',
+        'cost_of_goods',
+        'distributable_profit',
+        'partner_share_amount',
+    )
     list_filter = ('deal_type', 'date')
     search_fields = ('contract_number', 'comment', 'manager_deal__order__id')
 
 
+@admin.register(FinanceDealLine)
+class FinanceDealLineAdmin(admin.ModelAdmin):
+    list_display = ('finance_deal', 'product_name', 'quantity', 'owner_alias', 'unit_sale_price', 'unit_cost_price')
+    list_filter = ('owner_alias',)
+    search_fields = ('finance_deal__contract_number', 'product_name', 'owner_alias__display_name')
+
+
+@admin.register(FinanceDealShare)
+class FinanceDealShareAdmin(admin.ModelAdmin):
+    list_display = ('finance_deal', 'participant_name_snapshot', 'final_amount', 'is_manual_override', 'scheme_version_snapshot')
+    list_filter = ('is_manual_override', 'scheme_version_snapshot')
+    search_fields = ('finance_deal__contract_number', 'participant_name_snapshot', 'formula_label')
+
+
 @admin.register(FinanceExpense)
 class FinanceExpenseAdmin(admin.ModelAdmin):
-    list_display = ('date', 'expense_side', 'category', 'amount', 'deal', 'manager_deal')
-    list_filter = ('expense_side', 'category')
+    list_display = ('date', 'expense_side', 'category', 'amount', 'affects_direct_expenses', 'refund_policy', 'deal', 'manager_deal')
+    list_filter = ('expense_side', 'category', 'affects_direct_expenses', 'refund_policy')
     search_fields = ('comment', 'who_paid', 'deal__contract_number', 'manager_deal__order__id')
+
+
+@admin.register(FinanceDealAdjustment)
+class FinanceDealAdjustmentAdmin(admin.ModelAdmin):
+    list_display = (
+        'finance_deal',
+        'adjustment_kind',
+        'reason_code',
+        'revenue_delta',
+        'cost_of_goods_delta',
+        'direct_expenses_delta',
+        'manager_bonus_delta',
+        'created_at',
+    )
+    list_filter = ('adjustment_kind', 'reason_code')
+    search_fields = ('finance_deal__contract_number', 'reason_code')
 
 
 @admin.register(FinancePayout)

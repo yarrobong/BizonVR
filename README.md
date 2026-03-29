@@ -638,6 +638,7 @@ make test-manager-smoke
 Что использовать как source of truth:
 
 - [docs/CITIES_AND_PRODUCTS.md](docs/CITIES_AND_PRODUCTS.md) — города, точки выдачи и остатки;
+- [docs/MANAGER_PORTAL.md](docs/MANAGER_PORTAL.md) — устройство менеджерского портала: сделки, клиенты, склады, остатки, брони, закупки, грузы, отгрузки и финансы;
 - [docs/ORDER_PLACEMENT_AND_ACCOUNT_FLOW.md](docs/ORDER_PLACEMENT_AND_ACCOUNT_FLOW.md) — целевой сценарий оформления заказа и аккаунта;
 - [legacy/README.md](legacy/README.md) — правила для архивных источников и импорта;
 - [DEPLOY.md](DEPLOY.md) — выкладка на сервер;
