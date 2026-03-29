@@ -52,7 +52,13 @@ from .models import (
     ManagerPersonAlias,
     Warehouse,
 )
-from .services import ensure_initial_deal_activity, recompute_deal_workflow
+from .services import (
+    active_finance_distribution_scheme,
+    create_finance_deal_line_from_order_item,
+    ensure_initial_deal_activity,
+    recalculate_finance_deal_totals,
+    recompute_deal_workflow,
+)
 
 
 User = get_user_model()
@@ -198,6 +204,26 @@ def _normalize_delivery_method(provider_name: str):
     if 'авито' in raw_value:
         return ManagerDeal.DELIVERY_OTHER_TRANSPORT
     return ManagerDeal.DELIVERY_OTHER_TRANSPORT
+
+
+def _quantize_import_money(value: Decimal | int | str | None):
+    return Decimal(value or 0).quantize(Decimal('0.01'))
+
+
+def _normalize_import_payment_status(value: str):
+    raw_value = (value or '').strip().lower()
+    if raw_value in {'unpaid', 'not_paid', 'awaiting_payment'}:
+        return Order.PAYMENT_STATUS_UNPAID
+    return Order.PAYMENT_STATUS_PAID
+
+
+def _normalize_import_shipment_state(value: str):
+    raw_value = (value or '').strip().lower()
+    if raw_value in {'delivered', 'received', 'received_by_customer', 'выдано'}:
+        return 'delivered'
+    if raw_value in {'shipped', 'sent', 'отправлено'}:
+        return 'shipped'
+    return 'pending'
 
 
 def _placeholder_client_name(*, product_name: str, order_date) -> str:
@@ -928,10 +954,10 @@ def import_legacy_business_finance(source_dsn: str, *, dry_run: bool):
                 'contract_number': row['contract_number'] or '',
                 'deal_type': deal_type if not isinstance(deal_type, PlannedTarget) else None,
                 'revenue': Decimal(str(row['revenue'] or 0)),
-                'cost_price': Decimal(str(row['cost_price'] or 0)),
+                'cost_of_goods': Decimal(str(row['cost_price'] or 0)),
                 'direct_expenses': Decimal(str(row['direct_expenses'] or 0)),
                 'manager_bonus': Decimal(str(row['manager_bonus'] or 0)),
-                'margin': Decimal(str(row['margin'] or 0)),
+                'distributable_profit': Decimal(str(row['margin'] or 0)),
                 'partner_share_amount': Decimal(str(row['partner_share'] or 0)),
                 'comment': row['comment'] or '',
             }
@@ -945,7 +971,7 @@ def import_legacy_business_finance(source_dsn: str, *, dry_run: bool):
                     'contract_number': defaults['contract_number'],
                     'deal_type': defaults['deal_type'],
                     'revenue': defaults['revenue'],
-                    'cost_price': defaults['cost_price'],
+                    'cost_of_goods': defaults['cost_of_goods'],
                     'direct_expenses': defaults['direct_expenses'],
                     'manager_bonus': defaults['manager_bonus'],
                     'comment': defaults['comment'],
@@ -1782,15 +1808,62 @@ def _create_finance_deal_for_import(
         payment_method=deal.order.payment_method,
         payment_state=deal.order.payment_status,
         revenue=revenue,
-        cost_price=cost_price,
+        cost_of_goods=cost_price,
         direct_expenses=direct_expenses,
-        expected_margin_snapshot=revenue - cost_price - direct_expenses,
+        expected_distributable_profit_snapshot=revenue - cost_price - direct_expenses,
         comment='Создано импортом табличных продаж.',
         created_by=created_by,
     )
     FinanceDeal.objects.filter(pk=finance_deal.pk).update(created_at=_aware_datetime_for_date(order_date), updated_at=_aware_datetime_for_date(order_date))
     finance_deal.refresh_from_db()
     return finance_deal
+
+
+def _build_supply_allocation_audit(finance_deal: FinanceDeal, allocations: list[dict[str, str]]):
+    provided_by_person: dict[str, Decimal] = {}
+    provided_rows = []
+    for allocation in allocations:
+        person_name = (allocation.get('person_name') or '').strip()
+        if not person_name:
+            continue
+        amount = _quantize_import_money(_parse_decimal(allocation.get('amount'), default=Decimal('0')) or Decimal('0'))
+        provided_by_person[person_name] = provided_by_person.get(person_name, Decimal('0.00')) + amount
+        provided_rows.append(
+            {
+                'allocation_key': allocation.get('allocation_key') or '',
+                'participant': person_name,
+                'amount': str(amount),
+                'quantity_basis': int(allocation.get('quantity_basis') or 0) or None,
+            }
+        )
+
+    recalculated_by_person = {
+        share.participant_name_snapshot: _quantize_import_money(share.final_amount)
+        for share in finance_deal.shares.all()
+    }
+    comparison = []
+    mismatch_count = 0
+    for person_name in sorted(set(provided_by_person) | set(recalculated_by_person)):
+        provided_amount = _quantize_import_money(provided_by_person.get(person_name, Decimal('0.00')))
+        recalculated_amount = _quantize_import_money(recalculated_by_person.get(person_name, Decimal('0.00')))
+        delta = _quantize_import_money(recalculated_amount - provided_amount)
+        if delta != Decimal('0.00'):
+            mismatch_count += 1
+        comparison.append(
+            {
+                'participant': person_name,
+                'provided_amount': str(provided_amount),
+                'recalculated_amount': str(recalculated_amount),
+                'delta': str(delta),
+            }
+        )
+
+    return {
+        'provided_allocations': provided_rows,
+        'comparison': comparison,
+        'has_differences': bool(mismatch_count),
+        'mismatch_count': mismatch_count,
+    }
 
 
 def _participant_lookup(*, deal, role, person_alias, order_item=None):
@@ -2023,12 +2096,16 @@ def _create_supply_deal(
             source_payload=first_row,
         )
         return
-    payment_status = first_row.get('payment_status') or 'paid'
-    payment_status = Order.PAYMENT_STATUS_UNPAID if payment_status == 'unpaid' else Order.PAYMENT_STATUS_PAID
-    shipping_status = (first_row.get('shipping_status') or '').strip().lower()
-    shipment_state = 'shipped' if shipping_status == 'shipped' else 'pending'
+    customer_full_name = (first_row.get('customer_full_name') or '').strip()
+    customer_phone = normalize_phone((first_row.get('customer_phone') or '').strip())
+    delivery_pickup_address = (first_row.get('delivery_pickup_address') or '').strip()
+    tracking_number = (first_row.get('tracking_number') or '').strip()
+    payment_status = _normalize_import_payment_status(first_row.get('payment_status') or 'paid')
+    shipment_state = _normalize_import_shipment_state(first_row.get('shipping_status') or '')
     delivery_provider_name = (first_row.get('delivery_provider_name') or '').strip()
     delivery_method = _normalize_delivery_method(delivery_provider_name)
+    effective_customer_name = customer_full_name or client_name
+    is_business_customer = _is_business_customer(client_name)
     total_revenue = Decimal('0')
     total_cost = Decimal('0')
     if tracker.dry_run:
@@ -2057,14 +2134,14 @@ def _create_supply_deal(
             )
         tracker.mark('tabular_supply_finance', deal_key, status=LegacyImportRecord.STATUS_CREATED, source_payload=first_row)
         return
-    client = _find_or_create_client(name=client_name, dry_run=False)
+    client = _find_or_create_client(name=effective_customer_name, phone=customer_phone, dry_run=False)
     import_warehouse = _ensure_import_warehouse(dry_run=False)
     order = _create_import_order(
         order_date=order_date,
-        customer_name=client_name,
-        customer_phone='',
+        customer_name=effective_customer_name,
+        customer_phone=customer_phone,
         delivery_method=delivery_method,
-        delivery_address='',
+        delivery_address=delivery_pickup_address,
         delivery_provider_name=delivery_provider_name,
         payment_status=payment_status,
         order_status=_order_status_for_import(payment_status=payment_status, shipment_status=shipment_state),
@@ -2113,16 +2190,29 @@ def _create_supply_deal(
         deal_status=_deal_status_for_import(deal_type=ManagerDeal.DEAL_SALE_FROM_STOCK, payment_status=payment_status, shipment_status=shipment_state),
         case_status=ManagerDeal.CASE_STATUS_IN_PROGRESS if shipment_state == 'shipped' else ManagerDeal.CASE_STATUS_CONFIRMED,
         payment_state=ManagerDeal.PAYMENT_STATE_PAID if payment_status == Order.PAYMENT_STATUS_PAID else ManagerDeal.PAYMENT_STATE_UNPAID,
-        buyer_type=ManagerDeal.BUYER_BUSINESS if _is_business_customer(client_name) else ManagerDeal.BUYER_INDIVIDUAL,
+        buyer_type=ManagerDeal.BUYER_BUSINESS if is_business_customer else ManagerDeal.BUYER_INDIVIDUAL,
         customer_source=ManagerDeal.SOURCE_OTHER,
         deal_created_at=_aware_datetime_for_date(order_date),
-        individual_full_name='' if _is_business_customer(client_name) else client_name,
-        business_company_name=client_name if _is_business_customer(client_name) else '',
+        individual_full_name='' if is_business_customer else effective_customer_name,
+        individual_phone='' if is_business_customer else customer_phone,
+        individual_pickup_address='' if is_business_customer or delivery_method != ManagerDeal.DELIVERY_CDEK_PVZ else delivery_pickup_address,
+        business_company_name=client_name if is_business_customer else '',
+        business_contact_person=customer_full_name if is_business_customer else '',
+        business_phone=customer_phone if is_business_customer else '',
+        business_delivery_address=delivery_pickup_address if is_business_customer else '',
         customer_request=', '.join(row.get('product_name') or '' for row in rows if row.get('product_name')),
         delivery_method=delivery_method,
         delivery_provider_name=delivery_provider_name,
+        delivery_pickup_address=delivery_pickup_address if delivery_method == ManagerDeal.DELIVERY_CDEK_PVZ else '',
         stock_warehouse=import_warehouse,
-        shipment_status=ManagerDeal.SHIPMENT_SENT if shipment_state == 'shipped' else ManagerDeal.SHIPMENT_DRAFT,
+        tracking_number=tracking_number,
+        shipment_status=(
+            ManagerDeal.SHIPMENT_DELIVERED if shipment_state == 'delivered'
+            else ManagerDeal.SHIPMENT_SENT if shipment_state == 'shipped'
+            else ManagerDeal.SHIPMENT_DRAFT
+        ),
+        shipped_at=order_date if shipment_state in {'shipped', 'delivered'} else None,
+        planned_receipt_at=order_date if shipment_state == 'delivered' else None,
         prepayment_amount=total_revenue if payment_status == Order.PAYMENT_STATUS_PAID else Decimal('0'),
         last_activity_at=_aware_datetime_for_date(order_date),
     )
@@ -2139,19 +2229,40 @@ def _create_supply_deal(
         cost_price=total_cost,
         direct_expenses=Decimal('0'),
     )
+    active_scheme = active_finance_distribution_scheme()
+    if active_scheme is not None:
+        finance_deal.distribution_scheme = active_scheme
+        finance_deal.save(update_fields=['distribution_scheme', 'updated_at'])
     tracker.mark('tabular_supply_finance', deal_key, status=LegacyImportRecord.STATUS_CREATED, target=finance_deal, source_payload=first_row)
-    for order_item, row in created_items:
+    for index, (order_item, row) in enumerate(created_items, start=1):
         owner_alias = _resolve_person_alias(tracker=tracker, alias_map=alias_people, display_name=row.get('owner_name') or '')
+        resolved_owner_alias = owner_alias if not isinstance(owner_alias, PlannedTarget) else None
+        line_status = (row.get('line_status') or '').strip()
+        delivery_status = (row.get('delivery_status') or row.get('shipping_status') or '').strip()
+        create_finance_deal_line_from_order_item(
+            finance_deal,
+            order_item=order_item,
+            owner_alias=resolved_owner_alias,
+            sort_order=index,
+            line_status=line_status,
+            delivery_status=delivery_status,
+            source_payload={
+                'source': 'tabular_supply',
+                'deal_key': deal_key,
+                'row_key': row.get('row_key') or f'{deal_key}:{index}',
+                'row': _row_payload(row),
+            },
+        )
         _create_participant(
             tracker,
             source_model='tabular_supply_owner',
             source_pk=row.get('row_key') or f'{deal_key}:{order_item.pk}:owner',
             deal=deal,
             role=ManagerDealParticipant.ROLE_ITEM_OWNER,
-            person_alias=owner_alias if not isinstance(owner_alias, PlannedTarget) else None,
+            person_alias=resolved_owner_alias,
             order_item=order_item,
             quantity_basis=order_item.quantity,
-            note=row.get('shipping_status') or '',
+            note=(row.get('line_status') or row.get('shipping_status') or '').strip(),
             source_payload=row,
         )
         answered_alias = _resolve_person_alias(tracker=tracker, alias_map=alias_people, display_name=row.get('answered_by') or '')
@@ -2192,6 +2303,23 @@ def _create_supply_deal(
             note='planned allocation',
             source_payload=allocation,
         )
+    finance_deal = recalculate_finance_deal_totals(finance_deal)
+    audit_payload = _build_supply_allocation_audit(finance_deal, allocations)
+    snapshot_data = dict(finance_deal.snapshot_data or {})
+    snapshot_data['import_supply'] = {
+        'deal_key': deal_key,
+        'client_name': client_name,
+        'customer_full_name': customer_full_name,
+        'customer_phone': customer_phone,
+        'delivery_pickup_address': delivery_pickup_address,
+        'tracking_number': tracking_number,
+        'audit': audit_payload,
+    }
+    FinanceDeal.objects.filter(pk=finance_deal.pk).update(snapshot_data=snapshot_data, updated_at=timezone.now())
+    if audit_payload['has_differences']:
+        tracker.counters['allocation_audit_mismatched_deals'] += 1
+    else:
+        tracker.counters['allocation_audit_matched_deals'] += 1
 
 
 def import_manager_tabular_sales(source: str | Path, *, dry_run: bool):

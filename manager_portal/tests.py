@@ -3,6 +3,7 @@ import json
 import tempfile
 from datetime import timedelta
 from decimal import Decimal
+from io import StringIO
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -18,7 +19,7 @@ from accounts.models import CommercialProposalContact, Profile
 from catalog.models import Category, City, PickupPoint, Product, ProductStock, ProductVariant
 from orders.models import Order, OrderItem
 
-from .forms import InventoryReceiptForm
+from .forms import InventoryReceiptForm, PurchaseItemForm, ReservationItemForm
 from .access import FINANCE_ADMIN_GROUP, FINANCE_OPERATOR_GROUP
 from .models import (
     Cargo,
@@ -29,11 +30,17 @@ from .models import (
     ContractTemplate,
     Expense,
     FinanceDeal,
+    FinanceDealAdjustment,
+    FinanceDealLine,
+    FinanceDealShare,
     FinanceDealType,
+    FinanceDistributionRule,
+    FinanceDistributionScheme,
     FinanceExpense,
     FinanceExpenseCategory,
     FinancePayout,
     InventoryBalance,
+    InventoryLot,
     InventoryMovement,
     LegacyImportBatch,
     ManagerDeal,
@@ -52,21 +59,32 @@ from .models import (
 from .services import (
     apply_deal_next_step_override,
     build_finance_report_zip,
+    cancel_pending_shipment_for_manager_deal,
     create_or_update_reservation_movements,
     create_or_update_shipment_for_order,
     dashboard_stats,
+    ensure_finance_deal_for_manager_deal,
     ensure_manager_deal_for_order,
     ensure_website_order_workflow,
+    clone_finance_distribution_scheme,
     finance_dashboard_data,
+    dispatch_shipment,
     fulfill_reservation,
     inventory_snapshot_for_warehouse,
+    order_supply_state_snapshot,
+    recalculate_finance_deal_distribution,
+    recalculate_finance_deal_totals,
     record_deal_activity,
+    record_finance_line_replacement,
     receive_cargo_item,
     recompute_deal_workflow,
     receipt_inventory,
+    reservation_coverage_snapshot,
+    reverse_shipment_for_manager_deal,
     shipments_grouped_by_reservation,
     shipments_rows,
     split_cargo,
+    sync_finance_deal_lines_from_manager_deal,
     sync_public_stock_for_warehouse,
     update_order_state,
     validate_reservation_availability,
@@ -315,8 +333,10 @@ class ManagerPortalBaseTestCase(TestCase):
             'items-INITIAL_FORMS': '0',
             'items-MIN_NUM_FORMS': '0',
             'items-MAX_NUM_FORMS': '1000',
+            'items-0-line_type': OrderItem.LINE_TYPE_CATALOG,
             'items-0-product_name': self.product.name,
             'items-0-product': str(self.product.pk),
+            'items-0-variant': str(self.variant.pk),
             'items-0-configuration': '512 GB',
             'items-0-condition': OrderItem.CONDITION_NEW,
             'items-0-quantity': '2',
@@ -350,7 +370,9 @@ class ManagerPortalBaseTestCase(TestCase):
             'items-INITIAL_FORMS': '0',
             'items-MIN_NUM_FORMS': '0',
             'items-MAX_NUM_FORMS': '1000',
+            'items-0-line_type': OrderItem.LINE_TYPE_CATALOG,
             'items-0-product': str(self.product.pk),
+            'items-0-variant': str(self.variant.pk),
             'items-0-configuration': '128 GB',
             'items-0-quantity': '1',
             'items-0-sale_price': '97000.00',
@@ -652,6 +674,7 @@ class ManagerPortalModelAndFormTests(ManagerPortalBaseTestCase):
                 'product': self.product.pk,
                 'variant': self.foreign_variant.pk,
                 'quantity': 1,
+                'unit_cost': '100.00',
                 'comment': '',
             }
         )
@@ -705,16 +728,209 @@ class ManagerPortalModelAndFormTests(ManagerPortalBaseTestCase):
             contract_number='BF-001',
             deal_type=self.finance_deal_type,
             revenue=Decimal('1000.00'),
-            cost_price=Decimal('200.00'),
+            cost_of_goods=Decimal('200.00'),
             direct_expenses=Decimal('100.00'),
             manager_bonus=Decimal('50.00'),
         )
 
+        self.assertEqual(finance_deal.cost_of_goods, Decimal('200.00'))
+        self.assertEqual(finance_deal.gross_profit, Decimal('800.00'))
+        self.assertEqual(finance_deal.distributable_profit, Decimal('650.00'))
         self.assertEqual(finance_deal.margin, Decimal('650.00'))
         self.assertEqual(finance_deal.partner_share_amount, Decimal('325.000'))
 
+    def test_purchase_item_form_queryset_excludes_custom_order_lines(self):
+        custom_line = self.order.items.create(
+            line_type=OrderItem.LINE_TYPE_CUSTOM,
+            product_name='Индивидуальный комплект',
+            quantity=1,
+            price=Decimal('25000.00'),
+        )
+
+        form = PurchaseItemForm()
+
+        self.assertIn(self.order.items.first(), form.fields['order_item'].queryset)
+        self.assertNotIn(custom_line, form.fields['order_item'].queryset)
+
+    def test_reservation_item_form_queryset_excludes_custom_order_lines(self):
+        custom_line = self.order.items.create(
+            line_type=OrderItem.LINE_TYPE_CUSTOM,
+            product_name='Индивидуальный комплект',
+            quantity=1,
+            price=Decimal('25000.00'),
+        )
+
+        form = ReservationItemForm()
+
+        self.assertIn(self.order.items.first(), form.fields['order_item'].queryset)
+        self.assertNotIn(custom_line, form.fields['order_item'].queryset)
+
+    def test_reservation_item_clean_rejects_custom_order_line(self):
+        custom_line = self.order.items.create(
+            line_type=OrderItem.LINE_TYPE_CUSTOM,
+            product_name='Индивидуальный комплект',
+            quantity=1,
+            price=Decimal('25000.00'),
+        )
+        reservation = self.create_reservation(source_warehouse=self.warehouse, linked_order=self.order)
+        reservation_item = ReservationItem(
+            reservation=reservation,
+            product=self.product,
+            order_item=custom_line,
+            quantity=1,
+        )
+
+        with self.assertRaises(ValidationError):
+            reservation_item.full_clean()
+
+
+class FinanceDistributionTests(ManagerPortalBaseTestCase):
+    def setUp(self):
+        super().setUp()
+        self.scheme = FinanceDistributionScheme.objects.get(is_active=True)
+        self.sergey_owner = ManagerPersonAlias.objects.get(display_name='Сергей П')
+        self.sergey = ManagerPersonAlias.objects.get(display_name='Сергей')
+        self.yaroslav_p = ManagerPersonAlias.objects.get(display_name='Ярослав П')
+        self.maxim_t = ManagerPersonAlias.objects.get(display_name='Максим Т')
+        self.yaroslav_e = ManagerPersonAlias.objects.get(display_name='Ярослав Е')
+        self.artem_ch = ManagerPersonAlias.objects.get(display_name='Артём Ч')
+        self.bizon_alias, _ = ManagerPersonAlias.objects.get_or_create(
+            display_name='BIZON',
+            defaults={'slug': 'bizon', 'is_active': True},
+        )
+
+    def _create_distribution_deal(self, *, scheme=None, contract_number='DIST-001'):
+        finance_deal = FinanceDeal.objects.create(
+            date=timezone.localdate(),
+            contract_number=contract_number,
+            deal_type=self.finance_deal_type,
+            distribution_scheme=scheme or self.scheme,
+            revenue=Decimal('0'),
+            cost_of_goods=Decimal('0'),
+            direct_expenses=Decimal('0'),
+            manager_bonus=Decimal('0'),
+        )
+        FinanceDealLine.objects.create(
+            finance_deal=finance_deal,
+            product_name='Meta Quest 3S',
+            quantity=10,
+            unit_cost_price=Decimal('22500.00'),
+            unit_sale_price=Decimal('25000.00'),
+            owner_alias=self.bizon_alias,
+            sort_order=10,
+        )
+        FinanceDealLine.objects.create(
+            finance_deal=finance_deal,
+            product_name='Крепление BoboVR S3 PRO',
+            quantity=10,
+            unit_cost_price=Decimal('5271.00'),
+            unit_sale_price=Decimal('7000.00'),
+            owner_alias=self.sergey_owner,
+            sort_order=20,
+        )
+        recalculate_finance_deal_totals(finance_deal)
+        finance_deal.refresh_from_db()
+        return finance_deal
+
+    def _share_amount(self, finance_deal, participant_name):
+        return FinanceDealShare.objects.get(finance_deal=finance_deal, participant_name_snapshot=participant_name).final_amount
+
+    def test_default_distribution_scheme_recalculates_expected_shares(self):
+        finance_deal = self._create_distribution_deal()
+
+        self.assertEqual(finance_deal.revenue, Decimal('320000.00'))
+        self.assertEqual(finance_deal.cost_price, Decimal('277710.00'))
+        self.assertEqual(finance_deal.margin, Decimal('42290.00'))
+        self.assertEqual(self._share_amount(finance_deal, 'Сергей'), Decimal('4322.50'))
+        self.assertEqual(self._share_amount(finance_deal, 'Ярослав П'), Decimal('5695.12'))
+        self.assertEqual(self._share_amount(finance_deal, 'Максим Т'), Decimal('1691.60'))
+        self.assertEqual(self._share_amount(finance_deal, 'Ярослав Е'), Decimal('15290.39'))
+        self.assertEqual(self._share_amount(finance_deal, 'Артём Ч'), Decimal('15290.39'))
+        self.assertTrue(finance_deal.snapshot_data['distribution']['is_converged'])
+
+    def test_cloning_scheme_creates_new_version_without_changing_old_deal(self):
+        finance_deal = self._create_distribution_deal(contract_number='DIST-OLD')
+        old_sergey_amount = self._share_amount(finance_deal, 'Сергей')
+
+        cloned_scheme = clone_finance_distribution_scheme(self.scheme, activate=True)
+        sergey_rule = FinanceDistributionRule.objects.get(scheme=cloned_scheme, participant_alias=self.sergey)
+        sergey_rule.percent = Decimal('0.3000')
+        sergey_rule.save(update_fields=['percent', 'updated_at'])
+
+        new_deal = self._create_distribution_deal(scheme=cloned_scheme, contract_number='DIST-NEW')
+
+        recalculate_finance_deal_totals(finance_deal)
+        finance_deal.refresh_from_db()
+
+        self.assertEqual(finance_deal.distribution_scheme_version_snapshot, 1)
+        self.assertEqual(new_deal.distribution_scheme_version_snapshot, cloned_scheme.version)
+        self.assertEqual(self._share_amount(finance_deal, 'Сергей'), old_sergey_amount)
+        self.assertEqual(self._share_amount(new_deal, 'Сергей'), Decimal('5187.00'))
+
+    def test_manual_share_override_only_affects_target_deal(self):
+        first_deal = self._create_distribution_deal(contract_number='DIST-OVR-1')
+        second_deal = self._create_distribution_deal(contract_number='DIST-OVR-2')
+
+        share = FinanceDealShare.objects.get(finance_deal=first_deal, participant_name_snapshot='Сергей')
+        share.manual_amount_override = Decimal('5000.00')
+        share.save(update_fields=['manual_amount_override', 'updated_at'])
+        recalculate_finance_deal_distribution(first_deal)
+
+        self.assertEqual(self._share_amount(first_deal, 'Сергей'), Decimal('5000.00'))
+        self.assertEqual(self._share_amount(second_deal, 'Сергей'), Decimal('4322.50'))
+        first_deal.refresh_from_db()
+        self.assertEqual(first_deal.partner_share_amount, first_deal.margin)
+
+    def test_recalculate_totals_uses_lines_and_dashboard_aggregates_shares(self):
+        finance_deal = self._create_distribution_deal(contract_number='DIST-DASH')
+        line = finance_deal.lines.get(product_name='Meta Quest 3S')
+        line.quantity = 12
+        line.save(update_fields=['quantity', 'updated_at'])
+
+        recalculate_finance_deal_totals(finance_deal)
+        finance_deal.refresh_from_db()
+        dashboard = finance_dashboard_data(year=timezone.localdate().year, month=timezone.localdate().month)
+
+        self.assertEqual(finance_deal.revenue, Decimal('370000.00'))
+        self.assertEqual(finance_deal.cost_price, Decimal('322710.00'))
+        self.assertEqual(finance_deal.margin, Decimal('47290.00'))
+        participant_total = sum((row['amount'] for row in dashboard['participant_share_rows']), Decimal('0'))
+        self.assertEqual(participant_total, finance_deal.partner_share_amount)
+
+    def test_finance_deal_detail_renders_distribution_sections(self):
+        finance_deal = self._create_distribution_deal(contract_number='DIST-VIEW')
+        self.login_staff()
+
+        response = self.client.get(reverse('manager_portal:finance_deal_detail', kwargs={'pk': finance_deal.pk}))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Строки сделки')
+        self.assertContains(response, 'Как устроены расчёты')
+        self.assertContains(response, 'Ярослав П')
+
 
 class ManagerPortalServiceTests(ManagerPortalBaseTestCase):
+    def test_sync_finance_lines_removes_stale_order_item_projection_rows(self):
+        base_item = self.order.items.order_by('id').first()
+        extra_item = self.order.items.create(product=self.product_two, quantity=2, price=Decimal('5000.00'))
+        deal = ensure_manager_deal_for_order(self.order)
+        finance_deal = ensure_finance_deal_for_manager_deal(deal, actor=self.staff_user)
+
+        self.assertCountEqual(
+            list(finance_deal.lines.order_by('sort_order').values_list('order_item_id', flat=True)),
+            [base_item.id, extra_item.id],
+        )
+
+        extra_item.delete()
+
+        sync_finance_deal_lines_from_manager_deal(finance_deal)
+        recalculate_finance_deal_totals(finance_deal, sync_lines=False)
+        finance_deal.refresh_from_db()
+
+        self.assertEqual(list(finance_deal.lines.values_list('order_item_id', flat=True)), [base_item.id])
+        self.assertEqual(finance_deal.lines.count(), 1)
+        self.assertEqual(finance_deal.revenue, Decimal('100000.00'))
+
     def test_recompute_deal_workflow_sets_next_step_to_availability_confirmation(self):
         deal = ensure_manager_deal_for_order(self.order)
         receipt_inventory(warehouse=self.warehouse, product=self.product, quantity=3, author=self.staff_user)
@@ -879,7 +1095,7 @@ class ManagerPortalServiceTests(ManagerPortalBaseTestCase):
             contract_number='BF-002',
             deal_type=self.finance_deal_type,
             revenue=Decimal('1000.00'),
-            cost_price=Decimal('300.00'),
+            cost_of_goods=Decimal('300.00'),
             direct_expenses=Decimal('100.00'),
             manager_bonus=Decimal('100.00'),
         )
@@ -902,8 +1118,11 @@ class ManagerPortalServiceTests(ManagerPortalBaseTestCase):
         data = finance_dashboard_data(year=timezone.localdate().year, month=timezone.localdate().month)
         report = build_finance_report_zip(year=timezone.localdate().year, month=timezone.localdate().month)
 
+        self.assertEqual(finance_deal.gross_profit, Decimal('700.00'))
         self.assertEqual(finance_deal.margin, Decimal('500.00'))
         self.assertEqual(data['turnover'], Decimal('1000.00'))
+        self.assertEqual(data['gross_profit_total'], Decimal('700.00'))
+        self.assertEqual(data['distributable_profit_total'], Decimal('500.00'))
         self.assertEqual(data['total_opex'], Decimal('50.00'))
         self.assertEqual(data['partner_paid_physically'], Decimal('20.00'))
         self.assertEqual(data['already_paid'], Decimal('80.00'))
@@ -956,6 +1175,133 @@ class ManagerPortalServiceTests(ManagerPortalBaseTestCase):
         self.assertEqual(rows[0]['public_sync_status_code'], 'mismatch')
         self.assertIn('below_min_stock', rows[0]['problem_codes'])
         self.assertIn('public_mismatch', rows[0]['problem_codes'])
+
+    def test_order_supply_state_snapshot_uses_derived_coverage_states(self):
+        order = Order.objects.create(
+            user=self.user,
+            status=Order.STATUS_CONFIRMED,
+            payment_status=Order.PAYMENT_STATUS_PAID,
+            payment_method=Order.PAYMENT_METHOD_ONLINE,
+            total=Decimal('400000.00'),
+            phone='+7 999 555 44 10',
+            email='coverage@example.com',
+            first_name='Coverage',
+            city_text='Екатеринбург',
+            delivery_type=Order.DELIVERY_PICKUP,
+            address_line='Склад',
+        )
+        stock_line = OrderItem.objects.create(order=order, product=self.product, quantity=1, price=Decimal('100000.00'))
+        incoming_line = OrderItem.objects.create(order=order, product=self.product, quantity=1, price=Decimal('100000.00'))
+        procurement_line = OrderItem.objects.create(order=order, product=self.product, quantity=1, price=Decimal('100000.00'))
+        uncovered_line = OrderItem.objects.create(order=order, product=self.product, quantity=1, price=Decimal('100000.00'))
+        custom_line = OrderItem.objects.create(
+            order=order,
+            line_type=OrderItem.LINE_TYPE_CUSTOM,
+            product_name='Индивидуальный комплект',
+            quantity=1,
+            price=Decimal('50000.00'),
+        )
+
+        warehouse_reservation = self.create_reservation(source_warehouse=self.warehouse, linked_order=order)
+        ReservationItem.objects.create(
+            reservation=warehouse_reservation,
+            product=self.product,
+            order_item=stock_line,
+            quantity=1,
+        )
+        cargo = Cargo.objects.create(
+            cargo_number='CG-COVERAGE-1',
+            status=Cargo.STATUS_IN_TRANSIT,
+            destination_warehouse=self.warehouse,
+        )
+        incoming_reservation = self.create_reservation(
+            source_type=Reservation.SOURCE_CARGO,
+            source_cargo=cargo,
+            linked_order=order,
+        )
+        ReservationItem.objects.create(
+            reservation=incoming_reservation,
+            product=self.product,
+            order_item=incoming_line,
+            quantity=1,
+        )
+        purchase = Purchase.objects.create(date=timezone.localdate(), supplier_name='Supplier')
+        PurchaseItem.objects.create(
+            purchase=purchase,
+            product=self.product,
+            order_item=procurement_line,
+            quantity=1,
+            price=Decimal('70000.00'),
+        )
+
+        snapshot = order_supply_state_snapshot(order)
+        line_map = {line['order_item_id']: line for line in snapshot['lines']}
+
+        self.assertEqual(line_map[stock_line.id]['coverage_state'], 'covered_by_stock')
+        self.assertEqual(line_map[incoming_line.id]['coverage_state'], 'covered_by_incoming')
+        self.assertEqual(line_map[procurement_line.id]['coverage_state'], 'covered_by_procurement')
+        self.assertEqual(line_map[uncovered_line.id]['coverage_state'], 'uncovered')
+        self.assertIsNone(line_map[custom_line.id]['coverage_state'])
+        self.assertFalse(line_map[custom_line.id]['is_supply_tracked'])
+        self.assertEqual(snapshot['tracked_line_count'], 4)
+        self.assertEqual(snapshot['excluded_line_count'], 1)
+        self.assertEqual(snapshot['covered_by_stock_count'], 1)
+        self.assertEqual(snapshot['covered_by_incoming_count'], 1)
+        self.assertEqual(snapshot['covered_by_procurement_count'], 1)
+        self.assertEqual(snapshot['uncovered_count'], 1)
+
+    def test_reservation_coverage_snapshot_counts_only_tracked_lines(self):
+        custom_line = self.order.items.create(
+            line_type=OrderItem.LINE_TYPE_CUSTOM,
+            product_name='Индивидуальный комплект',
+            quantity=1,
+            price=Decimal('25000.00'),
+        )
+
+        snapshot = reservation_coverage_snapshot(self.order)
+
+        self.assertEqual(snapshot['tracked_line_count'], 1)
+        self.assertEqual(snapshot['excluded_line_count'], 1)
+        self.assertEqual(snapshot['uncovered_count'], 1)
+        self.assertEqual(len(snapshot['uncovered_lines']), 1)
+        self.assertEqual(snapshot['uncovered_lines'][0]['order_item_id'], self.order.items.exclude(pk=custom_line.pk).get().pk)
+
+    def test_recompute_deal_workflow_sale_on_request_with_uncovered_line_needs_procurement(self):
+        order_item = self.order.items.get()
+        order_item.is_on_request = True
+        order_item.save(update_fields=['is_on_request'])
+        deal = ensure_manager_deal_for_order(self.order)
+        deal.case_status = ManagerDeal.CASE_STATUS_CONFIRMED
+        deal.save(update_fields=['case_status', 'updated_at'])
+        Order.objects.filter(pk=deal.order_id).update(status=Order.STATUS_CONFIRMED, payment_status=Order.PAYMENT_STATUS_PAID)
+        deal.order.refresh_from_db()
+
+        recompute_deal_workflow(deal)
+        deal.refresh_from_db()
+
+        self.assertEqual(deal.next_step_code, ManagerDeal.NEXT_STEP_NEEDS_PROCUREMENT)
+        self.assertEqual(deal.fulfillment_status, ManagerDeal.FULFILLMENT_STATUS_PROCUREMENT_REQUIRED)
+
+    def test_sale_from_stock_with_procurement_link_is_not_treated_as_stock_covered(self):
+        deal = ensure_manager_deal_for_order(self.order)
+        deal.case_status = ManagerDeal.CASE_STATUS_CONFIRMED
+        deal.save(update_fields=['case_status', 'updated_at'])
+        Order.objects.filter(pk=deal.order_id).update(status=Order.STATUS_CONFIRMED, payment_status=Order.PAYMENT_STATUS_PAID)
+        deal.order.refresh_from_db()
+        PurchaseItem.objects.create(
+            purchase=Purchase.objects.create(date=timezone.localdate(), supplier_name='Supplier'),
+            product=self.product,
+            order_item=self.order.items.get(),
+            quantity=1,
+            price=Decimal('70000.00'),
+        )
+
+        recompute_deal_workflow(deal)
+        deal.refresh_from_db()
+
+        self.assertEqual(deal.fulfillment_status, ManagerDeal.FULFILLMENT_STATUS_NOT_RESERVED)
+        self.assertNotEqual(deal.fulfillment_status, ManagerDeal.FULFILLMENT_STATUS_RESERVED_STOCK)
+        self.assertNotEqual(deal.fulfillment_status, ManagerDeal.FULFILLMENT_STATUS_RESERVED_INCOMING)
 
     def test_validate_reservation_availability_fails_for_warehouse_source(self):
         receipt_inventory(warehouse=self.warehouse, product=self.product, quantity=2, author=self.staff_user)
@@ -1165,6 +1511,291 @@ class ManagerPortalServiceTests(ManagerPortalBaseTestCase):
         self.assertIn(self.order, shipment.client.orders.all())
         self.assertEqual(shipment.items.get().reservation_item, reservation_item)
         self.assertEqual(shipment.tracking_number, 'TRACK-1')
+
+    def test_create_or_update_shipment_keeps_unreconciled_historical_shipment_immutable(self):
+        shipment = Shipment.objects.create(
+            order=self.order,
+            client=self.manager_client,
+            source_warehouse=self.warehouse,
+            target_warehouse=self.other_warehouse,
+            status=Shipment.STATUS_SHIPPED,
+            tracking_number='LEGACY-1',
+        )
+        item = ShipmentItem.objects.create(
+            shipment=shipment,
+            order_item=self.order.items.get(),
+            product=self.product,
+            quantity=1,
+        )
+        extra_item = self.order.items.create(product=self.product_two, quantity=1, price=Decimal('5000.00'))
+
+        updated = create_or_update_shipment_for_order(
+            self.order,
+            shipment=shipment,
+            tracking_number='LEGACY-2',
+        )
+
+        updated.refresh_from_db()
+        self.assertEqual(updated.pk, shipment.pk)
+        self.assertEqual(updated.status, Shipment.STATUS_SHIPPED)
+        self.assertEqual(updated.tracking_number, 'LEGACY-2')
+        self.assertEqual(updated.items.count(), 1)
+        self.assertTrue(updated.items.filter(pk=item.pk, quantity=1).exists())
+        self.assertFalse(updated.items.filter(order_item=extra_item).exists())
+
+    def test_dispatch_shipment_consumes_inventory_once_and_updates_actual_cost(self):
+        order_item = self.order.items.get()
+        order_item.quantity = 2
+        order_item.save(update_fields=['quantity'])
+        receipt_inventory(
+            warehouse=self.warehouse,
+            product=self.product,
+            quantity=5,
+            unit_cost=Decimal('45000.00'),
+            author=self.staff_user,
+        )
+        reservation = self.create_reservation(
+            source_warehouse=self.warehouse,
+            target_warehouse=self.other_warehouse,
+            linked_order=self.order,
+        )
+        reservation_item = ReservationItem.objects.create(
+            reservation=reservation,
+            order_item=order_item,
+            product=self.product,
+            quantity=2,
+        )
+        create_or_update_reservation_movements(
+            reservation,
+            movement_type=InventoryMovement.TYPE_RESERVE,
+            author=self.staff_user,
+            comment='Резерв под dispatch',
+        )
+        shipment = create_or_update_shipment_for_order(self.order, reservation=reservation, tracking_number='DSP-1')
+
+        dispatched = dispatch_shipment(shipment, author=self.staff_user, comment='Ручной dispatch')
+
+        dispatched.refresh_from_db()
+        reservation_item.refresh_from_db()
+        order_item.refresh_from_db()
+        balance = InventoryBalance.objects.get(warehouse=self.warehouse, product=self.product, variant__isnull=True)
+        stock = ProductStock.objects.get(product=self.product, pickup_point=self.pickup_point, variant__isnull=True)
+        lot = dispatched.items.get().order_item.allocations.get(status='shipped').inventory_lot
+        self.assertIsNotNone(dispatched.inventory_consumed_at)
+        self.assertEqual(dispatched.status, Shipment.STATUS_SHIPPED)
+        self.assertEqual(balance.quantity, 3)
+        self.assertEqual(stock.quantity, 3)
+        self.assertEqual(lot.remaining_qty, 3)
+        self.assertEqual(order_item.shipped_quantity, 2)
+        self.assertEqual(order_item.actual_unit_cost, Decimal('45000.00'))
+        self.assertEqual(reservation_item.fulfilled_quantity, 2)
+        self.assertEqual(reservation_item.active_reserved_quantity, 0)
+        reservation.refresh_from_db()
+        self.assertEqual(reservation.status, Reservation.STATUS_FULFILLED)
+        self.assertTrue(
+            InventoryMovement.objects.filter(
+                warehouse=self.warehouse,
+                movement_type=InventoryMovement.TYPE_RELEASE,
+                reference_type='shipment',
+                reference_id=dispatched.pk,
+                quantity=2,
+            ).exists()
+        )
+
+    def test_dispatch_shipment_is_idempotent(self):
+        receipt_inventory(
+            warehouse=self.warehouse,
+            product=self.product,
+            quantity=2,
+            unit_cost=Decimal('45000.00'),
+            author=self.staff_user,
+        )
+        shipment = Shipment.objects.create(
+            order=self.order,
+            client=self.manager_client,
+            source_warehouse=self.warehouse,
+            status=Shipment.STATUS_PENDING,
+        )
+        ShipmentItem.objects.create(
+            shipment=shipment,
+            order_item=self.order.items.get(),
+            product=self.product,
+            quantity=1,
+        )
+
+        dispatch_shipment(shipment, author=self.staff_user)
+        first_consumed_at = Shipment.objects.get(pk=shipment.pk).inventory_consumed_at
+        dispatch_shipment(shipment, author=self.staff_user)
+
+        shipment.refresh_from_db()
+        order_item = self.order.items.get()
+        balance = InventoryBalance.objects.get(warehouse=self.warehouse, product=self.product, variant__isnull=True)
+        self.assertEqual(shipment.inventory_consumed_at, first_consumed_at)
+        self.assertEqual(order_item.allocations.filter(status='shipped').count(), 1)
+        self.assertEqual(order_item.shipped_quantity, 1)
+        self.assertEqual(
+            InventoryMovement.objects.filter(
+                reference_type='shipment',
+                reference_id=shipment.pk,
+                movement_type=InventoryMovement.TYPE_RELEASE,
+            ).count(),
+            1,
+        )
+        self.assertEqual(balance.quantity, 1)
+
+    def test_create_or_update_shipment_does_not_rebuild_dispatched_document(self):
+        receipt_inventory(
+            warehouse=self.warehouse,
+            product=self.product,
+            quantity=3,
+            unit_cost=Decimal('45000.00'),
+            author=self.staff_user,
+        )
+        shipment = Shipment.objects.create(
+            order=self.order,
+            client=self.manager_client,
+            source_warehouse=self.warehouse,
+            status=Shipment.STATUS_PENDING,
+            tracking_number='OLD-TRACK',
+        )
+        shipment_item = ShipmentItem.objects.create(
+            shipment=shipment,
+            order_item=self.order.items.get(),
+            product=self.product,
+            quantity=1,
+        )
+        dispatch_shipment(shipment, author=self.staff_user)
+        extra_item = self.order.items.create(product=self.product_two, quantity=1, price=Decimal('5000.00'))
+
+        updated = create_or_update_shipment_for_order(
+            self.order,
+            shipment=shipment,
+            tracking_number='NEW-TRACK',
+        )
+
+        updated.refresh_from_db()
+        self.assertEqual(updated.tracking_number, 'NEW-TRACK')
+        self.assertEqual(updated.items.count(), 1)
+        self.assertTrue(updated.items.filter(pk=shipment_item.pk, quantity=1).exists())
+        self.assertFalse(updated.items.filter(order_item=extra_item).exists())
+        self.assertEqual(updated.source_warehouse, self.warehouse)
+
+    def test_partial_dispatch_updates_order_item_actual_metrics_by_shipped_quantity(self):
+        order = Order.objects.create(
+            user=self.user,
+            status=Order.STATUS_CONFIRMED,
+            payment_status=Order.PAYMENT_STATUS_PAID,
+            payment_method=Order.PAYMENT_METHOD_ONLINE,
+            total=Decimal('1000000.00'),
+            phone='+7 999 555 44 55',
+            email='partial@example.com',
+            first_name='Partial',
+            city_text='Екатеринбург',
+            delivery_type=Order.DELIVERY_PICKUP,
+            address_line='Склад',
+        )
+        order_item = OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            quantity=10,
+            price=Decimal('100000.00'),
+        )
+        receipt_inventory(
+            warehouse=self.warehouse,
+            product=self.product,
+            quantity=10,
+            unit_cost=Decimal('40000.00'),
+            author=self.staff_user,
+        )
+        first_shipment = Shipment.objects.create(
+            order=order,
+            client=self.manager_client,
+            source_warehouse=self.warehouse,
+            status=Shipment.STATUS_PENDING,
+        )
+        second_shipment = Shipment.objects.create(
+            order=order,
+            client=self.manager_client,
+            source_warehouse=self.warehouse,
+            status=Shipment.STATUS_PENDING,
+        )
+        ShipmentItem.objects.create(
+            shipment=first_shipment,
+            order_item=order_item,
+            product=self.product,
+            quantity=2,
+        )
+        ShipmentItem.objects.create(
+            shipment=second_shipment,
+            order_item=order_item,
+            product=self.product,
+            quantity=3,
+        )
+
+        dispatch_shipment(first_shipment, author=self.staff_user)
+        order_item.refresh_from_db()
+        self.assertEqual(order_item.shipped_quantity, 2)
+        self.assertEqual(order_item.shipment_status, 'partially_shipped')
+        self.assertEqual(order_item.actual_sale_total, Decimal('200000.00'))
+        self.assertEqual(order_item.actual_cost_total, Decimal('80000.00'))
+
+        dispatch_shipment(second_shipment, author=self.staff_user)
+        order_item.refresh_from_db()
+        self.assertEqual(order_item.shipped_quantity, 5)
+        self.assertEqual(order_item.shipment_status, 'partially_shipped')
+        self.assertEqual(order_item.actual_sale_total, Decimal('500000.00'))
+        self.assertEqual(order_item.actual_cost_total, Decimal('200000.00'))
+
+    def test_shipment_dispatch_view_dispatches_pending_shipment(self):
+        self.login_staff()
+        receipt_inventory(
+            warehouse=self.warehouse,
+            product=self.product,
+            quantity=2,
+            unit_cost=Decimal('45000.00'),
+            author=self.staff_user,
+        )
+        shipment = Shipment.objects.create(
+            order=self.order,
+            client=self.manager_client,
+            source_warehouse=self.warehouse,
+            status=Shipment.STATUS_PENDING,
+        )
+        ShipmentItem.objects.create(
+            shipment=shipment,
+            order_item=self.order.items.get(),
+            product=self.product,
+            quantity=1,
+        )
+
+        response = self.client.post(reverse('manager_portal:shipment_dispatch', kwargs={'pk': shipment.pk}))
+
+        self.assertRedirects(response, reverse('manager_portal:shipment_detail', kwargs={'pk': shipment.pk}))
+        shipment.refresh_from_db()
+        self.assertIsNotNone(shipment.inventory_consumed_at)
+
+    def test_audit_historical_shipments_command_reports_unresolved_documents(self):
+        Shipment.objects.create(
+            order=self.order,
+            client=self.manager_client,
+            source_warehouse=self.warehouse,
+            status=Shipment.STATUS_SHIPPED,
+        )
+        resolved = Shipment.objects.create(
+            order=self.order_two,
+            client=self.manager_client,
+            source_warehouse=self.warehouse,
+            status=Shipment.STATUS_DELIVERED,
+            inventory_consumed_at=timezone.now(),
+        )
+        out = StringIO()
+
+        call_command('audit_historical_shipments', stdout=out)
+
+        output = out.getvalue()
+        self.assertIn('manual_review_required', output)
+        self.assertIn('shipment=', output)
+        self.assertNotIn(f'shipment={resolved.pk}', output)
 
     def test_receive_cargo_item_rejects_missing_destination_warehouse(self):
         cargo = Cargo.objects.create(cargo_number='CG-005', status=Cargo.STATUS_AWAITING_RECEIPT)
@@ -1854,8 +2485,10 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Полное создание сделки')
         self.assertContains(response, 'Товары в заказе')
-        self.assertContains(response, 'manual-order-product-catalog', html=False)
-        self.assertContains(response, 'manual-order-product-names', html=False)
+        self.assertContains(response, 'Тип строки')
+        self.assertContains(response, 'Название произвольного товара')
+        self.assertContains(response, 'Плановая себестоимость')
+        self.assertNotContains(response, 'manual-order-product-catalog', html=False)
 
     def test_staff_can_open_quick_deal_create_page(self):
         self.login_staff()
@@ -1941,7 +2574,7 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
 
     def test_staff_can_create_manual_business_order(self):
         self.login_staff()
-        InventoryBalance.objects.create(warehouse=self.warehouse, product=self.product, quantity=5)
+        InventoryBalance.objects.create(warehouse=self.warehouse, product=self.product, variant=self.variant, quantity=5)
 
         response = self.client.post(reverse('manager_portal:order_create'), self.manual_business_order_payload())
 
@@ -1980,19 +2613,12 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         payload['items-0-product'] = ''
         payload['items-0-product_name'] = self.product.name
         payload['items-0-sale_price'] = ''
+        payload['items-0-line_type'] = OrderItem.LINE_TYPE_CATALOG
 
         response = self.client.post(reverse('manager_portal:order_create'), payload)
-
-        manual_order = Order.objects.exclude(pk__in=[self.order.pk, self.order_two.pk]).latest('pk')
-        line = manual_order.items.get()
-
-        self.assertRedirects(
-            response,
-            f"{reverse('manager_portal:deal_detail', kwargs={'pk': manual_order.manager_deal.pk})}?created=1",
-        )
-        self.assertEqual(line.product, self.product)
-        self.assertEqual(line.product_name, self.product.name)
-        self.assertEqual(line.price, self.product.price)
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Order.objects.exclude(pk__in=[self.order.pk, self.order_two.pk]).exists())
+        self.assertIn('Выберите товар.', response.context['formset'].forms[0].errors['product'])
 
     def test_staff_can_create_manual_order_item_without_catalog_match(self):
         self.login_staff()
@@ -2003,6 +2629,7 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         payload['items-0-purchase_price'] = '9000.00'
         payload['items-0-discount_amount'] = '345.00'
         payload['items-0-quantity'] = '3'
+        payload['items-0-line_type'] = OrderItem.LINE_TYPE_CUSTOM
 
         response = self.client.post(reverse('manager_portal:order_create'), payload)
 
@@ -2043,7 +2670,7 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
 
     def test_staff_can_create_manual_business_order_via_htmx_redirect(self):
         self.login_staff()
-        InventoryBalance.objects.create(warehouse=self.warehouse, product=self.product, quantity=5)
+        InventoryBalance.objects.create(warehouse=self.warehouse, product=self.product, variant=self.variant, quantity=5)
 
         response = self.client.post(
             reverse('manager_portal:order_create'),
@@ -2473,6 +3100,57 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         self.assertContains(response, 'Резерв')
         self.assertContains(response, 'Открыть остатки')
 
+    def test_deal_detail_shows_custom_line_outside_supply_contour(self):
+        self.login_staff()
+        order = Order.objects.create(
+            user=self.user,
+            status=Order.STATUS_CONFIRMED,
+            payment_status=Order.PAYMENT_STATUS_PAID,
+            payment_method=Order.PAYMENT_METHOD_ONLINE,
+            total=Decimal('25000.00'),
+            phone='+7 999 555 44 21',
+            email='custom-only@example.com',
+            first_name='Custom',
+            city_text='Екатеринбург',
+            delivery_type=Order.DELIVERY_PICKUP,
+            address_line='Самовывоз',
+        )
+        OrderItem.objects.create(
+            order=order,
+            line_type=OrderItem.LINE_TYPE_CUSTOM,
+            product_name='Индивидуальный комплект клиента',
+            quantity=1,
+            price=Decimal('25000.00'),
+        )
+        deal = ensure_manager_deal_for_order(order)
+        deal.case_status = ManagerDeal.CASE_STATUS_CONFIRMED
+        deal.save(update_fields=['case_status', 'updated_at'])
+        recompute_deal_workflow(deal)
+
+        response = self.client.get(reverse('manager_portal:deal_detail', kwargs={'pk': deal.pk}))
+
+        self.assertEqual(response.status_code, 200)
+        row = response.context['order_items'][0]
+        self.assertEqual(row['coverage_label'], 'Вне supply contour')
+        self.assertEqual(response.context['logistics_summary']['coverage_status'], 'Вне supply contour')
+        self.assertContains(response, 'Вне supply contour')
+        self.assertContains(response, 'Supply contour не нужен')
+
+    def test_deal_detail_excludes_custom_lines_from_uncovered_counts(self):
+        self.login_staff()
+        self.order.items.create(
+            line_type=OrderItem.LINE_TYPE_CUSTOM,
+            product_name='Индивидуальный комплект клиента',
+            quantity=1,
+            price=Decimal('25000.00'),
+        )
+        deal = ensure_manager_deal_for_order(self.order)
+
+        response = self.client.get(reverse('manager_portal:deal_detail', kwargs={'pk': deal.pk}))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['logistics_summary']['coverage_detail'], 'Не обеспечено строк: 1.')
+
     def test_identity_fields_persist_on_partial_save(self):
         self.login_staff()
         deal = ensure_manager_deal_for_order(self.order)
@@ -2656,7 +3334,7 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
             payment_method='SBP',
             payment_state='paid',
             revenue=Decimal('150000.00'),
-            cost_price=Decimal('90000.00'),
+            cost_of_goods=Decimal('90000.00'),
             direct_expenses=Decimal('5000.00'),
             manager_bonus=Decimal('2000.00'),
             snapshot_data={'items': [{'sku': 'MQ3'}]},
@@ -3039,9 +3717,9 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
 
     def test_staff_can_create_avito_source_order_without_customer_name_and_with_participants(self):
         self.login_staff()
-        InventoryBalance.objects.create(warehouse=self.warehouse, product=self.product, quantity=5)
-        answered_alias = ManagerPersonAlias.objects.create(display_name='Эрика', slug='erika')
-        shipped_alias = ManagerPersonAlias.objects.create(display_name='Ярослав Е', slug='yaroslav-e')
+        InventoryBalance.objects.create(warehouse=self.warehouse, product=self.product, variant=self.variant, quantity=5)
+        answered_alias, _ = ManagerPersonAlias.objects.get_or_create(display_name='Эрика', defaults={'slug': 'erika'})
+        shipped_alias, _ = ManagerPersonAlias.objects.get_or_create(display_name='Ярослав Е', defaults={'slug': 'yaroslav-e'})
         payload = self.manual_business_order_payload()
         payload.update(
             {
@@ -3129,8 +3807,8 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         deal.refresh_from_db()
         self.assertEqual(response.status_code, 200)
         self.assertEqual(deal.deal_status, ManagerDeal.DEAL_STATUS_SHIPPED)
-        messages = list(response.context['messages'])
-        self.assertTrue(any('Состояние заказа обновлено.' in str(message) for message in messages))
+        self.assertTrue(response.redirect_chain)
+        self.assertIn('state_updated=1', response.redirect_chain[-1][0])
 
     def test_avito_detail_hides_documents_and_shipment_sections(self):
         self.login_staff()
@@ -3211,7 +3889,8 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
             comment='Резерв под Avito-сделку',
         )
         sync_public_stock_for_warehouse(self.warehouse)
-        fulfill_reservation(reservation, author=self.staff_user)
+        shipment = create_or_update_shipment_for_order(order, reservation=reservation)
+        dispatch_shipment(shipment, author=self.staff_user)
         deal.primary_reservation = reservation
         deal.deal_status = ManagerDeal.DEAL_STATUS_RETURNED
         deal.save(update_fields=['primary_reservation', 'deal_status', 'updated_at'])
@@ -3300,7 +3979,9 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
                 'items-INITIAL_FORMS': '0',
                 'items-MIN_NUM_FORMS': '0',
                 'items-MAX_NUM_FORMS': '1000',
+                'items-0-line_type': OrderItem.LINE_TYPE_CATALOG,
                 'items-0-product': str(self.product.pk),
+                'items-0-variant': str(self.variant.pk),
                 'items-0-configuration': '128 GB',
                 'items-0-condition': OrderItem.CONDITION_NEW,
                 'items-0-quantity': '1',
@@ -3653,6 +4334,7 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
                 'product': self.product.pk,
                 'variant': '',
                 'quantity': 5,
+                'unit_cost': '45000.00',
                 'comment': 'Ручной приход',
             },
         )
@@ -3693,7 +4375,7 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
                 'product': self.product.pk,
                 'variant': self.variant.pk,
                 'quantity': 3,
-                'price': '500.00',
+                'unit_cost': '500.00',
             },
         )
 
@@ -3931,14 +4613,14 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
 
     def test_reservation_add_item_view_creates_movement_and_updates_public_stock(self):
         self.login_staff()
-        receipt_inventory(warehouse=self.warehouse, product=self.product, quantity=5, author=self.staff_user)
+        receipt_inventory(warehouse=self.warehouse, product=self.product, variant=self.variant, quantity=5, author=self.staff_user)
         reservation = self.create_reservation(source_warehouse=self.warehouse)
 
         response = self.client.post(
             reverse('manager_portal:reservation_add_item', kwargs={'pk': reservation.pk}),
             {
                 'product': self.product.pk,
-                'variant': '',
+                'variant': self.variant.pk,
                 'quantity': 2,
             },
         )
@@ -3946,7 +4628,7 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         self.assertRedirects(response, reverse('manager_portal:reservation_detail', kwargs={'pk': reservation.pk}))
         self.assertEqual(reservation.items.get().quantity, 2)
         movement = InventoryMovement.objects.get(reference_id=reservation.pk)
-        stock = ProductStock.objects.get(product=self.product, pickup_point=self.pickup_point, variant__isnull=True)
+        stock = ProductStock.objects.get(product=self.product, pickup_point=self.pickup_point, variant=self.variant)
         self.assertEqual(movement.movement_type, InventoryMovement.TYPE_RESERVE)
         self.assertEqual(stock.quantity, 3)
         self.warehouse.refresh_from_db()
@@ -4057,7 +4739,7 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
             contract_number='BF-TURNOVER',
             deal_type=self.finance_deal_type,
             revenue=Decimal('1761718.00'),
-            cost_price=Decimal('1456431.00'),
+            cost_of_goods=Decimal('1456431.00'),
             direct_expenses=Decimal('2300.00'),
             manager_bonus=Decimal('100.00'),
         )
@@ -4091,7 +4773,7 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
             contract_number='BF-REPORT',
             deal_type=self.finance_deal_type,
             revenue=Decimal('900.00'),
-            cost_price=Decimal('200.00'),
+            cost_of_goods=Decimal('200.00'),
             direct_expenses=Decimal('50.00'),
             manager_bonus=Decimal('50.00'),
         )
@@ -4118,7 +4800,7 @@ class ManagerPortalTabularImportTests(ManagerPortalBaseTestCase):
             for row in rows:
                 writer.writerow(row)
 
-    def _build_import_dir(self, *, include_supply_date=True):
+    def _build_import_dir(self, *, include_supply_date=True, supply_rows=None, supply_allocations=None):
         tmpdir = tempfile.TemporaryDirectory()
         base_path = tmpdir.name
         avito_rows = [
@@ -4140,56 +4822,70 @@ class ManagerPortalTabularImportTests(ManagerPortalBaseTestCase):
                 'contact_channel': 'Avito',
             }
         ]
-        supply_rows = [
-            {
-                'row_key': 'SUP-001-1',
-                'deal_key': 'SUP-001',
-                'client_name': 'ООО Ромашка',
-                'order_date': '2026-03-03' if include_supply_date else '',
-                'product_name': 'Known Supply',
-                'quantity': '1',
-                'cost_price': '4000',
-                'sale_price': '5500',
-                'owner_name': 'Сергей П',
-                'shipping_status': 'not_shipped',
-                'payment_status': 'unpaid',
-                'delivery_provider_name': 'СДЭК',
-                'answered_by': '',
-                'shipped_by': '',
-            },
-            {
-                'row_key': 'SUP-001-2',
-                'deal_key': 'SUP-001',
-                'client_name': 'ООО Ромашка',
-                'order_date': '2026-03-03' if include_supply_date else '',
-                'product_name': 'Unknown Supply',
-                'quantity': '2',
-                'cost_price': '300',
-                'sale_price': '500',
-                'owner_name': 'BIZON',
-                'shipping_status': 'not_shipped',
-                'payment_status': 'unpaid',
-                'delivery_provider_name': 'СДЭК',
-                'answered_by': '',
-                'shipped_by': '',
-            },
-        ]
-        supply_allocations = [
-            {
-                'allocation_key': 'SUP-001-A1',
-                'deal_key': 'SUP-001',
-                'person_name': 'Сергей',
-                'amount': '1000',
-                'quantity_basis': '2',
-            },
-            {
-                'allocation_key': 'SUP-001-A2',
-                'deal_key': 'SUP-001',
-                'person_name': 'Артём Ч',
-                'amount': '500',
-                'quantity_basis': '2',
-            },
-        ]
+        if supply_rows is None:
+            supply_rows = [
+                {
+                    'row_key': 'SUP-001-1',
+                    'deal_key': 'SUP-001',
+                    'client_name': 'ООО Ромашка',
+                    'customer_full_name': '',
+                    'customer_phone': '',
+                    'order_date': '2026-03-03' if include_supply_date else '',
+                    'product_name': 'Known Supply',
+                    'quantity': '1',
+                    'cost_price': '4000',
+                    'sale_price': '5500',
+                    'owner_name': 'Сергей П',
+                    'line_status': '',
+                    'delivery_status': '',
+                    'shipping_status': 'not_shipped',
+                    'payment_status': 'unpaid',
+                    'delivery_provider_name': 'СДЭК',
+                    'delivery_pickup_address': '',
+                    'tracking_number': '',
+                    'answered_by': '',
+                    'shipped_by': '',
+                },
+                {
+                    'row_key': 'SUP-001-2',
+                    'deal_key': 'SUP-001',
+                    'client_name': 'ООО Ромашка',
+                    'customer_full_name': '',
+                    'customer_phone': '',
+                    'order_date': '2026-03-03' if include_supply_date else '',
+                    'product_name': 'Unknown Supply',
+                    'quantity': '2',
+                    'cost_price': '300',
+                    'sale_price': '500',
+                    'owner_name': 'BIZON',
+                    'line_status': '',
+                    'delivery_status': '',
+                    'shipping_status': 'not_shipped',
+                    'payment_status': 'unpaid',
+                    'delivery_provider_name': 'СДЭК',
+                    'delivery_pickup_address': '',
+                    'tracking_number': '',
+                    'answered_by': '',
+                    'shipped_by': '',
+                },
+            ]
+        if supply_allocations is None:
+            supply_allocations = [
+                {
+                    'allocation_key': 'SUP-001-A1',
+                    'deal_key': 'SUP-001',
+                    'person_name': 'Сергей',
+                    'amount': '1000',
+                    'quantity_basis': '2',
+                },
+                {
+                    'allocation_key': 'SUP-001-A2',
+                    'deal_key': 'SUP-001',
+                    'person_name': 'Артём Ч',
+                    'amount': '500',
+                    'quantity_basis': '2',
+                },
+            ]
         product_aliases = {
             'Avito Harness': {'product_slug': self.product.slug},
             'Known Supply': {'product_slug': self.product_two.slug},
@@ -4229,15 +4925,21 @@ class ManagerPortalTabularImportTests(ManagerPortalBaseTestCase):
                 'row_key',
                 'deal_key',
                 'client_name',
+                'customer_full_name',
+                'customer_phone',
                 'order_date',
                 'product_name',
                 'quantity',
                 'cost_price',
                 'sale_price',
                 'owner_name',
+                'line_status',
+                'delivery_status',
                 'shipping_status',
                 'payment_status',
                 'delivery_provider_name',
+                'delivery_pickup_address',
+                'tracking_number',
                 'answered_by',
                 'shipped_by',
             ],
@@ -4313,7 +5015,95 @@ class ManagerPortalTabularImportTests(ManagerPortalBaseTestCase):
         self.assertEqual(len(allocations), 2)
         self.assertEqual(sum((allocation.amount for allocation in allocations), Decimal('0')), Decimal('1500.00'))
         finance_deal = FinanceDeal.objects.get(manager_deal=deal)
+        self.assertEqual(finance_deal.lines.count(), 2)
         self.assertEqual(finance_deal.partner_share_amount, finance_deal.margin)
+        source_dir.cleanup()
+
+    def test_import_manager_tabular_sales_imports_supply_contacts_finance_lines_and_audit_snapshot(self):
+        source_dir = self._build_import_dir(
+            supply_rows=[
+                {
+                    'row_key': 'SUP-IND-1',
+                    'deal_key': 'SUP-IND',
+                    'client_name': 'Алексей',
+                    'customer_full_name': 'Леваков Алексей Иванович',
+                    'customer_phone': '89104548684',
+                    'order_date': '2026-03-13',
+                    'product_name': 'Known Supply',
+                    'quantity': '1',
+                    'cost_price': '4000',
+                    'sale_price': '5500',
+                    'owner_name': 'Сергей П',
+                    'line_status': 'ИЗ НАЛИЧИЯ',
+                    'delivery_status': 'ОТПРАВЛЕНО',
+                    'shipping_status': 'shipped',
+                    'payment_status': 'paid',
+                    'delivery_provider_name': 'СДЭК',
+                    'delivery_pickup_address': 'москва Шипиловский проезд 29',
+                    'tracking_number': '315000',
+                    'answered_by': '',
+                    'shipped_by': '',
+                },
+                {
+                    'row_key': 'SUP-IND-2',
+                    'deal_key': 'SUP-IND',
+                    'client_name': 'Алексей',
+                    'customer_full_name': 'Леваков Алексей Иванович',
+                    'customer_phone': '89104548684',
+                    'order_date': '2026-03-13',
+                    'product_name': 'Unknown Supply',
+                    'quantity': '2',
+                    'cost_price': '300',
+                    'sale_price': '500',
+                    'owner_name': 'BIZON',
+                    'line_status': 'ИЗ НАЛИЧИЯ',
+                    'delivery_status': 'ОТПРАВЛЕНО',
+                    'shipping_status': 'shipped',
+                    'payment_status': 'paid',
+                    'delivery_provider_name': 'СДЭК',
+                    'delivery_pickup_address': 'москва Шипиловский проезд 29',
+                    'tracking_number': '315000',
+                    'answered_by': '',
+                    'shipped_by': '',
+                },
+            ],
+            supply_allocations=[
+                {
+                    'allocation_key': 'SUP-IND-A1',
+                    'deal_key': 'SUP-IND',
+                    'person_name': 'Сергей',
+                    'amount': '1000',
+                    'quantity_basis': '',
+                },
+                {
+                    'allocation_key': 'SUP-IND-A2',
+                    'deal_key': 'SUP-IND',
+                    'person_name': 'Ярослав П',
+                    'amount': '500',
+                    'quantity_basis': '',
+                },
+            ],
+        )
+
+        batch = import_manager_tabular_sales(source_dir.name, dry_run=False)
+
+        self.assertEqual(batch.status, LegacyImportBatch.STATUS_COMPLETED)
+        deal = ManagerDeal.objects.get(individual_full_name='Леваков Алексей Иванович')
+        self.assertEqual(deal.individual_phone, '9104548684')
+        self.assertEqual(deal.delivery_provider_name, 'СДЭК')
+        self.assertEqual(deal.delivery_pickup_address, 'москва Шипиловский проезд 29')
+        self.assertEqual(deal.tracking_number, '315000')
+        self.assertEqual(deal.shipment_status, ManagerDeal.SHIPMENT_SENT)
+        finance_deal = FinanceDeal.objects.get(manager_deal=deal)
+        self.assertEqual(finance_deal.lines.count(), 2)
+        self.assertEqual(finance_deal.shares.count(), 5)
+        self.assertEqual(
+            list(finance_deal.lines.order_by('sort_order').values_list('line_status', 'delivery_status')),
+            [('ИЗ НАЛИЧИЯ', 'ОТПРАВЛЕНО'), ('ИЗ НАЛИЧИЯ', 'ОТПРАВЛЕНО')],
+        )
+        self.assertTrue(finance_deal.snapshot_data['import_supply']['audit']['has_differences'])
+        self.assertIn('distribution', finance_deal.snapshot_data)
+        self.assertEqual(batch.summary.get('allocation_audit_mismatched_deals'), 1)
         source_dir.cleanup()
 
     def test_import_manager_tabular_sales_creates_placeholder_product_for_unknown_alias(self):
@@ -4368,3 +5158,166 @@ class ManagerPortalTabularImportTests(ManagerPortalBaseTestCase):
         self.assertContains(response, 'Сергей')
         self.assertContains(response, 'Плановые начисления')
         source_dir.cleanup()
+
+
+class ManagerPortalReverseFlowTests(ManagerPortalBaseTestCase):
+    def _prepare_reserved_shipment(self, *, unit_cost=Decimal('70000.00')):
+        receipt_inventory(
+            warehouse=self.warehouse,
+            product=self.product,
+            quantity=1,
+            unit_cost=unit_cost,
+            author=self.staff_user,
+            comment='Тестовая приемка для reverse-flow.',
+        )
+        deal = ensure_manager_deal_for_order(self.order)
+        reservation = self.create_reservation(
+            linked_order=self.order,
+            source_warehouse=self.warehouse,
+            target_warehouse=self.warehouse,
+        )
+        reservation.manager_deal = deal
+        reservation.save(update_fields=['manager_deal', 'updated_at'])
+        reservation_item = ReservationItem.objects.create(
+            reservation=reservation,
+            order_item=self.order.items.get(),
+            product=self.product,
+            quantity=1,
+        )
+        create_or_update_reservation_movements(
+            reservation,
+            movement_type=InventoryMovement.TYPE_RESERVE,
+            author=self.staff_user,
+            comment='Тестовый резерв.',
+            items=[reservation_item],
+        )
+        shipment = create_or_update_shipment_for_order(
+            self.order,
+            author=self.staff_user,
+            reservation=reservation,
+        )
+        return deal, reservation, reservation_item, shipment
+
+    def test_reverse_shipment_creates_reverse_document_and_refundable_expense_adjustment(self):
+        deal, reservation, _reservation_item, shipment = self._prepare_reserved_shipment()
+        fulfill_reservation(
+            reservation,
+            author=self.staff_user,
+            shipment=shipment,
+        )
+        finance_deal = ensure_finance_deal_for_manager_deal(deal, actor=self.staff_user)
+        finance_line = finance_deal.lines.get(order_item=self.order.items.get())
+        FinanceExpense.objects.create(
+            manager_deal=deal,
+            deal=finance_deal,
+            finance_line=finance_line,
+            expense_side=FinanceExpense.SIDE_OURS,
+            category=self.finance_our_category,
+            amount=Decimal('1500.00'),
+            affects_direct_expenses=True,
+            refund_policy=FinanceExpense.REFUND_POLICY_PROPORTIONAL,
+            created_by=self.staff_user,
+        )
+        recalculate_finance_deal_totals(finance_deal, sync_lines=False)
+
+        result = reverse_shipment_for_manager_deal(deal, actor=self.staff_user, reason_code='test_return')
+
+        finance_deal.refresh_from_db()
+        shipment_return = FinanceDealAdjustment.objects.get(
+            finance_deal=finance_deal,
+            adjustment_kind=FinanceDealAdjustment.KIND_SHIPMENT_RETURN,
+        )
+        direct_expense_refund = FinanceDealAdjustment.objects.get(
+            finance_deal=finance_deal,
+            adjustment_kind=FinanceDealAdjustment.KIND_DIRECT_EXPENSE_REFUND,
+        )
+        reverse_document = ContractDocument.objects.get(pk=result['document_id'])
+
+        self.assertEqual(InventoryLot.objects.filter(pk__in=result['return_lot_ids']).count(), 1)
+        self.assertEqual(direct_expense_refund.direct_expenses_delta, Decimal('-1500.00'))
+        self.assertEqual(finance_deal.direct_expenses, Decimal('0.00'))
+        self.assertEqual(finance_deal.distributable_profit, Decimal('0.00'))
+        self.assertEqual(reverse_document.document_type, ContractTemplate.DOC_TYPE_OTHER)
+        self.assertEqual(reverse_document.document_data.get('document_role'), 'reverse_event')
+        self.assertEqual(reverse_document.document_data.get('reverse_kind'), 'shipment_return')
+        self.assertEqual(shipment_return.related_document_id, reverse_document.id)
+        self.assertTrue(deal.activities.filter(event_type='shipment.return_requested').exists())
+        self.assertTrue(deal.activities.filter(event_type='shipment.return_received').exists())
+        self.assertTrue(deal.activities.filter(event_type='shipment.reversed').exists())
+        self.assertTrue(deal.activities.filter(event_type='finance.adjustment_posted').exists())
+
+    def test_cancel_pending_shipment_releases_reservation_and_refunds_full_scope_expense(self):
+        deal, reservation, _reservation_item, shipment = self._prepare_reserved_shipment(unit_cost=Decimal('50000.00'))
+        finance_deal = ensure_finance_deal_for_manager_deal(deal, actor=self.staff_user)
+        finance_line = finance_deal.lines.get(order_item=self.order.items.get())
+        FinanceExpense.objects.create(
+            manager_deal=deal,
+            deal=finance_deal,
+            finance_line=finance_line,
+            expense_side=FinanceExpense.SIDE_OURS,
+            category=self.finance_our_category,
+            amount=Decimal('900.00'),
+            affects_direct_expenses=True,
+            refund_policy=FinanceExpense.REFUND_POLICY_ON_FULL_REVERSAL,
+            created_by=self.staff_user,
+        )
+        recalculate_finance_deal_totals(finance_deal, sync_lines=False)
+
+        result = cancel_pending_shipment_for_manager_deal(deal, actor=self.staff_user, reason_code='test_cancel')
+
+        shipment.refresh_from_db()
+        reservation.refresh_from_db()
+        finance_deal.refresh_from_db()
+
+        self.assertEqual(shipment.status, Shipment.STATUS_CANCELLED)
+        self.assertEqual(reservation.status, Reservation.STATUS_CANCELLED)
+        self.assertFalse(InventoryLot.objects.filter(reference_type='return', reference_id=shipment.id).exists())
+        self.assertEqual(
+            FinanceDealAdjustment.objects.filter(
+                finance_deal=finance_deal,
+                adjustment_kind=FinanceDealAdjustment.KIND_SHIPMENT_CANCELLATION,
+            ).count(),
+            1,
+        )
+        self.assertEqual(
+            FinanceDealAdjustment.objects.get(
+                finance_deal=finance_deal,
+                adjustment_kind=FinanceDealAdjustment.KIND_DIRECT_EXPENSE_REFUND,
+            ).direct_expenses_delta,
+            Decimal('-900.00'),
+        )
+        self.assertEqual(finance_deal.direct_expenses, Decimal('0.00'))
+        self.assertIn(reservation.id, result['released_reservation_ids'])
+
+    def test_record_finance_line_replacement_uses_adjustment_path_and_reverse_document(self):
+        deal = ensure_manager_deal_for_order(self.order)
+        finance_deal = ensure_finance_deal_for_manager_deal(deal, actor=self.staff_user)
+        source_line = finance_deal.lines.get(order_item=self.order.items.get())
+        replacement_line = FinanceDealLine.objects.create(
+            finance_deal=finance_deal,
+            product_name='Meta Quest 3 Replacement',
+            quantity=1,
+            unit_cost_price=Decimal('85000.00'),
+            unit_sale_price=Decimal('95000.00'),
+            sort_order=20,
+        )
+
+        reversal, addition = record_finance_line_replacement(
+            source_line,
+            replacement_line,
+            actor=self.staff_user,
+            reason_code='test_replacement',
+        )
+
+        replacement_line.refresh_from_db()
+        reversal.refresh_from_db()
+        addition.refresh_from_db()
+        reverse_document = reversal.related_document
+
+        self.assertEqual(replacement_line.replacement_of_id, source_line.id)
+        self.assertEqual(reversal.adjustment_kind, FinanceDealAdjustment.KIND_REPLACEMENT_REVERSAL)
+        self.assertEqual(addition.adjustment_kind, FinanceDealAdjustment.KIND_REPLACEMENT_ADDITION)
+        self.assertIsNotNone(reverse_document)
+        self.assertEqual(reverse_document.document_data.get('reverse_kind'), 'replacement_adjustment')
+        self.assertTrue(deal.activities.filter(event_type='replacement.recorded').exists())
+        self.assertTrue(deal.activities.filter(event_type='finance.adjustment_posted').exists())

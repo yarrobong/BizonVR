@@ -51,7 +51,7 @@
             <p class="mt-2 text-lg font-medium">{{ manager_deal.grand_total|rub }}</p>
             <p class="mt-1 text-slate-400">Товары: {{ manager_deal.items_gross_total|rub }} · скидка: {{ manager_deal.items_discount_total|rub }}</p>
             <p class="mt-1 text-slate-400">Трейд-ин: {{ manager_deal.trade_in_value|rub }} · доставка: {{ order.delivery_cost|rub }} · оплачено: {{ manager_deal.amount_paid|rub }}</p>
-            <p class="mt-1 text-slate-400">Ожидаемая маржа: {{ manager_deal.expected_margin|rub }} {% if manager_deal.balance_due < 0 %}· переплата клиенту: {{ manager_deal.overpayment_to_client|rub }}{% else %}· остаток: {{ manager_deal.balance_due|rub }}{% endif %}</p>
+            <p class="mt-1 text-slate-400">Ожидаемая прибыль: {{ manager_deal.expected_margin|rub }} {% if manager_deal.balance_due < 0 %}· переплата клиенту: {{ manager_deal.overpayment_to_client|rub }}{% else %}· остаток: {{ manager_deal.balance_due|rub }}{% endif %}</p>
           </div>
         </div>
       {% endif %}

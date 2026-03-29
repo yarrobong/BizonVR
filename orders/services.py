@@ -324,7 +324,6 @@ def sync_order_state_side_effects(order, *, previous_status=None, previous_payme
 
     if previous_payment_status != order.payment_status and order.payment_status == order.PAYMENT_STATUS_PAID:
         apply_partner_bonus_for_order(order)
-        decrease_stock_for_order(order)
         send_order_event_notifications(order, 'payment_received', request=request)
 
     if previous_status != order.status:
@@ -342,7 +341,7 @@ def sync_order_state_side_effects(order, *, previous_status=None, previous_payme
     except Exception:
         sync_order_workflow_state = None
     if sync_order_workflow_state:
-        sync_order_workflow_state(order)
+        sync_order_workflow_state(order, previous_status=previous_status)
 
 
 def _build_order_email_context(order, event, request=None):

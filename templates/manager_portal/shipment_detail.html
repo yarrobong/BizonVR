@@ -11,6 +11,18 @@
           {{ shipment.client.name }} · {{ shipment.get_status_display }}
           {% if shipment.order %}· заказ #{{ shipment.order.pk }}{% endif %}
         </p>
+        <div class="mt-4 flex flex-wrap gap-3">
+          {% if shipment.inventory_consumed_at %}
+            <span class="manager-pill">Dispatch проведен {{ shipment.inventory_consumed_at|date:"d.m.Y H:i" }}</span>
+          {% elif shipment.status != 'cancelled' %}
+            <form method="post" action="{% url 'manager_portal:shipment_dispatch' shipment.pk %}">
+              {% csrf_token %}
+              <button type="submit" class="inline-flex items-center rounded-xl bg-cyan-500 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-cyan-400">
+                Провести dispatch
+              </button>
+            </form>
+          {% endif %}
+        </div>
       </div>
 
       {% if shipment_missing_fields %}
@@ -59,6 +71,7 @@
           <p>Плательщик доставки: {{ shipment.get_delivery_payer_display|default:shipment.delivery_payer|default:"—" }}</p>
           <p>Плановое получение: {{ shipment.planned_receipt_at|date:"d.m.Y"|default:"—" }}</p>
           <p>Трек: {{ shipment.tracking_number|default:"—" }}</p>
+          <p>Складской эффект: {{ shipment.inventory_consumed_at|date:"d.m.Y H:i"|default:"—" }}</p>
           <p>Отправлено: {{ shipment.shipped_at|date:"d.m.Y H:i"|default:"—" }}</p>
           <p>Доставлено: {{ shipment.delivered_at|date:"d.m.Y H:i"|default:"—" }}</p>
         </div>

@@ -10,20 +10,38 @@
           <p class="manager-page-kicker">Карточка сделки</p>
           <h2 class="mt-2 text-2xl font-semibold text-white">{{ finance_deal.contract_number|default:"Сделка" }}</h2>
         </div>
-        <a href="{% url 'manager_portal:finance_deal_list' %}" class="rounded-xl border border-slate-700 px-4 py-2 text-xs text-slate-300 hover:bg-slate-800">К списку</a>
+        <div class="flex flex-wrap gap-2">
+          {% if finance_deal.manager_deal_id %}
+            <form method="post">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="sync_lines">
+              <button type="submit" class="rounded-xl border border-slate-700 px-4 py-2 text-xs text-slate-300 hover:bg-slate-800">Синхронизировать строки</button>
+            </form>
+          {% endif %}
+          <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="recalculate_distribution">
+            <button type="submit" class="rounded-xl border border-cyan-500/40 px-4 py-2 text-xs text-cyan-200 hover:bg-cyan-500/10">Пересчитать</button>
+          </form>
+          <a href="{% url 'manager_portal:finance_deal_list' %}" class="rounded-xl border border-slate-700 px-4 py-2 text-xs text-slate-300 hover:bg-slate-800">К списку</a>
+        </div>
       </div>
-      <div class="mt-5 grid gap-4 md:grid-cols-3">
+      <div class="mt-5 grid gap-4 md:grid-cols-4">
         <div class="rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
           <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Выручка</p>
-          <p class="mt-2 text-2xl font-semibold text-white">{{ finance_deal.revenue }}</p>
+          <p class="mt-2 text-2xl font-semibold text-white">{{ finance_deal.revenue|rub }}</p>
         </div>
         <div class="rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
-          <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Маржа</p>
-          <p class="mt-2 text-2xl font-semibold text-white">{{ finance_deal.margin }}</p>
+          <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Валовая прибыль</p>
+          <p class="mt-2 text-2xl font-semibold text-white">{{ finance_deal.gross_profit|rub }}</p>
         </div>
         <div class="rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
-          <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Доля партнера</p>
-          <p class="mt-2 text-2xl font-semibold text-white">{{ finance_deal.partner_share_amount|rub }}</p>
+          <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Плановая распределяемая прибыль</p>
+          <p class="mt-2 text-2xl font-semibold text-white">{{ finance_deal.planned_distributable_profit_total|rub }}</p>
+        </div>
+        <div class="rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
+          <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Фактическая распределяемая прибыль</p>
+          <p class="mt-2 text-2xl font-semibold text-white">{{ finance_deal.actual_distributable_profit_total|rub }}</p>
         </div>
       </div>
     </section>
@@ -47,7 +65,8 @@
           <div class="flex items-start justify-between gap-4"><span class="text-slate-500">Связанный документ</span><span class="text-right text-white">{% if finance_deal.linked_document_id %}<a href="{% url 'manager_portal:contracts_detail' finance_deal.linked_document_id %}" class="text-cyan-300 hover:text-cyan-200">{{ finance_deal.linked_document.number|default:finance_deal.linked_document.title }}</a>{% else %}—{% endif %}</span></div>
           <div class="flex items-start justify-between gap-4"><span class="text-slate-500">Способ оплаты</span><span class="text-right text-white">{{ finance_deal.payment_method|default:"—" }}</span></div>
           <div class="flex items-start justify-between gap-4"><span class="text-slate-500">Статус оплаты</span><span class="text-right text-white">{{ finance_deal.payment_state|default:"—" }}</span></div>
-          <div class="flex items-start justify-between gap-4"><span class="text-slate-500">Ожидаемая маржа</span><span class="text-right text-white">{{ finance_deal.expected_margin_snapshot }}</span></div>
+          <div class="flex items-start justify-between gap-4"><span class="text-slate-500">Схема распределения</span><span class="text-right text-white">{{ finance_deal.distribution_scheme_name_snapshot|default:"legacy / не задана" }}{% if finance_deal.distribution_scheme_version_snapshot %} · v{{ finance_deal.distribution_scheme_version_snapshot }}{% endif %}</span></div>
+          <div class="flex items-start justify-between gap-4"><span class="text-slate-500">Ожидаемая распределяемая прибыль</span><span class="text-right text-white">{{ finance_deal.expected_distributable_profit_snapshot|rub }}</span></div>
           <div class="flex items-start justify-between gap-4"><span class="text-slate-500">Позиций в snapshot</span><span class="text-right text-white">{{ finance_snapshot.items|length|default:"0" }}</span></div>
         </div>
         {% if finance_snapshot.expense_hints %}
@@ -80,6 +99,134 @@
     </div>
 
     <section class="manager-panel rounded-3xl p-6">
+      <div class="flex items-center justify-between gap-4">
+        <div>
+          <h3 class="text-xl font-semibold text-white">Строки сделки</h3>
+          <p class="mt-2 text-sm text-slate-400">Строки только отражают сделку. Состав товаров редактируется в сделке, а здесь показывается финансовая проекция с плановой и фактической себестоимостью.</p>
+        </div>
+        <span class="manager-pill">Распределяемая прибыль {{ finance_deal.distributable_profit|rub }}</span>
+      </div>
+
+      {% manager_table wrapper_class="mt-6" table_class="min-w-[96rem] text-sm text-slate-300" %}
+          <thead class="text-left text-xs uppercase tracking-[0.18em] text-slate-500">
+            <tr>
+              <th class="pb-3 pr-4">#</th>
+              <th class="pb-3 pr-4">Товар</th>
+              <th class="pb-3 pr-4">Кол-во</th>
+              <th class="pb-3 pr-4">Статус себест.</th>
+              <th class="pb-3 pr-4">План</th>
+              <th class="pb-3 pr-4">Факт</th>
+              <th class="pb-3 pr-4">Эффективная</th>
+              <th class="pb-3 pr-4">Продажа</th>
+              <th class="pb-3 pr-4">Владелец</th>
+              <th class="pb-3 pr-4">Статус</th>
+              <th class="pb-3 pr-4">Доставка</th>
+              <th class="pb-3 pr-4">Выручка</th>
+              <th class="pb-3 pr-4">План. себестоим.</th>
+              <th class="pb-3 pr-4">Факт. себестоим.</th>
+              <th class="pb-3 pr-4">План. валовая прибыль</th>
+              <th class="pb-3 pr-4">Факт. валовая прибыль</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in finance_line_rows %}
+              <tr class="align-top">
+                <td class="py-3 pr-4">{{ row.line.sort_order }}</td>
+                <td class="py-3 pr-4">
+                  <div class="font-medium text-white">{{ row.line.product_name }}</div>
+                  {% if row.line.order_item_id %}
+                    <div class="mt-1 text-xs text-slate-500">order item #{{ row.line.order_item_id }}</div>
+                  {% endif %}
+                </td>
+                <td class="py-3 pr-4">{{ row.line.quantity }}</td>
+                <td class="py-3 pr-4">{{ row.line.get_cost_status_display }}</td>
+                <td class="py-3 pr-4">{{ row.line.planned_unit_cost|rub }}</td>
+                <td class="py-3 pr-4">{{ row.line.actual_unit_cost|rub }}</td>
+                <td class="py-3 pr-4">{{ row.line.unit_cost_price|rub }}</td>
+                <td class="py-3 pr-4">{{ row.line.unit_sale_price|rub }}</td>
+                <td class="py-3 pr-4">{{ row.line.owner_alias.display_name|default:"—" }}</td>
+                <td class="py-3 pr-4">{{ row.line.line_status|default:"—" }}</td>
+                <td class="py-3 pr-4">{{ row.line.delivery_status|default:"—" }}</td>
+                <td class="py-3 pr-4">{{ row.line.sale_total|rub }}</td>
+                <td class="py-3 pr-4">{{ row.line.planned_cost_total|rub }}</td>
+                <td class="py-3 pr-4">{{ row.line.actual_cost_total|rub }}</td>
+                <td class="py-3 pr-4">{{ row.line.planned_gross_profit_total|rub }}</td>
+                <td class="py-3 pr-4 font-medium text-white">{{ row.line.actual_gross_profit_total|rub }}</td>
+              </tr>
+            {% empty %}
+              {% include "manager_portal/_empty_state.html" with colspan=15 empty_state_title="Строк пока нет" empty_state_description="Добавьте товары в сделке и синхронизируйте финансовый кейс." %}
+            {% endfor %}
+          </tbody>
+      {% endmanager_table %}
+    </section>
+
+    <section class="manager-panel rounded-3xl p-6">
+      <div class="flex items-center justify-between gap-4">
+        <div>
+          <h3 class="text-xl font-semibold text-white">Как устроены расчёты</h3>
+          <p class="mt-2 text-sm text-slate-400">Сохраняется снимок формулы, базы расчёта и итоговой суммы по каждому участнику.</p>
+        </div>
+        <span class="manager-pill {% if finance_distribution_state.is_converged %}border-emerald-500/30 text-emerald-200{% else %}border-amber-500/30 text-amber-200{% endif %}">
+          {% if finance_distribution_state.is_converged %}Сходимость OK{% else %}Проверьте сходимость{% endif %}
+        </span>
+      </div>
+      <div class="mt-4 grid gap-3 md:grid-cols-3">
+        <div class="rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
+          <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Распределяемая прибыль сделки</p>
+          <p class="mt-2 text-xl font-semibold text-white">{{ finance_distribution_state.distributable_profit|default:finance_deal.distributable_profit|rub }}</p>
+        </div>
+        <div class="rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
+          <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Сумма долей</p>
+          <p class="mt-2 text-xl font-semibold text-white">{{ finance_distribution_state.sum_of_shares|default:finance_deal.partner_share_amount|rub }}</p>
+        </div>
+        <div class="rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
+          <p class="text-xs uppercase tracking-[0.18em] text-slate-500">Схема</p>
+          <p class="mt-2 text-xl font-semibold text-white">{{ finance_distribution_state.scheme_name|default:finance_deal.distribution_scheme_name_snapshot|default:"legacy" }}{% if finance_distribution_state.scheme_version %} · v{{ finance_distribution_state.scheme_version }}{% endif %}</p>
+        </div>
+      </div>
+      <div class="mt-6 space-y-4">
+        {% for row in finance_share_rows %}
+          <article class="rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
+            <div class="grid gap-4 xl:grid-cols-[1fr_auto]">
+              <div>
+                <div class="flex items-start justify-between gap-4">
+                  <div>
+                    <p class="text-base font-semibold text-white">{{ row.share.participant_name_snapshot }}</p>
+                    <p class="mt-1 text-sm text-slate-400">{{ row.share.formula_label|default:"Ручной расчёт" }}</p>
+                  </div>
+                  <span class="manager-pill shrink-0">{{ row.share.final_amount|rub }}</span>
+                </div>
+                <div class="mt-4 grid gap-3 md:grid-cols-3">
+                  <div class="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-3 text-sm">
+                    <p class="text-[0.68rem] uppercase tracking-[0.16em] text-slate-500">База</p>
+                    <p class="mt-2 font-medium text-white">{{ row.share.base_amount|rub }}</p>
+                  </div>
+                  <div class="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-3 text-sm">
+                    <p class="text-[0.68rem] uppercase tracking-[0.16em] text-slate-500">Рассчитано</p>
+                    <p class="mt-2 font-medium text-white">{{ row.share.calculated_amount|rub }}</p>
+                  </div>
+                  <div class="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-3 text-sm">
+                    <p class="text-[0.68rem] uppercase tracking-[0.16em] text-slate-500">Override</p>
+                    <p class="mt-2 font-medium text-white">{{ row.share.manual_amount_override|default:"—" }}</p>
+                  </div>
+                </div>
+              </div>
+              <form method="post" class="grid gap-4 xl:min-w-[21rem] xl:self-start">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="update_share">
+                <input type="hidden" name="share_id" value="{{ row.share.pk }}">
+                {% include "manager_portal/_form_fields.html" with form=row.form %}
+                <button type="submit" class="rounded-xl border border-slate-700 px-4 py-3 text-sm text-slate-200 hover:bg-slate-800">Сохранить override</button>
+              </form>
+            </div>
+          </article>
+        {% empty %}
+          {% include "manager_portal/_empty_state.html" with empty_state_title="Распределение пока не создано" empty_state_description="Нажмите «Пересчитать», чтобы сохранить снимок долей по участникам." %}
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="manager-panel rounded-3xl p-6">
       <h3 class="text-xl font-semibold text-white">Расходы по сделке</h3>
       {% manager_table wrapper_class="mt-5" table_class="min-w-full text-sm text-slate-300" %}
           <thead class="text-left text-xs uppercase tracking-[0.18em] text-slate-500">
@@ -87,6 +234,8 @@
               <th class="pb-3 pr-4">Дата</th>
               <th class="pb-3 pr-4">Сторона</th>
               <th class="pb-3 pr-4">Категория</th>
+              <th class="pb-3 pr-4">Влияет на direct expenses</th>
+              <th class="pb-3 pr-4">Refund policy</th>
               <th class="pb-3 pr-4">Сумма</th>
               <th class="pb-3 pr-4">Комментарий</th>
             </tr>
@@ -97,11 +246,53 @@
                 <td class="py-3 pr-4">{{ expense.date }}</td>
                 <td class="py-3 pr-4">{{ expense.get_expense_side_display }}</td>
                 <td class="py-3 pr-4">{{ expense.category.name }}</td>
+                <td class="py-3 pr-4">{{ expense.affects_direct_expenses|yesno:"Да,Нет" }}</td>
+                <td class="py-3 pr-4">{{ expense.get_refund_policy_display }}</td>
                 <td class="py-3 pr-4">{{ expense.amount|rub }}</td>
                 <td class="py-3 pr-4">{{ expense.comment|default:"—" }}</td>
               </tr>
             {% empty %}
-              {% include "manager_portal/_empty_state.html" with colspan=5 %}
+              {% include "manager_portal/_empty_state.html" with colspan=7 %}
+            {% endfor %}
+          </tbody>
+      {% endmanager_table %}
+    </section>
+
+    <section class="manager-panel rounded-3xl p-6">
+      <h3 class="text-xl font-semibold text-white">Корректировки и reverse-flow</h3>
+      {% manager_table wrapper_class="mt-5" table_class="min-w-full text-sm text-slate-300" %}
+          <thead class="text-left text-xs uppercase tracking-[0.18em] text-slate-500">
+            <tr>
+              <th class="pb-3 pr-4">Дата</th>
+              <th class="pb-3 pr-4">Тип</th>
+              <th class="pb-3 pr-4">Строка</th>
+              <th class="pb-3 pr-4">Qty Δ</th>
+              <th class="pb-3 pr-4">Revenue Δ</th>
+              <th class="pb-3 pr-4">COGS Δ</th>
+              <th class="pb-3 pr-4">Direct expenses Δ</th>
+              <th class="pb-3 pr-4">Документ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for adjustment in finance_adjustments %}
+              <tr>
+                <td class="py-3 pr-4">{{ adjustment.created_at|date:"d.m.Y H:i" }}</td>
+                <td class="py-3 pr-4">{{ adjustment.get_adjustment_kind_display }}</td>
+                <td class="py-3 pr-4">{{ adjustment.finance_line.product_name|default:"—" }}</td>
+                <td class="py-3 pr-4">{{ adjustment.quantity_delta }}</td>
+                <td class="py-3 pr-4">{{ adjustment.revenue_delta|rub }}</td>
+                <td class="py-3 pr-4">{{ adjustment.cost_of_goods_delta|rub }}</td>
+                <td class="py-3 pr-4">{{ adjustment.direct_expenses_delta|rub }}</td>
+                <td class="py-3 pr-4">
+                  {% if adjustment.related_document_id %}
+                    <a href="{% url 'manager_portal:contracts_detail' adjustment.related_document_id %}" class="text-cyan-300 hover:text-cyan-200">{{ adjustment.related_document.number|default:adjustment.related_document.title }}</a>
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+              </tr>
+            {% empty %}
+              {% include "manager_portal/_empty_state.html" with colspan=8 empty_state_title="Корректировок пока нет" empty_state_description="Reverse-flow и replacement adjustments появятся здесь." %}
             {% endfor %}
           </tbody>
       {% endmanager_table %}

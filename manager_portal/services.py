@@ -15,7 +15,7 @@ from django.utils import timezone
 
 from accounts.services import normalize_email, normalize_phone
 from catalog.models import Product, ProductStock, ProductVariant
-from orders.models import Order
+from orders.models import Order, OrderItem
 from orders.services import sync_order_state_side_effects
 from .status_system import (
     SEMANTIC_TONE_ACTIVE,
@@ -35,16 +35,25 @@ from .models import (
     DealActivity,
     DealSavedView,
     FinanceDeal,
+    FinanceDealAdjustment,
+    FinanceDealLine,
+    FinanceDealShare,
     FinanceDealType,
+    FinanceDistributionRule,
+    FinanceDistributionScheme,
     FinanceExpense,
     FinancePayout,
     InventoryBalance,
+    InventoryLot,
     InventoryMovement,
     ManagerClient,
     ManagerDeal,
+    ManagerDealParticipant,
+    ManagerPersonAlias,
     PurchaseItem,
     Reservation,
     ReservationItem,
+    SaleLineAllocation,
     Shipment,
     ShipmentItem,
     Warehouse,
@@ -55,6 +64,34 @@ ACTIVE_RESERVATION_STATUSES = {
     Reservation.STATUS_DRAFT,
     Reservation.STATUS_ACTIVE,
     Reservation.STATUS_PARTIAL,
+}
+SUPPLY_COVERAGE_STATE_COVERED_BY_STOCK = 'covered_by_stock'
+SUPPLY_COVERAGE_STATE_COVERED_BY_INCOMING = 'covered_by_incoming'
+SUPPLY_COVERAGE_STATE_COVERED_BY_PROCUREMENT = 'covered_by_procurement'
+SUPPLY_COVERAGE_STATE_UNCOVERED = 'uncovered'
+SUPPLY_COVERAGE_STATES = (
+    SUPPLY_COVERAGE_STATE_COVERED_BY_STOCK,
+    SUPPLY_COVERAGE_STATE_COVERED_BY_INCOMING,
+    SUPPLY_COVERAGE_STATE_COVERED_BY_PROCUREMENT,
+    SUPPLY_COVERAGE_STATE_UNCOVERED,
+)
+SUPPLY_COVERAGE_STATE_META = {
+    SUPPLY_COVERAGE_STATE_COVERED_BY_STOCK: {
+        'label': 'Покрыто складом',
+        'tone': 'ready',
+    },
+    SUPPLY_COVERAGE_STATE_COVERED_BY_INCOMING: {
+        'label': 'Покрыто incoming',
+        'tone': 'working',
+    },
+    SUPPLY_COVERAGE_STATE_COVERED_BY_PROCUREMENT: {
+        'label': 'В закупке',
+        'tone': 'working',
+    },
+    SUPPLY_COVERAGE_STATE_UNCOVERED: {
+        'label': 'Не обеспечена',
+        'tone': 'blocked',
+    },
 }
 INBOUND_CARGO_STATUSES = {
     Cargo.STATUS_IN_TRANSIT,
@@ -478,6 +515,7 @@ def order_items_snapshot(order):
         snapshot.append(
             {
                 'order_item_id': item.id,
+                'line_type': item.line_type,
                 'product_id': item.product_id,
                 'variant_id': item.variant_id,
                 'sku': item.sku,
@@ -486,7 +524,10 @@ def order_items_snapshot(order):
                 'unit': 'шт.',
                 'price': str(item.unit_price),
                 'line_total': str(item.subtotal),
-                'purchase_price': str(item.purchase_price),
+                'planned_unit_cost': str(item.planned_unit_cost),
+                'actual_unit_cost': str(item.actual_unit_cost),
+                'cost_status': item.cost_status,
+                'purchase_price': str(item.effective_unit_cost),
                 'is_on_request': bool(item.is_on_request),
             }
         )
@@ -494,32 +535,248 @@ def order_items_snapshot(order):
 
 
 def reservation_coverage_snapshot(order):
-    reserved_by_item = defaultdict(int)
-    for reservation_item in ReservationItem.objects.filter(
-        reservation__linked_order=order,
-        reservation__status__in=ACTIVE_RESERVATION_STATUSES,
-        order_item__isnull=False,
-    ):
-        reserved_by_item[reservation_item.order_item_id] += reservation_item.quantity
+    supply_snapshot = order_supply_state_snapshot(order)
     lines = []
-    for item in order.items.select_related('product', 'variant').all():
-        reserved_quantity = reserved_by_item.get(item.id, 0)
-        missing_quantity = max(item.quantity - reserved_quantity, 0)
+    for line in supply_snapshot['lines']:
         lines.append(
             {
-                'order_item_id': item.id,
-                'product_name': item.resolved_product_name,
-                'variant_name': item.resolved_variant_name,
-                'ordered_quantity': item.quantity,
-                'reserved_quantity': reserved_quantity,
-                'missing_quantity': missing_quantity,
-                'is_fully_reserved': missing_quantity == 0 or item.is_on_request or not item.product_id,
+                'order_item_id': line['order_item_id'],
+                'product_name': line['product_name'],
+                'variant_name': line['variant_name'],
+                'ordered_quantity': line['ordered_quantity'],
+                'reserved_quantity': line['reserved_quantity'],
+                'reserved_stock_quantity': line['reserved_stock_quantity'],
+                'reserved_incoming_quantity': line['reserved_incoming_quantity'],
+                'purchase_quantity': line['purchase_quantity'],
+                'purchase_received_quantity': line['purchase_received_quantity'],
+                'cargo_quantity': line['cargo_quantity'],
+                'cargo_received_quantity': line['cargo_received_quantity'],
+                'shipment_quantity': line['shipment_quantity'],
+                'is_supply_tracked': line['is_supply_tracked'],
+                'coverage_state': line['coverage_state'],
+                'coverage_label': line['coverage_label'],
+                'coverage_tone': line['coverage_tone'],
+                'coverage_summary': line['coverage_summary'],
+                'missing_quantity': line['missing_quantity'],
             }
         )
     return {
         'lines': lines,
-        'is_complete': all(line['is_fully_reserved'] for line in lines),
-        'missing_lines': [line for line in lines if line['missing_quantity'] > 0],
+        'tracked_line_count': supply_snapshot['tracked_line_count'],
+        'excluded_line_count': supply_snapshot['excluded_line_count'],
+        'covered_by_stock_count': supply_snapshot['covered_by_stock_count'],
+        'covered_by_incoming_count': supply_snapshot['covered_by_incoming_count'],
+        'covered_by_procurement_count': supply_snapshot['covered_by_procurement_count'],
+        'uncovered_count': supply_snapshot['uncovered_count'],
+        'uncovered_lines': [line for line in lines if line['coverage_state'] == SUPPLY_COVERAGE_STATE_UNCOVERED],
+    }
+
+
+def order_supply_state_snapshot(order):
+    order_items = list(order.items.select_related('product', 'variant').all())
+    if not order_items:
+        return {
+            'lines': [],
+            'tracked_line_count': 0,
+            'excluded_line_count': 0,
+            'covered_by_stock_count': 0,
+            'covered_by_incoming_count': 0,
+            'covered_by_procurement_count': 0,
+            'uncovered_count': 0,
+        }
+
+    catalog_product_ids = [item.product_id for item in order_items if item.line_type == OrderItem.LINE_TYPE_CATALOG and item.product_id]
+    stock_map = {}
+    reserved_stock_map = {}
+    if catalog_product_ids:
+        stock_rows = (
+            ProductStock.objects
+            .filter(product_id__in=catalog_product_ids)
+            .values('product_id', 'variant_id')
+            .annotate(total=models.Sum('quantity'))
+        )
+        stock_map = {
+            (row['product_id'], row['variant_id']): int(row['total'] or 0)
+            for row in stock_rows
+        }
+        reserved_stock_rows = (
+            ReservationItem.objects
+            .filter(
+                reservation__status__in=ACTIVE_RESERVATION_STATUSES,
+                reservation__source_type=Reservation.SOURCE_WAREHOUSE,
+                product_id__in=catalog_product_ids,
+            )
+            .values('product_id', 'variant_id')
+            .annotate(total=models.Sum('quantity'))
+        )
+        reserved_stock_map = {
+            (row['product_id'], row['variant_id']): int(row['total'] or 0)
+            for row in reserved_stock_rows
+        }
+
+    reserved_by_item = defaultdict(int)
+    reserved_stock_by_item = defaultdict(int)
+    reserved_incoming_by_item = defaultdict(int)
+    for reservation_item in ReservationItem.objects.filter(
+        reservation__linked_order=order,
+        reservation__status__in=ACTIVE_RESERVATION_STATUSES,
+        order_item__isnull=False,
+    ).select_related('reservation'):
+        reserved_quantity = int(reservation_item.active_reserved_quantity or 0)
+        if reserved_quantity <= 0:
+            continue
+        reserved_by_item[reservation_item.order_item_id] += reserved_quantity
+        if reservation_item.reservation.source_type == Reservation.SOURCE_WAREHOUSE:
+            reserved_stock_by_item[reservation_item.order_item_id] += reserved_quantity
+        elif reservation_item.reservation.source_type == Reservation.SOURCE_CARGO:
+            reserved_incoming_by_item[reservation_item.order_item_id] += reserved_quantity
+
+    purchase_by_item = defaultdict(int)
+    purchase_received_by_item = defaultdict(int)
+    for purchase_item in PurchaseItem.objects.filter(order_item__order=order):
+        purchase_by_item[purchase_item.order_item_id] += purchase_item.active_quantity
+        purchase_received_by_item[purchase_item.order_item_id] += min(
+            int(purchase_item.received_quantity or 0),
+            int(purchase_item.active_quantity or 0),
+        )
+
+    cargo_quantity_by_item = defaultdict(int)
+    cargo_received_by_item = defaultdict(int)
+    for cargo_item in CargoItem.objects.filter(
+        purchase_item__order_item__order=order,
+    ).select_related('purchase_item'):
+        order_item_id = cargo_item.purchase_item.order_item_id if cargo_item.purchase_item_id else None
+        if order_item_id:
+            cargo_quantity_by_item[order_item_id] += cargo_item.quantity
+            cargo_received_by_item[order_item_id] += cargo_item.received_quantity
+
+    shipment_quantity_by_item = defaultdict(int)
+    for shipment_item in ShipmentItem.objects.filter(
+        shipment__order=order,
+        shipment__inventory_consumed_at__isnull=False,
+    ).exclude(
+        shipment__status=Shipment.STATUS_CANCELLED,
+    ).select_related('reservation_item__order_item'):
+        order_item_id = shipment_item.order_item_id or (
+            shipment_item.reservation_item.order_item_id
+            if shipment_item.reservation_item_id and shipment_item.reservation_item
+            else None
+        )
+        if order_item_id:
+            shipment_quantity_by_item[order_item_id] += shipment_item.quantity
+
+    lines = []
+    counts = {
+        'tracked_line_count': 0,
+        'excluded_line_count': 0,
+        'covered_by_stock_count': 0,
+        'covered_by_incoming_count': 0,
+        'covered_by_procurement_count': 0,
+        'uncovered_count': 0,
+    }
+
+    for item in order_items:
+        is_supply_tracked = item.line_type == OrderItem.LINE_TYPE_CATALOG and bool(item.product_id)
+        ordered_quantity = int(item.active_quantity or 0)
+        reserved_quantity = int(reserved_by_item.get(item.id, 0))
+        reserved_stock_quantity = int(reserved_stock_by_item.get(item.id, 0))
+        reserved_incoming_quantity = int(reserved_incoming_by_item.get(item.id, 0))
+        purchase_quantity = int(purchase_by_item.get(item.id, 0))
+        purchase_received_quantity = int(purchase_received_by_item.get(item.id, 0))
+        cargo_quantity = int(cargo_quantity_by_item.get(item.id, 0))
+        cargo_received_quantity = int(cargo_received_by_item.get(item.id, 0))
+        shipment_quantity = int(shipment_quantity_by_item.get(item.id, 0))
+        stock_total = int(stock_map.get((item.product_id, item.variant_id), 0)) if is_supply_tracked else 0
+        free_stock = (
+            max(stock_total - int(reserved_stock_map.get((item.product_id, item.variant_id), 0)), 0)
+            if is_supply_tracked
+            else 0
+        )
+
+        if not is_supply_tracked:
+            counts['excluded_line_count'] += 1
+            lines.append(
+                {
+                    'order_item_id': item.id,
+                    'item': item,
+                    'product_name': item.resolved_product_name,
+                    'variant_name': item.resolved_variant_name,
+                    'ordered_quantity': ordered_quantity,
+                    'reserved_quantity': 0,
+                    'reserved_stock_quantity': 0,
+                    'reserved_incoming_quantity': 0,
+                    'purchase_quantity': 0,
+                    'purchase_received_quantity': 0,
+                    'cargo_quantity': 0,
+                    'cargo_received_quantity': 0,
+                    'shipment_quantity': 0,
+                    'stock_total': 0,
+                    'free_stock': 0,
+                    'is_supply_tracked': False,
+                    'coverage_state': None,
+                    'coverage_label': 'Вне supply contour',
+                    'coverage_tone': 'neutral',
+                    'coverage_summary': 'Позиция введена вручную и не участвует в складском, резервном и закупочном контуре.',
+                    'missing_quantity': 0,
+                }
+            )
+            continue
+
+        counts['tracked_line_count'] += 1
+        if ordered_quantity <= 0:
+            coverage_state = SUPPLY_COVERAGE_STATE_COVERED_BY_STOCK
+        elif shipment_quantity >= ordered_quantity or reserved_stock_quantity >= ordered_quantity:
+            coverage_state = SUPPLY_COVERAGE_STATE_COVERED_BY_STOCK
+        elif reserved_incoming_quantity >= ordered_quantity:
+            coverage_state = SUPPLY_COVERAGE_STATE_COVERED_BY_INCOMING
+        elif purchase_quantity > 0:
+            coverage_state = SUPPLY_COVERAGE_STATE_COVERED_BY_PROCUREMENT
+        else:
+            coverage_state = SUPPLY_COVERAGE_STATE_UNCOVERED
+        counts[f'{coverage_state}_count'] += 1
+
+        coverage_parts = []
+        if reserved_stock_quantity:
+            coverage_parts.append(f'Склад {reserved_stock_quantity}/{ordered_quantity}')
+        if reserved_incoming_quantity:
+            coverage_parts.append(f'Incoming {reserved_incoming_quantity}/{ordered_quantity}')
+        if purchase_quantity:
+            coverage_parts.append(f'Закупка {purchase_received_quantity}/{purchase_quantity}')
+        if cargo_quantity:
+            coverage_parts.append(f'Груз {cargo_received_quantity}/{cargo_quantity}')
+        if shipment_quantity:
+            coverage_parts.append(f'Отгрузка {shipment_quantity}/{ordered_quantity}')
+        if not coverage_parts:
+            coverage_parts.append('Связей пока нет')
+
+        lines.append(
+            {
+                'order_item_id': item.id,
+                'item': item,
+                'product_name': item.resolved_product_name,
+                'variant_name': item.resolved_variant_name,
+                'ordered_quantity': ordered_quantity,
+                'reserved_quantity': reserved_quantity,
+                'reserved_stock_quantity': reserved_stock_quantity,
+                'reserved_incoming_quantity': reserved_incoming_quantity,
+                'purchase_quantity': purchase_quantity,
+                'purchase_received_quantity': purchase_received_quantity,
+                'cargo_quantity': cargo_quantity,
+                'cargo_received_quantity': cargo_received_quantity,
+                'shipment_quantity': shipment_quantity,
+                'stock_total': stock_total,
+                'free_stock': free_stock,
+                'is_supply_tracked': True,
+                'coverage_state': coverage_state,
+                'coverage_label': SUPPLY_COVERAGE_STATE_META[coverage_state]['label'],
+                'coverage_tone': SUPPLY_COVERAGE_STATE_META[coverage_state]['tone'],
+                'coverage_summary': ' · '.join(coverage_parts),
+                'missing_quantity': ordered_quantity if coverage_state == SUPPLY_COVERAGE_STATE_UNCOVERED else 0,
+            }
+        )
+    return {
+        'lines': lines,
+        **counts,
     }
 
 
@@ -589,7 +846,7 @@ def finance_case_expense_hints(deal):
     if deal.order.payment_status != Order.PAYMENT_STATUS_PAID:
         hints.append('Контроль оплаты до закрытия кейса')
     if deal.expected_margin <= 0:
-        hints.append('Маржа не положительная, проверь себестоимость и скидки')
+        hints.append('Распределяемая прибыль не положительная, проверь себестоимость и скидки')
     return hints
 
 
@@ -602,6 +859,7 @@ def build_finance_case_snapshot(deal, *, linked_document=None):
         'customer_source': deal.customer_source,
         'goods_total': str(deal.goods_total),
         'delivery_cost': str(deal.order.delivery_cost),
+        'expected_distributable_profit': str(deal.expected_margin),
         'expected_margin': str(deal.expected_margin),
         'payment_method': deal.order.payment_method,
         'payment_status': deal.order.payment_status,
@@ -610,6 +868,415 @@ def build_finance_case_snapshot(deal, *, linked_document=None):
         'expense_hints': finance_case_expense_hints(deal),
         'items': order_items_snapshot(deal.order),
     }
+
+
+def active_finance_distribution_scheme():
+    return FinanceDistributionScheme.objects.prefetch_related('rules').filter(is_active=True).order_by('name', '-version', 'id').first()
+
+
+def clone_finance_distribution_scheme(source_scheme, *, activate=False):
+    next_version = (
+        FinanceDistributionScheme.objects.filter(name=source_scheme.name).aggregate(max_version=models.Max('version')).get('max_version')
+        or 0
+    ) + 1
+    new_scheme = FinanceDistributionScheme.objects.create(
+        name=source_scheme.name,
+        version=next_version,
+        is_active=bool(activate),
+        description=source_scheme.description,
+    )
+    rule_mapping = {}
+    source_rules = list(source_scheme.rules.order_by('position', 'id'))
+    for rule in source_rules:
+        cloned = FinanceDistributionRule.objects.create(
+            scheme=new_scheme,
+            participant_alias=rule.participant_alias,
+            position=rule.position,
+            rule_type=rule.rule_type,
+            percent=rule.percent,
+            owner_alias=rule.owner_alias,
+            note=rule.note,
+            is_active=rule.is_active,
+        )
+        rule_mapping[rule.pk] = cloned
+    for rule in source_rules:
+        if rule.reference_rule_id:
+            cloned = rule_mapping[rule.pk]
+            cloned.reference_rule = rule_mapping.get(rule.reference_rule_id)
+            cloned.save(update_fields=['reference_rule', 'updated_at'])
+    return new_scheme
+
+
+def ensure_finance_deal_distribution_scheme(finance_deal):
+    if finance_deal.distribution_scheme_id:
+        return finance_deal.distribution_scheme
+    scheme = active_finance_distribution_scheme()
+    if scheme is None:
+        return None
+    finance_deal.distribution_scheme = scheme
+    finance_deal.distribution_scheme_name_snapshot = scheme.name
+    finance_deal.distribution_scheme_version_snapshot = scheme.version
+    if finance_deal.pk:
+        finance_deal.save(
+            update_fields=[
+                'distribution_scheme',
+                'distribution_scheme_name_snapshot',
+                'distribution_scheme_version_snapshot',
+                'updated_at',
+            ]
+        )
+    return scheme
+
+
+def sync_finance_deal_lines_from_manager_deal(finance_deal):
+    if not finance_deal.pk or not finance_deal.manager_deal_id:
+        return []
+    order_items = list(finance_deal.manager_deal.order.items.select_related('product', 'variant').all())
+    current_order_item_ids = {order_item.id for order_item in order_items}
+    owner_map = {
+        participant.order_item_id: participant.person_alias
+        for participant in finance_deal.manager_deal.participants.select_related('person_alias').filter(
+            role=ManagerDealParticipant.ROLE_ITEM_OWNER,
+            order_item__isnull=False,
+        )
+    }
+    existing_lines = {line.order_item_id: line for line in finance_deal.lines.select_related('order_item', 'owner_alias').all() if line.order_item_id}
+    created_or_updated = []
+    for index, order_item in enumerate(order_items, start=1):
+        defaults = {
+            'finance_deal': finance_deal,
+            'line_type': order_item.line_type,
+            'product': order_item.product,
+            'variant': order_item.variant,
+            'sort_order': index,
+            'product_name': order_item.display_name,
+            'custom_sku': order_item.custom_sku,
+            'quantity': order_item.active_quantity,
+            'unit_cost_price': order_item.effective_unit_cost,
+            'unit_sale_price': order_item.unit_price,
+            'planned_unit_cost': order_item.planned_unit_cost,
+            'actual_unit_cost': order_item.actual_unit_cost,
+            'cost_status': order_item.cost_status,
+            'owner_alias': owner_map.get(order_item.id),
+            'line_status': finance_deal.manager_deal.get_deal_status_display(),
+            'delivery_status': finance_deal.manager_deal.delivery_provider_name or finance_deal.manager_deal.get_shipment_status_display(),
+            'source_payload': {
+                'source': 'manager_deal',
+                'order_item_id': order_item.id,
+            },
+        }
+        line = existing_lines.get(order_item.id)
+        if line is None:
+            line = FinanceDealLine.objects.create(order_item=order_item, **defaults)
+        else:
+            changed_fields = []
+            for field_name, value in defaults.items():
+                current_value = getattr(line, f'{field_name}_id') if field_name == 'owner_alias' and value is not None else getattr(line, field_name)
+                expected_value = value.pk if field_name == 'owner_alias' and value is not None else value
+                if current_value != expected_value:
+                    setattr(line, field_name, value)
+                    changed_fields.append(field_name)
+            if changed_fields:
+                line.save(update_fields=changed_fields + ['updated_at'])
+        created_or_updated.append(line)
+    stale_line_ids = []
+    for line in finance_deal.lines.only('id', 'order_item_id', 'source_payload').all():
+        source_payload = line.source_payload or {}
+        source_order_item_id = source_payload.get('order_item_id')
+        tracked_order_item_id = line.order_item_id or source_order_item_id
+        if source_payload.get('source') == 'manager_deal' and tracked_order_item_id not in current_order_item_ids:
+            stale_line_ids.append(line.id)
+    if stale_line_ids:
+        FinanceDealLine.objects.filter(pk__in=stale_line_ids).delete()
+    return created_or_updated
+
+
+def create_finance_deal_line_from_order_item(
+    finance_deal,
+    *,
+    order_item,
+    owner_alias=None,
+    sort_order=0,
+    line_status='',
+    delivery_status='',
+    source_payload=None,
+):
+    return FinanceDealLine.objects.create(
+        finance_deal=finance_deal,
+        order_item=order_item,
+        line_type=order_item.line_type,
+        product=order_item.product,
+        variant=order_item.variant,
+        sort_order=sort_order,
+        product_name=order_item.display_name,
+        custom_sku=order_item.custom_sku,
+        quantity=order_item.active_quantity,
+        unit_cost_price=order_item.effective_unit_cost,
+        unit_sale_price=order_item.unit_price,
+        planned_unit_cost=order_item.planned_unit_cost,
+        actual_unit_cost=order_item.actual_unit_cost,
+        cost_status=order_item.cost_status,
+        owner_alias=owner_alias,
+        line_status=line_status,
+        delivery_status=delivery_status,
+        source_payload=source_payload or {},
+    )
+
+
+def _distribution_percent_label(value):
+    normalized = (Decimal(value or 0) * Decimal('100')).quantize(Decimal('0.01'))
+    return f'{normalized}%'
+
+
+def _rule_runtime_params(rule, existing_share):
+    override_payload = dict(existing_share.rule_params_override or {}) if existing_share is not None else {}
+    percent = Decimal(str(override_payload.get('percent', rule.percent or 0)))
+    owner_alias_id = override_payload.get('owner_alias_id') or rule.owner_alias_id
+    return {
+        'percent': percent,
+        'owner_alias_id': owner_alias_id,
+        'override_payload': override_payload,
+    }
+
+
+def recalculate_finance_deal_distribution(finance_deal):
+    if not finance_deal.pk:
+        return []
+    scheme = ensure_finance_deal_distribution_scheme(finance_deal)
+    if scheme is None:
+        return []
+    rules = list(
+        scheme.rules.select_related('participant_alias', 'owner_alias', 'reference_rule')
+        .filter(is_active=True)
+        .order_by('position', 'id')
+    )
+    if not rules:
+        return []
+    existing_shares = {
+        share.participant_alias_id: share
+        for share in finance_deal.shares.select_related('participant_alias', 'rule').all()
+        if share.participant_alias_id
+    }
+    lines = list(finance_deal.lines.select_related('owner_alias').all())
+    total_distributable_profit = _quantize_money(finance_deal.distributable_profit)
+    owner_gross_profit_map = defaultdict(lambda: MONEY_ZERO)
+    owner_quantity_map = defaultdict(int)
+    for line in lines:
+        owner_gross_profit_map[line.owner_alias_id] += _quantize_money(line.gross_profit_total)
+        owner_quantity_map[line.owner_alias_id] += int(line.quantity or 0)
+
+    result_rows = []
+    calculated_amounts_by_rule = {}
+    non_remainder_total = MONEY_ZERO
+    remainder_rows = []
+
+    for rule in rules:
+        existing_share = existing_shares.get(rule.participant_alias_id)
+        params = _rule_runtime_params(rule, existing_share)
+        percent = params['percent']
+        owner_alias_id = params['owner_alias_id']
+        manual_amount = _quantize_money(existing_share.manual_amount_override) if existing_share and existing_share.manual_amount_override is not None else None
+        base_amount = MONEY_ZERO
+        calculated_amount = MONEY_ZERO
+        quantity_basis = None
+        formula_label = ''
+
+        if rule.rule_type == FinanceDistributionRule.RULE_PERCENT_OWNER_MARGIN:
+            base_amount = _quantize_money(owner_gross_profit_map.get(owner_alias_id, MONEY_ZERO))
+            calculated_amount = _quantize_money(base_amount * percent)
+            quantity_basis = owner_quantity_map.get(owner_alias_id) or None
+            owner_label = rule.owner_alias.display_name if rule.owner_alias_id else '—'
+            if owner_alias_id and owner_alias_id != rule.owner_alias_id:
+                owner_label = ManagerPersonAlias.objects.filter(pk=owner_alias_id).values_list('display_name', flat=True).first() or owner_label
+            formula_label = f'{_distribution_percent_label(percent)} × валовая прибыль строк {owner_label}'
+        elif rule.rule_type == FinanceDistributionRule.RULE_PERCENT_TOTAL_MARGIN:
+            base_amount = total_distributable_profit
+            calculated_amount = _quantize_money(base_amount * percent)
+            formula_label = f'{_distribution_percent_label(percent)} × распределяемая прибыль сделки'
+        elif rule.rule_type == FinanceDistributionRule.RULE_PERCENT_REMAINDER_AFTER_RULE:
+            reference_amount = calculated_amounts_by_rule.get(rule.reference_rule_id, MONEY_ZERO)
+            base_amount = _quantize_money(total_distributable_profit - reference_amount)
+            calculated_amount = _quantize_money(base_amount * percent)
+            reference_name = rule.reference_rule.participant_alias.display_name if rule.reference_rule_id else 'предыдущего правила'
+            formula_label = f'{_distribution_percent_label(percent)} × (распределяемая прибыль - {reference_name})'
+        else:
+            formula_label = 'Равная доля остатка'
+
+        row = {
+            'rule': rule,
+            'existing_share': existing_share,
+            'manual_amount': manual_amount,
+            'base_amount': base_amount,
+            'calculated_amount': calculated_amount,
+            'final_amount': manual_amount if manual_amount is not None else calculated_amount,
+            'quantity_basis': quantity_basis,
+            'formula_label': formula_label,
+            'params': params,
+        }
+        if rule.rule_type == FinanceDistributionRule.RULE_EQUAL_SPLIT_REMAINDER:
+            remainder_rows.append(row)
+        else:
+            non_remainder_total += row['final_amount']
+            calculated_amounts_by_rule[rule.id] = row['final_amount']
+        result_rows.append(row)
+
+    manual_remainder_total = sum((row['manual_amount'] for row in remainder_rows if row['manual_amount'] is not None), MONEY_ZERO)
+    auto_remainder_rows = [row for row in remainder_rows if row['manual_amount'] is None]
+    remainder_pool = _quantize_money(total_distributable_profit - non_remainder_total - manual_remainder_total)
+    auto_remainder_amount = (
+        _quantize_money(remainder_pool / Decimal(len(auto_remainder_rows)))
+        if auto_remainder_rows
+        else MONEY_ZERO
+    )
+    for row in remainder_rows:
+        row['base_amount'] = remainder_pool if row['manual_amount'] is None else row['manual_amount']
+        row['calculated_amount'] = row['manual_amount'] if row['manual_amount'] is not None else auto_remainder_amount
+        row['final_amount'] = row['manual_amount'] if row['manual_amount'] is not None else auto_remainder_amount
+        calculated_amounts_by_rule[row['rule'].id] = row['final_amount']
+
+    share_total = sum((row['final_amount'] for row in result_rows), MONEY_ZERO)
+    delta = _quantize_money(total_distributable_profit - share_total)
+    if delta and result_rows:
+        adjust_target = next((row for row in reversed(result_rows) if row['manual_amount'] is None), result_rows[-1])
+        adjust_target['calculated_amount'] = _quantize_money(adjust_target['calculated_amount'] + delta)
+        adjust_target['final_amount'] = _quantize_money(adjust_target['final_amount'] + delta)
+
+    persisted_shares = []
+    used_participant_ids = set()
+    with transaction.atomic():
+        for row in result_rows:
+            rule = row['rule']
+            participant = rule.participant_alias
+            used_participant_ids.add(participant.id)
+            share = row['existing_share'] or FinanceDealShare(
+                finance_deal=finance_deal,
+                participant_alias=participant,
+            )
+            share.rule = rule
+            share.participant_name_snapshot = participant.display_name
+            share.calculation_type = rule.rule_type
+            share.formula_label = row['formula_label']
+            share.base_amount = _quantize_money(row['base_amount'])
+            share.calculated_amount = _quantize_money(row['calculated_amount'])
+            share.final_amount = _quantize_money(row['final_amount'])
+            share.quantity_basis = row['quantity_basis']
+            share.scheme_name_snapshot = scheme.name
+            share.scheme_version_snapshot = scheme.version
+            share.breakdown = {
+                'participant': participant.display_name,
+                'rule_type': rule.rule_type,
+                'percent': str(row['params']['percent']),
+                'owner_alias_id': row['params']['owner_alias_id'],
+                'base_amount': str(_quantize_money(row['base_amount'])),
+                'calculated_amount': str(_quantize_money(row['calculated_amount'])),
+                'final_amount': str(_quantize_money(row['final_amount'])),
+                'manual_override': row['manual_amount'] is not None,
+                'convergence_target': str(total_distributable_profit),
+            }
+            share.is_manual_override = share.manual_amount_override is not None or bool(share.rule_params_override)
+            share.save()
+            persisted_shares.append(share)
+
+        finance_deal.shares.exclude(participant_alias_id__in=used_participant_ids).delete()
+        distribution_state = {
+            'scheme_name': scheme.name,
+            'scheme_version': scheme.version,
+            'sum_of_shares': str(_quantize_money(sum((share.final_amount for share in persisted_shares), MONEY_ZERO))),
+            'distributable_profit': str(total_distributable_profit),
+            'margin': str(total_distributable_profit),
+            'is_converged': _quantize_money(sum((share.final_amount for share in persisted_shares), MONEY_ZERO)) == total_distributable_profit,
+        }
+        snapshot_data = dict(finance_deal.snapshot_data or {})
+        snapshot_data['distribution'] = distribution_state
+        FinanceDeal.objects.filter(pk=finance_deal.pk).update(
+            partner_share_amount=_quantize_money(sum((share.final_amount for share in persisted_shares), MONEY_ZERO)),
+            distribution_scheme_id=scheme.pk,
+            distribution_scheme_name_snapshot=scheme.name,
+            distribution_scheme_version_snapshot=scheme.version,
+            snapshot_data=snapshot_data,
+            updated_at=timezone.now(),
+        )
+    finance_deal.refresh_from_db()
+    return persisted_shares
+
+
+def recalculate_finance_deal_totals(finance_deal, *, sync_lines=False):
+    def _sum_adjustments(field_name):
+        return _quantize_money(
+            sum((Decimal(getattr(adjustment, field_name) or 0) for adjustment in finance_deal.adjustments.all()), MONEY_ZERO)
+        )
+
+    if not finance_deal.pk:
+        finance_deal.save()
+    if sync_lines and finance_deal.manager_deal_id and not finance_deal.lines.exists():
+        sync_finance_deal_lines_from_manager_deal(finance_deal)
+    lines = list(finance_deal.lines.all())
+    base_lines = [line for line in lines if not line.replacement_of_id]
+    if base_lines:
+        revenue = _quantize_money(sum((line.sale_total for line in base_lines), MONEY_ZERO))
+        planned_cost_of_goods = _quantize_money(sum((line.planned_cost_total for line in base_lines), MONEY_ZERO))
+        actual_cost_of_goods = _quantize_money(sum((line.actual_cost_total for line in base_lines), MONEY_ZERO))
+        cost_of_goods = _quantize_money(sum((line.cost_total for line in base_lines), MONEY_ZERO))
+    else:
+        revenue = _quantize_money(finance_deal.revenue)
+        planned_cost_of_goods = _quantize_money(finance_deal.cost_of_goods)
+        actual_cost_of_goods = MONEY_ZERO
+        cost_of_goods = _quantize_money(finance_deal.cost_of_goods)
+
+    revenue += _sum_adjustments('revenue_delta')
+    planned_cost_of_goods += _sum_adjustments('cost_of_goods_delta')
+    actual_cost_of_goods += _sum_adjustments('cost_of_goods_delta')
+    cost_of_goods += _sum_adjustments('cost_of_goods_delta')
+
+    direct_expense_rows = list(finance_deal.expenses.filter(affects_direct_expenses=True))
+    direct_expenses_base = _quantize_money(sum((Decimal(expense.amount or 0) for expense in direct_expense_rows), MONEY_ZERO))
+    if not direct_expense_rows and Decimal(finance_deal.direct_expenses or 0):
+        direct_expenses_base = _quantize_money(finance_deal.direct_expenses)
+    direct_expenses = _quantize_money(direct_expenses_base + _sum_adjustments('direct_expenses_delta'))
+    manager_bonus = _quantize_money(Decimal(finance_deal.manager_bonus or 0) + _sum_adjustments('manager_bonus_delta'))
+    gross_profit = _quantize_money(revenue - cost_of_goods)
+    distributable_profit = _quantize_money(gross_profit - direct_expenses - manager_bonus)
+    expected_distributable_profit = _quantize_money(revenue - planned_cost_of_goods - direct_expenses - manager_bonus)
+    actual_distributable_profit = _quantize_money(revenue - actual_cost_of_goods - direct_expenses - manager_bonus)
+
+    snapshot_data = dict(finance_deal.snapshot_data or {})
+    snapshot_data['costs'] = {
+        'planned_cost_of_goods': str(planned_cost_of_goods),
+        'actual_cost_of_goods': str(actual_cost_of_goods),
+        'effective_cost_of_goods': str(cost_of_goods),
+        'gross_profit': str(gross_profit),
+        'planned_gross_profit': str(_quantize_money(revenue - planned_cost_of_goods)),
+        'actual_gross_profit': str(_quantize_money(revenue - actual_cost_of_goods)),
+        'distributable_profit': str(distributable_profit),
+        'planned_distributable_profit': str(expected_distributable_profit),
+        'actual_distributable_profit': str(actual_distributable_profit),
+        'planned_cost_price': str(planned_cost_of_goods),
+        'actual_cost_price': str(actual_cost_of_goods),
+        'effective_cost_price': str(cost_of_goods),
+        'planned_margin': str(expected_distributable_profit),
+        'actual_margin': str(actual_distributable_profit),
+    }
+    snapshot_data['adjustments'] = {
+        'count': finance_deal.adjustments.count(),
+        'revenue_delta': str(_sum_adjustments('revenue_delta')),
+        'cost_of_goods_delta': str(_sum_adjustments('cost_of_goods_delta')),
+        'direct_expenses_delta': str(_sum_adjustments('direct_expenses_delta')),
+        'manager_bonus_delta': str(_sum_adjustments('manager_bonus_delta')),
+    }
+    FinanceDeal.objects.filter(pk=finance_deal.pk).update(
+        revenue=revenue,
+        cost_of_goods=cost_of_goods,
+        direct_expenses=direct_expenses,
+        manager_bonus=manager_bonus,
+        distributable_profit=distributable_profit,
+        expected_distributable_profit_snapshot=expected_distributable_profit,
+        snapshot_data=snapshot_data,
+        updated_at=timezone.now(),
+    )
+    finance_deal.refresh_from_db()
+    if finance_deal.distribution_scheme_id or active_finance_distribution_scheme() is not None:
+        recalculate_finance_deal_distribution(finance_deal)
+    return finance_deal
 
 
 def finance_case_missing_fields(finance_deal):
@@ -622,7 +1289,7 @@ def finance_case_missing_fields(finance_deal):
         missing.append('Способ оплаты')
     if not finance_deal.payment_state:
         missing.append('Платежный статус')
-    if not finance_deal.snapshot_data.get('items'):
+    if not finance_deal.snapshot_data.get('items') and not finance_deal.lines.exists():
         missing.append('Позиции сделки')
     return missing
 
@@ -637,14 +1304,14 @@ def reservation_prefill_lines_for_deal(deal, *, exclude_reservation=None):
     if exclude_reservation is not None and exclude_reservation.pk:
         reservation_items = reservation_items.exclude(reservation=exclude_reservation)
     for item in reservation_items:
-        existing_reserved[item.order_item_id] += item.quantity
+        existing_reserved[item.order_item_id] += int(item.active_reserved_quantity or 0)
 
     lines = []
     for order_item in deal.order.items.select_related('product', 'variant').all():
         if not order_item.product_id:
             continue
         reserved_quantity = existing_reserved.get(order_item.id, 0)
-        missing_quantity = max(int(order_item.quantity or 0) - reserved_quantity, 0)
+        missing_quantity = max(int(order_item.active_quantity or 0) - reserved_quantity, 0)
         if missing_quantity <= 0:
             continue
         lines.append(
@@ -654,7 +1321,7 @@ def reservation_prefill_lines_for_deal(deal, *, exclude_reservation=None):
                 'variant': order_item.variant,
                 'product_name': order_item.resolved_product_name,
                 'variant_name': order_item.resolved_variant_name,
-                'ordered_quantity': int(order_item.quantity or 0),
+                'ordered_quantity': int(order_item.active_quantity or 0),
                 'reserved_quantity': reserved_quantity,
                 'missing_quantity': missing_quantity,
                 'is_on_request': bool(order_item.is_on_request),
@@ -777,20 +1444,24 @@ def _deal_primary_reservation(deal):
 
 
 def _deal_fulfillment_status(deal):
+    coverage = reservation_coverage_snapshot(deal.order)
+    if coverage['tracked_line_count'] == 0:
+        return ManagerDeal.FULFILLMENT_STATUS_FULFILLED
     reservation = _deal_primary_reservation(deal)
     if reservation and deal.primary_reservation_id != reservation.id:
         deal.primary_reservation = reservation
         deal.save(update_fields=['primary_reservation', 'updated_at'])
-    if deal.order.status in {Order.STATUS_SHIPPING, Order.STATUS_DONE} and reservation:
+    if deal.order.status in {Order.STATUS_SHIPPING, Order.STATUS_DONE}:
         return ManagerDeal.FULFILLMENT_STATUS_FULFILLED
-    if reservation:
-        if reservation.source_type == Reservation.SOURCE_CARGO:
+    if coverage['uncovered_count'] == 0 and coverage['covered_by_procurement_count'] == 0:
+        if coverage['covered_by_incoming_count'] > 0:
             return ManagerDeal.FULFILLMENT_STATUS_RESERVED_INCOMING
         return ManagerDeal.FULFILLMENT_STATUS_RESERVED_STOCK
-    if deal.order.items.filter(is_on_request=True).exists():
-        linked_purchase_items = PurchaseItem.objects.filter(order_item__order=deal.order)
-        if not linked_purchase_items.exists() or linked_purchase_items.filter(received_quantity__lt=models.F('quantity')).exists():
+    if deal.deal_type == ManagerDeal.DEAL_SALE_ON_REQUEST:
+        if coverage['uncovered_count'] > 0 or coverage['covered_by_procurement_count'] > 0:
             return ManagerDeal.FULFILLMENT_STATUS_PROCUREMENT_REQUIRED
+    elif coverage['uncovered_count'] > 0:
+        return ManagerDeal.FULFILLMENT_STATUS_NOT_RESERVED
     return ManagerDeal.FULFILLMENT_STATUS_NOT_RESERVED
 
 
@@ -879,10 +1550,13 @@ def _deal_can_confirm_availability(deal):
         return False
     if deal.stock_warehouse_id or _deal_primary_reservation(deal):
         return False
+    coverage = reservation_coverage_snapshot(deal.order)
+    if coverage['tracked_line_count'] == 0:
+        return False
     inventory_totals = _inventory_totals_map()
     has_catalog_items = False
     for item in deal.order.items.select_related('product', 'variant'):
-        if item.is_on_request or not item.product_id:
+        if item.line_type != OrderItem.LINE_TYPE_CATALOG or item.is_on_request or not item.product_id:
             continue
         has_catalog_items = True
         available = inventory_totals.get((item.product_id, item.variant_id or 0), 0)
@@ -892,25 +1566,28 @@ def _deal_can_confirm_availability(deal):
 
 
 def _compute_next_step_for_deal(deal, *, case_status, payment_state, fulfillment_status, delivery_status, documents_status):
-    if deal.avito_return_pending:
-        return ManagerDeal.NEXT_STEP_RETURN_TO_STOCK, 'По сделке оформлен возврат. Заберите товар у Avito и верните его на склад.'
+    coverage = reservation_coverage_snapshot(deal.order)
+    if deal.deal_status == ManagerDeal.DEAL_STATUS_RETURNED and deal.returned_to_stock_at is None:
+        return ManagerDeal.NEXT_STEP_RETURN_TO_STOCK, 'По сделке оформлен возврат. Подтвердите reverse-flow, верните товар на склад и зафиксируйте корректировки.'
+    if deal.deal_status == ManagerDeal.DEAL_STATUS_RETURNED and deal.returned_to_stock_at is not None:
+        return ManagerDeal.NEXT_STEP_COMPLETED, 'Возврат принят на склад, reverse-flow зафиксирован.'
     if case_status in {ManagerDeal.CASE_STATUS_COMPLETED, ManagerDeal.CASE_STATUS_CANCELLED} or deal.order.status == Order.STATUS_DONE:
         return ManagerDeal.NEXT_STEP_COMPLETED, 'Заказ завершен.'
     if delivery_status in {ManagerDeal.DELIVERY_STATUS_SHIPPED, ManagerDeal.DELIVERY_STATUS_DELIVERED} or deal.order.status == Order.STATUS_SHIPPING:
         return ManagerDeal.NEXT_STEP_SHIPPED, 'Заказ уже отправлен и находится в доставке.'
     if case_status == ManagerDeal.CASE_STATUS_NEW or deal.order.status == Order.STATUS_NEW:
         return ManagerDeal.NEXT_STEP_NEEDS_CONFIRMATION, 'Новый заказ без подтверждения менеджером.'
-    if fulfillment_status == ManagerDeal.FULFILLMENT_STATUS_PROCUREMENT_REQUIRED:
+    if _deal_document_needs_preparation(deal):
+        return ManagerDeal.NEXT_STEP_NEEDS_DOCUMENTS, 'Для сделки нужен документ, но он еще не готов к отправке клиенту.'
+    if deal.deal_type == ManagerDeal.DEAL_SALE_ON_REQUEST and coverage['uncovered_count'] > 0:
         return ManagerDeal.NEXT_STEP_NEEDS_PROCUREMENT, 'Товара нет в доступном остатке, требуется закупка.'
     if _deal_can_confirm_availability(deal):
         return ManagerDeal.NEXT_STEP_NEEDS_AVAILABILITY_CONFIRMATION, 'Нужно подтвердить доступный склад и наличие до создания брони.'
-    if _deal_document_needs_preparation(deal):
-        return ManagerDeal.NEXT_STEP_NEEDS_DOCUMENTS, 'Для сделки нужен документ, но он еще не готов к отправке клиенту.'
     if _deal_document_ready_for_dispatch(deal):
         return ManagerDeal.NEXT_STEP_NEEDS_DOCUMENT_DISPATCH, 'Документы готовы. Отправьте клиенту договорный пакет.'
     if payment_state in {ManagerDeal.PAYMENT_STATE_UNPAID, ManagerDeal.PAYMENT_STATE_PARTIAL}:
         return ManagerDeal.NEXT_STEP_NEEDS_PAYMENT, 'Оплата не закрыта полностью.'
-    if fulfillment_status == ManagerDeal.FULFILLMENT_STATUS_NOT_RESERVED:
+    if coverage['tracked_line_count'] > 0 and coverage['uncovered_count'] > 0:
         return ManagerDeal.NEXT_STEP_NEEDS_RESERVATION, 'Склад подтвержден, но резерв по позициям еще не создан.'
     return ManagerDeal.NEXT_STEP_READY_TO_SHIP, 'Заказ готов к подготовке отправления.'
 
@@ -1085,6 +1762,7 @@ def _hydrate_finance_deal_from_manager_deal(finance_deal, deal, *, actor=None):
     linked_document = _deal_linked_document(deal)
     snapshot_data = build_finance_case_snapshot(deal, linked_document=linked_document)
     finance_type = finance_deal.deal_type if finance_deal.deal_type_id else None
+    distribution_scheme = finance_deal.distribution_scheme if finance_deal.distribution_scheme_id else active_finance_distribution_scheme()
     if finance_type is None:
         finance_type = FinanceDealType.objects.filter(is_active=True).order_by('name', 'id').first()
     update_fields = []
@@ -1097,8 +1775,9 @@ def _hydrate_finance_deal_from_manager_deal(finance_deal, deal, *, actor=None):
         'payment_method': deal.order.payment_method,
         'payment_state': deal.order.payment_status,
         'revenue': deal.grand_total,
-        'cost_price': deal.outgoing_cost_total,
-        'expected_margin_snapshot': deal.expected_margin,
+        'cost_of_goods': deal.outgoing_cost_total,
+        'distribution_scheme': distribution_scheme,
+        'expected_distributable_profit_snapshot': deal.expected_margin,
         'snapshot_data': snapshot_data,
         'comment': finance_deal.comment or 'Подготовлено из карточки сделки.',
     }
@@ -1108,7 +1787,7 @@ def _hydrate_finance_deal_from_manager_deal(finance_deal, deal, *, actor=None):
     if not contract_number:
         contract_number = deal_manager_client(deal).name if deal_manager_client(deal) else f'Сделка #{deal.order_id}'
     updates['contract_number'] = contract_number
-    relation_fields = {'manager_deal', 'responsible_manager', 'linked_document', 'deal_type'}
+    relation_fields = {'manager_deal', 'responsible_manager', 'linked_document', 'deal_type', 'distribution_scheme'}
     for field_name, value in updates.items():
         current_value = getattr(finance_deal, f'{field_name}_id') if field_name in relation_fields else getattr(finance_deal, field_name)
         expected_value = value.pk if field_name in relation_fields and value is not None else value
@@ -1131,6 +1810,8 @@ def ensure_finance_deal_for_manager_deal(deal, *, actor=None):
         finance_deal = None
     if finance_deal:
         finance_deal = _hydrate_finance_deal_from_manager_deal(finance_deal, deal, actor=actor)
+        sync_finance_deal_lines_from_manager_deal(finance_deal)
+        finance_deal = recalculate_finance_deal_totals(finance_deal, sync_lines=False)
         return finance_deal
     finance_type = FinanceDealType.objects.filter(is_active=True).order_by('name', 'id').first()
     if finance_type is None:
@@ -1139,19 +1820,22 @@ def ensure_finance_deal_for_manager_deal(deal, *, actor=None):
         manager_deal=deal,
         responsible_manager=deal.responsible_manager or actor,
         linked_document=_deal_linked_document(deal),
+        distribution_scheme=active_finance_distribution_scheme(),
         date=(deal.order.created_at or timezone.now()).date(),
         contract_number='',
         deal_type=finance_type,
         payment_method=deal.order.payment_method,
         payment_state=deal.order.payment_status,
         revenue=deal.grand_total,
-        cost_price=deal.outgoing_cost_total,
-        expected_margin_snapshot=deal.expected_margin,
+        cost_of_goods=deal.outgoing_cost_total,
+        expected_distributable_profit_snapshot=deal.expected_margin,
         snapshot_data=build_finance_case_snapshot(deal),
         comment='Создано из карточки сделки.',
         created_by=actor,
     )
     finance_deal = _hydrate_finance_deal_from_manager_deal(finance_deal, deal, actor=actor)
+    sync_finance_deal_lines_from_manager_deal(finance_deal)
+    finance_deal = recalculate_finance_deal_totals(finance_deal, sync_lines=False)
     record_deal_activity(
         deal,
         event_type='finance.created',
@@ -1170,7 +1854,7 @@ def ensure_reservations_for_manager_deal(deal, *, actor=None):
         .order_by('id')
     )
     coverage = reservation_coverage_snapshot(deal.order)
-    if active_reservations and coverage['is_complete']:
+    if active_reservations and coverage['uncovered_count'] == 0:
         primary = _deal_primary_reservation(deal) or active_reservations[0]
         if primary and deal.primary_reservation_id != primary.id:
             deal.primary_reservation = primary
@@ -1275,94 +1959,287 @@ def ensure_shipment_for_manager_deal(deal, *, actor=None):
     return shipment
 
 
-def restore_avito_return_to_stock(deal, *, actor=None):
-    if deal is None or not deal.is_avito:
-        raise ValueError('Возврат на склад доступен только для сделок Avito.')
-    if deal.deal_status != ManagerDeal.DEAL_STATUS_RETURNED:
-        raise ValueError('Вернуть товар на склад можно только после перевода сделки в этап "Возврат".')
-    if deal.returned_to_stock_at is not None:
-        raise ValueError('Возврат на склад по этой сделке уже подтвержден.')
+def _reversal_adjustment_kinds():
+    return {
+        FinanceDealAdjustment.KIND_SHIPMENT_RETURN,
+        FinanceDealAdjustment.KIND_SHIPMENT_CANCELLATION,
+        FinanceDealAdjustment.KIND_REPLACEMENT_REVERSAL,
+    }
 
-    reservations = list(
-        Reservation.objects.filter(linked_order=deal.order)
-        .select_related('source_warehouse', 'source_cargo__destination_warehouse')
-        .prefetch_related('items__product', 'items__variant')
+
+def _shipped_cost_snapshot_for_order_item(order_item, *, quantity):
+    shipped_allocations = list(
+        SaleLineAllocation.objects.filter(order_item=order_item, status=SaleLineAllocation.STATUS_SHIPPED)
+    )
+    shipped_qty = sum(int(allocation.shipped_qty or 0) for allocation in shipped_allocations)
+    if shipped_qty > 0:
+        total_cost = sum(
+            (Decimal(allocation.unit_cost_snapshot or 0) * Decimal(allocation.shipped_qty or 0))
+            for allocation in shipped_allocations
+        )
+        unit_cost = _quantize_money(total_cost / Decimal(shipped_qty))
+    else:
+        unit_cost = _quantize_money(order_item.effective_unit_cost)
+    return unit_cost, _quantize_money(unit_cost * Decimal(quantity))
+
+
+def _reversal_revenue_for_order_item(order_item, *, quantity):
+    if order_item is None:
+        return MONEY_ZERO
+    return _quantize_money(Decimal(order_item.unit_price or 0) * Decimal(quantity))
+
+
+def _create_reverse_document_for_deal(
+    deal,
+    *,
+    reverse_kind,
+    actor=None,
+    related_activity=None,
+    related_adjustments=None,
+    related_shipment=None,
+    finance_lines=None,
+):
+    client = deal_manager_client(deal) or ensure_manager_client_for_order(deal.order)['client']
+    document = ContractDocument.objects.create(
+        manager_deal=deal,
+        linked_order=deal.order,
+        manager_client=client,
+        responsible_manager=deal.responsible_manager or actor,
+        created_by=actor,
+        document_type=ContractTemplate.DOC_TYPE_OTHER,
+        status=ContractDocument.STATUS_DRAFT,
+        title=f'Корректировка {reverse_kind} по сделке #{deal.order_id}',
+        notes='Системный reverse document для аудита разворота.',
+        document_data={
+            'document_role': 'reverse_event',
+            'reverse_kind': reverse_kind,
+            'related_activity_id': related_activity.id if related_activity else None,
+            'related_shipment_id': related_shipment.id if related_shipment else None,
+            'finance_adjustment_ids': [adjustment.id for adjustment in (related_adjustments or [])],
+            'finance_line_ids': [line.id for line in (finance_lines or [])],
+        },
+    )
+    return document
+
+
+def _refundable_expense_adjustments(
+    finance_deal,
+    *,
+    reversed_quantity_by_line=None,
+    reversed_revenue=None,
+    related_shipment=None,
+    related_activity=None,
+    related_document=None,
+    actor=None,
+):
+    reversed_quantity_by_line = reversed_quantity_by_line or {}
+    reversed_revenue = _quantize_money(reversed_revenue or MONEY_ZERO)
+    original_reversible_deal_revenue = _quantize_money(
+        sum((line.sale_total for line in finance_deal.lines.all() if not line.replacement_of_id), MONEY_ZERO)
+        or finance_deal.revenue
+    )
+    created = []
+    for expense in finance_deal.expenses.filter(affects_direct_expenses=True):
+        if expense.refund_policy == FinanceExpense.REFUND_POLICY_NON_REFUNDABLE:
+            continue
+        if expense.finance_line_id:
+            original_scope = Decimal(expense.finance_line.quantity or 0)
+            cumulative_reversed_scope = abs(
+                sum(
+                    (
+                        Decimal(adjustment.quantity_delta or 0)
+                        for adjustment in finance_deal.adjustments.filter(
+                            related_expense=expense,
+                            adjustment_kind=FinanceDealAdjustment.KIND_DIRECT_EXPENSE_REFUND,
+                        )
+                    ),
+                    Decimal('0'),
+                )
+            )
+            cumulative_reversed_scope += Decimal(reversed_quantity_by_line.get(expense.finance_line_id, 0))
+        else:
+            original_scope = Decimal(original_reversible_deal_revenue or 0)
+            cumulative_reversed_scope = abs(
+                sum(
+                    (
+                        Decimal(adjustment.payload.get('reversed_revenue', '0') or 0)
+                        for adjustment in finance_deal.adjustments.filter(
+                            related_expense=expense,
+                            adjustment_kind=FinanceDealAdjustment.KIND_DIRECT_EXPENSE_REFUND,
+                        )
+                    ),
+                    Decimal('0'),
+                )
+            )
+            cumulative_reversed_scope += Decimal(reversed_revenue or 0)
+        if original_scope <= 0:
+            continue
+        ratio = min(cumulative_reversed_scope / original_scope, Decimal('1'))
+        if expense.refund_policy == FinanceExpense.REFUND_POLICY_ON_FULL_REVERSAL:
+            ratio = Decimal('1') if ratio >= Decimal('1') else Decimal('0')
+        already_refunded = abs(
+            sum(
+                (
+                    Decimal(adjustment.direct_expenses_delta or 0)
+                    for adjustment in finance_deal.adjustments.filter(
+                        related_expense=expense,
+                        adjustment_kind=FinanceDealAdjustment.KIND_DIRECT_EXPENSE_REFUND,
+                    )
+                ),
+                Decimal('0'),
+            )
+        )
+        target_refund_total = _quantize_money(Decimal(expense.amount or 0) * ratio)
+        refund_delta = _quantize_money(target_refund_total - already_refunded)
+        if refund_delta <= 0:
+            continue
+        created.append(
+            FinanceDealAdjustment.objects.create(
+                finance_deal=finance_deal,
+                finance_line=expense.finance_line,
+                related_expense=expense,
+                related_shipment=related_shipment,
+                related_activity=related_activity,
+                related_document=related_document,
+                adjustment_kind=FinanceDealAdjustment.KIND_DIRECT_EXPENSE_REFUND,
+                reason_code=expense.refund_policy,
+                direct_expenses_delta=-refund_delta,
+                payload={
+                    'refund_policy': expense.refund_policy,
+                    'target_refund_total': str(target_refund_total),
+                    'already_refunded': str(already_refunded),
+                    'reversed_revenue': str(reversed_revenue),
+                    'reversed_quantity_by_line': {
+                        str(line_id): str(value) for line_id, value in reversed_quantity_by_line.items()
+                    },
+                },
+                created_by=actor,
+            )
+        )
+    return created
+
+
+def reverse_shipment_for_manager_deal(deal, *, actor=None, reason_code='shipment_return'):
+    shipments = list(
+        deal.shipments.exclude(status=Shipment.STATUS_CANCELLED)
+        .filter(status__in=[Shipment.STATUS_SHIPPED, Shipment.STATUS_DELIVERED])
+        .select_related('source_warehouse')
+        .prefetch_related('items__order_item', 'items__product', 'items__variant')
         .order_by('id')
     )
-    restored_positions = []
-    released_reservations = []
-    receipt_total = 0
+    if not shipments:
+        raise ValueError('Для reverse-flow нужна отгрузка в статусе "Отправлено" или "Доставлено".')
+    if deal.returned_to_stock_at is not None:
+        raise ValueError('Reverse-flow по этой сделке уже зафиксирован.')
+
+    finance_deal = ensure_finance_deal_for_manager_deal(deal, actor=actor)
+    requested_activity = record_deal_activity(
+        deal,
+        event_type='shipment.return_requested',
+        source=DealActivity.SOURCE_USER if actor else DealActivity.SOURCE_SYSTEM,
+        actor=actor,
+        payload={'shipment_ids': [shipment.id for shipment in shipments], 'reason_code': reason_code},
+    )
+
+    created_lots = []
+    created_adjustments = []
+    reversed_quantity_by_line = defaultdict(Decimal)
+    reversed_revenue = MONEY_ZERO
+    return_reference_type = 'avito_return' if reason_code == 'avito_return' else 'return'
 
     with transaction.atomic():
-        for reservation in reservations:
-            warehouse = reservation_effective_warehouse(reservation) or deal.stock_warehouse
-            if reservation.status in ACTIVE_RESERVATION_STATUSES:
-                create_or_update_reservation_movements(
-                    reservation,
-                    movement_type=InventoryMovement.TYPE_RELEASE,
-                    author=actor,
-                    comment='Снятие резерва после возврата Avito.',
-                )
-                reservation.status = Reservation.STATUS_CANCELLED
-                reservation.save(update_fields=['status', 'updated_at'])
-                if warehouse is not None:
-                    sync_public_stock_for_warehouse(warehouse)
-                released_reservations.append(reservation.id)
-                continue
-            if reservation.status != Reservation.STATUS_FULFILLED:
-                continue
-            if warehouse is None:
-                raise ValueError('Не удалось определить склад для возврата товара.')
-            for item in reservation.items.select_related('product', 'variant'):
-                receipt_inventory(
-                    warehouse=warehouse,
-                    product=item.product,
-                    variant=item.variant,
-                    quantity=item.quantity,
-                    author=actor,
-                    comment='Возврат по Avito-сделке.',
-                    reference_type='avito_return',
-                    reference_id=deal.pk,
-                )
-                restored_positions.append(
-                    {
-                        'product_id': item.product_id,
-                        'variant_id': item.variant_id,
-                        'quantity': item.quantity,
-                        'warehouse_id': warehouse.id,
-                    }
-                )
-                receipt_total += item.quantity
-
-        if not reservations:
-            warehouse = deal.stock_warehouse
-            if warehouse is None:
-                raise ValueError('Для возврата без резерва сначала укажите склад в сделке.')
-            for order_item in deal.order.items.select_related('product', 'variant'):
-                if not order_item.product_id:
+        for shipment in shipments:
+            source_warehouse = shipment.source_warehouse or deal.stock_warehouse
+            if source_warehouse is None:
+                raise ValueError('Не удалось определить склад-источник для возврата.')
+            for shipment_item in shipment.items.select_related('order_item', 'product', 'variant').all():
+                quantity = int(shipment_item.quantity or 0)
+                if quantity <= 0:
                     continue
-                receipt_inventory(
-                    warehouse=warehouse,
-                    product=order_item.product,
-                    variant=order_item.variant,
-                    quantity=order_item.quantity,
+                return_reference_id = deal.pk if reason_code == 'avito_return' else shipment.id
+                unit_cost, cost_total = _shipped_cost_snapshot_for_order_item(
+                    shipment_item.order_item,
+                    quantity=quantity,
+                ) if shipment_item.order_item_id else (_quantize_money(Decimal('0')), MONEY_ZERO)
+                return_lot = InventoryLot.objects.create(
+                    warehouse=source_warehouse,
+                    product=shipment_item.product,
+                    variant=shipment_item.variant,
+                    received_qty=quantity,
+                    remaining_qty=quantity,
+                    unit_cost=unit_cost,
+                    unit_cost_base=unit_cost,
+                    unit_cost_final=unit_cost,
+                    received_at=timezone.now(),
+                    reference_type=return_reference_type,
+                    reference_id=return_reference_id,
+                )
+                InventoryMovement.objects.create(
+                    warehouse=source_warehouse,
+                    product=shipment_item.product,
+                    variant=shipment_item.variant,
+                    movement_type=InventoryMovement.TYPE_RECEIPT,
+                    quantity=quantity,
+                    reference_type=return_reference_type,
+                    reference_id=return_reference_id,
+                    comment='Reverse-flow после отгрузки.',
                     author=actor,
-                    comment='Возврат по Avito-сделке.',
-                    reference_type='avito_return',
-                    reference_id=deal.pk,
                 )
-                restored_positions.append(
-                    {
-                        'product_id': order_item.product_id,
-                        'variant_id': order_item.variant_id,
-                        'quantity': order_item.quantity,
-                        'warehouse_id': warehouse.id,
-                    }
-                )
-                receipt_total += order_item.quantity
+                created_lots.append(return_lot)
+                if shipment_item.order_item_id:
+                    finance_line = finance_deal.lines.filter(order_item=shipment_item.order_item).order_by('id').first()
+                    revenue_delta = -_reversal_revenue_for_order_item(
+                        shipment_item.order_item,
+                        quantity=quantity,
+                    )
+                    adjustment = FinanceDealAdjustment.objects.create(
+                        finance_deal=finance_deal,
+                        finance_line=finance_line,
+                        related_shipment=shipment,
+                        related_activity=requested_activity,
+                        adjustment_kind=FinanceDealAdjustment.KIND_SHIPMENT_RETURN,
+                        reason_code=reason_code,
+                        quantity_delta=Decimal(-quantity),
+                        revenue_delta=revenue_delta,
+                        cost_of_goods_delta=-cost_total,
+                        payload={
+                            'shipment_id': shipment.id,
+                            'order_item_id': shipment_item.order_item_id,
+                            'return_lot_id': return_lot.id,
+                            'unit_cost': str(unit_cost),
+                            'quantity': quantity,
+                        },
+                        created_by=actor,
+                    )
+                    created_adjustments.append(adjustment)
+                    if finance_line is not None:
+                        reversed_quantity_by_line[finance_line.id] += Decimal(quantity)
+                    reversed_revenue += abs(revenue_delta)
+            rebuild_inventory_balance_cache(warehouse_ids=[source_warehouse.id])
+            sync_public_stock_for_warehouse(source_warehouse)
 
-        if not released_reservations and receipt_total <= 0:
-            raise ValueError('Не найдено складских движений для возврата по этой сделке.')
+        reverse_document = _create_reverse_document_for_deal(
+            deal,
+            reverse_kind='shipment_return',
+            actor=actor,
+            related_activity=requested_activity,
+            related_adjustments=created_adjustments,
+            related_shipment=shipments[-1],
+            finance_lines=[adjustment.finance_line for adjustment in created_adjustments if adjustment.finance_line_id],
+        )
+        FinanceDealAdjustment.objects.filter(pk__in=[item.pk for item in created_adjustments]).update(
+            related_document=reverse_document
+        )
+        expense_adjustments = _refundable_expense_adjustments(
+            finance_deal,
+            reversed_quantity_by_line=reversed_quantity_by_line,
+            reversed_revenue=reversed_revenue,
+            related_shipment=shipments[-1],
+            related_activity=requested_activity,
+            related_document=reverse_document,
+            actor=actor,
+        )
+        created_adjustments.extend(expense_adjustments)
 
         deal.returned_to_stock_at = timezone.now()
         update_fields = ['returned_to_stock_at']
@@ -1373,21 +2250,226 @@ def restore_avito_return_to_stock(deal, *, actor=None):
 
     record_deal_activity(
         deal,
+        event_type='shipment.return_received',
+        source=DealActivity.SOURCE_USER if actor else DealActivity.SOURCE_SYSTEM,
+        actor=actor,
+        payload={
+            'shipment_ids': [shipment.id for shipment in shipments],
+            'return_lot_ids': [lot.id for lot in created_lots],
+            'adjustment_ids': [adjustment.id for adjustment in created_adjustments],
+            'document_id': reverse_document.id,
+        },
+    )
+    record_deal_activity(
+        deal,
+        event_type='shipment.reversed',
+        source=DealActivity.SOURCE_USER if actor else DealActivity.SOURCE_SYSTEM,
+        actor=actor,
+        payload={
+            'shipment_ids': [shipment.id for shipment in shipments],
+            'return_lot_ids': [lot.id for lot in created_lots],
+            'document_id': reverse_document.id,
+        },
+    )
+    record_deal_activity(
+        deal,
+        event_type='finance.adjustment_posted',
+        source=DealActivity.SOURCE_USER if actor else DealActivity.SOURCE_SYSTEM,
+        actor=actor,
+        payload={
+            'finance_deal_id': finance_deal.id,
+            'adjustment_ids': [adjustment.id for adjustment in created_adjustments],
+            'document_id': reverse_document.id,
+        },
+    )
+    recalculate_finance_deal_totals(finance_deal, sync_lines=False)
+    recompute_deal_workflow(deal, actor=actor)
+    return {
+        'return_lot_ids': [lot.id for lot in created_lots],
+        'adjustment_ids': [adjustment.id for adjustment in created_adjustments],
+        'document_id': reverse_document.id,
+    }
+
+
+def cancel_pending_shipment_for_manager_deal(deal, *, actor=None, reason_code='shipment_cancelled'):
+    finance_deal = ensure_finance_deal_for_manager_deal(deal, actor=actor)
+    shipments = list(
+        deal.shipments.exclude(status=Shipment.STATUS_CANCELLED)
+        .filter(status__in=[Shipment.STATUS_DRAFT, Shipment.STATUS_PENDING])
+        .prefetch_related('items__order_item')
+        .order_by('id')
+    )
+    reservations = list(
+        deal.reservations.filter(status__in=ACTIVE_RESERVATION_STATUSES)
+        .select_related('source_warehouse', 'source_cargo__destination_warehouse')
+        .prefetch_related('items__order_item')
+        .order_by('id')
+    )
+    if not shipments and not reservations:
+        raise ValueError('Нет активных отгрузок или резервов для отмены до shipment.')
+    created_adjustments = []
+    reversed_quantity_by_line = defaultdict(Decimal)
+    reversed_revenue = MONEY_ZERO
+    for shipment in shipments:
+        shipment.status = Shipment.STATUS_CANCELLED
+        shipment.save(update_fields=['status', 'updated_at'])
+        for shipment_item in shipment.items.select_related('order_item').all():
+            if not shipment_item.order_item_id:
+                continue
+            finance_line = finance_deal.lines.filter(order_item=shipment_item.order_item).order_by('id').first()
+            quantity = int(shipment_item.quantity or 0)
+            revenue_delta = -_reversal_revenue_for_order_item(
+                shipment_item.order_item,
+                quantity=quantity,
+            )
+            created_adjustments.append(
+                FinanceDealAdjustment.objects.create(
+                    finance_deal=finance_deal,
+                    finance_line=finance_line,
+                    related_shipment=shipment,
+                    adjustment_kind=FinanceDealAdjustment.KIND_SHIPMENT_CANCELLATION,
+                    reason_code=reason_code,
+                    quantity_delta=Decimal(-quantity),
+                    revenue_delta=revenue_delta,
+                    payload={'shipment_id': shipment.id, 'order_item_id': shipment_item.order_item_id},
+                    created_by=actor,
+                )
+            )
+            if finance_line is not None:
+                reversed_quantity_by_line[finance_line.id] += Decimal(quantity)
+            reversed_revenue += abs(revenue_delta)
+    released_reservations = []
+    for reservation in reservations:
+        warehouse = reservation_effective_warehouse(reservation)
+        create_or_update_reservation_movements(
+            reservation,
+            movement_type=InventoryMovement.TYPE_RELEASE,
+            author=actor,
+            comment='Снятие резерва при отмене до shipment.',
+        )
+        reservation.status = Reservation.STATUS_CANCELLED
+        reservation.save(update_fields=['status', 'updated_at'])
+        if warehouse is not None:
+            sync_public_stock_for_warehouse(warehouse)
+        released_reservations.append(reservation.id)
+    expense_adjustments = _refundable_expense_adjustments(
+        finance_deal,
+        reversed_quantity_by_line=reversed_quantity_by_line,
+        reversed_revenue=reversed_revenue,
+        actor=actor,
+    )
+    created_adjustments.extend(expense_adjustments)
+    record_deal_activity(
+        deal,
+        event_type='finance.adjustment_posted',
+        source=DealActivity.SOURCE_USER if actor else DealActivity.SOURCE_SYSTEM,
+        actor=actor,
+        payload={
+            'finance_deal_id': finance_deal.id,
+            'adjustment_ids': [adjustment.id for adjustment in created_adjustments],
+            'released_reservation_ids': released_reservations,
+        },
+    )
+    recalculate_finance_deal_totals(finance_deal, sync_lines=False)
+    recompute_deal_workflow(deal, actor=actor)
+    return {
+        'adjustment_ids': [adjustment.id for adjustment in created_adjustments],
+        'released_reservation_ids': released_reservations,
+    }
+
+
+def record_finance_line_replacement(source_line, replacement_line, *, actor=None, reason_code='replacement'):
+    if source_line.finance_deal_id != replacement_line.finance_deal_id:
+        raise ValueError('Замена должна жить в рамках одного финансового кейса.')
+    finance_deal = source_line.finance_deal
+    if replacement_line.replacement_of_id != source_line.id:
+        replacement_line.replacement_of = source_line
+        replacement_line.save(update_fields=['replacement_of', 'updated_at'])
+    replacement_activity = None
+    reverse_document = None
+    reversal = FinanceDealAdjustment.objects.create(
+        finance_deal=finance_deal,
+        finance_line=source_line,
+        adjustment_kind=FinanceDealAdjustment.KIND_REPLACEMENT_REVERSAL,
+        reason_code=reason_code,
+        quantity_delta=-Decimal(source_line.quantity or 0),
+        revenue_delta=-_quantize_money(source_line.sale_total),
+        cost_of_goods_delta=-_quantize_money(source_line.cost_total),
+        payload={'replacement_line_id': replacement_line.id},
+        created_by=actor,
+    )
+    addition = FinanceDealAdjustment.objects.create(
+        finance_deal=finance_deal,
+        finance_line=replacement_line,
+        adjustment_kind=FinanceDealAdjustment.KIND_REPLACEMENT_ADDITION,
+        reason_code=reason_code,
+        quantity_delta=Decimal(replacement_line.quantity or 0),
+        revenue_delta=_quantize_money(replacement_line.sale_total),
+        cost_of_goods_delta=_quantize_money(replacement_line.cost_total),
+        payload={'replacement_of_line_id': source_line.id},
+        created_by=actor,
+    )
+    if finance_deal.manager_deal_id:
+        replacement_activity = record_deal_activity(
+            finance_deal.manager_deal,
+            event_type='replacement.recorded',
+            source=DealActivity.SOURCE_USER if actor else DealActivity.SOURCE_SYSTEM,
+            actor=actor,
+            payload={
+                'finance_deal_id': finance_deal.id,
+                'source_line_id': source_line.id,
+                'replacement_line_id': replacement_line.id,
+                'adjustment_ids': [reversal.id, addition.id],
+            },
+        )
+        reverse_document = _create_reverse_document_for_deal(
+            finance_deal.manager_deal,
+            reverse_kind='replacement_adjustment',
+            actor=actor,
+            related_activity=replacement_activity,
+            related_adjustments=[reversal, addition],
+            finance_lines=[source_line, replacement_line],
+        )
+        FinanceDealAdjustment.objects.filter(pk__in=[reversal.pk, addition.pk]).update(
+            related_activity=replacement_activity,
+            related_document=reverse_document,
+        )
+        record_deal_activity(
+            finance_deal.manager_deal,
+            event_type='finance.adjustment_posted',
+            source=DealActivity.SOURCE_USER if actor else DealActivity.SOURCE_SYSTEM,
+            actor=actor,
+            payload={
+                'finance_deal_id': finance_deal.id,
+                'adjustment_ids': [reversal.id, addition.id],
+                'document_id': reverse_document.id,
+            },
+        )
+    recalculate_finance_deal_totals(finance_deal, sync_lines=False)
+    if finance_deal.manager_deal_id:
+        recompute_deal_workflow(finance_deal.manager_deal, actor=actor)
+    return reversal, addition
+
+
+def restore_avito_return_to_stock(deal, *, actor=None):
+    if deal is None or not deal.is_avito:
+        raise ValueError('Возврат на склад доступен только для сделок Avito.')
+    if deal.deal_status != ManagerDeal.DEAL_STATUS_RETURNED:
+        raise ValueError('Вернуть товар на склад можно только после перевода сделки в этап "Возврат".')
+    result = reverse_shipment_for_manager_deal(deal, actor=actor, reason_code='avito_return')
+    record_deal_activity(
+        deal,
         event_type='inventory.returned_to_stock',
         source=DealActivity.SOURCE_USER if actor else DealActivity.SOURCE_SYSTEM,
         actor=actor,
         payload={
-            'released_reservation_ids': released_reservations,
-            'receipts_total': receipt_total,
-            'positions': restored_positions,
+            'return_lot_ids': result['return_lot_ids'],
+            'adjustment_ids': result['adjustment_ids'],
+            'document_id': result['document_id'],
+            'receipts_total': len(result['return_lot_ids']),
         },
     )
-    recompute_deal_workflow(deal, actor=actor)
-    return {
-        'released_reservation_ids': released_reservations,
-        'receipts_total': receipt_total,
-        'positions': restored_positions,
-    }
+    return result
 
 
 def _document_counterparty_snapshot(*, deal, client):
@@ -2005,7 +3087,7 @@ def enrich_inventory_rows(rows):
             row['active_reservations'].append(
                 {
                     'reservation': item.reservation,
-                    'quantity': item.quantity,
+                    'quantity': item.active_reserved_quantity,
                     'source_label': (
                         item.reservation.source_warehouse.name
                         if item.reservation.source_type == Reservation.SOURCE_WAREHOUSE and item.reservation.source_warehouse_id
@@ -2199,6 +3281,9 @@ def inventory_snapshot(*, warehouse_ids=None):
             | models.Q(reservation__source_cargo__destination_warehouse_id__in=warehouse_ids)
         )
     for item in reservation_items:
+        reservation_quantity = int(item.active_reserved_quantity or 0)
+        if reservation_quantity <= 0:
+            continue
         if item.reservation.source_type == Reservation.SOURCE_WAREHOUSE and item.reservation.source_warehouse_id:
             warehouse_pickup_map[item.reservation.source_warehouse_id] = item.reservation.source_warehouse.pickup_point_id
             row = ensure_row(
@@ -2211,7 +3296,7 @@ def inventory_snapshot(*, warehouse_ids=None):
                 item.variant.name if item.variant_id else '',
                 sku=_inventory_sku(product=item.product, variant=item.variant),
             )
-            row['reserved_on_hand'] += item.quantity
+            row['reserved_on_hand'] += reservation_quantity
         elif item.reservation.source_type == Reservation.SOURCE_CARGO and item.reservation.source_cargo_id:
             cargo = item.reservation.source_cargo
             if cargo.destination_warehouse_id:
@@ -2226,7 +3311,7 @@ def inventory_snapshot(*, warehouse_ids=None):
                     item.variant.name if item.variant_id else '',
                     sku=_inventory_sku(product=item.product, variant=item.variant),
                 )
-                row['inbound_reserved'] += item.quantity
+                row['inbound_reserved'] += reservation_quantity
 
     cargo_items = CargoItem.objects.filter(
         cargo__status__in=INBOUND_CARGO_STATUSES,
@@ -2287,6 +3372,344 @@ def inventory_snapshot_for_warehouse(warehouse):
     return inventory_snapshot(warehouse_ids=[warehouse.id])
 
 
+def rebuild_inventory_balance_cache(*, warehouse_ids=None):
+    lot_queryset = InventoryLot.objects.all()
+    balance_queryset = InventoryBalance.objects.all()
+    if warehouse_ids:
+        lot_queryset = lot_queryset.filter(warehouse_id__in=warehouse_ids)
+        balance_queryset = balance_queryset.filter(warehouse_id__in=warehouse_ids)
+    totals = defaultdict(int)
+    min_stock_map = {}
+    for balance in balance_queryset:
+        min_stock_map[(balance.warehouse_id, balance.product_id, balance.variant_id)] = balance.min_stock
+    for lot in lot_queryset:
+        totals[(lot.warehouse_id, lot.product_id, lot.variant_id)] += int(lot.remaining_qty or 0)
+    with transaction.atomic():
+        balance_queryset.update(quantity=0)
+        for (warehouse_id, product_id, variant_id), quantity in totals.items():
+            defaults = {
+                'quantity': quantity,
+                'min_stock': min_stock_map.get((warehouse_id, product_id, variant_id), 0),
+            }
+            if variant_id is None:
+                balance = InventoryBalance.objects.filter(
+                    warehouse_id=warehouse_id,
+                    product_id=product_id,
+                    variant__isnull=True,
+                ).first()
+                if balance:
+                    balance.quantity = quantity
+                    balance.min_stock = defaults['min_stock']
+                    balance.save(update_fields=['quantity', 'min_stock', 'updated_at'])
+                else:
+                    InventoryBalance.objects.create(
+                        warehouse_id=warehouse_id,
+                        product_id=product_id,
+                        variant=None,
+                        **defaults,
+                    )
+            else:
+                InventoryBalance.objects.update_or_create(
+                    warehouse_id=warehouse_id,
+                    product_id=product_id,
+                    variant_id=variant_id,
+                    defaults=defaults,
+                )
+
+
+def _purchase_items_for_order_item(order_item):
+    return list(
+        PurchaseItem.objects.filter(order_item=order_item).order_by('purchase__date', 'id')
+    )
+
+
+def _sync_finance_lines_for_order_item(order_item):
+    for finance_line in order_item.finance_deal_lines.all():
+        finance_line.line_type = order_item.line_type
+        finance_line.product = order_item.product
+        finance_line.variant = order_item.variant
+        finance_line.product_name = order_item.display_name
+        finance_line.custom_sku = order_item.custom_sku
+        finance_line.quantity = order_item.active_quantity
+        finance_line.unit_sale_price = order_item.unit_price
+        finance_line.planned_unit_cost = order_item.planned_unit_cost
+        finance_line.actual_unit_cost = order_item.actual_unit_cost
+        finance_line.cost_status = order_item.cost_status
+        finance_line.unit_cost_price = order_item.effective_unit_cost
+        finance_line.save()
+        recalculate_finance_deal_totals(finance_line.finance_deal, sync_lines=False)
+
+
+def sync_order_item_planned_cost(order_item):
+    purchase_items = _purchase_items_for_order_item(order_item)
+    if not purchase_items:
+        if Decimal(order_item.actual_unit_cost or 0) > 0:
+            order_item.purchase_price = order_item.actual_unit_cost
+            update_fields = ['purchase_price']
+        else:
+            order_item.cost_status = OrderItem.COST_STATUS_NONE
+            order_item.planned_unit_cost = Decimal('0')
+            order_item.purchase_price = Decimal('0')
+            update_fields = ['cost_status', 'planned_unit_cost', 'purchase_price']
+        order_item.save(update_fields=update_fields + ['updated_at'] if 'updated_at' not in update_fields else update_fields)
+        _sync_finance_lines_for_order_item(order_item)
+        return order_item
+    total_qty = sum(int(item.active_quantity or 0) for item in purchase_items)
+    total_cost = sum((Decimal(item.unit_cost or 0) * Decimal(item.active_quantity or 0) for item in purchase_items), Decimal('0'))
+    planned_unit_cost = _quantize_money(total_cost / Decimal(total_qty)) if total_qty else Decimal('0')
+    order_item.planned_unit_cost = planned_unit_cost
+    order_item.purchase_price = order_item.actual_unit_cost if Decimal(order_item.actual_unit_cost or 0) > 0 else planned_unit_cost
+    order_item.cost_status = (
+        OrderItem.COST_STATUS_ACTUAL
+        if Decimal(order_item.actual_unit_cost or 0) > 0
+        else OrderItem.COST_STATUS_PLANNED
+    )
+    order_item.save(update_fields=['planned_unit_cost', 'purchase_price', 'cost_status'])
+    _sync_finance_lines_for_order_item(order_item)
+    return order_item
+
+
+def _reserved_quantity_for_lot(lot):
+    return sum(
+        int(allocation.reserved_qty or 0) - int(allocation.shipped_qty or 0)
+        for allocation in lot.allocations.filter(status=SaleLineAllocation.STATUS_RESERVED)
+    )
+
+
+def _available_quantity_for_lot_reservation(lot):
+    return max(int(lot.remaining_qty or 0) - _reserved_quantity_for_lot(lot), 0)
+
+
+def _ensure_lot_coverage_from_balance(*, warehouse, product_id, variant_id):
+    balance = InventoryBalance.objects.filter(
+        warehouse=warehouse,
+        product_id=product_id,
+        variant_id=variant_id,
+    ).first()
+    balance_qty = int(balance.quantity or 0) if balance else 0
+    lot_qty = sum(
+        int(value or 0)
+        for value in InventoryLot.objects.filter(
+            warehouse=warehouse,
+            product_id=product_id,
+            variant_id=variant_id,
+        ).values_list('remaining_qty', flat=True)
+    )
+    missing_qty = max(balance_qty - lot_qty, 0)
+    if missing_qty <= 0:
+        return None
+    return InventoryLot.objects.create(
+        warehouse=warehouse,
+        product_id=product_id,
+        variant_id=variant_id,
+        received_qty=missing_qty,
+        remaining_qty=missing_qty,
+        unit_cost=Decimal('0'),
+        unit_cost_base=Decimal('0'),
+        unit_cost_final=Decimal('0'),
+        received_at=timezone.now(),
+        reference_type='balance_backfill',
+        reference_id=balance.id if balance else None,
+    )
+
+
+def allocate_inventory_to_order_item(*, order_item, warehouse, quantity, mode):
+    if not order_item.product_id or quantity <= 0:
+        return []
+    _ensure_lot_coverage_from_balance(
+        warehouse=warehouse,
+        product_id=order_item.product_id,
+        variant_id=order_item.variant_id,
+    )
+    lots = list(
+        InventoryLot.objects.filter(
+            warehouse=warehouse,
+            product_id=order_item.product_id,
+            variant_id=order_item.variant_id,
+            remaining_qty__gt=0,
+        ).order_by('received_at', 'id')
+    )
+    needed = int(quantity)
+    allocations = []
+    with transaction.atomic():
+        for lot in lots:
+            if needed <= 0:
+                break
+            if mode == SaleLineAllocation.STATUS_RESERVED:
+                lot_available = _available_quantity_for_lot_reservation(lot)
+            else:
+                lot_available = int(lot.remaining_qty or 0)
+            if lot_available <= 0:
+                continue
+            take = min(lot_available, needed)
+            if mode == SaleLineAllocation.STATUS_RESERVED:
+                allocation, _ = SaleLineAllocation.objects.get_or_create(
+                    order_item=order_item,
+                    inventory_lot=lot,
+                    status=SaleLineAllocation.STATUS_RESERVED,
+                    defaults={'reserved_qty': 0, 'shipped_qty': 0, 'unit_cost_snapshot': lot.unit_cost_final},
+                )
+                allocation.reserved_qty += take
+                allocation.unit_cost_snapshot = lot.unit_cost_final
+                allocation.save(update_fields=['reserved_qty', 'unit_cost_snapshot', 'updated_at'])
+            else:
+                allocation, _ = SaleLineAllocation.objects.get_or_create(
+                    order_item=order_item,
+                    inventory_lot=lot,
+                    status=SaleLineAllocation.STATUS_SHIPPED,
+                    defaults={'reserved_qty': 0, 'shipped_qty': 0, 'unit_cost_snapshot': lot.unit_cost_final},
+                )
+                allocation.reserved_qty += take
+                allocation.shipped_qty += take
+                allocation.unit_cost_snapshot = lot.unit_cost_final
+                allocation.save(update_fields=['reserved_qty', 'shipped_qty', 'unit_cost_snapshot', 'updated_at'])
+                lot.remaining_qty = max(int(lot.remaining_qty or 0) - take, 0)
+                lot.save(update_fields=['remaining_qty', 'updated_at'])
+            allocations.append(allocation)
+            needed -= take
+        if needed > 0:
+            raise ValueError(f'Недостаточно остатков в лотах для "{order_item.display_name}". Не хватает {needed} шт.')
+    rebuild_inventory_balance_cache(warehouse_ids=[warehouse.id])
+    return allocations
+
+
+def release_reserved_allocations(*, order_item, quantity=None, warehouse=None):
+    queryset = SaleLineAllocation.objects.filter(
+        order_item=order_item,
+        status=SaleLineAllocation.STATUS_RESERVED,
+    ).select_related('inventory_lot').order_by('inventory_lot__received_at', 'inventory_lot_id', 'id')
+    if warehouse is not None:
+        queryset = queryset.filter(inventory_lot__warehouse=warehouse)
+    to_release = sum(int(allocation.reserved_qty or 0) - int(allocation.shipped_qty or 0) for allocation in queryset)
+    if quantity is not None:
+        to_release = min(to_release, int(quantity))
+    if to_release <= 0:
+        return []
+    changed = []
+    with transaction.atomic():
+        for allocation in queryset:
+            if to_release <= 0:
+                break
+            free_reserved = int(allocation.reserved_qty or 0) - int(allocation.shipped_qty or 0)
+            if free_reserved <= 0:
+                continue
+            release_qty = min(free_reserved, to_release)
+            allocation.reserved_qty -= release_qty
+            if allocation.reserved_qty == 0 and allocation.shipped_qty == 0:
+                allocation.status = SaleLineAllocation.STATUS_RELEASED
+            allocation.save(update_fields=['reserved_qty', 'status', 'updated_at'])
+            changed.append(allocation)
+            to_release -= release_qty
+    return changed
+
+
+def _reservation_item_active_quantity(reservation_item):
+    return int(reservation_item.active_reserved_quantity or 0)
+
+
+def _set_reservation_item_progress(reservation_item, *, fulfilled_delta=0, released_delta=0):
+    fulfilled_delta = int(fulfilled_delta or 0)
+    released_delta = int(released_delta or 0)
+    if fulfilled_delta < 0 or released_delta < 0:
+        raise ValueError('Количество изменения строки брони не может быть отрицательным.')
+    if fulfilled_delta == 0 and released_delta == 0:
+        return reservation_item
+    reservation_item.fulfilled_quantity += fulfilled_delta
+    reservation_item.released_quantity += released_delta
+    if reservation_item.fulfilled_quantity + reservation_item.released_quantity > reservation_item.quantity:
+        raise ValueError('Сумма исполненного и освобожденного количества превышает количество строки брони.')
+    reservation_item.save(update_fields=['fulfilled_quantity', 'released_quantity'])
+    return reservation_item
+
+
+def reactivate_reservation_items(reservation):
+    changed = False
+    for item in reservation.items.all():
+        if item.released_quantity <= 0:
+            continue
+        item.released_quantity = 0
+        item.save(update_fields=['released_quantity'])
+        changed = True
+    return changed
+
+
+def recompute_reservation_status(reservation):
+    if reservation.status in {Reservation.STATUS_CANCELLED, Reservation.STATUS_EXPIRED}:
+        return reservation.status
+    items = list(reservation.items.all())
+    if not items:
+        new_status = Reservation.STATUS_DRAFT
+    else:
+        active_qty = sum(_reservation_item_active_quantity(item) for item in items)
+        fulfilled_qty = sum(int(item.fulfilled_quantity or 0) for item in items)
+        released_qty = sum(int(item.released_quantity or 0) for item in items)
+        total_qty = sum(int(item.quantity or 0) for item in items)
+        if total_qty <= 0:
+            new_status = Reservation.STATUS_DRAFT
+        elif fulfilled_qty >= total_qty:
+            new_status = Reservation.STATUS_FULFILLED
+        elif released_qty >= total_qty:
+            new_status = Reservation.STATUS_RELEASED
+        elif active_qty == total_qty and fulfilled_qty == 0 and released_qty == 0:
+            new_status = Reservation.STATUS_ACTIVE
+        else:
+            new_status = Reservation.STATUS_PARTIAL
+    if reservation.status != new_status:
+        reservation.status = new_status
+        reservation.save(update_fields=['status', 'updated_at'])
+    return new_status
+
+
+def sync_order_item_actual_cost(order_item):
+    shipped_allocations = list(
+        SaleLineAllocation.objects.filter(order_item=order_item, status=SaleLineAllocation.STATUS_SHIPPED)
+    )
+    shipped_qty = sum(int(allocation.shipped_qty or 0) for allocation in shipped_allocations)
+    if shipped_qty <= 0:
+        return order_item
+    total_cost = sum(
+        (Decimal(allocation.unit_cost_snapshot or 0) * Decimal(allocation.shipped_qty or 0))
+        for allocation in shipped_allocations
+    )
+    actual_unit_cost = _quantize_money(total_cost / Decimal(shipped_qty))
+    update_fields = ['actual_unit_cost', 'purchase_price']
+    order_item.actual_unit_cost = actual_unit_cost
+    order_item.purchase_price = actual_unit_cost
+    if shipped_qty >= int(order_item.active_quantity or 0):
+        order_item.cost_status = OrderItem.COST_STATUS_ACTUAL
+        update_fields.append('cost_status')
+    elif Decimal(order_item.planned_unit_cost or 0) > 0 and order_item.cost_status == OrderItem.COST_STATUS_NONE:
+        order_item.cost_status = OrderItem.COST_STATUS_PLANNED
+        update_fields.append('cost_status')
+    order_item.save(update_fields=update_fields)
+    _sync_finance_lines_for_order_item(order_item)
+    return order_item
+
+
+def _consume_lots_without_allocation(*, warehouse, product, variant=None, quantity):
+    needed = int(quantity)
+    lots = list(
+        InventoryLot.objects.filter(
+            warehouse=warehouse,
+            product=product,
+            variant=variant,
+            remaining_qty__gt=0,
+        ).order_by('received_at', 'id')
+    )
+    for lot in lots:
+        if needed <= 0:
+            break
+        available = int(lot.remaining_qty or 0)
+        if available <= 0:
+            continue
+        take = min(available, needed)
+        lot.remaining_qty = max(available - take, 0)
+        lot.save(update_fields=['remaining_qty', 'updated_at'])
+        needed -= take
+    if needed > 0:
+        raise ValueError(f'Недостаточно остатков в лотах для "{product.name}". Не хватает {needed} шт.')
+
+
 def _available_map_for_source(source_type, source_warehouse=None, source_cargo=None):
     if source_type == Reservation.SOURCE_WAREHOUSE and source_warehouse:
         rows = inventory_snapshot_for_warehouse(source_warehouse)
@@ -2297,11 +3720,34 @@ def _available_map_for_source(source_type, source_warehouse=None, source_cargo=N
     return {}
 
 
-def receipt_inventory(*, warehouse, product, variant=None, quantity, author=None, comment='', reference_type='manual', reference_id=None):
+def receipt_inventory(
+    *,
+    warehouse,
+    product,
+    variant=None,
+    quantity,
+    author=None,
+    comment='',
+    reference_type='manual',
+    reference_id=None,
+    unit_cost=Decimal('0'),
+    purchase_item=None,
+):
     with transaction.atomic():
-        balance = _get_or_create_balance(warehouse, product, variant)
-        balance.quantity += int(quantity)
-        balance.save(update_fields=['quantity', 'updated_at'])
+        InventoryLot.objects.create(
+            purchase_item=purchase_item,
+            warehouse=warehouse,
+            product=product,
+            variant=variant,
+            received_qty=int(quantity),
+            remaining_qty=int(quantity),
+            unit_cost=Decimal(unit_cost or 0),
+            unit_cost_base=Decimal(unit_cost or 0),
+            unit_cost_final=Decimal(unit_cost or 0),
+            received_at=timezone.now(),
+            reference_type=reference_type,
+            reference_id=reference_id,
+        )
         InventoryMovement.objects.create(
             warehouse=warehouse,
             product=product,
@@ -2313,8 +3759,9 @@ def receipt_inventory(*, warehouse, product, variant=None, quantity, author=None
             comment=comment,
             author=author,
         )
+        rebuild_inventory_balance_cache(warehouse_ids=[warehouse.id])
         sync_public_stock_for_warehouse(warehouse)
-    return balance
+    return InventoryBalance.objects.filter(warehouse=warehouse, product=product, variant=variant).first()
 
 
 def create_or_update_reservation_movements(reservation, *, movement_type, author=None, comment='', items=None):
@@ -2325,17 +3772,32 @@ def create_or_update_reservation_movements(reservation, *, movement_type, author
         return
     item_iterable = items if items is not None else reservation.items.select_related('product', 'variant').all()
     for item in item_iterable:
+        quantity = _reservation_item_active_quantity(item)
+        if quantity <= 0:
+            continue
         InventoryMovement.objects.create(
             warehouse=source_warehouse,
             product=item.product,
             variant=item.variant,
             movement_type=movement_type,
-            quantity=item.quantity,
+            quantity=quantity,
             reference_type='reservation',
             reference_id=reservation.id,
             comment=comment,
             author=author,
         )
+        if item.order_item_id and item.product_id:
+            if movement_type == InventoryMovement.TYPE_RESERVE:
+                allocate_inventory_to_order_item(
+                    order_item=item.order_item,
+                    warehouse=source_warehouse,
+                    quantity=quantity,
+                    mode=SaleLineAllocation.STATUS_RESERVED,
+                )
+            elif movement_type == InventoryMovement.TYPE_RELEASE:
+                release_reserved_allocations(order_item=item.order_item, quantity=quantity, warehouse=source_warehouse)
+                _set_reservation_item_progress(item, released_delta=quantity)
+    recompute_reservation_status(reservation)
 
 
 def validate_reservation_availability(reservation, *, items):
@@ -2440,7 +3902,7 @@ def _website_deal_status_for_order(order, *, deal_type, customer_source=''):
     if deal_type == ManagerDeal.DEAL_SALE_ON_REQUEST:
         linked_purchase_items = PurchaseItem.objects.filter(order_item__order=order)
         if linked_purchase_items.exists():
-            if all(item.received_quantity >= item.quantity for item in linked_purchase_items):
+            if all(item.received_quantity >= item.active_quantity for item in linked_purchase_items):
                 return ManagerDeal.DEAL_STATUS_RECEIVED
             return ManagerDeal.DEAL_STATUS_SUPPLIER_ORDERED
         if order.payment_status == Order.PAYMENT_STATUS_PAID:
@@ -2618,7 +4080,7 @@ def ensure_order_reservations(order, client, *, warehouse=None, author=None, str
         reservation__status__in=ACTIVE_RESERVATION_STATUSES,
         order_item__isnull=False,
     ):
-        existing_reserved[item.order_item_id] += item.quantity
+        existing_reserved[item.order_item_id] += int(item.active_reserved_quantity or 0)
 
     order_items = list(order.items.select_related('product', 'variant').all())
     if warehouse is not None:
@@ -2635,7 +4097,7 @@ def ensure_order_reservations(order, client, *, warehouse=None, author=None, str
         for order_item in order_items:
             if order_item.is_on_request or not order_item.product_id:
                 continue
-            remaining = max(order_item.quantity - existing_reserved[order_item.id], 0)
+            remaining = max(order_item.active_quantity - existing_reserved[order_item.id], 0)
             if remaining <= 0:
                 continue
             available = int(available_map.get((order_item.product_id, order_item.variant_id or 0), 0))
@@ -2677,7 +4139,7 @@ def ensure_order_reservations(order, client, *, warehouse=None, author=None, str
     for order_item in order_items:
         if order_item.is_on_request or not order_item.product_id:
             continue
-        remaining = max(order_item.quantity - existing_reserved[order_item.id], 0)
+        remaining = max(order_item.active_quantity - existing_reserved[order_item.id], 0)
         if remaining <= 0:
             continue
         candidates = rows_by_item.get((order_item.product_id, order_item.variant_id or 0), [])
@@ -2777,50 +4239,125 @@ def ensure_website_order_workflow(order, *, author=None):
     }
 
 
-def fulfill_reservation(reservation, *, author=None, comment=''):
-    source_warehouse = reservation_effective_warehouse(reservation)
-    if not reservation or not source_warehouse:
-        return False
+def _shipment_target_status_from_order(order):
+    if order is not None and order.status == Order.STATUS_DONE:
+        return Shipment.STATUS_DELIVERED
+    return Shipment.STATUS_SHIPPED
+
+
+def dispatch_shipment(shipment, *, author=None, comment=''):
+    shipment = Shipment.objects.select_related(
+        'order',
+        'reservation',
+        'source_warehouse',
+        'manager_deal',
+    ).get(pk=shipment.pk)
+    if shipment.inventory_consumed_at is not None:
+        return shipment
+    if shipment.status == Shipment.STATUS_CANCELLED:
+        raise ValueError('Нельзя провести складской эффект для отмененной отгрузки.')
+    source_warehouse = shipment.source_warehouse or (
+        reservation_effective_warehouse(shipment.reservation) if shipment.reservation_id else None
+    )
+    if source_warehouse is None:
+        raise ValueError('У отгрузки не указан склад-источник.')
+    shipment_items = list(
+        shipment.items.select_related('order_item', 'reservation_item__reservation', 'product', 'variant').all()
+    )
+    if not shipment_items:
+        raise ValueError('Нельзя провести пустую отгрузку.')
+    touched_order_items = {}
+    touched_reservations = {}
     with transaction.atomic():
-        for item in reservation.items.select_related('product', 'variant'):
-            balance = InventoryBalance.objects.filter(
-                warehouse=source_warehouse,
-                product=item.product,
-                variant=item.variant,
-            ).first()
-            if balance:
-                balance.quantity = max(balance.quantity - item.quantity, 0)
-                balance.save(update_fields=['quantity', 'updated_at'])
+        locked_shipment = Shipment.objects.select_for_update().get(pk=shipment.pk)
+        if locked_shipment.inventory_consumed_at is not None:
+            return locked_shipment
+        for shipment_item in shipment_items:
+            quantity = int(shipment_item.quantity or 0)
+            if quantity <= 0:
+                continue
+            order_item = shipment_item.order_item
+            reservation_item = shipment_item.reservation_item
+            if order_item is None and reservation_item is not None:
+                order_item = reservation_item.order_item
+            if reservation_item is not None:
+                open_reserved = int(reservation_item.active_reserved_quantity or 0)
+                if quantity > open_reserved:
+                    raise ValueError('Количество в отгрузке превышает доступный остаток брони.')
+            if order_item is not None:
+                already_shipped = int(order_item.shipped_quantity or 0)
+                remaining_shippable = max(int(order_item.active_quantity or 0) - already_shipped, 0)
+                if quantity > remaining_shippable:
+                    raise ValueError(f'Отгрузка превышает доступное количество для "{order_item.display_name}".')
+                release_reserved_allocations(
+                    order_item=order_item,
+                    quantity=quantity,
+                    warehouse=source_warehouse,
+                )
+                allocate_inventory_to_order_item(
+                    order_item=order_item,
+                    warehouse=source_warehouse,
+                    quantity=quantity,
+                    mode=SaleLineAllocation.STATUS_SHIPPED,
+                )
+                touched_order_items[order_item.pk] = order_item
+            else:
+                _consume_lots_without_allocation(
+                    warehouse=source_warehouse,
+                    product=shipment_item.product,
+                    variant=shipment_item.variant,
+                    quantity=quantity,
+                )
+            if reservation_item is not None:
+                _set_reservation_item_progress(reservation_item, fulfilled_delta=quantity)
+                touched_reservations[reservation_item.reservation_id] = reservation_item.reservation
             InventoryMovement.objects.create(
                 warehouse=source_warehouse,
-                product=item.product,
-                variant=item.variant,
+                product=shipment_item.product,
+                variant=shipment_item.variant,
                 movement_type=InventoryMovement.TYPE_RELEASE,
-                quantity=item.quantity,
-                reference_type='deal_shipment',
-                reference_id=reservation.linked_order_id,
-                comment=comment or 'Списание после исполнения заказа',
+                quantity=quantity,
+                reference_type='shipment',
+                reference_id=locked_shipment.id,
+                comment=comment or 'Списание по отгрузке',
                 author=author,
             )
-        reservation.status = Reservation.STATUS_FULFILLED
-        reservation.save(update_fields=['status', 'updated_at'])
+        rebuild_inventory_balance_cache(warehouse_ids=[source_warehouse.id])
         sync_public_stock_for_warehouse(source_warehouse)
-    return True
+        for order_item in touched_order_items.values():
+            sync_order_item_actual_cost(order_item)
+        for reservation in touched_reservations.values():
+            recompute_reservation_status(reservation)
+        locked_shipment.inventory_consumed_at = timezone.now()
+        target_status = _shipment_target_status_from_order(locked_shipment.order)
+        locked_shipment.status = target_status
+        if not locked_shipment.shipped_at:
+            locked_shipment.shipped_at = locked_shipment.inventory_consumed_at
+        if target_status == Shipment.STATUS_DELIVERED and not locked_shipment.delivered_at:
+            locked_shipment.delivered_at = locked_shipment.inventory_consumed_at
+        locked_shipment.save(update_fields=['inventory_consumed_at', 'status', 'shipped_at', 'delivered_at', 'updated_at'])
+        if locked_shipment.order_id and not locked_shipment.order.stock_decreased:
+            locked_shipment.order.stock_decreased = True
+            locked_shipment.order.save(update_fields=['stock_decreased'])
+    if locked_shipment.manager_deal_id:
+        recompute_deal_workflow(locked_shipment.manager_deal, actor=author)
+    return locked_shipment
+
+
+def fulfill_reservation(reservation, *, author=None, comment='', shipment=None):
+    if shipment is None:
+        raise ValueError('Прямое исполнение брони без shipment больше не поддерживается.')
+    if shipment.reservation_id and shipment.reservation_id != reservation.id:
+        raise ValueError('Shipment не связан с этой бронью.')
+    if shipment.reservation_id is None:
+        shipment.reservation = reservation
+        shipment.source_warehouse = shipment.source_warehouse or reservation_effective_warehouse(reservation)
+        shipment.save(update_fields=['reservation', 'source_warehouse', 'updated_at'])
+    return dispatch_shipment(shipment, author=author, comment=comment)
 
 
 def consume_inventory_for_order(order, *, author=None):
-    reservations = list(
-        Reservation.objects.filter(
-            linked_order=order,
-            status__in=ACTIVE_RESERVATION_STATUSES,
-        ).select_related('source_warehouse', 'source_cargo__destination_warehouse')
-    )
-    if not reservations:
-        return False
-    consumed_any = False
-    for reservation in reservations:
-        consumed_any = fulfill_reservation(reservation, author=author) or consumed_any
-    return consumed_any
+    return False
 
 
 def create_or_update_shipment_for_order(order, *, author=None, reservation=None, tracking_number='', shipment=None):
@@ -2872,69 +4409,115 @@ def create_or_update_shipment_for_order(order, *, author=None, reservation=None,
         'planned_receipt_at': deal.planned_receipt_at if deal is not None else None,
         'delivery_payer': deal.delivery_payer if deal is not None else '',
         'tracking_number': tracking_number or '',
-        'status': Shipment.STATUS_PENDING if order.status != Order.STATUS_DONE else Shipment.STATUS_DELIVERED,
+        'status': Shipment.STATUS_PENDING,
         'comments': (deal.shipping_comment if deal is not None else '') or order.delivery_comment or '',
     }
     if shipment is None:
         shipment, _ = Shipment.objects.get_or_create(order=order, defaults=defaults)
+    else:
+        shipment = Shipment.objects.get(pk=shipment.pk)
     update_fields = []
+    if shipment.inventory_consumed_at is None and shipment.status in {Shipment.STATUS_SHIPPED, Shipment.STATUS_DELIVERED}:
+        if tracking_number and shipment.tracking_number != tracking_number:
+            shipment.tracking_number = tracking_number
+            update_fields.append('tracking_number')
+        if defaults['comments'] and shipment.comments != defaults['comments']:
+            shipment.comments = defaults['comments']
+            update_fields.append('comments')
+        if update_fields:
+            shipment.save(update_fields=update_fields + ['updated_at'])
+        if deal is not None:
+            recompute_deal_workflow(deal, actor=author)
+        return shipment
+    if shipment.inventory_consumed_at is not None:
+        if tracking_number and shipment.tracking_number != tracking_number:
+            shipment.tracking_number = tracking_number
+            update_fields.append('tracking_number')
+        if defaults['comments'] and shipment.comments != defaults['comments']:
+            shipment.comments = defaults['comments']
+            update_fields.append('comments')
+        if order.status == Order.STATUS_DONE and shipment.status == Shipment.STATUS_SHIPPED:
+            shipment.status = Shipment.STATUS_DELIVERED
+            update_fields.append('status')
+            if not shipment.delivered_at:
+                shipment.delivered_at = timezone.now()
+                update_fields.append('delivered_at')
+        if update_fields:
+            shipment.save(update_fields=update_fields + ['updated_at'])
+        if deal is not None:
+            recompute_deal_workflow(deal, actor=author)
+        return shipment
+
     for field, value in defaults.items():
+        if field == 'status':
+            continue
         if getattr(shipment, field) != value and value not in (None, ''):
             setattr(shipment, field, value)
             update_fields.append(field)
-    if order.status == Order.STATUS_SHIPPING:
-        shipped_at = timezone.now()
-        if shipment.status != Shipment.STATUS_SHIPPED:
-            shipment.status = Shipment.STATUS_SHIPPED
-            update_fields.append('status')
-        if not shipment.shipped_at:
-            shipment.shipped_at = shipped_at
-            update_fields.append('shipped_at')
-    elif order.status == Order.STATUS_DONE:
-        if shipment.status != Shipment.STATUS_DELIVERED:
-            shipment.status = Shipment.STATUS_DELIVERED
-            update_fields.append('status')
-        if not shipment.delivered_at:
-            shipment.delivered_at = timezone.now()
-            update_fields.append('delivered_at')
+    if shipment.status not in {Shipment.STATUS_CANCELLED, Shipment.STATUS_PENDING}:
+        shipment.status = Shipment.STATUS_PENDING
+        update_fields.append('status')
     if tracking_number and shipment.tracking_number != tracking_number:
         shipment.tracking_number = tracking_number
         update_fields.append('tracking_number')
     if update_fields:
-        update_fields.append('updated_at')
-        shipment.save(update_fields=update_fields)
+        shipment.save(update_fields=update_fields + ['updated_at'])
 
     ShipmentItem.objects.filter(shipment=shipment).delete()
     if reservation:
         for reservation_item in reservation.items.select_related('product', 'variant', 'order_item'):
+            quantity = int(reservation_item.active_reserved_quantity or 0)
+            if quantity <= 0:
+                continue
             ShipmentItem.objects.create(
                 shipment=shipment,
                 order_item=reservation_item.order_item,
                 reservation_item=reservation_item,
                 product=reservation_item.product,
                 variant=reservation_item.variant,
-                quantity=reservation_item.quantity,
+                quantity=quantity,
             )
     else:
         for order_item in order.items.select_related('product', 'variant'):
             if not order_item.product_id:
+                continue
+            quantity = max(int(order_item.active_quantity or 0) - int(order_item.shipped_quantity or 0), 0)
+            if quantity <= 0:
                 continue
             ShipmentItem.objects.create(
                 shipment=shipment,
                 order_item=order_item,
                 product=order_item.product,
                 variant=order_item.variant,
-                quantity=order_item.quantity,
+                quantity=quantity,
             )
     if deal is not None:
         recompute_deal_workflow(deal, actor=author)
     return shipment
 
 
-def sync_order_workflow_state(order, *, author=None):
+def sync_order_workflow_state(order, *, author=None, previous_status=None):
     deal = ensure_manager_deal_for_order(order)
     if order.status in {Order.STATUS_SHIPPING, Order.STATUS_DONE}:
-        create_or_update_shipment_for_order(order, author=author)
+        shipments = list(order.manager_shipments.exclude(status=Shipment.STATUS_CANCELLED).order_by('id'))
+        if not shipments:
+            shipments = [create_or_update_shipment_for_order(order, author=author)]
+        elif len(shipments) == 1:
+            shipments = [create_or_update_shipment_for_order(order, author=author, shipment=shipments[0])]
+        if (
+            previous_status != order.status
+            and len(shipments) == 1
+            and shipments[0].status in {Shipment.STATUS_DRAFT, Shipment.STATUS_PENDING}
+            and shipments[0].inventory_consumed_at is None
+        ):
+            dispatch_candidate = shipments[0]
+            dispatch_source = dispatch_candidate.source_warehouse or (
+                reservation_effective_warehouse(dispatch_candidate.reservation)
+                if dispatch_candidate.reservation_id
+                else None
+            )
+            if dispatch_source and dispatch_candidate.items.exists():
+                dispatch_shipment(dispatch_candidate, author=author, comment='Автодиспатч по смене статуса заказа.')
     recompute_deal_workflow(deal, actor=author)
 
 
@@ -2950,7 +4533,7 @@ def receive_cargo_item(cargo_item, *, quantity, author=None, comment=''):
             purchase_item = cargo_item.purchase_item
             purchase_item.received_quantity = min(
                 purchase_item.received_quantity + int(quantity),
-                purchase_item.quantity,
+                purchase_item.active_quantity,
             )
             purchase_item.received_at = timezone.now()
             purchase_item.save(update_fields=['received_quantity', 'received_at'])
@@ -2963,7 +4546,11 @@ def receive_cargo_item(cargo_item, *, quantity, author=None, comment=''):
             comment=comment or f'Приемка по грузу {cargo_item.cargo.cargo_number}',
             reference_type='cargo',
             reference_id=cargo_item.cargo_id,
+            unit_cost=cargo_item.purchase_item.unit_cost if cargo_item.purchase_item_id else Decimal('0'),
+            purchase_item=cargo_item.purchase_item if cargo_item.purchase_item_id else None,
         )
+        if cargo_item.purchase_item_id and cargo_item.purchase_item.order_item_id:
+            sync_order_item_planned_cost(cargo_item.purchase_item.order_item)
         if all(item.remaining_quantity == 0 for item in cargo_item.cargo.items.all()):
             cargo_item.cargo.status = Cargo.STATUS_RECEIVED
             cargo_item.cargo.save(update_fields=['status', 'updated_at'])
@@ -3205,13 +4792,14 @@ def finance_dashboard_data(*, year, month):
         'deal_type',
         'created_by',
         'manager_deal',
-    )
+    ).prefetch_related('shares')
     expenses = FinanceExpense.objects.filter(date__gte=start, date__lt=end).select_related('category', 'deal', 'created_by')
     payouts = FinancePayout.objects.filter(date__gte=start, date__lt=end).select_related('created_by')
 
     turnover = _sum_decimal(deals, 'revenue')
-    cost_of_goods = _sum_decimal(deals, 'cost_price')
-    company_profit = _sum_decimal(deals, 'margin')
+    cost_of_goods = _sum_decimal(deals, 'cost_of_goods')
+    distributable_profit_total = _sum_decimal(deals, 'distributable_profit')
+    gross_profit_total = _quantize_money(turnover - cost_of_goods)
     total_opex = _sum_decimal(expenses.filter(deal__isnull=True, expense_side=FinanceExpense.SIDE_OURS), 'amount')
     partner_paid_physically = _sum_decimal(
         expenses.filter(deal__isnull=True, expense_side=FinanceExpense.SIDE_PARTNER),
@@ -3224,7 +4812,7 @@ def finance_dashboard_data(*, year, month):
         deals=deals,
         total_opex=total_opex_both,
     )
-    net_profit = company_profit - total_opex_display
+    net_profit = distributable_profit_total - total_opex_display
     final_payout = partner_profit - already_paid
 
     income_map = defaultdict(lambda: MONEY_ZERO)
@@ -3307,6 +4895,37 @@ def finance_dashboard_data(*, year, month):
         row for row in cashflow_rows
         if row['income'] or row['operating_expense'] or row['payout'] or row['net']
     ]
+    participant_groups = {}
+    for deal in deals:
+        for share in deal.shares.all():
+            participant_label = share.participant_name_snapshot or (share.participant_alias.display_name if share.participant_alias_id else 'Неизвестный участник')
+            group = participant_groups.setdefault(
+                participant_label,
+                {
+                    'participant': participant_label,
+                    'amount': MONEY_ZERO,
+                    'deal_count': 0,
+                    'deals': [],
+                },
+            )
+            group['amount'] += Decimal(share.final_amount or 0)
+            group['deal_count'] += 1
+            group['deals'].append(
+                {
+                    'id': deal.pk,
+                    'label': deal.contract_number or str(deal),
+                    'amount': _quantize_money(share.final_amount),
+                }
+            )
+    participant_share_rows = [
+        {
+            'participant': row['participant'],
+            'amount': _quantize_money(row['amount']),
+            'deal_count': row['deal_count'],
+            'deals': row['deals'][:5],
+        }
+        for row in sorted(participant_groups.values(), key=lambda item: (-item['amount'], item['participant']))
+    ]
 
     return {
         'year': int(year),
@@ -3319,7 +4938,9 @@ def finance_dashboard_data(*, year, month):
         'payouts': list(payouts),
         'turnover': _quantize_money(turnover),
         'cost_of_goods': _quantize_money(cost_of_goods),
-        'company_profit': _quantize_money(company_profit),
+        'gross_profit_total': _quantize_money(gross_profit_total),
+        'distributable_profit_total': _quantize_money(distributable_profit_total),
+        'company_profit': _quantize_money(distributable_profit_total),
         'net_profit': _quantize_money(net_profit),
         'total_opex': _quantize_money(total_opex),
         'partner_paid_physically': _quantize_money(partner_paid_physically),
@@ -3342,6 +4963,7 @@ def finance_dashboard_data(*, year, month):
         'cashflow_activity_rows': cashflow_activity_rows,
         'cashflow_chart': cashflow_chart,
         'has_cashflow_activity': bool(cashflow_activity_rows),
+        'participant_share_rows': participant_share_rows,
     }
 
 
@@ -3354,34 +4976,35 @@ def finance_partner_profit_by_direction(*, deals, total_opex):
             {
                 'share': share,
                 'deal_types': set(),
-                'margin': MONEY_ZERO,
+                'distributable_profit': MONEY_ZERO,
             },
         )
         group['deal_types'].add(deal.deal_type.name)
-        group['margin'] += Decimal(deal.margin or 0)
+        group['distributable_profit'] += Decimal(deal.distributable_profit or 0)
 
     rows = []
-    total_margin = sum((group['margin'] for group in groups.values()), MONEY_ZERO)
+    total_distributable_profit = sum((group['distributable_profit'] for group in groups.values()), MONEY_ZERO)
     total_opex = Decimal(total_opex or 0)
-    total_net = total_margin - total_opex
-    weight_sum = sum((group['margin'] * group['share'] for group in groups.values()), MONEY_ZERO)
+    total_net = total_distributable_profit - total_opex
+    weight_sum = sum((group['distributable_profit'] * group['share'] for group in groups.values()), MONEY_ZERO)
 
     for share, group in sorted(groups.items(), key=lambda item: (item[0], sorted(item[1]['deal_types']))):
-        margin = group['margin']
-        weight = margin * share
-        if total_margin <= 0:
+        distributable_profit = group['distributable_profit']
+        weight = distributable_profit * share
+        if total_distributable_profit <= 0:
             net_profit = MONEY_ZERO
         elif weight_sum <= 0:
-            net_profit = total_net * (margin / total_margin)
+            net_profit = total_net * (distributable_profit / total_distributable_profit)
         else:
             net_profit = total_net * (weight / weight_sum)
         partner_profit = net_profit * share if net_profit > 0 else MONEY_ZERO
-        opex_allocated = margin - net_profit
+        opex_allocated = distributable_profit - net_profit
         rows.append(
             {
                 'deal_type': ' + '.join(sorted(group['deal_types'])),
                 'share': _quantize_percent(share),
-                'margin': _quantize_money(margin),
+                'distributable_profit': _quantize_money(distributable_profit),
+                'margin': _quantize_money(distributable_profit),
                 'weight': _quantize_money(weight),
                 'weight_percent': _quantize_percent((weight / weight_sum * Decimal('100')) if weight_sum > 0 else MONEY_ZERO),
                 'net_profit': _quantize_money(net_profit),
@@ -3421,7 +5044,8 @@ def build_finance_report_zip(*, year, month):
                     {'metric': 'period', 'value': data['period_label']},
                     {'metric': 'turnover', 'value': data['turnover']},
                     {'metric': 'cost_of_goods', 'value': data['cost_of_goods']},
-                    {'metric': 'company_profit', 'value': data['company_profit']},
+                    {'metric': 'gross_profit_total', 'value': data['gross_profit_total']},
+                    {'metric': 'distributable_profit_total', 'value': data['distributable_profit_total']},
                     {'metric': 'net_profit', 'value': data['net_profit']},
                     {'metric': 'cash_balance', 'value': data['cash_balance']},
                     {'metric': 'receivables_total', 'value': data['receivables_total']},
@@ -3438,7 +5062,20 @@ def build_finance_report_zip(*, year, month):
         archive.writestr(
             'deals.csv',
             _csv_bytes(
-                ['id', 'date', 'contract_number', 'deal_type', 'revenue', 'cost_price', 'direct_expenses', 'manager_bonus', 'margin', 'partner_share_amount', 'comment'],
+                [
+                    'id',
+                    'date',
+                    'contract_number',
+                    'deal_type',
+                    'revenue',
+                    'cost_of_goods',
+                    'gross_profit',
+                    'direct_expenses',
+                    'manager_bonus',
+                    'distributable_profit',
+                    'partner_share_amount',
+                    'comment',
+                ],
                 [
                     {
                         'id': deal.id,
@@ -3446,10 +5083,11 @@ def build_finance_report_zip(*, year, month):
                         'contract_number': deal.contract_number,
                         'deal_type': deal.deal_type.name,
                         'revenue': deal.revenue,
-                        'cost_price': deal.cost_price,
+                        'cost_of_goods': deal.cost_of_goods,
+                        'gross_profit': deal.gross_profit,
                         'direct_expenses': deal.direct_expenses,
                         'manager_bonus': deal.manager_bonus,
-                        'margin': deal.margin,
+                        'distributable_profit': deal.distributable_profit,
                         'partner_share_amount': deal.partner_share_amount,
                         'comment': deal.comment,
                     }

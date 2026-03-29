@@ -18,7 +18,7 @@
                 <p class="mt-1 text-base font-semibold text-white">{{ deal.contract_number|default:"—" }}</p>
                 <p class="mt-1 text-sm text-slate-400">{{ deal.deal_type.name }}</p>
               </div>
-              <span class="manager-pill shrink-0">{{ deal.margin }}</span>
+              <span class="manager-pill shrink-0">{{ deal.distributable_profit }}</span>
             </div>
           </article>
         {% empty %}
@@ -28,7 +28,7 @@
 
       {% manager_table wrapper_class="mt-5" table_class="hidden min-w-full text-sm text-slate-300 md:table" %}
           <thead class="text-left text-xs uppercase tracking-[0.18em] text-slate-500">
-            <tr><th class="pb-3 pr-4">Дата</th><th class="pb-3 pr-4">Клиент</th><th class="pb-3 pr-4">Тип</th><th class="pb-3 pr-4">Маржа</th></tr>
+            <tr><th class="pb-3 pr-4">Дата</th><th class="pb-3 pr-4">Клиент</th><th class="pb-3 pr-4">Тип</th><th class="pb-3 pr-4">Распределяемая прибыль</th></tr>
           </thead>
           <tbody>
             {% for deal in finance_archive.deals %}
@@ -36,7 +36,7 @@
                 <td class="py-3 pr-4">{{ deal.date }}</td>
                 <td class="py-3 pr-4">{{ deal.contract_number|default:"—" }}</td>
                 <td class="py-3 pr-4">{{ deal.deal_type.name }}</td>
-                <td class="py-3 pr-4">{{ deal.margin }}</td>
+                <td class="py-3 pr-4">{{ deal.distributable_profit }}</td>
               </tr>
             {% empty %}
               {% include "manager_portal/_empty_state.html" with colspan=4 %}

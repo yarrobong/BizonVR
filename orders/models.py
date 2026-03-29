@@ -5,6 +5,7 @@
 import secrets
 from decimal import Decimal
 from django.db import models
+from django.db.models import Q
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.utils import timezone
@@ -424,6 +425,22 @@ class OrderNotificationLog(models.Model):
 
 class OrderItem(models.Model):
     """Позиция заказа: товар, количество, цена на момент заказа."""
+    LINE_TYPE_CATALOG = 'catalog'
+    LINE_TYPE_CUSTOM = 'custom'
+    LINE_TYPE_CHOICES = [
+        (LINE_TYPE_CATALOG, 'Каталог'),
+        (LINE_TYPE_CUSTOM, 'Произвольный товар'),
+    ]
+
+    COST_STATUS_NONE = 'none'
+    COST_STATUS_PLANNED = 'planned'
+    COST_STATUS_ACTUAL = 'actual'
+    COST_STATUS_CHOICES = [
+        (COST_STATUS_NONE, 'Нет'),
+        (COST_STATUS_PLANNED, 'План'),
+        (COST_STATUS_ACTUAL, 'Факт'),
+    ]
+
     CONDITION_NEW = 'new'
     CONDITION_USED = 'used'
     CONDITION_REFURBISHED = 'refurbished'
@@ -439,6 +456,13 @@ class OrderItem(models.Model):
         related_name='items',
         verbose_name='Заказ',
     )
+    line_type = models.CharField(
+        'Тип строки',
+        max_length=16,
+        choices=LINE_TYPE_CHOICES,
+        default=LINE_TYPE_CATALOG,
+        db_index=True,
+    )
     product = models.ForeignKey(
         Product,
         on_delete=models.PROTECT,
@@ -452,6 +476,12 @@ class OrderItem(models.Model):
         max_length=300,
         blank=True,
         help_text='Снапшот названия на момент заказа или ручное название, если позиции нет в каталоге.',
+    )
+    custom_sku = models.CharField(
+        'Произвольный SKU',
+        max_length=64,
+        blank=True,
+        help_text='Используется только для произвольных строк сделки.',
     )
     product_image_url = models.CharField(
         'Изображение товара',
@@ -468,6 +498,7 @@ class OrderItem(models.Model):
         verbose_name='Вариант',
     )
     quantity = models.PositiveIntegerField('Количество', default=1)
+    cancelled_quantity = models.PositiveIntegerField('Операционно отменено', default=0)
     price = models.DecimalField(
         'Цена за единицу',
         max_digits=12,
@@ -491,10 +522,29 @@ class OrderItem(models.Model):
         default=CONDITION_NEW,
     )
     purchase_price = models.DecimalField(
-        'Закупочная цена за единицу',
+        'Эффективная себестоимость за единицу',
         max_digits=12,
         decimal_places=2,
         default=Decimal('0'),
+    )
+    planned_unit_cost = models.DecimalField(
+        'Плановая себестоимость за единицу',
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0'),
+    )
+    actual_unit_cost = models.DecimalField(
+        'Фактическая себестоимость за единицу',
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal('0'),
+    )
+    cost_status = models.CharField(
+        'Статус себестоимости',
+        max_length=16,
+        choices=COST_STATUS_CHOICES,
+        default=COST_STATUS_NONE,
+        db_index=True,
     )
     discount_amount = models.DecimalField(
         'Скидка за единицу',
@@ -507,29 +557,105 @@ class OrderItem(models.Model):
     class Meta:
         verbose_name = 'Позиция заказа'
         verbose_name_plural = 'Позиции заказа'
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    (
+                        Q(line_type='catalog')
+                        & Q(product__isnull=False)
+                        & ~Q(product_name='')
+                        & Q(custom_sku='')
+                    )
+                    | (
+                        Q(line_type='custom')
+                        & Q(product__isnull=True)
+                        & Q(variant__isnull=True)
+                        & ~Q(product_name='')
+                    )
+                ),
+                name='order_item_line_type_integrity',
+            ),
+            models.CheckConstraint(
+                condition=Q(planned_unit_cost__gte=0),
+                name='order_item_planned_unit_cost_gte_zero',
+            ),
+            models.CheckConstraint(
+                condition=Q(actual_unit_cost__gte=0),
+                name='order_item_actual_unit_cost_gte_zero',
+            ),
+            models.CheckConstraint(
+                condition=Q(cancelled_quantity__gte=0),
+                name='order_item_cancelled_quantity_gte_zero',
+            ),
+            models.CheckConstraint(
+                condition=Q(cancelled_quantity__lte=models.F('quantity')),
+                name='order_item_cancelled_quantity_lte_quantity',
+            ),
+        ]
 
     def __str__(self):
         return f'{self.display_name} x {self.quantity}'
 
     def save(self, *args, **kwargs):
+        if self.line_type == self.LINE_TYPE_CUSTOM:
+            self.product = None
+            self.variant = None
+        elif self.product_id:
+            self.line_type = self.LINE_TYPE_CATALOG
+        if self.planned_unit_cost in (None, Decimal('0')) and self.purchase_price:
+            self.planned_unit_cost = self.purchase_price
+        if self.actual_unit_cost and self.actual_unit_cost > 0:
+            self.cost_status = self.COST_STATUS_ACTUAL
+        elif self.planned_unit_cost and self.planned_unit_cost > 0 and self.cost_status == self.COST_STATUS_NONE:
+            self.cost_status = self.COST_STATUS_PLANNED
+        self.purchase_price = self.effective_unit_cost
         if self.product_id:
             if not (self.product_name or '').strip():
                 self.product_name = self.product.name
             if not (self.product_image_url or '').strip():
                 self.product_image_url = resolve_order_item_image_url(product=self.product, variant=self.variant)
+        update_fields = kwargs.get('update_fields')
+        if update_fields is not None:
+            normalized_fields = set(update_fields)
+            normalized_fields.update(
+                {
+                    'line_type',
+                    'product',
+                    'variant',
+                    'product_name',
+                    'product_image_url',
+                    'planned_unit_cost',
+                    'actual_unit_cost',
+                    'cost_status',
+                    'purchase_price',
+                }
+            )
+            kwargs['update_fields'] = list(normalized_fields)
         super().save(*args, **kwargs)
 
     def clean(self):
+        if self.line_type == self.LINE_TYPE_CATALOG and not self.product_id:
+            raise ValidationError({'product': 'Для каталоговой строки выберите товар.'})
+        if self.line_type == self.LINE_TYPE_CUSTOM and self.product_id:
+            raise ValidationError({'product': 'Произвольная строка не должна ссылаться на товар каталога.'})
         if not self.product_id and not (self.product_name or '').strip():
             raise ValidationError({'product_name': 'Укажите название позиции.'})
         if self.variant_id and not self.product_id:
             raise ValidationError({'variant': 'Вариант можно указать только для товара из каталога.'})
         if self.variant_id and self.variant.product_id != self.product_id:
             raise ValidationError({'variant': 'Вариант должен относиться к выбранному товару.'})
+        if self.product_id and self.product.variants.exists() and not self.variant_id:
+            raise ValidationError({'variant': 'Для товара с вариантами выберите конкретный вариант.'})
         if self.product_id and not (self.product_name or '').strip():
             self.product_name = self.product.name
         if self.product_id and not (self.product_image_url or '').strip():
             self.product_image_url = resolve_order_item_image_url(product=self.product, variant=self.variant)
+        if self.line_type == self.LINE_TYPE_CATALOG and (self.custom_sku or '').strip():
+            raise ValidationError({'custom_sku': 'Для каталоговой строки произвольный SKU не используется.'})
+        if self.planned_unit_cost and self.actual_unit_cost and self.actual_unit_cost < 0:
+            raise ValidationError({'actual_unit_cost': 'Фактическая себестоимость не может быть отрицательной.'})
+        if self.cancelled_quantity > self.quantity:
+            raise ValidationError({'cancelled_quantity': 'Операционно отмененное количество не может превышать количество строки.'})
 
     @property
     def subtotal(self):
@@ -544,8 +670,99 @@ class OrderItem(models.Model):
         return self.discount_amount * self.quantity
 
     @property
+    def sale_total(self):
+        return self.subtotal
+
+    @property
     def is_catalog_item(self):
         return bool(self.product_id)
+
+    @property
+    def active_quantity(self):
+        return max(int(self.quantity or 0) - int(self.cancelled_quantity or 0), 0)
+
+    @property
+    def shipped_quantity(self):
+        return min(
+            sum(int(allocation.shipped_qty or 0) for allocation in self.allocations.filter(status='shipped')),
+            self.active_quantity,
+        )
+
+    @property
+    def covered_quantity(self):
+        return min(
+            sum(
+                int(link.active_reserved_quantity or 0)
+                for link in self.reservation_links.filter(
+                    reservation__status__in={'draft', 'active', 'partial'}
+                ).select_related('reservation')
+            ),
+            self.active_quantity,
+        )
+
+    @property
+    def planned_sale_total(self):
+        return self.unit_price * Decimal(self.active_quantity)
+
+    @property
+    def actual_sale_total(self):
+        return self.unit_price * Decimal(self.shipped_quantity)
+
+    @property
+    def coverage_status(self):
+        if self.active_quantity <= 0:
+            return 'cancelled'
+        if self.covered_quantity <= 0:
+            return 'uncovered'
+        if self.covered_quantity >= self.active_quantity:
+            return 'covered'
+        return 'partially_covered'
+
+    @property
+    def shipment_status(self):
+        if self.active_quantity <= 0:
+            return 'cancelled'
+        if self.shipped_quantity <= 0:
+            return 'unshipped'
+        if self.shipped_quantity >= self.active_quantity:
+            return 'shipped'
+        return 'partially_shipped'
+
+    @property
+    def fulfillment_status(self):
+        if self.shipped_quantity >= self.active_quantity and self.active_quantity > 0:
+            return 'fulfilled'
+        if self.covered_quantity > 0:
+            return 'covered'
+        return 'uncovered'
+
+    @property
+    def effective_unit_cost(self):
+        if self.cost_status == self.COST_STATUS_ACTUAL and Decimal(self.actual_unit_cost or 0) > 0:
+            return Decimal(self.actual_unit_cost or 0)
+        if self.cost_status in {self.COST_STATUS_PLANNED, self.COST_STATUS_ACTUAL} and Decimal(self.planned_unit_cost or 0) > 0:
+            return Decimal(self.planned_unit_cost or 0)
+        return Decimal(self.purchase_price or 0)
+
+    @property
+    def planned_cost_total(self):
+        return Decimal(self.planned_unit_cost or 0) * Decimal(self.active_quantity)
+
+    @property
+    def actual_cost_total(self):
+        return Decimal(self.actual_unit_cost or 0) * Decimal(self.shipped_quantity)
+
+    @property
+    def effective_cost_total(self):
+        return self.effective_unit_cost * Decimal(self.active_quantity)
+
+    @property
+    def planned_margin_total(self):
+        return self.planned_sale_total - self.planned_cost_total
+
+    @property
+    def actual_margin_total(self):
+        return self.actual_sale_total - self.actual_cost_total
 
     @property
     def resolved_product_name(self):
@@ -580,6 +797,8 @@ class OrderItem(models.Model):
 
     @property
     def sku(self):
+        if (self.custom_sku or '').strip():
+            return self.custom_sku.strip()
         if self.variant_id and getattr(self.variant, 'sku', ''):
             return self.variant.sku.strip()
         if self.product_id:

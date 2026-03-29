@@ -9,13 +9,13 @@ from django.utils import timezone
 from unittest.mock import patch
 
 from accounts.models import NotificationPreference, Profile
-from catalog.models import CartItem, Category, Product
+from catalog.models import CartItem, Category, City, PickupPoint, Product, ProductStock
 from config.legal_docs import LEGAL_BUNDLE_VERSION
-from manager_portal.models import ManagerClient, ManagerDeal
+from manager_portal.models import ManagerClient, ManagerDeal, SaleLineAllocation
 
 from .forms import CheckoutForm, PurchaseRequestForm
 from .models import Order, OrderItem, OrderNotificationLog, PromoCode, PurchaseRequest
-from .services import send_order_event_notifications
+from .services import send_order_event_notifications, sync_order_state_side_effects
 
 User = get_user_model()
 
@@ -515,6 +515,45 @@ class OrderNotificationPolicyTest(TestCase):
         self.assertEqual(OrderNotificationLog.objects.filter(order=order, channel='sms').count(), 1)
         self.assertEqual(len(mail.outbox), 1)
         mocked_sms.assert_called_once()
+
+
+class OrderPaymentSideEffectsTest(TestCase):
+    def test_paid_transition_does_not_decrease_stock_or_create_shipped_allocations(self):
+        city = City.objects.create(name='Екатеринбург', slug='ekb-orders-stock')
+        pickup_point = PickupPoint.objects.create(city=city, name='Основной ПВЗ')
+        category = Category.objects.create(name='Stock', slug='stock-orders')
+        product = Product.objects.create(
+            category=category,
+            name='Stock product',
+            slug='stock-product',
+            price=Decimal('100.00'),
+            is_active=True,
+        )
+        ProductStock.objects.create(product=product, pickup_point=pickup_point, quantity=5)
+        order = Order.objects.create(
+            user=None,
+            status=Order.STATUS_CONFIRMED,
+            payment_status=Order.PAYMENT_STATUS_PAID,
+            total=Decimal('100.00'),
+            phone='+7 999 123 45 67',
+            email='client@example.com',
+            first_name='Иван',
+            city=city,
+            pickup_point=pickup_point,
+        )
+        order_item = OrderItem.objects.create(order=order, product=product, quantity=2, price=Decimal('100.00'))
+
+        sync_order_state_side_effects(
+            order,
+            previous_status=Order.STATUS_CONFIRMED,
+            previous_payment_status=Order.PAYMENT_STATUS_UNPAID,
+        )
+
+        order.refresh_from_db()
+        stock = ProductStock.objects.get(product=product, pickup_point=pickup_point)
+        self.assertFalse(order.stock_decreased)
+        self.assertEqual(stock.quantity, 5)
+        self.assertFalse(SaleLineAllocation.objects.filter(order_item=order_item, status=SaleLineAllocation.STATUS_SHIPPED).exists())
 
 
 class OrderLifecycleUiTest(TestCase):

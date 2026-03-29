@@ -382,9 +382,9 @@
                   <p class="mt-1 text-xs text-slate-500">Доставка: {{ subject_summary.delivery_total|rub }}</p>
                 </div>
                 <div class="deal-inline-card rounded-2xl border border-slate-800 bg-slate-900/80 px-4 py-4">
-                  <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Внутренняя маржа</p>
-                  <p class="mt-2 text-sm font-medium text-white">{{ subject_summary.internal_margin|rub }}</p>
-                  <p class="mt-1 text-xs text-slate-500">{{ subject_summary.margin_source }}</p>
+                  <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Распределяемая прибыль</p>
+                  <p class="mt-2 text-sm font-medium text-white">{{ subject_summary.internal_distributable_profit|rub }}</p>
+                  <p class="mt-1 text-xs text-slate-500">{{ subject_summary.profit_source }}</p>
                 </div>
               </div>
               <div class="mt-4 overflow-x-auto">
@@ -515,8 +515,8 @@
                   <p class="mt-2 text-sm font-medium text-white">{{ finance_summary_compact.remaining_total|rub }}</p>
                 </div>
                 <div class="deal-inline-card rounded-2xl border border-slate-800 bg-slate-900/80 px-4 py-4">
-                  <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Маржа</p>
-                  <p class="mt-2 text-sm font-medium text-white">{{ finance_summary_compact.margin_total|rub }}</p>
+                  <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Распределяемая прибыль</p>
+                  <p class="mt-2 text-sm font-medium text-white">{{ finance_summary_compact.distributable_profit_total|rub }}</p>
                 </div>
               </div>
               <div class="mt-4 flex flex-wrap gap-2 text-xs text-slate-500">
@@ -536,7 +536,10 @@
             <aside id="deal-side-rail" class="space-y-6">
               <section class="deal-subpanel rounded-2xl border border-slate-800 bg-slate-950/60 p-5">
                 <div class="mb-4 flex items-center justify-between gap-3">
-                  <h3 class="text-sm font-semibold uppercase tracking-[0.18em] text-white">Клиент</h3>
+                  <div>
+                    <h3 class="text-sm font-semibold uppercase tracking-[0.18em] text-white">Клиент</h3>
+                    <p class="mt-1 text-xs text-slate-500">История взаимодействия и контакты</p>
+                  </div>
                   {% if client_summary.client_url %}
                     <a
                       href="{{ client_summary.client_url }}"
@@ -558,7 +561,7 @@
                   </div>
                 </div>
                 <div class="mt-4 space-y-2">
-                  {% for contact in client_summary.contacts|slice:":3" %}
+                  {% for contact in client_summary.contacts|slice:":6" %}
                     <div class="rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-3">
                       <p class="text-[11px] uppercase tracking-[0.16em] text-slate-500">{{ contact.label }}</p>
                       <p class="mt-1 text-sm text-white">{{ contact.value }}</p>
@@ -1174,8 +1177,12 @@
                       <span class="text-sm font-medium text-white" data-raw-amount="{{ finance_summary.operating_expenses_total }}">{{ finance_summary.operating_expenses_total|rub }}</span>
                     </div>
                     <div class="flex items-center justify-between gap-3">
-                      <span class="text-sm text-slate-400">Маржа</span>
-                      <span class="text-sm font-medium text-white" data-raw-amount="{{ finance_summary.margin_total }}">{{ finance_summary.margin_total|rub }}</span>
+                      <span class="text-sm text-slate-400">Валовая прибыль</span>
+                      <span class="text-sm font-medium text-white" data-raw-amount="{{ finance_summary.gross_profit_total }}">{{ finance_summary.gross_profit_total|rub }}</span>
+                    </div>
+                    <div class="flex items-center justify-between gap-3">
+                      <span class="text-sm text-slate-400">Распределяемая прибыль</span>
+                      <span class="text-sm font-medium text-white" data-raw-amount="{{ finance_summary.distributable_profit_total }}">{{ finance_summary.distributable_profit_total|rub }}</span>
                     </div>
                   </div>
                 </div>

@@ -16,7 +16,11 @@ from .models import (
     ContractTemplate,
     Expense,
     FinanceDeal,
+    FinanceDealLine,
+    FinanceDealShare,
     FinanceDealType,
+    FinanceDistributionRule,
+    FinanceDistributionScheme,
     FinanceExpense,
     FinanceExpenseCategory,
     FinancePayout,
@@ -63,6 +67,8 @@ class BaseVariantAwareForm(StyledFormMixin, forms.ModelForm):
         variant = cleaned.get('variant')
         if product and variant and variant.product_id != product.id:
             self.add_error('variant', 'Вариант должен относиться к выбранному товару.')
+        if product and product.variants.exists() and not variant:
+            self.add_error('variant', 'Для товара с вариантами выберите конкретный вариант.')
         return cleaned
 
 
@@ -321,29 +327,114 @@ class FinancePeriodForm(StyledFormMixin, forms.Form):
 class FinanceDealForm(StyledFormMixin, forms.ModelForm):
     class Meta:
         model = FinanceDeal
-        fields = ['date', 'contract_number', 'deal_type', 'revenue', 'cost_price', 'direct_expenses', 'manager_bonus', 'comment']
+        fields = ['date', 'contract_number', 'deal_type', 'revenue', 'cost_of_goods', 'manager_bonus', 'comment']
         widgets = {'date': forms.DateInput(attrs={'type': 'date'})}
+
+
+class FinanceDealLineForm(StyledFormMixin, forms.ModelForm):
+    class Meta:
+        model = FinanceDealLine
+        fields = [
+            'sort_order',
+            'product_name',
+            'quantity',
+            'unit_cost_price',
+            'unit_sale_price',
+            'owner_alias',
+            'line_status',
+            'delivery_status',
+        ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['owner_alias'].queryset = ManagerPersonAlias.objects.filter(is_active=True).order_by('display_name')
+        self.fields['owner_alias'].required = False
+
+
+class FinanceDealShareOverrideForm(StyledFormMixin, forms.ModelForm):
+    override_percent = forms.DecimalField(
+        label='Переопределить процент',
+        required=False,
+        decimal_places=4,
+        max_digits=7,
+        min_value=0,
+    )
+    override_owner_alias = forms.ModelChoiceField(
+        label='Переопределить владельца строк',
+        required=False,
+        queryset=ManagerPersonAlias.objects.none(),
+        empty_label='Без изменения',
+    )
+
+    class Meta:
+        model = FinanceDealShare
+        fields = ['manual_amount_override']
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['override_owner_alias'].queryset = ManagerPersonAlias.objects.filter(is_active=True).order_by('display_name')
+        override_payload = self.instance.rule_params_override or {}
+        if 'percent' in override_payload:
+            self.fields['override_percent'].initial = override_payload.get('percent')
+        override_owner_alias_id = override_payload.get('owner_alias_id')
+        if override_owner_alias_id:
+            self.fields['override_owner_alias'].initial = override_owner_alias_id
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        override_payload = dict(instance.rule_params_override or {})
+        percent = self.cleaned_data.get('override_percent')
+        owner_alias = self.cleaned_data.get('override_owner_alias')
+        if percent in (None, ''):
+            override_payload.pop('percent', None)
+        else:
+            override_payload['percent'] = str(percent)
+        if owner_alias is None:
+            override_payload.pop('owner_alias_id', None)
+        else:
+            override_payload['owner_alias_id'] = owner_alias.pk
+        instance.rule_params_override = override_payload
+        instance.is_manual_override = instance.manual_amount_override is not None or bool(override_payload)
+        if commit:
+            instance.save()
+        return instance
 
 
 class FinanceExpenseForm(StyledFormMixin, forms.ModelForm):
     class Meta:
         model = FinanceExpense
-        fields = ['expense_side', 'date', 'category', 'amount', 'comment']
+        fields = [
+            'expense_side',
+            'date',
+            'category',
+            'finance_line',
+            'amount',
+            'affects_direct_expenses',
+            'refund_policy',
+            'comment',
+        ]
         widgets = {'date': forms.DateInput(attrs={'type': 'date'})}
 
     def __init__(self, *args, deal=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.deal = deal
         self.fields['category'].queryset = FinanceExpenseCategory.objects.filter(is_active=True).order_by('expense_side', 'name')
+        self.fields['finance_line'].required = False
         if deal is not None:
             self.instance.deal = deal
+            self.fields['finance_line'].queryset = deal.lines.order_by('sort_order', 'id')
+        else:
+            self.fields['finance_line'].queryset = FinanceDealLine.objects.none()
 
     def clean(self):
         cleaned = super().clean()
         category = cleaned.get('category')
         expense_side = cleaned.get('expense_side')
+        finance_line = cleaned.get('finance_line')
         if category and expense_side and category.expense_side != expense_side:
             self.add_error('category', 'Категория должна совпадать со стороной расхода.')
+        if finance_line and self.deal is not None and finance_line.finance_deal_id != self.deal.id:
+            self.add_error('finance_line', 'Строка должна принадлежать текущему кейсу.')
         return cleaned
 
 
@@ -358,6 +449,48 @@ class FinanceDealTypeForm(StyledFormMixin, forms.ModelForm):
     class Meta:
         model = FinanceDealType
         fields = ['name', 'partner_share', 'is_active']
+
+
+class FinanceDistributionSchemeForm(StyledFormMixin, forms.ModelForm):
+    class Meta:
+        model = FinanceDistributionScheme
+        fields = ['name', 'description', 'is_active']
+
+
+class FinanceDistributionRuleForm(StyledFormMixin, forms.ModelForm):
+    class Meta:
+        model = FinanceDistributionRule
+        fields = [
+            'scheme',
+            'participant_alias',
+            'position',
+            'rule_type',
+            'percent',
+            'owner_alias',
+            'reference_rule',
+            'note',
+            'is_active',
+        ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        active_people = ManagerPersonAlias.objects.filter(is_active=True).order_by('display_name')
+        self.fields['scheme'].queryset = FinanceDistributionScheme.objects.order_by('name', '-version')
+        self.fields['participant_alias'].queryset = active_people
+        self.fields['owner_alias'].queryset = active_people
+        current_scheme = None
+        if self.instance.pk and self.instance.scheme_id:
+            current_scheme = self.instance.scheme
+        elif self.initial.get('scheme'):
+            current_scheme = self.initial.get('scheme')
+        if isinstance(current_scheme, FinanceDistributionScheme):
+            self.fields['reference_rule'].queryset = current_scheme.rules.order_by('position', 'id')
+        else:
+            self.fields['reference_rule'].queryset = FinanceDistributionRule.objects.order_by('scheme__name', 'position', 'id')
+        if self.instance.pk:
+            self.fields['reference_rule'].queryset = self.fields['reference_rule'].queryset.exclude(pk=self.instance.pk)
+        self.fields['owner_alias'].required = False
+        self.fields['reference_rule'].required = False
 
 
 class FinanceExpenseCategoryForm(StyledFormMixin, forms.ModelForm):
@@ -725,26 +858,28 @@ class QuickDealForm(StyledFormMixin, forms.Form):
 
 
 class ManualOrderItemForm(StyledFormMixin, forms.Form):
-    product_name = forms.CharField(
-        label='Название товара / позиции',
-        required=False,
-        widget=forms.TextInput(attrs={'list': 'manual-order-product-names'}),
-    )
+    line_type = forms.ChoiceField(label='Тип строки', choices=OrderItem.LINE_TYPE_CHOICES, initial=OrderItem.LINE_TYPE_CATALOG)
     product = forms.ModelChoiceField(
         label='Товар',
         queryset=Product.objects.order_by('name'),
         required=False,
-        widget=forms.HiddenInput(),
     )
     variant = forms.ModelChoiceField(
         label='Вариант',
         queryset=ProductVariant.objects.order_by('product__name', 'name'),
         required=False,
     )
+    product_name = forms.CharField(
+        label='Название произвольного товара',
+        required=False,
+        widget=forms.TextInput(),
+    )
+    custom_sku = forms.CharField(label='Произвольный SKU', required=False)
     configuration = forms.CharField(label='Конфигурация / модификация', required=False)
     condition = forms.ChoiceField(label='Состояние', choices=OrderItem.CONDITION_CHOICES, initial=OrderItem.CONDITION_NEW)
     quantity = forms.IntegerField(label='Количество', min_value=1, required=False, initial=1)
-    purchase_price = forms.DecimalField(label='Закупочная цена', min_value=0, decimal_places=2, required=False, initial=0)
+    planned_unit_cost = forms.DecimalField(label='Плановая себестоимость', min_value=0, decimal_places=2, required=False, initial=0)
+    purchase_price = forms.DecimalField(label='Плановая себестоимость', min_value=0, decimal_places=2, required=False, initial=0, widget=forms.HiddenInput())
     sale_price = forms.DecimalField(label='Цена продажи за единицу', min_value=0, decimal_places=2, required=False, initial=0)
     discount_amount = forms.DecimalField(label='Скидка', min_value=0, decimal_places=2, required=False, initial=0)
     comment = forms.CharField(label='Комментарий', required=False, widget=forms.Textarea())
@@ -753,31 +888,40 @@ class ManualOrderItemForm(StyledFormMixin, forms.Form):
         data = getattr(self, 'cleaned_data', {})
         return any(
             data.get(key)
-            for key in ('product_name', 'product', 'variant', 'configuration', 'quantity', 'purchase_price', 'sale_price', 'discount_amount', 'comment')
+            for key in ('product_name', 'custom_sku', 'product', 'variant', 'configuration', 'quantity', 'planned_unit_cost', 'sale_price', 'discount_amount', 'comment')
         )
 
     def clean(self):
         cleaned = super().clean()
-        if not any(cleaned.get(key) for key in ('product_name', 'product', 'variant', 'configuration', 'quantity', 'purchase_price', 'sale_price', 'discount_amount', 'comment')):
+        if not any(cleaned.get(key) for key in ('product_name', 'custom_sku', 'product', 'variant', 'configuration', 'quantity', 'planned_unit_cost', 'sale_price', 'discount_amount', 'comment')):
             return cleaned
-        product_name = (cleaned.get('product_name') or '').strip()
+        line_type = cleaned.get('line_type') or OrderItem.LINE_TYPE_CATALOG
         product = cleaned.get('product')
-        if product is None and product_name:
-            matches = list(Product.objects.filter(name__iexact=product_name).order_by('name')[:2])
-            if len(matches) == 1:
-                product = matches[0]
-                cleaned['product'] = product
-        if product is not None and not product_name:
-            cleaned['product_name'] = product.name
-        if not product and not product_name:
-            self.add_error('product_name', 'Введите название позиции.')
+        product_name = (cleaned.get('product_name') or '').strip()
+        custom_sku = (cleaned.get('custom_sku') or '').strip()
+        if line_type == OrderItem.LINE_TYPE_CATALOG:
+            if not product:
+                self.add_error('product', 'Выберите товар.')
+            if product is not None:
+                cleaned['product_name'] = product.name
+                if product.variants.exists() and not cleaned.get('variant'):
+                    self.add_error('variant', 'Для товара с вариантами выберите конкретный вариант.')
+            if custom_sku:
+                self.add_error('custom_sku', 'Для каталоговой строки произвольный SKU не используется.')
+        else:
+            cleaned['product'] = None
+            cleaned['variant'] = None
+            if not product_name:
+                self.add_error('product_name', 'Введите название позиции.')
         if cleaned.get('product') and cleaned.get('variant') and cleaned['variant'].product_id != cleaned['product'].id:
             self.add_error('variant', 'Вариант должен относиться к выбранному товару.')
         if cleaned.get('quantity') in (None, ''):
             self.add_error('quantity', 'Укажите количество.')
+        if cleaned.get('planned_unit_cost') in (None, '') and cleaned.get('purchase_price') not in (None, ''):
+            cleaned['planned_unit_cost'] = cleaned.get('purchase_price')
         if cleaned.get('sale_price') in (None, ''):
             if cleaned.get('product'):
-                cleaned['sale_price'] = cleaned['product'].price
+                cleaned['sale_price'] = cleaned['variant'].price if cleaned.get('variant') else cleaned['product'].price
             else:
                 self.add_error('sale_price', 'Укажите цену продажи.')
         return cleaned
@@ -806,14 +950,19 @@ ManualOrderItemFormSet = formset_factory(
 
 
 class QuickOrderItemForm(StyledFormMixin, forms.Form):
+    line_type = forms.ChoiceField(label='Тип строки', choices=OrderItem.LINE_TYPE_CHOICES, initial=OrderItem.LINE_TYPE_CATALOG)
     product = forms.ModelChoiceField(label='Товар', queryset=Product.objects.order_by('name'), required=False)
     variant = forms.ModelChoiceField(
         label='Вариант',
         queryset=ProductVariant.objects.order_by('product__name', 'name'),
         required=False,
     )
+    product_name = forms.CharField(label='Название произвольного товара', required=False)
+    custom_sku = forms.CharField(label='Произвольный SKU', required=False)
     configuration = forms.CharField(label='Конфигурация / модификация', required=False)
     quantity = forms.IntegerField(label='Количество', min_value=1, required=False, initial=1)
+    planned_unit_cost = forms.DecimalField(label='Плановая себестоимость', min_value=0, decimal_places=2, required=False, initial=0)
+    purchase_price = forms.DecimalField(label='Плановая себестоимость', min_value=0, decimal_places=2, required=False, initial=0, widget=forms.HiddenInput())
     sale_price = forms.DecimalField(label='Сумма за единицу', min_value=0, decimal_places=2, required=False, initial=0)
     comment = forms.CharField(label='Комментарий', required=False, widget=forms.Textarea())
 
@@ -821,19 +970,33 @@ class QuickOrderItemForm(StyledFormMixin, forms.Form):
         data = getattr(self, 'cleaned_data', {})
         return any(
             data.get(key)
-            for key in ('product', 'variant', 'configuration', 'quantity', 'sale_price', 'comment')
+            for key in ('product', 'variant', 'product_name', 'custom_sku', 'configuration', 'quantity', 'planned_unit_cost', 'sale_price', 'comment')
         )
 
     def clean(self):
         cleaned = super().clean()
-        if not any(cleaned.get(key) for key in ('product', 'variant', 'configuration', 'quantity', 'sale_price', 'comment')):
+        if not any(cleaned.get(key) for key in ('product', 'variant', 'product_name', 'custom_sku', 'configuration', 'quantity', 'planned_unit_cost', 'sale_price', 'comment')):
             return cleaned
-        if not cleaned.get('product'):
-            self.add_error('product', 'Выберите товар.')
+        line_type = cleaned.get('line_type') or OrderItem.LINE_TYPE_CATALOG
+        if line_type == OrderItem.LINE_TYPE_CATALOG:
+            if not cleaned.get('product'):
+                self.add_error('product', 'Выберите товар.')
+            elif cleaned['product'].variants.exists() and not cleaned.get('variant'):
+                self.add_error('variant', 'Для товара с вариантами выберите конкретный вариант.')
+            cleaned['product_name'] = cleaned['product'].name if cleaned.get('product') else ''
+            if cleaned.get('custom_sku'):
+                self.add_error('custom_sku', 'Для каталоговой строки произвольный SKU не используется.')
+        else:
+            cleaned['product'] = None
+            cleaned['variant'] = None
+            if not (cleaned.get('product_name') or '').strip():
+                self.add_error('product_name', 'Введите название позиции.')
         if cleaned.get('product') and cleaned.get('variant') and cleaned['variant'].product_id != cleaned['product'].id:
             self.add_error('variant', 'Вариант должен относиться к выбранному товару.')
         if cleaned.get('quantity') in (None, ''):
             self.add_error('quantity', 'Укажите количество.')
+        if cleaned.get('planned_unit_cost') in (None, '') and cleaned.get('purchase_price') not in (None, ''):
+            cleaned['planned_unit_cost'] = cleaned.get('purchase_price')
         if cleaned.get('sale_price') in (None, ''):
             self.add_error('sale_price', 'Укажите сумму.')
         return cleaned
@@ -957,6 +1120,7 @@ class InventoryReceiptForm(StyledFormMixin, forms.Form):
     product = forms.ModelChoiceField(queryset=Product.objects.order_by('name'))
     variant = forms.ModelChoiceField(queryset=ProductVariant.objects.order_by('product__name', 'name'), required=False)
     quantity = forms.IntegerField(min_value=1)
+    unit_cost = forms.DecimalField(label='Себестоимость за единицу', min_value=0, decimal_places=2)
     comment = forms.CharField(required=False)
 
     def clean(self):
@@ -985,13 +1149,13 @@ class PurchaseFilterForm(StyledFormMixin, forms.Form):
 class PurchaseItemForm(BaseVariantAwareForm):
     order_item = forms.ModelChoiceField(
         required=False,
-        queryset=OrderItem.objects.select_related('order', 'product', 'variant').order_by('-order__created_at', '-id'),
+        queryset=OrderItem.objects.filter(line_type=OrderItem.LINE_TYPE_CATALOG).select_related('order', 'product', 'variant').order_by('-order__created_at', '-id'),
         label='Строка заказа',
     )
 
     class Meta:
         model = PurchaseItem
-        fields = ['product', 'variant', 'order_item', 'quantity', 'price']
+        fields = ['product', 'variant', 'order_item', 'quantity', 'unit_cost']
 
 
 class CargoForm(StyledFormMixin, forms.ModelForm):
@@ -1097,7 +1261,7 @@ class ReservationFilterForm(StyledFormMixin, forms.Form):
 class ReservationItemForm(BaseVariantAwareForm):
     order_item = forms.ModelChoiceField(
         required=False,
-        queryset=OrderItem.objects.select_related('order', 'product', 'variant').order_by('-order__created_at', '-id'),
+        queryset=OrderItem.objects.filter(line_type=OrderItem.LINE_TYPE_CATALOG).select_related('order', 'product', 'variant').order_by('-order__created_at', '-id'),
         label='Строка заказа',
     )
 
@@ -1107,7 +1271,16 @@ class ReservationItemForm(BaseVariantAwareForm):
 
 
 class ReservationStatusForm(StyledFormMixin, forms.Form):
-    status = forms.ChoiceField(choices=Reservation.STATUS_CHOICES)
+    status = forms.ChoiceField(
+        choices=[
+            (Reservation.STATUS_DRAFT, 'Черновик'),
+            (Reservation.STATUS_ACTIVE, 'Активно'),
+            (Reservation.STATUS_PARTIAL, 'Частично выдано'),
+            (Reservation.STATUS_RELEASED, 'Освобождено'),
+            (Reservation.STATUS_CANCELLED, 'Отменено'),
+            (Reservation.STATUS_EXPIRED, 'Истекло'),
+        ]
+    )
 
 
 class ShipmentFilterForm(StyledFormMixin, forms.Form):

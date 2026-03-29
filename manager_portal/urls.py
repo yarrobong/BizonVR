@@ -71,4 +71,5 @@ urlpatterns = [
     path('reservations/<int:pk>/status/', views.reservation_status_update_view, name='reservation_status_update'),
     path('shipments/', views.shipments_view, name='shipments'),
     path('shipments/<int:pk>/', views.shipment_detail_view, name='shipment_detail'),
+    path('shipments/<int:pk>/dispatch/', views.shipment_dispatch_view, name='shipment_dispatch'),
 ]
