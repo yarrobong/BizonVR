@@ -1,5 +1,7 @@
 # Пример конфигурации Nginx для продакшена.
-# Домен: bizonvr.ru. Замените пути к сертификатам/статике/медиа при необходимости.
+# Основной домен: bizonvr.ru.
+# Старый домен bizon-business.ru перенаправляется на главную страницу https://bizonvr.ru/.
+# Замените пути к сертификатам/статике/медиа при необходимости.
 # Вариант 1: статику и медиа отдаёт Django (WhiteNoise) — тогда location /static/ и /media/ не нужны, всё идёт в proxy_pass.
 # Вариант 2: статику/медиа отдаёт Nginx — укажите alias на директории проекта.
 
@@ -10,7 +12,23 @@ upstream bizonvr_app {
 server {
     listen 80;
     server_name bizonvr.ru www.bizonvr.ru;
-    return 301 https://$server_name$request_uri;
+    return 301 https://bizonvr.ru$request_uri;
+}
+
+server {
+    listen 80;
+    server_name bizon-business.ru www.bizon-business.ru;
+    return 301 https://bizonvr.ru/;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name bizon-business.ru www.bizon-business.ru;
+
+    ssl_certificate     /etc/letsencrypt/live/bizon-business.ru/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/bizon-business.ru/privkey.pem;
+
+    return 301 https://bizonvr.ru/;
 }
 
 server {
