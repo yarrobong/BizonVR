@@ -6,8 +6,20 @@ media/manager/
 .DS_Store
 .claude/
 
-# Environment
+# Environment and local secrets
 .env
+.env.*
+!.env.example
+.envrc
+
+# Editors and local tooling
+.idea/
+.vscode/
+.python-version
+*.log
+.coverage
+.coverage.*
+htmlcov/
 
 # Python
 __pycache__/
