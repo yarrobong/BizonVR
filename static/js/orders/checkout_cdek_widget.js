@@ -17,23 +17,21 @@
     return;
   }
 
-  const desktopMedia = window.matchMedia('(min-width: 768px)');
+  const emptyState = document.getElementById('cdek-selection-empty');
   const summary = document.getElementById('cdek-selection-summary');
-  const mobileModal = document.getElementById('cdek-widget-mobile-modal');
-  const openMobileButton = document.querySelector('[data-cdek-open-mobile]');
-  const closeMobileButton = document.querySelector('[data-cdek-close-mobile]');
-  const changeButton = document.querySelector('[data-cdek-change]');
+  const modal = document.getElementById('cdek-widget-modal');
+  const openButtons = Array.from(document.querySelectorAll('[data-cdek-open]'));
+  const closeButtons = Array.from(document.querySelectorAll('[data-cdek-close]'));
+  const changeButtons = Array.from(document.querySelectorAll('[data-cdek-change]'));
   const cityInput = document.getElementById('id_city_text');
   const addressInput = document.getElementById('id_address_line');
   const officeRawInput = document.getElementById('id_cdek_office_snapshot_raw');
   const tariffRawInput = document.getElementById('id_cdek_tariff_snapshot_raw');
-  const inlineRootId = 'cdek-widget-inline-root';
-  const mobileRootId = 'cdek-widget-mobile-root';
+  const modalRootId = 'cdek-widget-modal-root';
 
   const state = {
-    desktopWidget: null,
-    mobileWidget: null,
-    initializedMode: null,
+    widget: null,
+    lastTrigger: null,
   };
 
   function parseSnapshot(rawValue) {
@@ -66,19 +64,22 @@
   }
 
   function renderSummary(office) {
-    if (!summary) {
+    if (!summary || !emptyState) {
       return;
     }
     if (!office) {
       summary.classList.add('hidden');
+      emptyState.classList.remove('hidden');
       return;
     }
     summary.classList.remove('hidden');
+    emptyState.classList.add('hidden');
     setSummaryValue('[data-cdek-city]', office.city, 'Не выбран');
     setSummaryValue('[data-cdek-code]', office.code, '—');
     setSummaryValue('[data-cdek-name]', office.name, '—');
     setSummaryValue('[data-cdek-address]', office.address, '—');
     setSummaryValue('[data-cdek-work-time]', office.work_time, 'Уточним у СДЭК');
+    setSummaryValue('[data-cdek-code-badge]', office.code ? 'Код ' + office.code : 'Код не выбран', 'Код не выбран');
   }
 
   function syncHiddenFields(office, tariff) {
@@ -93,21 +94,32 @@
     addressInput.value = formatLegacyAddress(office);
   }
 
-  function closeMobileModal() {
-    if (!mobileModal) {
+  function closeModal() {
+    if (!modal) {
       return;
     }
-    mobileModal.classList.add('hidden');
-    mobileModal.setAttribute('aria-hidden', 'true');
+    const activeElement = document.activeElement;
+    if (activeElement && modal.contains(activeElement) && typeof activeElement.blur === 'function') {
+      activeElement.blur();
+    }
+    modal.classList.add('hidden');
+    modal.setAttribute('aria-hidden', 'true');
+    modal.setAttribute('inert', '');
     document.body.style.overflow = '';
+    if (state.lastTrigger && typeof state.lastTrigger.focus === 'function') {
+      window.requestAnimationFrame(function () {
+        state.lastTrigger.focus();
+      });
+    }
   }
 
-  function openMobileModal() {
-    if (!mobileModal) {
+  function openModal() {
+    if (!modal) {
       return;
     }
-    mobileModal.classList.remove('hidden');
-    mobileModal.setAttribute('aria-hidden', 'false');
+    modal.classList.remove('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+    modal.removeAttribute('inert');
     document.body.style.overflow = 'hidden';
   }
 
@@ -117,14 +129,12 @@
     }
     syncHiddenFields(office, tariff);
     renderSummary(office);
-    if (!desktopMedia.matches) {
-      closeMobileModal();
-    }
+    closeModal();
   }
 
-  function createWidget(rootId) {
+  function createWidget() {
     return new window.CDEKWidget({
-      root: rootId,
+      root: modalRootId,
       apiKey: config.apiKey,
       servicePath: config.servicePath,
       defaultLocation: config.defaultLocation,
@@ -138,68 +148,50 @@
     });
   }
 
-  function initDesktopWidget() {
-    if (!state.desktopWidget) {
-      state.desktopWidget = createWidget(inlineRootId);
-    }
-    state.initializedMode = 'desktop';
-  }
-
-  function initMobileWidget() {
-    if (!state.mobileWidget) {
-      state.mobileWidget = createWidget(mobileRootId);
-    }
-    state.initializedMode = 'mobile';
-  }
-
-  function initCurrentMode() {
-    if (desktopMedia.matches) {
-      initDesktopWidget();
-    } else {
-      state.initializedMode = 'mobile';
+  function initWidget() {
+    if (!state.widget) {
+      state.widget = createWidget();
     }
   }
 
-  if (openMobileButton) {
-    openMobileButton.addEventListener('click', function () {
-      initMobileWidget();
-      openMobileModal();
+  openButtons.forEach(function (button) {
+    button.addEventListener('click', function () {
+      state.lastTrigger = button;
+      openModal();
+      window.requestAnimationFrame(initWidget);
     });
-  }
+  });
 
-  if (closeMobileButton) {
-    closeMobileButton.addEventListener('click', closeMobileModal);
-  }
+  closeButtons.forEach(function (button) {
+    button.addEventListener('click', closeModal);
+  });
 
-  if (mobileModal) {
-    mobileModal.addEventListener('click', function (event) {
-      if (event.target === mobileModal) {
-        closeMobileModal();
+  if (modal) {
+    modal.addEventListener('click', function (event) {
+      if (event.target === modal) {
+        closeModal();
       }
     });
   }
 
-  if (changeButton) {
-    changeButton.addEventListener('click', function () {
-      if (desktopMedia.matches) {
-        if (!state.desktopWidget) {
-          initDesktopWidget();
-        }
-        return;
-      }
-      initMobileWidget();
-      openMobileModal();
+  changeButtons.forEach(function (button) {
+    button.addEventListener('click', function () {
+      state.lastTrigger = button;
+      openModal();
+      window.requestAnimationFrame(initWidget);
     });
-  }
+  });
 
   document.addEventListener('keydown', function (event) {
     if (event.key === 'Escape') {
-      closeMobileModal();
+      closeModal();
     }
   });
 
   renderSummary(parseSnapshot(officeRawInput ? officeRawInput.value : ''));
-  initCurrentMode();
+  if (modal) {
+    modal.setAttribute('inert', '');
+  }
   if (typeof window.initLucide === 'function') {
     window.initLucide();
   }

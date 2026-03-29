@@ -1,0 +1,40 @@
+<footer class="border-t border-white/10 bg-dark-900/95">
+  <div class="container mx-auto flex max-w-6xl flex-col gap-4 px-4 py-5 text-sm text-gray-400 sm:flex-row sm:items-center sm:justify-between">
+    <div class="min-w-0">
+      <p class="text-[11px] uppercase tracking-[0.22em] text-accent/80">Помощь по заявке</p>
+      <div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2">
+        {% if site_contact_phone %}
+          <a href="tel:{{ site_contact_phone_href|default:site_contact_phone }}" class="font-medium text-white transition hover:text-accent">
+            {{ site_contact_phone }}
+          </a>
+        {% endif %}
+        {% if site_contact_email %}
+          <a href="mailto:{{ site_contact_email }}" class="transition hover:text-accent">
+            {{ site_contact_email }}
+          </a>
+        {% endif %}
+        {% if site_contact_telegram %}
+          <a href="{{ site_contact_telegram }}" target="_blank" rel="noopener noreferrer" class="transition hover:text-accent">
+            {{ site_contact_telegram_handle|default:"Telegram" }}
+          </a>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="flex flex-wrap gap-x-4 gap-y-2 text-xs sm:justify-end">
+      <a href="{% url 'oferta' %}" target="_blank" rel="noopener noreferrer" class="transition hover:text-accent">Оферта</a>
+      <a href="{% url 'privacy' %}" target="_blank" rel="noopener noreferrer" class="transition hover:text-accent">Политика конфиденциальности</a>
+      <a href="{% url 'pd_consent' %}" target="_blank" rel="noopener noreferrer" class="transition hover:text-accent">Согласие на обработку ПД</a>
+    </div>
+  </div>
+</footer>
+
+<div id="cookie-consent-banner" class="cookie-consent-banner" role="region" aria-label="Согласие с cookies" aria-live="polite" aria-hidden="true">
+  <p class="cookie-consent-text">
+    Продолжая пользоваться сайтом, вы подтверждаете согласие на использование cookies в соответствии с
+    <a href="{% url 'cookies_policy' %}" class="cookie-consent-link">Политикой cookies</a>
+    и обработку персональных данных в соответствии с
+    <a href="{% url 'privacy' %}" class="cookie-consent-link">Политикой конфиденциальности</a>.
+  </p>
+  <button id="cookie-consent-accept" type="button" class="cookie-consent-btn">Ок</button>
+</div>

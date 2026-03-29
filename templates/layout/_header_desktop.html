@@ -3,7 +3,7 @@
   <div id="sticky-header"
        class="fixed top-0 left-0 right-0 w-full bg-dark-900/95 backdrop-blur-md border-b border-white/10 shadow-xl transform transition-transform duration-300 ease-in-out"
        style="z-index: 50001; display: none; border-radius: 0 0 24px 24px;"
-       x-show="showStickyHeader"
+       x-show="stickyHeaderEnabled && showStickyHeader"
        x-transition:enter="transition ease-out duration-300"
        x-transition:enter-start="-translate-y-full"
        x-transition:enter-end="translate-y-0"

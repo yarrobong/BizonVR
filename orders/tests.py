@@ -148,6 +148,7 @@ class CheckoutTest(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, 'Оформление заявки')
         self.assertContains(resp, 'Корзина пуста')
+        self.assertNotContains(resp, 'Еще товары')
 
     def test_checkout_get_authenticated_returns_200(self):
         add_url = reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk})
@@ -156,10 +157,13 @@ class CheckoutTest(TestCase):
         resp = self.client.get(reverse('orders:checkout'))
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, 'Оформление заявки')
-        self.assertContains(resp, 'cdek-widget-inline-root')
-        self.assertContains(resp, 'cdek-widget-mobile-modal')
+        self.assertContains(resp, 'cdek-selection-empty')
+        self.assertContains(resp, 'cdek-widget-modal')
+        self.assertContains(resp, 'Выбрать ПВЗ СДЭК')
+        self.assertNotContains(resp, 'cdek-widget-inline-root')
         self.assertNotContains(resp, '<label for="id_city_text"', html=False)
         self.assertNotContains(resp, '<label for="id_address_line"', html=False)
+        self.assertNotContains(resp, 'Еще товары')
 
     def test_buy_now_checkout_get_uses_draft_instead_of_regular_cart(self):
         self._set_session_cart([{

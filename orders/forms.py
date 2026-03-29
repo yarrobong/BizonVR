@@ -61,7 +61,7 @@ class CheckoutForm(forms.Form):
         max_length=150,
         required=True,
         widget=forms.TextInput(attrs={
-            'class': 'w-full rounded-2xl border border-white/10 bg-dark-700/80 px-4 py-3 text-white placeholder:text-gray-500 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30',
+            'class': 'w-full rounded-2xl border border-white/10 bg-dark-700/80 px-4 py-2.5 text-white placeholder:text-gray-500 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30',
             'placeholder': 'Иван Иванов',
             'autocomplete': 'name',
         }),
@@ -77,7 +77,7 @@ class CheckoutForm(forms.Form):
         max_length=20,
         required=True,
         widget=forms.TextInput(attrs={
-            'class': 'js-phone-mask w-full rounded-2xl border border-white/10 bg-dark-700/80 px-4 py-3 text-white placeholder:text-gray-500 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30',
+            'class': 'js-phone-mask w-full rounded-2xl border border-white/10 bg-dark-700/80 px-4 py-2.5 text-white placeholder:text-gray-500 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30',
             'placeholder': '+7 (999) 999-99-99',
             'inputmode': 'tel',
             'autocomplete': 'tel',
@@ -100,7 +100,7 @@ class CheckoutForm(forms.Form):
         max_length=150,
         required=False,
         widget=forms.TextInput(attrs={
-            'class': 'w-full rounded-2xl border border-white/10 bg-dark-700/80 px-4 py-3 text-white placeholder:text-gray-500 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30',
+            'class': 'w-full rounded-2xl border border-white/10 bg-dark-700/80 px-4 py-2.5 text-white placeholder:text-gray-500 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30',
             'placeholder': '@username или номер WhatsApp',
             'autocomplete': 'off',
         }),
@@ -129,7 +129,7 @@ class CheckoutForm(forms.Form):
         max_length=255,
         required=False,
         widget=forms.TextInput(attrs={
-            'class': 'w-full rounded-2xl border border-white/10 bg-dark-700/80 px-4 py-3 text-white placeholder:text-gray-500 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30',
+            'class': 'w-full rounded-2xl border border-white/10 bg-dark-700/80 px-4 py-2.5 text-white placeholder:text-gray-500 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30',
             'placeholder': 'Иванов Иван',
             'autocomplete': 'name',
         }),
@@ -139,7 +139,7 @@ class CheckoutForm(forms.Form):
         max_length=20,
         required=False,
         widget=forms.TextInput(attrs={
-            'class': 'js-phone-mask w-full rounded-2xl border border-white/10 bg-dark-700/80 px-4 py-3 text-white placeholder:text-gray-500 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30',
+            'class': 'js-phone-mask w-full rounded-2xl border border-white/10 bg-dark-700/80 px-4 py-2.5 text-white placeholder:text-gray-500 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30',
             'placeholder': '+7 (999) 999-99-99',
             'inputmode': 'tel',
             'autocomplete': 'tel',

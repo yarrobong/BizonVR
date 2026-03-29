@@ -6,6 +6,12 @@ module.exports = {
     './accounts/templates/**/*.html',
     './orders/templates/**/*.html',
     './payments/templates/**/*.html',
+    './config/**/*.py',
+    './catalog/**/*.py',
+    './accounts/**/*.py',
+    './orders/**/*.py',
+    './payments/**/*.py',
+    './manager_portal/**/*.py',
   ],
   theme: {
     extend: {

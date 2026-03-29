@@ -34,6 +34,7 @@
       x-data="{ 
         cartOpen: false, 
         showStickyHeader: false, 
+        stickyHeaderEnabled: true,
         scrolled: false,
         ready: false, 
         cartCount: {{ cart_count|default:0 }}, 
@@ -56,11 +57,24 @@
      @open-cart.window="cartOpen = true"
      @cart-updated.window="cartCount = $event.detail.count; if ($event.detail.added_item) { miniCartData = $event.detail; miniCartOpen = true; cartOpen = false; setTimeout(() => miniCartOpen = false, 6000) }"
      @favorites-updated.window="favoritesCount = $event.detail.count"
+     @layout-sticky-header.window="
+      stickyHeaderEnabled = $event.detail.enabled !== false;
+      if (!stickyHeaderEnabled) {
+        showStickyHeader = false;
+        headerChangedAt = Date.now();
+      }
+     "
     @scroll.window.passive.throttle.50ms="
       if (!ready) return;
       const y = window.scrollY;
       const threshold = 180;
       const isAboveThreshold = y > threshold;
+      if (!stickyHeaderEnabled) {
+        showStickyHeader = false;
+        scrolled = isAboveThreshold;
+        lastScrollAt = Date.now();
+        return;
+      }
       if (isAboveThreshold && !showStickyHeader) {
         showStickyHeader = true;
         stickyHeaderJustShownAt = Date.now();
@@ -121,6 +135,8 @@
   </div>
 
 
+  {% block footer %}
   {% include "layout/_footer.html" %}
+  {% endblock %}
 </body>
 </html>
