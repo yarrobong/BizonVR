@@ -7,6 +7,7 @@ from django.views.decorators.http import require_POST
 from django_ratelimit.decorators import ratelimit
 
 from ..cart_services import (
+    enrich_cart_items,
     get_cart_count,
     get_cart_items,
     save_buy_now_checkout_items,
@@ -14,18 +15,27 @@ from ..cart_services import (
     save_cart_to_session,
 )
 from ..models import Product, ProductBundle, ProductVariant
+from ..pricing import (
+    PURCHASE_MODE_ON_REQUEST,
+    PURCHASE_MODE_STOCK,
+    has_explicit_on_request_price,
+    normalize_purchase_mode,
+    resolve_in_stock_price,
+    resolve_price_for_mode,
+)
 from .cart import cart_partial
 from .common import _get_stock_total
 
 
-def _cart_item_matches(item, product_id, variant_id=None):
+def _cart_item_matches(item, product_id, variant_id=None, purchase_mode=PURCHASE_MODE_STOCK):
     """Позиция корзины совпадает с product_id + variant_id."""
     if item.get('product_id') != product_id:
         return False
     item_vid = item.get('variant_id')
+    item_mode = normalize_purchase_mode(item.get('purchase_mode'))
     if variant_id is None and item_vid is None:
-        return True
-    return item_vid == variant_id
+        return item_mode == normalize_purchase_mode(purchase_mode)
+    return item_vid == variant_id and item_mode == normalize_purchase_mode(purchase_mode)
 
 
 def _get_next_url(request, fallback_url):
@@ -40,7 +50,7 @@ def _with_cart_error_flag(url):
 
 
 def _render_cart_error(request, cart_items, message):
-    total = sum(i.get('subtotal', 0) for i in cart_items)
+    total = sum(i.get('checkout_subtotal', i.get('subtotal', 0)) for i in cart_items)
     resp = render(request, 'catalog/partials/cart_content.html', {
         'cart_items': cart_items,
         'total': total,
@@ -61,6 +71,20 @@ def _get_requested_quantity(request):
         return max(1, int(request.POST.get('quantity', 1)))
     except (TypeError, ValueError):
         return 1
+
+
+def _get_requested_purchase_mode(request):
+    return normalize_purchase_mode(request.POST.get('purchase_mode'))
+
+
+def _resolve_purchase_mode(product, variant, requested_mode):
+    purchase_mode = normalize_purchase_mode(requested_mode)
+    if purchase_mode == PURCHASE_MODE_ON_REQUEST:
+        if not product.allow_order_on_request:
+            return None, 'Товар недоступен под заказ.'
+        if not has_explicit_on_request_price(product, variant):
+            return None, 'Для товара не настроена цена под заказ.'
+    return purchase_mode, ''
 
 
 def _get_product_variant(product, product_id, raw_variant_id):
@@ -92,39 +116,59 @@ def add_to_cart_view(request, product_id):
     if product.variants.exists() and not variant:
         return _render_or_redirect_cart_error(
             request,
-            cart_items=get_cart_items(request),
+            cart_items=enrich_cart_items(get_cart_items(request)),
             message='Выберите вариант товара.',
             fallback_url=product.get_absolute_url(),
         )
     quantity = _get_requested_quantity(request)
+    purchase_mode, purchase_mode_error = _resolve_purchase_mode(
+        product,
+        variant,
+        _get_requested_purchase_mode(request),
+    )
+    if purchase_mode_error:
+        return _render_or_redirect_cart_error(
+            request,
+            cart_items=enrich_cart_items(get_cart_items(request)),
+            message=purchase_mode_error,
+            fallback_url=product.get_absolute_url(),
+        )
 
     cart_items = list(get_cart_items(request))
     current_in_cart = sum(
         i.get('quantity', 0) for i in cart_items
-        if _cart_item_matches(i, product_id, variant_id)
+        if _cart_item_matches(i, product_id, variant_id, purchase_mode)
     )
     stock_total = _get_stock_total(product_id, variant_id)
-    if stock_total > 0:
+    if purchase_mode == PURCHASE_MODE_STOCK and stock_total > 0:
         available = max(0, stock_total - current_in_cart)
         if quantity > available:
             quantity = available
         if quantity <= 0:
             return _render_or_redirect_cart_error(
                 request,
-                cart_items=cart_items,
+                cart_items=enrich_cart_items(cart_items),
                 message='Недостаточно товара.',
                 fallback_url=product.get_absolute_url(),
             )
-    elif not getattr(product, 'allow_order_on_request', True):
-        return _render_or_redirect_cart_error(
-            request,
-            cart_items=cart_items,
-            message='Товар недоступен для заказа.',
-            fallback_url=product.get_absolute_url(),
-        )
+    elif purchase_mode == PURCHASE_MODE_STOCK:
+        if not getattr(product, 'allow_order_on_request', True):
+            return _render_or_redirect_cart_error(
+                request,
+                cart_items=enrich_cart_items(cart_items),
+                message='Товар недоступен для заказа.',
+                fallback_url=product.get_absolute_url(),
+            )
+        if has_explicit_on_request_price(product, variant):
+            return _render_or_redirect_cart_error(
+                request,
+                cart_items=enrich_cart_items(cart_items),
+                message='Товар доступен только под заказ. Выберите цену на странице товара.',
+                fallback_url=product.get_absolute_url(),
+            )
 
     for item in cart_items:
-        if _cart_item_matches(item, product_id, variant_id):
+        if _cart_item_matches(item, product_id, variant_id, purchase_mode):
             item['quantity'] = item.get('quantity', 0) + quantity
             item['subtotal'] = item['price'] * item['quantity']
             break
@@ -135,9 +179,17 @@ def add_to_cart_view(request, product_id):
             variant_id,
             variant,
             quantity,
+            purchase_mode=purchase_mode,
         )
     if 'added_item' not in locals():
-        _, added_item = _add_product_to_cart_items([], product, variant_id, variant, quantity)
+        _, added_item = _add_product_to_cart_items(
+            [],
+            product,
+            variant_id,
+            variant,
+            quantity,
+            purchase_mode=purchase_mode,
+        )
     display_name = added_item['name']
     price = added_item['price']
     image_url = added_item['image_url']
@@ -150,7 +202,8 @@ def add_to_cart_view(request, product_id):
     cart_count = get_cart_count(request)
 
     if request.headers.get('HX-Request'):
-        total = sum(i.get('subtotal', 0) for i in cart_items)
+        enriched_items = enrich_cart_items(cart_items)
+        total = sum(i.get('checkout_subtotal', i.get('subtotal', 0)) for i in enriched_items)
         added_item = {
             'name': display_name,
             'quantity': quantity,
@@ -163,7 +216,7 @@ def add_to_cart_view(request, product_id):
             for i in reversed(cart_items[-5:])
         ]
         resp = render(request, 'catalog/partials/cart_content.html', {
-            'cart_items': cart_items,
+            'cart_items': enriched_items,
             'total': total,
         })
         resp['HX-Trigger'] = json.dumps({
@@ -188,6 +241,7 @@ def cart_update_view(request):
     """
     product_id = request.POST.get('product_id')
     variant_id = request.POST.get('variant_id')
+    purchase_mode = _get_requested_purchase_mode(request)
     try:
         product_id = int(product_id)
         quantity = int(request.POST.get('quantity', 0))
@@ -202,10 +256,17 @@ def cart_update_view(request):
 
     cart_items = list(get_cart_items(request))
     existing_index = next(
-        (idx for idx, item in enumerate(cart_items) if _cart_item_matches(item, product_id, variant_id)),
+        (
+            idx for idx, item in enumerate(cart_items)
+            if _cart_item_matches(item, product_id, variant_id, purchase_mode)
+        ),
         None,
     )
-    cart_items = [i for i in cart_items if not _cart_item_matches(i, product_id, variant_id)]
+    existing_item = cart_items[existing_index] if existing_index is not None else None
+    cart_items = [
+        i for i in cart_items
+        if not _cart_item_matches(i, product_id, variant_id, purchase_mode)
+    ]
     if quantity > 0:
         product = Product.objects.filter(pk=product_id, is_active=True).first()
         if product:
@@ -214,16 +275,25 @@ def cart_update_view(request):
                 variant = ProductVariant.objects.filter(product_id=product_id, pk=variant_id).first()
                 if not variant:
                     variant_id = None
+            purchase_mode, purchase_mode_error = _resolve_purchase_mode(product, variant, purchase_mode)
+            if purchase_mode_error and existing_item is None:
+                if request.headers.get('HX-Request'):
+                    return _render_cart_error(request, enrich_cart_items(cart_items), purchase_mode_error)
+                return redirect(request.POST.get('next') or request.GET.get('next') or reverse('catalog:cart'))
             stock_total = _get_stock_total(product_id, variant_id)
-            if stock_total > 0:
-                quantity = min(quantity, stock_total)
-            if variant:
-                display_name = f'{product.name} ({variant.name})'
-                price = float(variant.price)
-                image_url = variant.image.url if variant.image else (product.image.url if product.image else '')
+            if purchase_mode == PURCHASE_MODE_STOCK:
+                if stock_total > 0:
+                    quantity = min(quantity, stock_total)
+                elif has_explicit_on_request_price(product, variant):
+                    if existing_item is not None:
+                        quantity = min(quantity, max(1, int(existing_item.get('quantity') or 1)))
+                    else:
+                        quantity = 0
+            display_name = f'{product.name} ({variant.name})' if variant else product.name
+            price = float(resolve_price_for_mode(product, variant, purchase_mode))
+            if variant and variant.image:
+                image_url = variant.image.url
             else:
-                display_name = product.name
-                price = float(product.price)
                 image_url = product.image.url if product.image else ''
             if quantity > 0:
                 updated_item = {
@@ -235,6 +305,8 @@ def cart_update_view(request):
                     'quantity': quantity,
                     'image_url': image_url,
                     'subtotal': price * quantity,
+                    'original_price': float(resolve_in_stock_price(product, variant)),
+                    'purchase_mode': purchase_mode,
                 }
                 if existing_index is not None and existing_index <= len(cart_items):
                     cart_items.insert(existing_index, updated_item)
@@ -246,28 +318,29 @@ def cart_update_view(request):
         save_cart_to_session(request, cart_items)
 
     if request.headers.get('HX-Request'):
-        total = sum(i.get('subtotal', 0) for i in cart_items)
+        enriched_items = enrich_cart_items(cart_items)
+        total = sum(i.get('checkout_subtotal', i.get('subtotal', 0)) for i in enriched_items)
         from_cart_page = (
             request.headers.get('HX-Target') in ('cart-page-content', 'main-content') or
             (request.META.get('HTTP_REFERER') or '').rstrip('/').endswith('/catalog/cart')
         )
         if from_cart_page:
-            if cart_items:
+            if enriched_items:
                 slugs = dict(
-                    Product.objects.filter(pk__in=[i['product_id'] for i in cart_items]).values_list('pk', 'slug')
+                    Product.objects.filter(pk__in=[i['product_id'] for i in enriched_items]).values_list('pk', 'slug')
                 )
-                for item in cart_items:
+                for item in enriched_items:
                     pid = item['product_id']
                     vid = item.get('variant_id')
                     item['product_slug'] = slugs.get(pid, '')
                     item['stock_total'] = _get_stock_total(pid, vid)
             resp = render(request, 'catalog/partials/cart_page_wrapper.html', {
-                'cart_items': cart_items,
+                'cart_items': enriched_items,
                 'total': total,
             })
         else:
             resp = render(request, 'catalog/partials/cart_content.html', {
-                'cart_items': cart_items,
+                'cart_items': enriched_items,
                 'total': total,
             })
         resp['HX-Trigger'] = json.dumps({'cart-updated': {'count': get_cart_count(request)}})
@@ -280,12 +353,13 @@ def cart_update_view(request):
 
 def _add_product_to_cart_items(
     cart_items, product, variant_id, variant, quantity,
-    price_override=None, bundle_id=None, bundle_name=None,
+    price_override=None, bundle_id=None, bundle_name=None, purchase_mode=PURCHASE_MODE_STOCK,
 ):
     """Добавить или обновить позицию товара в cart_items. Возвращает (cart_items, added_item_dict)."""
     display_name = f'{product.name} ({variant.name})' if variant else product.name
-    original_price = float(variant.price) if variant else float(product.price)
-    price = float(price_override) if price_override is not None else original_price
+    purchase_mode = normalize_purchase_mode(purchase_mode)
+    original_price = float(resolve_in_stock_price(product, variant))
+    price = float(price_override) if price_override is not None else float(resolve_price_for_mode(product, variant, purchase_mode))
     image_url = (variant.image.url if variant and variant.image else product.image.url) if product.image else ''
     if not image_url and variant and variant.image:
         image_url = variant.image.url
@@ -293,21 +367,23 @@ def _add_product_to_cart_items(
         'bundle_id': bundle_id,
         'bundle_name': bundle_name,
         'original_price': original_price,
+        'purchase_mode': purchase_mode,
     }
 
     def item_matches_bundle(it):
         if it.get('bundle_id') != bundle_id:
             return False
-        return _cart_item_matches(it, product.pk, variant_id)
+        return _cart_item_matches(it, product.pk, variant_id, purchase_mode)
 
     for item in cart_items:
-        if (bundle_id and item_matches_bundle(item)) or (not bundle_id and _cart_item_matches(item, product.pk, variant_id)):
+        if (bundle_id and item_matches_bundle(item)) or (not bundle_id and _cart_item_matches(item, product.pk, variant_id, purchase_mode)):
             item['quantity'] = item.get('quantity', 0) + quantity
             item['price'] = price
             item['subtotal'] = price * item['quantity']
             item['bundle_id'] = bundle_id
             item['bundle_name'] = bundle_name
             item['original_price'] = extra['original_price']
+            item['purchase_mode'] = purchase_mode
             return cart_items, {**{'product_id': product.pk, 'variant_id': variant_id, 'variant_name': variant.name if variant else None, 'name': display_name, 'price': price, 'quantity': quantity, 'image_url': image_url, 'subtotal': price * quantity}, **extra}
     new_item = {
         'product_id': product.pk,
@@ -439,31 +515,58 @@ def buy_now_product_view(request, product_id):
     if product.variants.exists() and not variant:
         return _render_or_redirect_cart_error(
             request,
-            cart_items=get_cart_items(request),
+            cart_items=enrich_cart_items(get_cart_items(request)),
             message='Выберите вариант товара.',
             fallback_url=product.get_absolute_url(),
         )
 
     quantity = _get_requested_quantity(request)
-    stock_total = _get_stock_total(product_id, variant_id)
-    if stock_total > 0 and quantity > stock_total:
-        quantity = stock_total
-    if stock_total > 0 and quantity <= 0:
+    purchase_mode, purchase_mode_error = _resolve_purchase_mode(
+        product,
+        variant,
+        _get_requested_purchase_mode(request),
+    )
+    if purchase_mode_error:
         return _render_or_redirect_cart_error(
             request,
-            cart_items=get_cart_items(request),
+            cart_items=enrich_cart_items(get_cart_items(request)),
+            message=purchase_mode_error,
+            fallback_url=product.get_absolute_url(),
+        )
+    stock_total = _get_stock_total(product_id, variant_id)
+    if purchase_mode == PURCHASE_MODE_STOCK and stock_total > 0 and quantity > stock_total:
+        quantity = stock_total
+    if purchase_mode == PURCHASE_MODE_STOCK and stock_total > 0 and quantity <= 0:
+        return _render_or_redirect_cart_error(
+            request,
+            cart_items=enrich_cart_items(get_cart_items(request)),
             message='Недостаточно товара.',
             fallback_url=product.get_absolute_url(),
         )
-    if stock_total <= 0 and not getattr(product, 'allow_order_on_request', True):
-        return _render_or_redirect_cart_error(
-            request,
-            cart_items=get_cart_items(request),
-            message='Товар недоступен для заказа.',
-            fallback_url=product.get_absolute_url(),
-        )
+    if purchase_mode == PURCHASE_MODE_STOCK and stock_total <= 0:
+        if not getattr(product, 'allow_order_on_request', True):
+            return _render_or_redirect_cart_error(
+                request,
+                cart_items=enrich_cart_items(get_cart_items(request)),
+                message='Товар недоступен для заказа.',
+                fallback_url=product.get_absolute_url(),
+            )
+        if has_explicit_on_request_price(product, variant):
+            return _render_or_redirect_cart_error(
+                request,
+                cart_items=enrich_cart_items(get_cart_items(request)),
+                message='Товар доступен только под заказ. Выберите цену на странице товара.',
+                fallback_url=product.get_absolute_url(),
+            )
 
-    buy_now_items, _ = _add_product_to_cart_items([], product, variant_id, variant, quantity)
+    buy_now_items, _ = _add_product_to_cart_items(
+        [],
+        product,
+        variant_id,
+        variant,
+        quantity,
+        purchase_mode=purchase_mode,
+    )
     save_buy_now_checkout_items(request, buy_now_items)
     return redirect(f"{reverse('orders:checkout')}?mode=buy_now")
 

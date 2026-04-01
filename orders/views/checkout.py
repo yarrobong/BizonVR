@@ -19,11 +19,13 @@ from accounts.models import SavedAddress
 from accounts.services import ensure_profile, get_user_phone
 from catalog.cart_services import (
     clear_buy_now_checkout_items,
-    clear_cart,
+    enrich_cart_items,
     get_buy_now_checkout_items,
     get_cart_items,
+    remove_cart_items,
 )
 from catalog.models import City, Product, ProductVariant
+from catalog.pricing import PURCHASE_MODE_ON_REQUEST, has_explicit_on_request_price, normalize_purchase_mode
 from catalog.views.common import _get_stock_total
 from config.legal_consent import build_legal_acceptance_payload
 from config.legal_consent import get_legal_bundle_version
@@ -112,17 +114,20 @@ def _sync_profile_from_checkout(user, cleaned_data):
 
 
 def _build_checkout_context(request, form, cart_items, saved_addresses, selected_saved_address):
-    lines, _ = _build_checkout_lines(cart_items)
-    cart_total = sum(Decimal(str(item.get('subtotal', 0))) for item in cart_items)
+    lines, unavailable_lines = _build_checkout_lines(cart_items)
+    display_items = enrich_cart_items(cart_items)
+    cart_total = sum(Decimal(str(item.get('checkout_subtotal', 0))) for item in display_items)
     checkout_mode = (request.GET.get('mode') or '').strip()
     session_city = _get_session_selected_city(request)
     return {
-        'cart_items': cart_items,
+        'cart_items': display_items,
         'cart_total': cart_total,
         'online_total': cart_total,
         'grand_total': cart_total,
         'form': form,
         'cart_empty': not cart_items,
+        'has_checkout_items': bool(lines),
+        'checkout_unavailable_lines': unavailable_lines,
         'request_mode': False,
         'saved_addresses': saved_addresses,
         'selected_saved_address_id': selected_saved_address.pk if selected_saved_address else None,
@@ -186,10 +191,18 @@ def _build_checkout_lines(cart_items):
             continue
 
         stock_total = _get_stock_total(product_id, variant_id)
-        is_on_request = stock_total < quantity
-        if is_on_request and not product.allow_order_on_request:
-            unavailable_lines.append(item.get('name') or product.name)
-            continue
+        purchase_mode = normalize_purchase_mode(item.get('purchase_mode'))
+        is_on_request = purchase_mode == PURCHASE_MODE_ON_REQUEST
+        if is_on_request:
+            if not product.allow_order_on_request:
+                unavailable_lines.append(item.get('name') or product.name)
+                continue
+        elif stock_total < quantity or stock_total <= 0:
+            if product.allow_order_on_request and not has_explicit_on_request_price(product, variant):
+                is_on_request = True
+            else:
+                unavailable_lines.append(item.get('name') or product.name)
+                continue
 
         lines.append({
             'product': product,
@@ -198,6 +211,8 @@ def _build_checkout_lines(cart_items):
             'price': Decimal(str(item.get('price', 0))),
             'variant_name': item.get('variant_name') or (variant.name if variant else ''),
             'is_on_request': is_on_request,
+            'purchase_mode': purchase_mode,
+            'bundle_id': item.get('bundle_id'),
         })
 
     return lines, unavailable_lines
@@ -319,18 +334,13 @@ def checkout_view(request):
         )
 
     lines, unavailable_lines = _build_checkout_lines(cart_items)
-    if unavailable_lines:
-        form.add_error(
-            None,
-            'Недостаточно товара для оформления: ' + ', '.join(unavailable_lines) + '.',
-        )
+    if not lines:
+        form.add_error(None, 'В заявке не осталось доступных позиций для оформления.')
         return render(
             request,
             'orders/checkout.html',
             _build_checkout_context(request, form, cart_items, saved_addresses, selected_saved_address),
         )
-    if not lines:
-        return redirect('orders:checkout')
 
     promo = None
     promo_code = form.cleaned_data.get('promo_code') or ''
@@ -411,7 +421,7 @@ def checkout_view(request):
     if items_source == 'buy_now':
         clear_buy_now_checkout_items(request)
     else:
-        clear_cart(request)
+        remove_cart_items(request, lines)
     if request.user.is_authenticated:
         _sync_profile_from_checkout(request.user, form.cleaned_data)
 

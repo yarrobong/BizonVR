@@ -118,8 +118,9 @@
   data: {},
   variants: [],
   productPrice: 0,
+  selectedPurchaseMode: 'stock',
   selectedVariant: null,
-  cartQtyProduct: 0,
+  cartQtyProduct: {},
   cartQtyByVariant: {},
   mobileAddTransitioning: false,
   mobileQtyRemoving: false,
@@ -142,7 +143,8 @@
 	        this.data = JSON.parse(el.textContent);
 	        this.variants = this.data.variants || [];
 	        this.productPrice = this.data.productPrice;
-          this.cartQtyProduct = Number(this.data.cartQtyProduct || 0);
+          this.selectedPurchaseMode = this.data.defaultPurchaseMode || 'stock';
+          this.cartQtyProduct = this.data.cartQtyProduct || {};
           this.cartQtyByVariant = this.data.cartQtyByVariant || {};
 	        if (this.variants.length > 0) {
             const initialVariantId = Number(this.data.initialVariantId || 0);
@@ -150,7 +152,10 @@
               ? this.variants.find(v => Number(v.id) === initialVariantId)
               : null;
 	          this.selectedVariant = preselected || this.variants[0];
+            this.syncPurchaseModeForSelection(true);
 	          window.dispatchEvent(new CustomEvent('pd-variant-change', { detail: { name: this.selectedVariant.name } }));
+	        } else {
+            this.syncPurchaseModeForSelection(true);
 	        }
 	      }
 	    } catch(e) { console.error('Error init product detail', e); }
@@ -171,8 +176,25 @@
 	  setVariant(v) {
 	    this.selectedVariant = v;
 	    this.selectedImageIndex = 0;
+      this.syncPurchaseModeForSelection(true);
 	    window.dispatchEvent(new CustomEvent('pd-variant-change', { detail: { name: v ? v.name : '' } }));
 	  },
+  syncPurchaseModeForSelection(force = false) {
+    const nextMode = this.defaultPurchaseModeForSelection;
+    if (force || !this.isPurchaseModeAvailable(this.selectedPurchaseMode)) {
+      this.selectedPurchaseMode = nextMode;
+    }
+  },
+  isPurchaseModeAvailable(mode) {
+    if (mode === 'on_request') {
+      return this.allowOnRequest;
+    }
+    return this.stockTotal > 0;
+  },
+  setPurchaseMode(mode) {
+    if (!this.isPurchaseModeAvailable(mode)) return;
+    this.selectedPurchaseMode = mode;
+  },
   get displayMedia() {
     const baseMedia = Array.isArray(this.data.productMedia) ? this.data.productMedia.map(item => ({ ...item })) : [];
     const variantImage = this.selectedVariant && this.selectedVariant.imageUrl ? this.selectedVariant.imageUrl : '';
@@ -247,23 +269,86 @@
     };
     return labels[this.stockStatus] || 'Под заказ';
   },
+  get currentInStockPrice() {
+    if (this.selectedVariant) {
+      return this.selectedVariant.inStockPrice;
+    }
+    return this.data.productInStockPrice || this.productPrice;
+  },
+  get currentOnRequestPrice() {
+    if (this.selectedVariant) {
+      return this.selectedVariant.onRequestPrice;
+    }
+    return this.data.productOnRequestPrice;
+  },
+  get hasOnRequestPrice() {
+    if (this.selectedVariant) {
+      return !!this.selectedVariant.hasOnRequestPrice;
+    }
+    return !!this.data.productHasOnRequestPrice;
+  },
+  get allowOnRequest() {
+    return !!this.data.allowOrderOnRequest && this.hasOnRequestPrice;
+  },
+  get defaultPurchaseModeForSelection() {
+    if (this.stockTotal > 0) {
+      return 'stock';
+    }
+    if (this.allowOnRequest) {
+      return 'on_request';
+    }
+    return 'stock';
+  },
+  get activePrice() {
+    if (this.selectedPurchaseMode === 'on_request' && this.currentOnRequestPrice !== null && this.currentOnRequestPrice !== undefined) {
+      return this.currentOnRequestPrice;
+    }
+    return this.currentInStockPrice;
+  },
+  get comparePrice() {
+    if (this.selectedPurchaseMode === 'on_request') {
+      if (this.currentOnRequestPrice !== null && this.currentOnRequestPrice !== undefined && this.currentOnRequestPrice !== this.currentInStockPrice) {
+        return this.currentInStockPrice;
+      }
+      return null;
+    }
+    if (this.currentOnRequestPrice !== null && this.currentOnRequestPrice !== undefined) {
+      return this.currentOnRequestPrice;
+    }
+    return null;
+  },
+  get purchaseModeHint() {
+    if (this.stockTotal > 0 && this.allowOnRequest) {
+      return 'Можно купить дешевле под заказ';
+    }
+    if (this.stockTotal <= 0 && this.allowOnRequest) {
+      return 'Товар доступен только под заказ';
+    }
+    return '';
+  },
   get canSubmitMobileCart() {
-    return this.variants.length === 0 || !!this.selectedVariant;
+    return (this.variants.length === 0 || !!this.selectedVariant) && this.isPurchaseModeAvailable(this.selectedPurchaseMode);
+  },
+  get currentCartKey() {
+    if (this.selectedVariant) {
+      return `${this.selectedVariant.id}:${this.selectedPurchaseMode}`;
+    }
+    return `product:${this.selectedPurchaseMode}`;
   },
   get currentCartQty() {
     if (this.selectedVariant) {
-      const key = String(this.selectedVariant.id);
+      const key = this.currentCartKey;
       return Number(this.cartQtyByVariant[key] || 0);
     }
-    return Number(this.cartQtyProduct || 0);
+    return Number(this.cartQtyProduct[this.selectedPurchaseMode] || 0);
   },
   setCurrentCartQty(qty) {
     const nextQty = Math.max(0, Math.min(99, Number(qty) || 0));
     if (this.selectedVariant) {
-      const key = String(this.selectedVariant.id);
+      const key = this.currentCartKey;
       this.cartQtyByVariant[key] = nextQty;
     } else {
-      this.cartQtyProduct = nextQty;
+      this.cartQtyProduct[this.selectedPurchaseMode] = nextQty;
     }
   },
   handleMobileAddBeforeRequest() {
@@ -521,7 +606,12 @@
 
       <!-- Mobile: minimal info from DB -->
       <div class="mobile-card mobile-only">
-        <div class="mobile-price" x-text="window.formatRub(selectedVariant ? selectedVariant.price : productPrice)"></div>
+        <div class="mobile-price" x-text="window.formatRub(activePrice)"></div>
+        <div class="mt-2 flex flex-wrap items-center gap-2 text-xs">
+          <span x-show="selectedPurchaseMode === 'on_request' && comparePrice !== null" x-cloak class="text-gray-500 line-through" x-text="window.formatRub(comparePrice)"></span>
+          <span x-show="selectedPurchaseMode === 'stock' && comparePrice !== null" x-cloak class="text-emerald-300" x-text="`Под заказ: ${window.formatRub(comparePrice)}`"></span>
+        </div>
+        <p x-show="purchaseModeHint" x-cloak class="mt-2 text-xs text-emerald-300" x-text="purchaseModeHint"></p>
         <h1 class="mobile-product-title">{{ product.name }}</h1>
       </div>
 
@@ -542,6 +632,30 @@
         </div>
       </div>
       {% endif %}
+
+      <div class="mobile-card mobile-only">
+        <div class="variants-title">Способ покупки</div>
+        <div class="mt-3 grid gap-2 sm:grid-cols-2">
+          <button type="button"
+                  class="rounded-2xl border px-4 py-3 text-left transition"
+                  :class="selectedPurchaseMode === 'stock' ? 'border-accent bg-accent/10 text-white' : 'border-white/10 bg-white/5 text-gray-300'"
+                  :disabled="stockTotal <= 0"
+                  @click="setPurchaseMode('stock')">
+            <span class="block text-xs uppercase tracking-[0.18em] text-gray-400">Из наличия</span>
+            <span class="mt-1 block text-base font-semibold" x-text="window.formatRub(currentInStockPrice)"></span>
+            <span class="mt-1 block text-xs text-gray-400" x-text="stockTotal > 0 ? 'Можно оформить сразу' : 'Сейчас недоступно'"></span>
+          </button>
+          <button type="button"
+                  class="rounded-2xl border px-4 py-3 text-left transition"
+                  :class="selectedPurchaseMode === 'on_request' ? 'border-emerald-400 bg-emerald-500/10 text-white' : 'border-white/10 bg-white/5 text-gray-300'"
+                  :disabled="!allowOnRequest"
+                  @click="setPurchaseMode('on_request')">
+            <span class="block text-xs uppercase tracking-[0.18em] text-gray-400">Под заказ</span>
+            <span class="mt-1 block text-base font-semibold" x-text="currentOnRequestPrice !== null ? window.formatRub(currentOnRequestPrice) : 'Недоступно'"></span>
+            <span class="mt-1 block text-xs text-gray-400" x-text="allowOnRequest ? 'Дешевле, но потребует ожидания' : 'Цена под заказ не настроена'"></span>
+          </button>
+        </div>
+      </div>
 
       <div class="product-info desktop-only">
         <h1>{{ product.name }}</h1>
@@ -582,7 +696,30 @@
       <div class="buy-box desktop-only">
         <div class="price-block">
           <div class="price-row">
-            <span class="main-price" x-text="window.formatRub(selectedVariant ? selectedVariant.price : productPrice)"></span>
+            <span class="main-price" x-text="window.formatRub(activePrice)"></span>
+          </div>
+          <div class="mt-2 flex flex-wrap items-center gap-2 text-sm">
+            <span x-show="selectedPurchaseMode === 'on_request' && comparePrice !== null" x-cloak class="text-gray-500 line-through" x-text="window.formatRub(comparePrice)"></span>
+            <span x-show="selectedPurchaseMode === 'stock' && comparePrice !== null" x-cloak class="text-emerald-300" x-text="`Под заказ: ${window.formatRub(comparePrice)}`"></span>
+          </div>
+          <p x-show="purchaseModeHint" x-cloak class="mt-2 text-sm text-emerald-300" x-text="purchaseModeHint"></p>
+          <div class="mt-4 grid gap-2">
+            <button type="button"
+                    class="rounded-2xl border px-4 py-3 text-left transition"
+                    :class="selectedPurchaseMode === 'stock' ? 'border-accent bg-accent/10 text-white' : 'border-white/10 bg-white/5 text-gray-300'"
+                    :disabled="stockTotal <= 0"
+                    @click="setPurchaseMode('stock')">
+              <span class="block text-xs uppercase tracking-[0.18em] text-gray-400">Из наличия</span>
+              <span class="mt-1 block text-lg font-semibold" x-text="window.formatRub(currentInStockPrice)"></span>
+            </button>
+            <button type="button"
+                    class="rounded-2xl border px-4 py-3 text-left transition"
+                    :class="selectedPurchaseMode === 'on_request' ? 'border-emerald-400 bg-emerald-500/10 text-white' : 'border-white/10 bg-white/5 text-gray-300'"
+                    :disabled="!allowOnRequest"
+                    @click="setPurchaseMode('on_request')">
+              <span class="block text-xs uppercase tracking-[0.18em] text-gray-400">Под заказ</span>
+              <span class="mt-1 block text-lg font-semibold" x-text="currentOnRequestPrice !== null ? window.formatRub(currentOnRequestPrice) : 'Недоступно'"></span>
+            </button>
           </div>
         </div>
 
@@ -592,11 +729,12 @@
               hx-swap="innerHTML">
           {% csrf_token %}
           <input type="hidden" name="quantity" value="1" />
+          <input type="hidden" name="purchase_mode" :value="selectedPurchaseMode" />
           {% if product.variants.all %}
           <input type="hidden" name="variant_id" :value="selectedVariant ? selectedVariant.id : ''" />
-          <button type="submit" class="add-cart-btn" :disabled="!selectedVariant">В корзину</button>
+          <button type="submit" class="add-cart-btn" :disabled="!canSubmitMobileCart">В корзину</button>
           {% else %}
-          <button type="submit" class="add-cart-btn">В корзину</button>
+          <button type="submit" class="add-cart-btn" :disabled="!canSubmitMobileCart">В корзину</button>
           {% endif %}
         </form>
 
@@ -604,11 +742,12 @@
           {% csrf_token %}
           <input type="hidden" name="quantity" value="1" />
           <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+          <input type="hidden" name="purchase_mode" :value="selectedPurchaseMode" />
           {% if product.variants.all %}
           <input type="hidden" name="variant_id" :value="selectedVariant ? selectedVariant.id : ''" />
-          <button type="submit" class="buy-now-btn" :disabled="!selectedVariant">Купить сейчас</button>
+          <button type="submit" class="buy-now-btn" :disabled="!canSubmitMobileCart">Купить сейчас</button>
           {% else %}
-          <button type="submit" class="buy-now-btn">Купить сейчас</button>
+          <button type="submit" class="buy-now-btn" :disabled="!canSubmitMobileCart">Купить сейчас</button>
           {% endif %}
         </form>
       </div>
@@ -650,11 +789,12 @@
               style="width: 100%;">
           {% csrf_token %}
           <input type="hidden" name="quantity" value="1" />
+          <input type="hidden" name="purchase_mode" :value="selectedPurchaseMode" />
           {% if product.variants.all %}
           <input type="hidden" name="variant_id" :value="selectedVariant ? selectedVariant.id : ''" />
           <button type="submit" class="cta-btn" :disabled="mobileAddBusy || !canSubmitMobileCart"><span class="cta-btn-text">В корзину</span></button>
           {% else %}
-          <button type="submit" class="cta-btn" :disabled="mobileAddBusy"><span class="cta-btn-text">В корзину</span></button>
+          <button type="submit" class="cta-btn" :disabled="mobileAddBusy || !canSubmitMobileCart"><span class="cta-btn-text">В корзину</span></button>
           {% endif %}
         </form>
 
@@ -676,6 +816,7 @@
             {% csrf_token %}
             <input type="hidden" name="product_id" value="{{ product.pk }}" />
             <input type="hidden" name="quantity" x-ref="mobileQtyHidden" value="1" />
+            <input type="hidden" name="purchase_mode" :value="selectedPurchaseMode" />
             <input type="hidden" name="variant_id" :value="selectedVariant ? selectedVariant.id : ''" />
             <input type="hidden" name="next" value="{{ request.get_full_path }}" />
             <button type="button" class="cta-qty-btn" @click="decrementMobileQty()" :disabled="mobileQtyBusy || mobileQtyRemoving || !canSubmitMobileCart">−</button>

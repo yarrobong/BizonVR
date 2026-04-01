@@ -856,14 +856,14 @@
           {% for item in cart_items reversed %}
             <li class="cart-item"
                 data-cart-item
-                data-subtotal="{{ item.subtotal }}"
+                data-subtotal="{{ item.checkout_subtotal|default:item.subtotal }}"
                 data-qty="{{ item.quantity }}"
                 data-quantity="{{ item.quantity }}"
                 data-product-id="{{ item.product_id }}"
                 data-variant-id="{{ item.variant_id|default_if_none:'none' }}"
-                data-share-key="{{ item.product_id }}:{{ item.variant_id|default_if_none:'none' }}">
+                data-share-key="{{ item.share_item_key }}">
               <div class="cart-media-col">
-                <input type="checkbox" class="cart-checkbox cart-item-checkbox" data-item-select checked aria-label="Выбрать товар">
+                <input type="checkbox" class="cart-checkbox cart-item-checkbox" data-item-select {% if item.is_checkout_available %}checked{% else %}disabled{% endif %} aria-label="Выбрать товар">
                 <div class="cart-thumb">
                   {% if item.image_url %}
                     <img src="{{ item.image_url|absolute_uri:request }}" alt="{{ item.name }}" />
@@ -891,6 +891,7 @@
                   {% if item.variant_name %}
                     <div class="cart-variant">{{ item.variant_name }}</div>
                   {% endif %}
+                  <div class="cart-variant {% if item.is_on_request_purchase %}text-emerald-300{% endif %}">{{ item.purchase_mode|purchase_mode_label }}</div>
                   {% if item.bundle_name %}
                     <div class="cart-variant text-accent">Входит в комплект: {{ item.bundle_name }}</div>
                     {% if item.original_price and item.original_price != item.price %}
@@ -912,6 +913,9 @@
 
                   {% if item.stock_total > 0 and item.stock_total < 10 %}
                     <div class="cart-stock-note">Количество ограничено</div>
+                  {% endif %}
+                  {% if not item.is_checkout_available %}
+                    <div class="cart-stock-note">{{ item.checkout_unavailable_reason }} Позиция остаётся в корзине, но не попадёт в оформление.</div>
                   {% endif %}
                 </div>
 
@@ -938,6 +942,7 @@
                   {% csrf_token %}
                   <input type="hidden" name="product_id" value="{{ item.product_id }}" />
                   {% if item.variant_id %}<input type="hidden" name="variant_id" value="{{ item.variant_id }}" />{% endif %}
+                  <input type="hidden" name="purchase_mode" value="{{ item.purchase_mode }}" />
                   <input type="hidden" name="quantity" value="0" />
                   <input type="hidden" name="next" value="{% url 'catalog:cart' %}" />
                   <button type="submit" class="cart-icon-btn" aria-label="Удалить товар">
@@ -954,6 +959,7 @@
                     {% csrf_token %}
                     <input type="hidden" name="product_id" value="{{ item.product_id }}" />
                     {% if item.variant_id %}<input type="hidden" name="variant_id" value="{{ item.variant_id }}" />{% endif %}
+                    <input type="hidden" name="purchase_mode" value="{{ item.purchase_mode }}" />
                     <input type="hidden" name="quantity" value="{% if item.quantity > 1 %}{{ item.quantity|add:'-1' }}{% else %}1{% endif %}" />
                     <input type="hidden" name="next" value="{% url 'catalog:cart' %}" />
                     <button type="submit" class="cart-qty-btn" aria-label="Уменьшить">
@@ -971,6 +977,7 @@
                     {% csrf_token %}
                     <input type="hidden" name="product_id" value="{{ item.product_id }}" />
                     {% if item.variant_id %}<input type="hidden" name="variant_id" value="{{ item.variant_id }}" />{% endif %}
+                    <input type="hidden" name="purchase_mode" value="{{ item.purchase_mode }}" />
                     <input type="hidden" name="quantity" value="{% if item.quantity < 99 %}{{ item.quantity|add:'1' }}{% else %}99{% endif %}" />
                     <input type="hidden" name="next" value="{% url 'catalog:cart' %}" />
                     <button type="submit" class="cart-qty-btn" aria-label="Увеличить">
@@ -1152,7 +1159,7 @@
       const keys = [];
       itemRows.forEach((row, index) => {
         const checkbox = itemChecks[index];
-        if (!checkbox || !checkbox.checked) {
+        if (!checkbox || checkbox.disabled || !checkbox.checked) {
           return;
         }
         const key = (row.dataset.shareKey || '').trim();
@@ -1235,9 +1242,15 @@
       let selectedCount = 0;
       let selectedQty = 0;
       let subtotal = 0;
+      let selectableCount = 0;
 
       itemRows.forEach((row, index) => {
-        const checked = itemChecks[index] && itemChecks[index].checked;
+        const checkbox = itemChecks[index];
+        const isSelectable = !!checkbox && !checkbox.disabled;
+        if (isSelectable) {
+          selectableCount += 1;
+        }
+        const checked = isSelectable && checkbox.checked;
         row.classList.toggle('is-unselected', !checked);
         if (!checked) {
           return;
@@ -1248,8 +1261,8 @@
       });
 
       if (selectAll) {
-        selectAll.checked = selectedCount > 0 && selectedCount === itemChecks.length;
-        selectAll.indeterminate = selectedCount > 0 && selectedCount < itemChecks.length;
+        selectAll.checked = selectedCount > 0 && selectedCount === selectableCount;
+        selectAll.indeterminate = selectedCount > 0 && selectedCount < selectableCount;
       }
 
       const discount = 0;
@@ -1286,6 +1299,9 @@
     if (selectAll) {
       bind(selectAll, 'change', () => {
         itemChecks.forEach((checkbox) => {
+          if (checkbox.disabled) {
+            return;
+          }
           checkbox.checked = selectAll.checked;
         });
         updateSummary();

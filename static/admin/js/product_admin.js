@@ -608,6 +608,19 @@
         });
     }
 
+    function escapeHtml(s) {
+        return String(s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    function blockTypeLabel(type) {
+        var map = { text: 'Текст', image_text: 'Изображение + текст', full_image: 'Изображение', video: 'Видео' };
+        return map[type] || type;
+    }
+
     onReady(function() {
         // Auto-collapse sidebar on product admin pages; remember user's explicit choice.
         // setTimeout(0) defers until after nav_sidebar.js has created the toggle button.
@@ -1098,10 +1111,258 @@
             });
         }
 
+        // ── Copy description from another product ──────────────────────────────
+
+        var copyDescModalEl = null;
+
+        function setupCopyDescriptionButton() {
+            if (!contentBlockGroup) return;
+            if (mode === 'add') return;
+
+            var heading = contentBlockGroup.querySelector('h2');
+            if (!heading) return;
+
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'product-copy-desc-btn';
+            btn.textContent = 'Взять описание';
+            btn.setAttribute('data-copy-desc-btn', '');
+            heading.parentNode.insertBefore(btn, heading.nextSibling);
+            btn.addEventListener('click', openCopyDescriptionModal);
+        }
+
+        function openCopyDescriptionModal() {
+            if (copyDescModalEl) { copyDescModalEl.remove(); copyDescModalEl = null; }
+
+            var searchUrl = (dashboard && dashboard.getAttribute('data-search-url')) || '';
+            var blocksUrl = (dashboard && dashboard.getAttribute('data-blocks-url')) || '';
+
+            var modal = document.createElement('div');
+            modal.className = 'copy-desc-modal-overlay';
+            modal.innerHTML =
+                '<div class="copy-desc-modal" role="dialog" aria-modal="true" aria-label="Взять описание из другого товара">' +
+                    '<div class="copy-desc-modal__header">' +
+                        '<h3 class="copy-desc-modal__title">Взять описание из другого товара</h3>' +
+                        '<button type="button" class="copy-desc-modal__close" data-close-modal aria-label="Закрыть">' +
+                            '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 2l12 12M14 2L2 14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>' +
+                        '</button>' +
+                    '</div>' +
+                    '<div class="copy-desc-modal__body">' +
+                        '<div class="copy-desc-modal__search-wrap">' +
+                            '<input type="text" class="copy-desc-modal__search vTextField" placeholder="Начните вводить название товара…" autocomplete="off" data-search-input>' +
+                            '<p class="copy-desc-modal__search-status" data-search-status></p>' +
+                        '</div>' +
+                        '<div class="copy-desc-modal__results" data-search-results></div>' +
+                        '<div class="copy-desc-modal__preview" data-blocks-preview hidden>' +
+                            '<p class="copy-desc-modal__preview-heading" data-preview-heading></p>' +
+                            '<div class="copy-desc-modal__preview-blocks" data-preview-blocks></div>' +
+                            '<p class="copy-desc-modal__warning">Текущие блоки подробного описания будут заменены.</p>' +
+                            '<div class="copy-desc-modal__actions">' +
+                                '<button type="button" class="button default copy-desc-modal__confirm" data-confirm-copy>Подтвердить</button>' +
+                                '<button type="button" class="button copy-desc-modal__back" data-back-to-search>← Назад</button>' +
+                            '</div>' +
+                        '</div>' +
+                    '</div>' +
+                '</div>';
+            document.body.appendChild(modal);
+            copyDescModalEl = modal;
+
+            var searchInput = modal.querySelector('[data-search-input]');
+            var searchStatus = modal.querySelector('[data-search-status]');
+            var searchResults = modal.querySelector('[data-search-results]');
+            var blocksPreview = modal.querySelector('[data-blocks-preview]');
+            var previewHeading = modal.querySelector('[data-preview-heading]');
+            var previewBlocks = modal.querySelector('[data-preview-blocks]');
+            var confirmBtn = modal.querySelector('[data-confirm-copy]');
+            var backBtn = modal.querySelector('[data-back-to-search]');
+            var selectedBlocks = null;
+            var searchTimer = null;
+
+            function closeModal() {
+                if (copyDescModalEl) { copyDescModalEl.remove(); copyDescModalEl = null; }
+            }
+
+            modal.querySelector('[data-close-modal]').addEventListener('click', closeModal);
+            modal.addEventListener('click', function(e) { if (e.target === modal) closeModal(); });
+            document.addEventListener('keydown', function onEsc(e) {
+                if (e.key === 'Escape') { closeModal(); document.removeEventListener('keydown', onEsc); }
+            });
+
+            function showSearchPanel() {
+                searchResults.hidden = false;
+                blocksPreview.hidden = true;
+                selectedBlocks = null;
+            }
+
+            function doSearch(q) {
+                q = q.trim();
+                if (q.length < 2) { searchResults.innerHTML = ''; searchStatus.textContent = ''; return; }
+                searchStatus.textContent = 'Поиск…';
+                searchResults.innerHTML = '';
+                var xhr = new XMLHttpRequest();
+                xhr.open('GET', searchUrl + '?q=' + encodeURIComponent(q));
+                xhr.onload = function() {
+                    searchStatus.textContent = '';
+                    if (xhr.status !== 200) { searchStatus.textContent = 'Ошибка поиска.'; return; }
+                    var products;
+                    try { products = JSON.parse(xhr.responseText); } catch (e) { return; }
+                    if (!products.length) {
+                        searchResults.innerHTML = '<p class="copy-desc-no-results">Товары не найдены</p>';
+                        return;
+                    }
+                    var html = '<ul class="copy-desc-modal__result-list">';
+                    products.forEach(function(p) {
+                        html += '<li class="copy-desc-modal__result-item" data-product-id="' + p.id + '" data-product-name="' + escapeHtml(p.name) + '">' +
+                            '<span class="copy-desc-modal__result-name">' + escapeHtml(p.name) + '</span>' +
+                            '<span class="copy-desc-modal__result-meta">' + escapeHtml(p.category) + '</span>' +
+                            '</li>';
+                    });
+                    html += '</ul>';
+                    searchResults.innerHTML = html;
+                };
+                xhr.onerror = function() { searchStatus.textContent = 'Ошибка сети.'; };
+                xhr.send();
+            }
+
+            searchInput.addEventListener('input', function() {
+                clearTimeout(searchTimer);
+                searchTimer = setTimeout(function() { doSearch(searchInput.value); }, 300);
+            });
+
+            searchResults.addEventListener('click', function(e) {
+                var item = closest(e.target, '[data-product-id]');
+                if (!item) return;
+                var productId = item.getAttribute('data-product-id');
+                var productName = item.getAttribute('data-product-name');
+                fetchBlocks(productId, productName);
+            });
+
+            function fetchBlocks(productId, productName) {
+                searchStatus.textContent = 'Загрузка блоков…';
+                var url = blocksUrl.replace('/0/', '/' + productId + '/');
+                var xhr = new XMLHttpRequest();
+                xhr.open('GET', url);
+                xhr.onload = function() {
+                    searchStatus.textContent = '';
+                    if (xhr.status !== 200) { searchStatus.textContent = 'Ошибка загрузки.'; return; }
+                    var data;
+                    try { data = JSON.parse(xhr.responseText); } catch (e) { return; }
+                    selectedBlocks = data.blocks;
+                    showPreview(productName, data.blocks);
+                };
+                xhr.onerror = function() { searchStatus.textContent = 'Ошибка сети.'; };
+                xhr.send();
+            }
+
+            function showPreview(productName, blocks) {
+                searchResults.hidden = true;
+                blocksPreview.hidden = false;
+                var n = blocks.length;
+                var word = n === 1 ? 'блок' : n < 5 ? 'блока' : 'блоков';
+                previewHeading.innerHTML = 'Из товара <strong>' + escapeHtml(productName) + '</strong>: ' + n + '\u00a0' + word;
+                var html = '';
+                blocks.forEach(function(block) {
+                    html += '<div class="copy-desc-modal__block-preview">';
+                    html += '<span class="copy-desc-modal__block-type">' + escapeHtml(blockTypeLabel(block.block_type)) + '</span>';
+                    if (block.title) html += '<div class="copy-desc-modal__block-title">' + escapeHtml(block.title) + '</div>';
+                    if (block.text) {
+                        var preview = block.text.length > 200 ? block.text.substring(0, 200) + '\u2026' : block.text;
+                        html += '<div class="copy-desc-modal__block-text">' + escapeHtml(preview) + '</div>';
+                    }
+                    if (!block.title && !block.text) {
+                        html += '<div class="copy-desc-modal__block-text copy-desc-modal__block-text--muted">(нет текста — ' + escapeHtml(blockTypeLabel(block.block_type)) + ')</div>';
+                    }
+                    html += '</div>';
+                });
+                previewBlocks.innerHTML = html;
+            }
+
+            backBtn.addEventListener('click', showSearchPanel);
+
+            confirmBtn.addEventListener('click', function() {
+                if (!selectedBlocks) return;
+                applyContentBlocks(selectedBlocks);
+                closeModal();
+            });
+
+            searchInput.focus();
+        }
+
+        function setInlineField(container, prefix, index, fieldName, value) {
+            var el = container.querySelector('[name="' + prefix + '-' + index + '-' + fieldName + '"]');
+            if (!el) return;
+            if (el.type === 'checkbox') {
+                el.checked = !!value;
+            } else {
+                el.value = (value != null) ? String(value) : '';
+            }
+        }
+
+        function applyContentBlocks(blocks) {
+            if (!contentBlockGroup) return;
+
+            // Mark all existing rows for deletion
+            getStackedInlineRows(contentBlockGroup).forEach(function(row) {
+                var cb = row.querySelector('input[name$="-DELETE"]');
+                if (cb && !cb.checked) {
+                    cb.checked = true;
+                    cb.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            });
+
+            // Find empty form template and derive prefix
+            var emptyForm = contentBlockGroup.querySelector('.empty-form');
+            if (!emptyForm || !emptyForm.id) return;
+            var prefix = emptyForm.id.replace('-empty', '');
+
+            var totalInput = document.querySelector('input[name="' + prefix + '-TOTAL_FORMS"]');
+            if (!totalInput) return;
+            var startIndex = parseInt(totalInput.value, 10) || 0;
+
+            blocks.forEach(function(block, i) {
+                var idx = startIndex + i;
+                var clone = emptyForm.cloneNode(true);
+                clone.classList.remove('empty-form', 'last-related');
+                clone.removeAttribute('id');
+                clone.hidden = false;
+                clone.style.display = '';
+
+                // Replace __prefix__ placeholder with actual index in all relevant attributes
+                clone.querySelectorAll('[name]').forEach(function(el) {
+                    el.name = el.name.replace(/__prefix__/g, idx);
+                });
+                clone.querySelectorAll('[id]').forEach(function(el) {
+                    el.id = el.id.replace(/__prefix__/g, idx);
+                });
+                clone.querySelectorAll('[for]').forEach(function(el) {
+                    el.setAttribute('for', el.getAttribute('for').replace(/__prefix__/g, idx));
+                });
+
+                setInlineField(clone, prefix, idx, 'block_type', block.block_type || 'text');
+                setInlineField(clone, prefix, idx, 'title', block.title || '');
+                setInlineField(clone, prefix, idx, 'text', block.text || '');
+                setInlineField(clone, prefix, idx, 'sort_order', block.sort_order != null ? block.sort_order : i);
+                setInlineField(clone, prefix, idx, 'is_active', true);
+                setInlineField(clone, prefix, idx, 'image_position', block.image_position || 'left');
+                setInlineField(clone, prefix, idx, 'caption', block.caption || '');
+                setInlineField(clone, prefix, idx, 'rutube_url', block.rutube_url || '');
+
+                emptyForm.parentNode.insertBefore(clone, emptyForm);
+            });
+
+            totalInput.value = startIndex + blocks.length;
+            totalInput.dispatchEvent(new Event('change', { bubbles: true }));
+            applyContentBlockFieldVisibility(contentBlockGroup);
+            scheduleRefresh();
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+
         setupTagsWidget();
         setupImagePreviewLightbox();
         setupTabs();
         refreshDashboard();
         setupInlineEnhancements();
+        setupCopyDescriptionButton();
     });
 })();

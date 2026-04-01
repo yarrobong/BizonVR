@@ -4,6 +4,14 @@
 from django.contrib.auth import get_user_model
 
 from .models import CartItem, Favorite, Product, ProductVariant
+from .pricing import (
+    PURCHASE_MODE_ON_REQUEST,
+    PURCHASE_MODE_STOCK,
+    has_explicit_on_request_price,
+    normalize_purchase_mode,
+    resolve_in_stock_price,
+    resolve_on_request_price,
+)
 
 User = get_user_model()
 _MISSING = object()
@@ -42,8 +50,9 @@ def _cart_item_to_dict(item, product=None, variant=None):
         return item
     p = item.product if product is None else product
     v = item.variant if variant is None else variant
+    purchase_mode = normalize_purchase_mode(getattr(item, 'purchase_mode', PURCHASE_MODE_STOCK))
     display_name = f'{p.name} ({v.name})' if v else p.name
-    original_price = float(v.price) if v else float(p.price)
+    original_price = float(resolve_in_stock_price(p, v))
     price = float(item.price_override) if getattr(item, 'price_override', None) is not None else original_price
     bundle = getattr(item, 'bundle', None)
     bundle_id = bundle.pk if bundle else None
@@ -65,6 +74,7 @@ def _cart_item_to_dict(item, product=None, variant=None):
         'bundle_id': bundle_id,
         'bundle_name': bundle_name,
         'original_price': original_price,
+        'purchase_mode': purchase_mode,
     }
 
 
@@ -102,6 +112,8 @@ def get_cart_items(request):
             result.append(d)
         return _set_request_cached_value(request, _REQUEST_CART_ITEMS_ATTR, result)
     session_items = request.session.get('cart_items', []) or []
+    for item in session_items:
+        item['purchase_mode'] = normalize_purchase_mode(item.get('purchase_mode'))
     return _set_request_cached_value(request, _REQUEST_CART_ITEMS_ATTR, session_items)
 
 
@@ -153,6 +165,126 @@ def clear_buy_now_checkout_items(request):
     request.session.modified = True
 
 
+def build_cart_item_signature(item):
+    """Уникальный ключ позиции корзины с учётом режима покупки и комплекта."""
+    return (
+        item.get('product_id'),
+        item.get('variant_id'),
+        normalize_purchase_mode(item.get('purchase_mode')),
+        item.get('bundle_id'),
+    )
+
+
+def build_cart_item_share_key(item):
+    product_id, variant_id, purchase_mode, bundle_id = build_cart_item_signature(item)
+    return f'{product_id}:{variant_id if variant_id is not None else "none"}:{purchase_mode}:{bundle_id if bundle_id is not None else "none"}'
+
+
+def remove_cart_items(request, items_to_remove):
+    """Удалить из корзины конкретные позиции, не трогая остальные."""
+    signatures = {
+        build_cart_item_signature(item)
+        for item in items_to_remove
+        if item.get('product_id')
+    }
+    if not signatures:
+        return
+
+    if request.user.is_authenticated:
+        existing_items = list(
+            CartItem.objects
+            .filter(user=request.user)
+            .values('id', 'product_id', 'variant_id', 'purchase_mode', 'bundle_id')
+        )
+        ids_to_delete = [
+            row['id']
+            for row in existing_items
+            if (
+                row['product_id'],
+                row['variant_id'],
+                normalize_purchase_mode(row['purchase_mode']),
+                row['bundle_id'],
+            ) in signatures
+        ]
+        if ids_to_delete:
+            CartItem.objects.filter(id__in=ids_to_delete).delete()
+    else:
+        session_items = request.session.get('cart_items', []) or []
+        request.session['cart_items'] = [
+            item for item in session_items
+            if build_cart_item_signature(item) not in signatures
+        ]
+        request.session.modified = True
+
+    invalidate_cart_request_cache(request)
+
+
+def enrich_cart_items(cart_items):
+    """Добавить в позиции корзины режим покупки, актуальное наличие и статус checkout."""
+    if not cart_items:
+        return []
+
+    from .views.common import _get_stock_total
+
+    product_ids = [item.get('product_id') for item in cart_items if item.get('product_id')]
+    variant_ids = [item.get('variant_id') for item in cart_items if item.get('variant_id')]
+    products = Product.objects.filter(pk__in=product_ids, is_active=True).in_bulk()
+    variants = ProductVariant.objects.filter(
+        pk__in=variant_ids,
+        product_id__in=product_ids,
+    ).select_related('product').in_bulk()
+
+    enriched = []
+    for raw_item in cart_items:
+        item = dict(raw_item)
+        product = products.get(item.get('product_id'))
+        variant_id = item.get('variant_id')
+        variant = variants.get(variant_id) if variant_id else None
+        purchase_mode = normalize_purchase_mode(item.get('purchase_mode'))
+        stock_total = _get_stock_total(item.get('product_id'), variant_id) if product else 0
+        quantity = max(0, int(item.get('quantity') or 0))
+        product_slug = product.slug if product else ''
+        bundle_id = item.get('bundle_id')
+
+        item['purchase_mode'] = purchase_mode
+        item['purchase_mode_label'] = 'Под заказ' if purchase_mode == PURCHASE_MODE_ON_REQUEST else 'Из наличия'
+        item['product_slug'] = product_slug
+        item['stock_total'] = stock_total
+        item['share_item_key'] = build_cart_item_share_key(item)
+        item['is_stock_purchase'] = purchase_mode == PURCHASE_MODE_STOCK
+        item['is_on_request_purchase'] = purchase_mode == PURCHASE_MODE_ON_REQUEST
+        item['supports_on_request_price'] = bool(product and has_explicit_on_request_price(product, variant))
+
+        if product:
+            in_stock_price = resolve_in_stock_price(product, variant)
+            on_request_price = resolve_on_request_price(product, variant)
+            item['price_in_stock'] = float(in_stock_price)
+            item['price_on_request'] = float(on_request_price) if on_request_price is not None else None
+        else:
+            item['price_in_stock'] = float(item.get('original_price') or item.get('price') or 0)
+            item['price_on_request'] = None
+
+        is_checkout_available = True
+        checkout_unavailable_reason = ''
+        if not product or (variant_id and not variant):
+            is_checkout_available = False
+            checkout_unavailable_reason = 'Товар больше недоступен.'
+        elif purchase_mode == PURCHASE_MODE_ON_REQUEST:
+            if not product.allow_order_on_request:
+                is_checkout_available = False
+                checkout_unavailable_reason = 'Товар больше нельзя оформить под заказ.'
+        elif stock_total < quantity or stock_total <= 0:
+            is_checkout_available = False
+            checkout_unavailable_reason = 'Только под заказ.'
+
+        item['is_checkout_available'] = is_checkout_available
+        item['checkout_unavailable_reason'] = checkout_unavailable_reason
+        item['checkout_subtotal'] = item.get('subtotal', 0) if is_checkout_available else 0
+        item['bundle_id'] = bundle_id
+        enriched.append(item)
+    return enriched
+
+
 def save_cart_to_db(request, cart_items):
     """Сохранить корзину в БД (для авторизованного). Перезаписывает существующую корзину."""
     if not request.user.is_authenticated:
@@ -163,6 +295,7 @@ def save_cart_to_db(request, cart_items):
         variant_id = item.get('variant_id')
         quantity = item.get('quantity', 1)
         bundle_id = item.get('bundle_id')
+        purchase_mode = normalize_purchase_mode(item.get('purchase_mode'))
         if not product_id or quantity <= 0:
             continue
         product = Product.objects.filter(pk=product_id, is_active=True).first()
@@ -175,11 +308,14 @@ def save_cart_to_db(request, cart_items):
         if bundle_id:
             from .models import ProductBundle
             bundle = ProductBundle.objects.filter(pk=bundle_id).first()
-        # Цена в комплекте сохраняем как price_override
+        # Сохраняем выбранную цену, если она отличается от обычной цены из наличия.
         override = None
-        if bundle_id and item.get('price') is not None:
+        if item.get('price') is not None:
             from decimal import Decimal
-            override = Decimal(str(item['price']))
+            selected_price = Decimal(str(item['price']))
+            base_price = resolve_in_stock_price(product, variant)
+            if selected_price != base_price:
+                override = selected_price
         CartItem.objects.create(
             user=request.user,
             product=product,
@@ -187,6 +323,7 @@ def save_cart_to_db(request, cart_items):
             quantity=quantity,
             bundle=bundle,
             price_override=override,
+            purchase_mode=purchase_mode,
         )
     invalidate_cart_request_cache(request)
 
@@ -206,9 +343,8 @@ def merge_session_cart_into_user(request):
         variant_id = item.get('variant_id')
         quantity = item.get('quantity', 1)
         bundle_id = item.get('bundle_id')
+        purchase_mode = normalize_purchase_mode(item.get('purchase_mode'))
         price_override = None
-        if bundle_id and item.get('price') is not None:
-            price_override = Decimal(str(item['price']))
         if not product_id or quantity <= 0:
             continue
         product = Product.objects.filter(pk=product_id, is_active=True).first()
@@ -220,16 +356,26 @@ def merge_session_cart_into_user(request):
         bundle = None
         if bundle_id:
             bundle = ProductBundle.objects.filter(pk=bundle_id).first()
+        if item.get('price') is not None:
+            selected_price = Decimal(str(item['price']))
+            base_price = resolve_in_stock_price(product, variant)
+            if selected_price != base_price:
+                price_override = selected_price
         cart_item, created = CartItem.objects.get_or_create(
             user=user,
             product=product,
             variant=variant,
             bundle=bundle,
+            purchase_mode=purchase_mode,
             defaults={'quantity': quantity, 'price_override': price_override},
         )
         if not created:
             cart_item.quantity += quantity
-            cart_item.save(update_fields=['quantity'])
+            update_fields = ['quantity']
+            if cart_item.price_override != price_override:
+                cart_item.price_override = price_override
+                update_fields.append('price_override')
+            cart_item.save(update_fields=update_fields)
     request.session.pop('cart_items', None)
     request.session.modified = True
     invalidate_cart_request_cache(request)

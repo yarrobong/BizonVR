@@ -1,6 +1,7 @@
-from django.contrib import admin
+from django.contrib import admin, messages
 
 from ..cache_utils import invalidate_catalog_cache
+from ..filter_bootstrap import bootstrap_category_filter_configs, bootstrap_section_filter_configs
 from ..models import CatalogSection, Category, ProductTag
 
 
@@ -11,6 +12,7 @@ class CatalogSectionAdmin(admin.ModelAdmin):
     prepopulated_fields = {'slug': ('name',)}
     search_fields = ('name',)
     fields = ('name', 'slug', 'order', 'icon')
+    actions = ('bootstrap_filter_configs',)
 
     def has_icon(self, obj):
         return bool(obj.icon)
@@ -28,6 +30,21 @@ class CatalogSectionAdmin(admin.ModelAdmin):
     def delete_queryset(self, request, queryset):
         super().delete_queryset(request, queryset)
         invalidate_catalog_cache()
+
+    @admin.action(description='Создать конфиги фильтров для выбранных разделов')
+    def bootstrap_filter_configs(self, request, queryset):
+        created_total = 0
+        existing_total = 0
+        for section in queryset:
+            results = bootstrap_section_filter_configs(section, apply=True, skip_existing=True)
+            created_total += sum(1 for result in results if result['action'] == 'created')
+            existing_total += sum(1 for result in results if result['action'] == 'existing')
+        invalidate_catalog_cache()
+        self.message_user(
+            request,
+            f'Для разделов создано конфигов: {created_total}. Уже существовало: {existing_total}.',
+            messages.SUCCESS,
+        )
 
 
 @admin.register(Category)
@@ -38,6 +55,7 @@ class CategoryAdmin(admin.ModelAdmin):
     prepopulated_fields = {'slug': ('name',)}
     search_fields = ('name',)
     fields = ('name', 'slug', 'section', 'icon', 'tile_size', 'is_bundles_category')
+    actions = ('bootstrap_filter_configs',)
 
     def has_icon(self, obj):
         return bool(obj.icon)
@@ -55,6 +73,21 @@ class CategoryAdmin(admin.ModelAdmin):
     def delete_queryset(self, request, queryset):
         super().delete_queryset(request, queryset)
         invalidate_catalog_cache()
+
+    @admin.action(description='Создать конфиги фильтров для выбранных категорий')
+    def bootstrap_filter_configs(self, request, queryset):
+        created_total = 0
+        existing_total = 0
+        for category in queryset.select_related('section'):
+            results = bootstrap_category_filter_configs(category, apply=True, skip_existing=True)
+            created_total += sum(1 for result in results if result['action'] == 'created')
+            existing_total += sum(1 for result in results if result['action'] == 'existing')
+        invalidate_catalog_cache()
+        self.message_user(
+            request,
+            f'Для категорий создано конфигов: {created_total}. Уже существовало: {existing_total}.',
+            messages.SUCCESS,
+        )
 
 
 @admin.register(ProductTag)

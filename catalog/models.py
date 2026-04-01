@@ -12,6 +12,12 @@ from django.urls import reverse
 from django.utils.text import slugify
 
 from config.formatting import format_currency_amount
+from .pricing import (
+    PURCHASE_MODE_CHOICES,
+    PURCHASE_MODE_STOCK,
+    resolve_in_stock_price,
+    resolve_on_request_price,
+)
 
 
 class CatalogSection(models.Model):
@@ -225,7 +231,15 @@ class Product(models.Model):
     )
     slug = models.SlugField('Slug', max_length=300, unique=True, blank=True)
     description = models.TextField('Описание', blank=True)
-    price = models.DecimalField('Цена', max_digits=12, decimal_places=2)
+    price = models.DecimalField('Цена из наличия', max_digits=12, decimal_places=2)
+    price_on_request = models.DecimalField(
+        'Цена под заказ',
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text='Более низкая цена для покупки под заказ. Если не заполнена, на витрине остаётся только цена из наличия.',
+    )
     image = models.ImageField('Изображение', upload_to='products/', blank=True, null=True)
     is_active = models.BooleanField('Активен', default=True)
     allow_order_on_request = models.BooleanField(
@@ -311,6 +325,18 @@ class Product(models.Model):
             return first_extra.image
         return None
 
+    @property
+    def in_stock_price(self):
+        return resolve_in_stock_price(self)
+
+    @property
+    def on_request_price(self):
+        return resolve_on_request_price(self)
+
+    @property
+    def has_on_request_price(self):
+        return self.on_request_price is not None
+
 class ProductVariant(models.Model):
     """Вариант товара: цвет, размер, модель и т.п. Своё фото и цена (опционально)."""
     product = models.ForeignKey(
@@ -323,12 +349,20 @@ class ProductVariant(models.Model):
     sku = models.CharField('SKU', max_length=64, blank=True, db_index=True)
     image = models.ImageField('Изображение', upload_to='products/', blank=True, null=True)
     price_override = models.DecimalField(
-        'Цена (переопределение)',
+        'Цена из наличия (переопределение)',
         max_digits=12,
         decimal_places=2,
         null=True,
         blank=True,
-        help_text='Пусто — использовать цену товара',
+        help_text='Пусто — использовать цену из наличия у товара.',
+    )
+    price_on_request_override = models.DecimalField(
+        'Цена под заказ (переопределение)',
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text='Пусто — использовать цену под заказ у товара.',
     )
     order = models.PositiveIntegerField('Порядок', default=0)
 
@@ -343,6 +377,18 @@ class ProductVariant(models.Model):
     @property
     def price(self):
         return self.price_override if self.price_override is not None else self.product.price
+
+    @property
+    def in_stock_price(self):
+        return resolve_in_stock_price(self.product, self)
+
+    @property
+    def on_request_price(self):
+        return resolve_on_request_price(self.product, self)
+
+    @property
+    def has_on_request_price(self):
+        return self.on_request_price is not None
 
 
 class ProductVariantCharacteristic(models.Model):
@@ -599,6 +645,147 @@ class ProductCharacteristic(models.Model):
         return f'{self.name}: {self.value}'
 
 
+class CharacteristicDefinition(models.Model):
+    """Управляемая характеристика каталога, связанная с raw ProductCharacteristic.name."""
+
+    code = models.SlugField('Код', max_length=100, unique=True, blank=True)
+    name = models.CharField('Название', max_length=200)
+    source_name = models.CharField(
+        'Исходное имя характеристики',
+        max_length=200,
+        unique=True,
+        help_text='Точное значение ProductCharacteristic.name, из которого собираются данные фильтра.',
+    )
+    is_filterable = models.BooleanField('Использовать в фильтрах', default=True)
+    sort_order = models.IntegerField('Порядок', default=0, db_index=True)
+    is_active = models.BooleanField('Активна', default=True, db_index=True)
+
+    class Meta:
+        verbose_name = 'Определение характеристики'
+        verbose_name_plural = 'Определения характеристик'
+        ordering = ('sort_order', 'name', 'code')
+
+    def __str__(self):
+        return f'{self.name} ({self.code})'
+
+    def save(self, *args, **kwargs):
+        if not self.code and self.source_name:
+            from .characteristic_codes import generate_unique_characteristic_code
+
+            self.code = generate_unique_characteristic_code(self.source_name, exclude_pk=self.pk)
+        super().save(*args, **kwargs)
+
+
+class CharacteristicValueAlias(models.Model):
+    """Нормализация raw значений характеристики для фильтров каталога."""
+
+    characteristic_definition = models.ForeignKey(
+        CharacteristicDefinition,
+        on_delete=models.CASCADE,
+        related_name='value_aliases',
+        verbose_name='Характеристика',
+    )
+    raw_value = models.CharField('Сырое значение', max_length=500)
+    normalized_value = models.CharField('Нормализованное значение', max_length=500)
+    display_value = models.CharField('Отображаемое значение', max_length=500, blank=True)
+    sort_order = models.IntegerField('Порядок', default=0)
+    is_active = models.BooleanField('Активен', default=True, db_index=True)
+
+    class Meta:
+        verbose_name = 'Алиас значения характеристики'
+        verbose_name_plural = 'Алиасы значений характеристик'
+        ordering = ('characteristic_definition', 'sort_order', 'raw_value')
+        constraints = [
+            models.UniqueConstraint(
+                fields=['characteristic_definition', 'raw_value'],
+                name='catalog_char_value_alias_unique',
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=['characteristic_definition', 'is_active'],
+                name='catalog_char_val_active_idx',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.characteristic_definition.code}: {self.raw_value} -> {self.normalized_value}'
+
+
+class CategoryFilterConfig(models.Model):
+    """Настройка фильтра каталога для конкретной категории."""
+
+    category = models.ForeignKey(
+        Category,
+        on_delete=models.CASCADE,
+        related_name='filter_configs',
+        verbose_name='Категория',
+    )
+    characteristic_definition = models.ForeignKey(
+        CharacteristicDefinition,
+        on_delete=models.CASCADE,
+        related_name='category_filter_configs',
+        verbose_name='Характеристика',
+    )
+    is_visible = models.BooleanField('Показывать', default=True, db_index=True)
+    is_quick_filter = models.BooleanField('Быстрый фильтр', default=False)
+    sort_order = models.IntegerField('Порядок', default=0, db_index=True)
+    is_expanded_by_default = models.BooleanField('Раскрыт по умолчанию', default=False)
+    show_top_n = models.PositiveIntegerField('Показывать первых N значений', null=True, blank=True)
+    hide_single_value = models.BooleanField('Скрывать при одном значении', default=True)
+
+    class Meta:
+        verbose_name = 'Конфиг фильтра категории'
+        verbose_name_plural = 'Конфиги фильтров категорий'
+        ordering = ('category', 'sort_order', 'characteristic_definition__sort_order', 'id')
+        constraints = [
+            models.UniqueConstraint(
+                fields=['category', 'characteristic_definition'],
+                name='catalog_category_filter_config_unique',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.category.name}: {self.characteristic_definition.name}'
+
+
+class SectionFilterConfig(models.Model):
+    """Настройка фильтра каталога для раздела, когда категория не задаёт override."""
+
+    section = models.ForeignKey(
+        CatalogSection,
+        on_delete=models.CASCADE,
+        related_name='filter_configs',
+        verbose_name='Раздел каталога',
+    )
+    characteristic_definition = models.ForeignKey(
+        CharacteristicDefinition,
+        on_delete=models.CASCADE,
+        related_name='section_filter_configs',
+        verbose_name='Характеристика',
+    )
+    is_visible = models.BooleanField('Показывать', default=True, db_index=True)
+    is_quick_filter = models.BooleanField('Быстрый фильтр', default=False)
+    sort_order = models.IntegerField('Порядок', default=0, db_index=True)
+    is_expanded_by_default = models.BooleanField('Раскрыт по умолчанию', default=False)
+    show_top_n = models.PositiveIntegerField('Показывать первых N значений', null=True, blank=True)
+    hide_single_value = models.BooleanField('Скрывать при одном значении', default=True)
+
+    class Meta:
+        verbose_name = 'Конфиг фильтра раздела'
+        verbose_name_plural = 'Конфиги фильтров разделов'
+        ordering = ('section', 'sort_order', 'characteristic_definition__sort_order', 'id')
+        constraints = [
+            models.UniqueConstraint(
+                fields=['section', 'characteristic_definition'],
+                name='catalog_section_filter_config_unique',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.section.name}: {self.characteristic_definition.name}'
+
+
 class ProductBundle(models.Model):
     """Набор товаров со своей страницей (описание, изображение) и составом через ProductBundleItem."""
     name = models.CharField(
@@ -827,12 +1014,18 @@ class CartItem(models.Model):
         verbose_name='Входит в комплект',
     )
     price_override = models.DecimalField(
-        'Цена (в комплекте со скидкой)',
+        'Цена (override)',
         max_digits=12,
         decimal_places=2,
         null=True,
         blank=True,
-        help_text='Если задана — в корзине используется эта цена вместо цены товара',
+        help_text='Если задана — в корзине используется эта цена вместо текущей цены товара.',
+    )
+    purchase_mode = models.CharField(
+        'Режим покупки',
+        max_length=20,
+        choices=PURCHASE_MODE_CHOICES,
+        default=PURCHASE_MODE_STOCK,
     )
 
     class Meta:
@@ -840,12 +1033,12 @@ class CartItem(models.Model):
         verbose_name_plural = 'Позиции корзины'
         constraints = [
             models.UniqueConstraint(
-                fields=['user', 'product', 'variant'],
+                fields=['user', 'product', 'variant', 'purchase_mode'],
                 condition=models.Q(bundle__isnull=True),
                 name='catalog_cartitem_standalone_unique',
             ),
             models.UniqueConstraint(
-                fields=['user', 'product', 'variant', 'bundle'],
+                fields=['user', 'product', 'variant', 'bundle', 'purchase_mode'],
                 condition=models.Q(bundle__isnull=False),
                 name='catalog_cartitem_bundle_unique',
             ),
