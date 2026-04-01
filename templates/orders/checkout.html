@@ -45,6 +45,12 @@
       </a>
     </div>
   {% else %}
+    {% if checkout_unavailable_lines %}
+      <div class="mb-3 rounded-2xl border border-amber-400/20 bg-amber-500/10 p-3.5 text-sm text-amber-100">
+        Часть позиций сейчас недоступна для оформления из наличия и останется в корзине: {{ checkout_unavailable_lines|join:", " }}.
+      </div>
+    {% endif %}
+
     <details class="mb-3 overflow-hidden rounded-3xl border border-white/10 bg-dark-800/90 lg:hidden">
       <summary class="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-3.5">
         <div>
@@ -59,9 +65,15 @@
             <li class="flex items-start justify-between gap-3 text-sm">
               <div class="min-w-0">
                 <p class="truncate text-white">{{ item.name }}</p>
-                <p class="mt-1 text-xs text-gray-500">Количество: {{ item.quantity }}</p>
+                <p class="mt-1 text-xs {% if item.is_checkout_available %}text-gray-500{% else %}text-amber-300{% endif %}">
+                  Количество: {{ item.quantity }}
+                  {% if item.is_on_request_purchase %} · под заказ{% endif %}
+                  {% if not item.is_checkout_available %} · {{ item.checkout_unavailable_reason }}{% endif %}
+                </p>
               </div>
-              <p class="whitespace-nowrap font-semibold text-white">{{ item.subtotal|price_format }} ₽</p>
+              <p class="whitespace-nowrap font-semibold {% if item.is_checkout_available %}text-white{% else %}text-gray-500{% endif %}">
+                {{ item.checkout_subtotal|default:item.subtotal|price_format }} ₽
+              </p>
             </li>
           {% endfor %}
         </ul>
@@ -269,7 +281,7 @@
           <div class="mt-3 rounded-[1.75rem] border border-accent/20 bg-accent/10 p-3 sm:p-3.5">
             <div class="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
               <p class="text-sm text-gray-100 sm:max-w-[18rem]">После отправки заявки менеджер свяжется с вами для подтверждения.</p>
-              <button type="submit" class="inline-flex w-full items-center justify-center rounded-full bg-accent px-5 py-2.5 text-sm font-bold uppercase tracking-[0.16em] text-dark-900 transition hover:bg-accent-hover sm:w-auto sm:min-w-[18rem]">
+              <button type="submit" {% if not has_checkout_items %}disabled{% endif %} class="inline-flex w-full items-center justify-center rounded-full bg-accent px-5 py-2.5 text-sm font-bold uppercase tracking-[0.16em] text-dark-900 transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:min-w-[18rem]">
                 Отправить на подтверждение
               </button>
             </div>
@@ -292,9 +304,15 @@
                 <li class="flex items-start justify-between gap-2 text-sm">
                   <div class="min-w-0">
                     <p class="text-sm leading-5 text-white">{{ item.name }}</p>
-                    <p class="mt-1 text-xs text-gray-500">Количество: {{ item.quantity }}</p>
+                    <p class="mt-1 text-xs {% if item.is_checkout_available %}text-gray-500{% else %}text-amber-300{% endif %}">
+                      Количество: {{ item.quantity }}
+                      {% if item.is_on_request_purchase %} · под заказ{% endif %}
+                      {% if not item.is_checkout_available %} · {{ item.checkout_unavailable_reason }}{% endif %}
+                    </p>
                   </div>
-                  <p class="whitespace-nowrap text-sm font-semibold text-white">{{ item.subtotal|price_format }} ₽</p>
+                  <p class="whitespace-nowrap text-sm font-semibold {% if item.is_checkout_available %}text-white{% else %}text-gray-500{% endif %}">
+                    {{ item.checkout_subtotal|default:item.subtotal|price_format }} ₽
+                  </p>
                 </li>
               {% endfor %}
             </ul>
@@ -336,7 +354,7 @@
           <p class="truncate text-sm font-semibold text-white">{{ cart_total|price_format }} ₽</p>
           <p class="text-xs text-gray-400">Менеджер свяжется с вами для подтверждения</p>
         </div>
-        <button type="submit" form="checkout-form" class="inline-flex items-center justify-center rounded-full bg-accent px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-dark-900 transition hover:bg-accent-hover">
+        <button type="submit" form="checkout-form" {% if not has_checkout_items %}disabled{% endif %} class="inline-flex items-center justify-center rounded-full bg-accent px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-dark-900 transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50">
           Отправить на подтверждение
         </button>
       </div>

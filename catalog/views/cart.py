@@ -5,7 +5,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from ..cart_services import clear_cart, get_cart_items
+from ..cart_services import build_cart_item_share_key, clear_cart, enrich_cart_items, get_cart_items
 from ..models import CartShare, Product
 from .cart_share import _resolve_cart_share_items
 from .common import _get_stock_total
@@ -23,14 +23,14 @@ def _enrich_cart_items_for_page(cart_items):
         vid = item.get('variant_id')
         item['product_slug'] = slugs.get(pid, '')
         item['stock_total'] = _get_stock_total(pid, vid)
-        item['share_item_key'] = f"{pid}:{vid if vid is not None else 'none'}"
+        item['share_item_key'] = build_cart_item_share_key(item)
     return cart_items
 
 
 def cart_page_view(request):
     """Отдельная страница корзины: список товаров, изменение количества, переход к оформлению."""
-    cart_items = get_cart_items(request)
-    total = sum(item.get('subtotal', 0) for item in cart_items)
+    cart_items = enrich_cart_items(get_cart_items(request))
+    total = sum(item.get('checkout_subtotal', item.get('subtotal', 0)) for item in cart_items)
     _enrich_cart_items_for_page(cart_items)
 
     shared_cart_items = []
@@ -66,8 +66,8 @@ def cart_page_view(request):
 
 def cart_partial(request):
     """Фрагмент корзины для модального окна (HTMX)."""
-    cart_items = get_cart_items(request)
-    total = sum(item.get('subtotal', 0) for item in cart_items)
+    cart_items = enrich_cart_items(get_cart_items(request))
+    total = sum(item.get('checkout_subtotal', item.get('subtotal', 0)) for item in cart_items)
     return render(request, 'catalog/partials/cart_content.html', {'cart_items': cart_items, 'total': total})
 
 

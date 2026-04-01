@@ -114,7 +114,7 @@
        class="filter-chip {% if not current_tag %}filter-selected{% endif %}">Все</button>
     {% for tag in product_tags %}
     <button type="button"
-       @click="$dispatch('filters-url', '{% url 'catalog:product_list' %}?tag={{ tag.slug }}{% if current_category %}&category={{ current_category }}{% endif %}{% if current_section %}&section={{ current_section }}{% endif %}&sort={{ current_sort }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if price_min_filter %}&price_min={{ price_min_filter }}{% endif %}{% if price_max_filter %}&price_max={{ price_max_filter }}{% endif %}'); $dispatch('filters-dirty')"
+       @click="$dispatch('filters-url', '{% url 'catalog:product_list' %}{% filter_url tag=tag.slug category=current_category section=current_section sort=current_sort q=search_query price_min=price_min_filter price_max=price_max_filter %}'); $dispatch('filters-dirty')"
        class="filter-chip {% if current_tag == tag.slug %}filter-selected{% endif %}">
       <span>{{ tag.name }}</span>
       {% if tag.result_count %}
@@ -126,7 +126,7 @@
     <a href="{% url 'catalog:product_list' %}{% filter_url tag=filter_clear category=current_category section=current_section sort=current_sort q=search_query price_min=price_min_filter price_max=price_max_filter %}"
        class="filter-chip {% if not current_tag %}filter-selected{% endif %}">Все</a>
     {% for tag in product_tags %}
-    <a href="{% url 'catalog:product_list' %}?tag={{ tag.slug }}{% if current_category %}&category={{ current_category }}{% endif %}{% if current_section %}&section={{ current_section }}{% endif %}&sort={{ current_sort }}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if price_min_filter %}&price_min={{ price_min_filter }}{% endif %}{% if price_max_filter %}&price_max={{ price_max_filter }}{% endif %}"
+    <a href="{% url 'catalog:product_list' %}{% filter_url tag=tag.slug category=current_category section=current_section sort=current_sort q=search_query price_min=price_min_filter price_max=price_max_filter %}"
        class="filter-chip {% if current_tag == tag.slug %}filter-selected{% endif %}">
       <span>{{ tag.name }}</span>
       {% if tag.result_count %}

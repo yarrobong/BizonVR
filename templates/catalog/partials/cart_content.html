@@ -18,13 +18,21 @@
           {% if item.bundle_name %}
             <p class="text-xs text-accent mt-0.5">Входит в комплект: {{ item.bundle_name }}</p>
           {% endif %}
+          <p class="text-xs {% if item.is_on_request_purchase %}text-emerald-300{% else %}text-gray-500{% endif %} mt-0.5">
+            {{ item.purchase_mode|purchase_mode_label }}
+          </p>
           <p class="text-xs text-gray-400 mt-0.5">
             {{ item.quantity }} × {{ item.price|price_format }} ₽
             {% if item.original_price and item.original_price != item.price %}
               <span class="line-through text-gray-500 ml-1">{{ item.original_price|price_format }} ₽</span>
-              <span class="text-green-400 ml-1">−5%</span>
+              {% if item.bundle_name %}
+                <span class="text-green-400 ml-1">−5%</span>
+              {% endif %}
             {% endif %}
           </p>
+          {% if not item.is_checkout_available %}
+            <p class="text-xs text-amber-300 mt-1">{{ item.checkout_unavailable_reason }} Не учитывается при оформлении.</p>
+          {% endif %}
         </div>
         <div class="text-sm font-bold text-white">{{ item.subtotal|price_format }} ₽</div>
       </li>

@@ -7,7 +7,7 @@ import tempfile
 import zipfile
 from datetime import timedelta
 from decimal import Decimal
-from io import BytesIO
+from io import BytesIO, StringIO
 from unittest.mock import Mock, patch
 
 from django.contrib.auth.models import AnonymousUser
@@ -29,13 +29,18 @@ from config.legal_docs import LEGAL_BUNDLE_VERSION
 from orders.models import Order, OrderItem
 
 from .cart_services import get_cart_count, get_cart_items, get_favorite_product_ids
+from .characteristic_normalization import normalize_characteristic_value
 from .context_processors import catalog_menu
+from .filter_bootstrap import build_alias_suggestions
 from .models import (
     CartItem,
     CartShare,
     CallbackRequest,
     CatalogSection,
+    CategoryFilterConfig,
     Category,
+    CharacteristicDefinition,
+    CharacteristicValueAlias,
     City,
     ContactRequest,
     Favorite,
@@ -49,8 +54,10 @@ from .models import (
     ProductTag,
     ProductVideo,
     ProductVariant,
+    SectionFilterConfig,
     Service,
 )
+from .admin.filters import CharacteristicDefinitionAdminForm
 
 User = get_user_model()
 
@@ -698,6 +705,625 @@ class CatalogPriceBoundsTest(TestCase):
         self.assertEqual(resp.context['filter_price_max'], 900)
         self.assertEqual(resp.context['price_min_filter'], '500')
         self.assertEqual(resp.context['price_max_filter'], '700')
+
+
+@override_settings(
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    }
+)
+class CatalogManagedFiltersTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.section = CatalogSection.objects.create(name='VR фильтры', slug='vr-managed')
+        self.category = Category.objects.create(name='Шлемы', slug='managed-headsets', section=self.section)
+        self.accessories = Category.objects.create(name='Аксессуары', slug='managed-accessories', section=self.section)
+        self.other_section = CatalogSection.objects.create(name='Другая секция', slug='other-managed')
+        self.other_category = Category.objects.create(
+            name='Другая категория',
+            slug='other-managed-category',
+            section=self.other_section,
+        )
+        self.featured_tag = ProductTag.objects.create(name='Хит', slug='managed-hit', order=1)
+        self.sale_tag = ProductTag.objects.create(name='Распродажа', slug='managed-sale', order=2)
+
+        self.white_128 = Product.objects.create(
+            category=self.category,
+            name='Quest 3 128 White',
+            slug='quest-3-128-white',
+            price=100,
+            is_active=True,
+        )
+        ProductCharacteristic.objects.create(product=self.white_128, name='Память', value='128 GB')
+        ProductCharacteristic.objects.create(product=self.white_128, name='Цвет', value='Белый')
+        ProductCharacteristic.objects.create(product=self.white_128, name='Гарантия', value='1 год')
+        self.white_128.tags.add(self.featured_tag)
+
+        self.black_128 = Product.objects.create(
+            category=self.category,
+            name='Quest 3 128 Black',
+            slug='quest-3-128-black',
+            price=120,
+            is_active=True,
+        )
+        ProductCharacteristic.objects.create(product=self.black_128, name='Память', value='128Gb')
+        ProductCharacteristic.objects.create(product=self.black_128, name='Цвет', value='Черный')
+        ProductCharacteristic.objects.create(product=self.black_128, name='Гарантия', value='1 год')
+        self.black_128.tags.add(self.featured_tag)
+        self.black_128.tags.add(self.sale_tag)
+
+        self.black_256 = Product.objects.create(
+            category=self.category,
+            name='Quest 3 256 Black',
+            slug='quest-3-256-black',
+            price=150,
+            is_active=True,
+        )
+        ProductCharacteristic.objects.create(product=self.black_256, name='Память', value='256 ГБ')
+        ProductCharacteristic.objects.create(product=self.black_256, name='Цвет', value='Черный')
+        ProductCharacteristic.objects.create(product=self.black_256, name='Гарантия', value='1 год')
+
+        self.accessory = Product.objects.create(
+            category=self.accessories,
+            name='Quest 3 Strap',
+            slug='quest-3-strap',
+            price=80,
+            is_active=True,
+        )
+        ProductCharacteristic.objects.create(product=self.accessory, name='Цвет', value='Красный')
+        ProductCharacteristic.objects.create(product=self.accessory, name='Тип', value='Ремешок')
+        self.accessory.tags.add(self.featured_tag)
+
+    def _create_managed_definitions(self):
+        memory = CharacteristicDefinition.objects.create(
+            code='memory',
+            name='Память',
+            source_name='Память',
+            sort_order=20,
+            is_filterable=True,
+            is_active=True,
+        )
+        color = CharacteristicDefinition.objects.create(
+            code='color',
+            name='Цвет',
+            source_name='Цвет',
+            sort_order=10,
+            is_filterable=True,
+            is_active=True,
+        )
+        warranty = CharacteristicDefinition.objects.create(
+            code='warranty',
+            name='Гарантия',
+            source_name='Гарантия',
+            sort_order=30,
+            is_filterable=True,
+            is_active=True,
+        )
+        for raw_value in ('128 GB', '128Gb', '128 ГБ', '128гб'):
+            CharacteristicValueAlias.objects.create(
+                characteristic_definition=memory,
+                raw_value=raw_value,
+                normalized_value='128-memory',
+                display_value='128 ГБ',
+                sort_order=1,
+            )
+        CharacteristicValueAlias.objects.create(
+            characteristic_definition=memory,
+            raw_value='256 ГБ',
+            normalized_value='256-memory',
+            display_value='256 ГБ',
+            sort_order=2,
+        )
+        return memory, color, warranty
+
+    def test_legacy_fallback_keeps_auto_filters_and_raw_char_filter(self):
+        resp = self.client.get(
+            reverse('catalog:product_list'),
+            {'category': self.category.slug, 'char_Память': '128 GB'},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.context['filter_mode'], 'legacy')
+        labels = [item['label'] for item in resp.context['characteristic_filters']]
+        self.assertEqual(labels, ['Память'])
+        product_slugs = {product.slug for product in resp.context['products']}
+        self.assertEqual(product_slugs, {self.white_128.slug})
+
+    def test_managed_category_filters_use_config_order_and_quick_flags(self):
+        memory, color, warranty = self._create_managed_definitions()
+        CategoryFilterConfig.objects.create(
+            category=self.category,
+            characteristic_definition=memory,
+            is_visible=True,
+            is_quick_filter=True,
+            sort_order=20,
+        )
+        CategoryFilterConfig.objects.create(
+            category=self.category,
+            characteristic_definition=color,
+            is_visible=True,
+            is_quick_filter=False,
+            sort_order=10,
+        )
+        CategoryFilterConfig.objects.create(
+            category=self.category,
+            characteristic_definition=warranty,
+            is_visible=True,
+            is_quick_filter=False,
+            sort_order=30,
+        )
+
+        resp = self.client.get(reverse('catalog:product_list'), {'category': self.category.slug})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.context['filter_mode'], 'category')
+        labels = [item['label'] for item in resp.context['characteristic_filters']]
+        self.assertEqual(labels, ['Цвет', 'Память'])
+        quick_labels = [item['label'] for item in resp.context['quick_characteristic_filters']]
+        self.assertEqual(quick_labels, ['Память'])
+        self.assertNotIn('Гарантия', labels)
+
+    def test_managed_filters_normalize_values_and_merge_counts(self):
+        memory, _, _ = self._create_managed_definitions()
+        CategoryFilterConfig.objects.create(
+            category=self.category,
+            characteristic_definition=memory,
+            is_visible=True,
+            is_quick_filter=True,
+            sort_order=10,
+            hide_single_value=False,
+        )
+
+        resp = self.client.get(reverse('catalog:product_list'), {'category': self.category.slug})
+        self.assertEqual(resp.status_code, 200)
+        memory_group = resp.context['characteristic_filters'][0]
+        option_counts = {option['label']: option['count'] for option in memory_group['options']}
+        self.assertEqual(option_counts['128 ГБ'], 2)
+        self.assertEqual(option_counts['256 ГБ'], 1)
+
+    def test_managed_filters_hide_single_value_only_when_flag_enabled(self):
+        memory, _, warranty = self._create_managed_definitions()
+        CategoryFilterConfig.objects.create(
+            category=self.category,
+            characteristic_definition=memory,
+            is_visible=True,
+            sort_order=5,
+            hide_single_value=False,
+        )
+        CategoryFilterConfig.objects.create(
+            category=self.category,
+            characteristic_definition=warranty,
+            is_visible=True,
+            sort_order=10,
+            hide_single_value=True,
+        )
+        hidden_resp = self.client.get(reverse('catalog:product_list'), {'category': self.category.slug})
+        self.assertEqual(hidden_resp.status_code, 200)
+        self.assertEqual(hidden_resp.context['filter_mode'], 'category')
+        self.assertEqual([item['label'] for item in hidden_resp.context['characteristic_filters']], ['Память'])
+
+        CategoryFilterConfig.objects.filter(category=self.category).delete()
+        CategoryFilterConfig.objects.create(
+            category=self.category,
+            characteristic_definition=warranty,
+            is_visible=True,
+            sort_order=10,
+            hide_single_value=False,
+        )
+        visible_resp = self.client.get(reverse('catalog:product_list'), {'category': self.category.slug})
+        self.assertEqual(visible_resp.status_code, 200)
+        self.assertEqual([item['label'] for item in visible_resp.context['characteristic_filters']], ['Гарантия'])
+        self.assertEqual(visible_resp.context['characteristic_filters'][0]['options'][0]['label'], '1 год')
+
+    def test_section_config_used_for_section_page_and_category_config_overrides_it(self):
+        memory, color, _ = self._create_managed_definitions()
+        SectionFilterConfig.objects.create(
+            section=self.section,
+            characteristic_definition=color,
+            is_visible=True,
+            is_quick_filter=True,
+            sort_order=10,
+        )
+        section_resp = self.client.get(reverse('catalog:product_list'), {'section': self.section.slug})
+        self.assertEqual(section_resp.status_code, 200)
+        self.assertEqual(section_resp.context['filter_mode'], 'section')
+        self.assertEqual([item['label'] for item in section_resp.context['characteristic_filters']], ['Цвет'])
+
+        CategoryFilterConfig.objects.create(
+            category=self.category,
+            characteristic_definition=memory,
+            is_visible=True,
+            is_quick_filter=True,
+            sort_order=5,
+            hide_single_value=False,
+        )
+        category_resp = self.client.get(reverse('catalog:product_list'), {'category': self.category.slug})
+        self.assertEqual(category_resp.status_code, 200)
+        self.assertEqual(category_resp.context['filter_mode'], 'category')
+        self.assertEqual([item['label'] for item in category_resp.context['characteristic_filters']], ['Память'])
+
+    def test_existing_raw_param_and_canonical_param_both_work_and_code_wins(self):
+        memory, _, _ = self._create_managed_definitions()
+        CategoryFilterConfig.objects.create(
+            category=self.category,
+            characteristic_definition=memory,
+            is_visible=True,
+            is_quick_filter=True,
+            sort_order=10,
+            hide_single_value=False,
+        )
+
+        legacy_resp = self.client.get(
+            reverse('catalog:product_list'),
+            {'category': self.category.slug, 'char_Память': '128Gb'},
+        )
+        self.assertEqual(legacy_resp.status_code, 200)
+        legacy_slugs = {product.slug for product in legacy_resp.context['products']}
+        self.assertEqual(legacy_slugs, {self.white_128.slug, self.black_128.slug})
+
+        canonical_resp = self.client.get(
+            reverse('catalog:product_list'),
+            {
+                'category': self.category.slug,
+                'char_memory': '256-memory',
+                'char_Память': '128 GB',
+            },
+        )
+        self.assertEqual(canonical_resp.status_code, 200)
+        self.assertEqual(list(canonical_resp.context['char_filters'].keys()), ['memory'])
+        self.assertEqual(canonical_resp.context['active_characteristic_filters'][0]['selected_value'], '256-memory')
+        self.assertEqual(canonical_resp.context['active_characteristic_filters'][0]['value'], '256 ГБ')
+        canonical_slugs = {product.slug for product in canonical_resp.context['products']}
+        self.assertEqual(canonical_slugs, {self.black_256.slug})
+
+    def test_tag_links_preserve_active_characteristic_params(self):
+        memory, _, _ = self._create_managed_definitions()
+        CategoryFilterConfig.objects.create(
+            category=self.category,
+            characteristic_definition=memory,
+            is_visible=True,
+            is_quick_filter=True,
+            sort_order=10,
+            hide_single_value=False,
+        )
+
+        resp = self.client.get(
+            reverse('catalog:product_list'),
+            {'category': self.category.slug, 'char_memory': '128-memory'},
+        )
+        self.assertEqual(resp.status_code, 200)
+        html = resp.content.decode()
+        self.assertIn('/catalog/?category=managed-headsets&amp;char_memory=128-memory&amp;tag=managed-hit', html)
+        self.assertIn('/catalog/?category=managed-headsets&amp;char_memory=128-memory&amp;sort=newest', html)
+
+    def test_config_without_visible_groups_falls_back_to_legacy(self):
+        ghost = CharacteristicDefinition.objects.create(
+            code='ghost',
+            name='Призрак',
+            source_name='Несуществующая характеристика',
+            sort_order=1,
+            is_filterable=True,
+            is_active=True,
+        )
+        CategoryFilterConfig.objects.create(
+            category=self.category,
+            characteristic_definition=ghost,
+            is_visible=True,
+            sort_order=10,
+        )
+
+        resp = self.client.get(reverse('catalog:product_list'), {'category': self.category.slug})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.context['filter_mode'], 'legacy')
+        self.assertEqual([item['label'] for item in resp.context['characteristic_filters']], ['Память', 'Цвет'])
+
+
+@override_settings(
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    }
+)
+class CatalogFilterAutomationTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.section = CatalogSection.objects.create(name='Автоматизация', slug='automation')
+        self.category = Category.objects.create(name='VR Шлемы', slug='automation-headsets', section=self.section)
+        self.product_a = Product.objects.create(
+            category=self.category,
+            name='Quest 3 128 White',
+            slug='automation-quest-128-white',
+            price=100,
+            is_active=True,
+        )
+        self.product_b = Product.objects.create(
+            category=self.category,
+            name='Quest 3 128 Black',
+            slug='automation-quest-128-black',
+            price=110,
+            is_active=True,
+        )
+        self.product_c = Product.objects.create(
+            category=self.category,
+            name='Quest 3 256 Black',
+            slug='automation-quest-256-black',
+            price=120,
+            is_active=True,
+        )
+        ProductCharacteristic.objects.create(product=self.product_a, name='Память', value='128 GB')
+        ProductCharacteristic.objects.create(product=self.product_a, name='Цвет', value='Белый')
+        ProductCharacteristic.objects.create(product=self.product_b, name='Память', value='128Gb')
+        ProductCharacteristic.objects.create(product=self.product_b, name='Цвет', value='Черный')
+        ProductCharacteristic.objects.create(product=self.product_c, name='Память', value='256 ГБ')
+        ProductCharacteristic.objects.create(product=self.product_c, name='Цвет', value='Черный')
+
+        self.admin_user = User.objects.create_superuser(
+            username='admin-automation',
+            email='admin@example.com',
+            password='secret123',
+        )
+
+    def test_definition_code_autogenerated_and_collision_gets_suffix(self):
+        first = CharacteristicDefinition.objects.create(
+            code='',
+            name='Память',
+            source_name='Память',
+        )
+        second = CharacteristicDefinition.objects.create(
+            code='',
+            name='Pamyat',
+            source_name='Pamyat',
+        )
+        self.assertEqual(first.code, 'pamyat')
+        self.assertEqual(second.code, 'pamyat-2')
+
+    def test_characteristic_definition_bootstrap_command_is_idempotent(self):
+        CharacteristicDefinition.objects.create(code='memory', name='Память', source_name='Память')
+
+        dry_run_output = StringIO()
+        call_command('bootstrap_characteristic_definitions', stdout=dry_run_output)
+        self.assertIn('would_create: Цвет -> tsvet', dry_run_output.getvalue())
+
+        call_command('bootstrap_characteristic_definitions', '--apply')
+        self.assertEqual(CharacteristicDefinition.objects.count(), 2)
+        call_command('bootstrap_characteristic_definitions', '--apply')
+        self.assertEqual(CharacteristicDefinition.objects.count(), 2)
+
+    def test_source_name_admin_form_uses_distinct_choices_and_allows_current_value(self):
+        blank_form = CharacteristicDefinitionAdminForm()
+        blank_choices = {value for value, _ in blank_form.fields['source_name'].choices}
+        self.assertIn('Память', blank_choices)
+        self.assertIn('Цвет', blank_choices)
+        self.assertNotIn('Неизвестная', blank_choices)
+
+        invalid_form = CharacteristicDefinitionAdminForm(
+            data={
+                'code': '',
+                'name': 'Тест',
+                'source_name': 'Неизвестная',
+                'is_filterable': True,
+                'sort_order': 0,
+                'is_active': True,
+            }
+        )
+        self.assertFalse(invalid_form.is_valid())
+
+        definition = CharacteristicDefinition.objects.create(
+            code='legacy-hidden',
+            name='Скрытая',
+            source_name='Скрытая характеристика',
+        )
+        instance_form = CharacteristicDefinitionAdminForm(instance=definition)
+        instance_choices = {value for value, _ in instance_form.fields['source_name'].choices}
+        self.assertIn('Скрытая характеристика', instance_choices)
+
+    def test_normalization_and_alias_suggestions_group_values(self):
+        definition = CharacteristicDefinition.objects.create(
+            code='memory',
+            name='Память',
+            source_name='Память',
+        )
+        suggestion_keys = {
+            normalize_characteristic_value(raw).normalized_key
+            for raw in (' 128 GB ', '128Gb', '128 гб')
+        }
+        self.assertEqual(suggestion_keys, {'128 gb'})
+
+        suggestions = build_alias_suggestions(definition)
+        grouped = {item['normalized_key']: item for item in suggestions}
+        self.assertEqual(grouped['128 gb']['product_count'], 2)
+        self.assertEqual(grouped['128 gb']['suggested_display'], '128 ГБ')
+
+    def test_alias_helper_page_creates_missing_aliases_without_duplicates(self):
+        definition = CharacteristicDefinition.objects.create(
+            code='memory',
+            name='Память',
+            source_name='Память',
+        )
+        self.client.force_login(self.admin_user)
+        url = reverse('admin:catalog_characteristicdefinition_alias_suggestions', args=[definition.pk])
+
+        get_response = self.client.get(url)
+        self.assertEqual(get_response.status_code, 200)
+        self.assertContains(get_response, '128 GB')
+
+        suggestion = next(item for item in build_alias_suggestions(definition) if item['normalized_key'] == '128 gb')
+        post_response = self.client.post(
+            url,
+            data={
+                'selected_groups': [suggestion['normalized_key']],
+                'display__0': '128 ГБ',
+                'display__1': '256 ГБ',
+            },
+            follow=True,
+        )
+        self.assertEqual(post_response.status_code, 200)
+        self.assertEqual(CharacteristicValueAlias.objects.filter(characteristic_definition=definition).count(), 2)
+
+        self.client.post(
+            url,
+            data={
+                'selected_groups': [suggestion['normalized_key']],
+                'display__0': '128 ГБ',
+                'display__1': '256 ГБ',
+            },
+        )
+        self.assertEqual(CharacteristicValueAlias.objects.filter(characteristic_definition=definition).count(), 2)
+
+    def test_definition_admin_action_redirects_to_alias_helper_for_single_selection(self):
+        definition = CharacteristicDefinition.objects.create(
+            code='memory',
+            name='Память',
+            source_name='Память',
+        )
+        self.client.force_login(self.admin_user)
+        response = self.client.post(
+            reverse('admin:catalog_characteristicdefinition_changelist'),
+            {
+                'action': 'open_alias_suggestions',
+                '_selected_action': [definition.pk],
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(
+            reverse('admin:catalog_characteristicdefinition_alias_suggestions', args=[definition.pk]),
+            response['Location'],
+        )
+
+    def test_bootstrap_catalog_filter_configs_command_creates_missing_configs_with_defaults(self):
+        memory = CharacteristicDefinition.objects.create(
+            code='memory',
+            name='Память',
+            source_name='Память',
+            sort_order=20,
+            is_filterable=True,
+            is_active=True,
+        )
+        color = CharacteristicDefinition.objects.create(
+            code='color',
+            name='Цвет',
+            source_name='Цвет',
+            sort_order=10,
+            is_filterable=True,
+            is_active=False,
+        )
+        CharacteristicDefinition.objects.create(
+            code='ghost',
+            name='Призрак',
+            source_name='Несуществующая',
+            sort_order=5,
+            is_filterable=True,
+            is_active=True,
+        )
+
+        preview_output = StringIO()
+        call_command(
+            'bootstrap_catalog_filter_configs',
+            '--category',
+            self.category.slug,
+            stdout=preview_output,
+        )
+        self.assertIn('would_create: memory / Память', preview_output.getvalue())
+        self.assertIn('would_create: color / Цвет', preview_output.getvalue())
+
+        call_command('bootstrap_catalog_filter_configs', '--category', self.category.slug, '--apply')
+        self.assertEqual(CategoryFilterConfig.objects.filter(category=self.category).count(), 2)
+        memory_config = CategoryFilterConfig.objects.get(category=self.category, characteristic_definition=memory)
+        color_config = CategoryFilterConfig.objects.get(category=self.category, characteristic_definition=color)
+        self.assertEqual(memory_config.sort_order, 20)
+        self.assertTrue(memory_config.hide_single_value)
+        self.assertTrue(memory_config.is_visible)
+        self.assertEqual(color_config.sort_order, 10)
+        self.assertFalse(color_config.is_visible)
+
+        call_command('bootstrap_catalog_filter_configs', '--category', self.category.slug, '--apply')
+        self.assertEqual(CategoryFilterConfig.objects.filter(category=self.category).count(), 2)
+
+    def test_bootstrap_catalog_filter_configs_command_creates_section_configs(self):
+        CharacteristicDefinition.objects.create(
+            code='memory',
+            name='Память',
+            source_name='Память',
+            sort_order=20,
+            is_filterable=True,
+            is_active=True,
+        )
+        CharacteristicDefinition.objects.create(
+            code='color',
+            name='Цвет',
+            source_name='Цвет',
+            sort_order=10,
+            is_filterable=True,
+            is_active=True,
+        )
+
+        preview_output = StringIO()
+        call_command(
+            'bootstrap_catalog_filter_configs',
+            '--section',
+            self.section.slug,
+            stdout=preview_output,
+        )
+        self.assertIn('would_create: memory / Память', preview_output.getvalue())
+        call_command('bootstrap_catalog_filter_configs', '--section', self.section.slug, '--apply')
+        self.assertEqual(SectionFilterConfig.objects.filter(section=self.section).count(), 2)
+
+    def test_category_and_section_admin_actions_create_configs(self):
+        CharacteristicDefinition.objects.create(
+            code='memory',
+            name='Память',
+            source_name='Память',
+            sort_order=10,
+            is_filterable=True,
+            is_active=True,
+        )
+        CharacteristicDefinition.objects.create(
+            code='color',
+            name='Цвет',
+            source_name='Цвет',
+            sort_order=20,
+            is_filterable=True,
+            is_active=True,
+        )
+        self.client.force_login(self.admin_user)
+
+        category_response = self.client.post(
+            reverse('admin:catalog_category_changelist'),
+            {
+                'action': 'bootstrap_filter_configs',
+                '_selected_action': [self.category.pk],
+            },
+            follow=True,
+        )
+        self.assertEqual(category_response.status_code, 200)
+        self.assertEqual(CategoryFilterConfig.objects.filter(category=self.category).count(), 2)
+
+        section_response = self.client.post(
+            reverse('admin:catalog_catalogsection_changelist'),
+            {
+                'action': 'bootstrap_filter_configs',
+                '_selected_action': [self.section.pk],
+            },
+            follow=True,
+        )
+        self.assertEqual(section_response.status_code, 200)
+        self.assertEqual(SectionFilterConfig.objects.filter(section=self.section).count(), 2)
+
+    def test_suggest_characteristic_aliases_command_outputs_json(self):
+        definition = CharacteristicDefinition.objects.create(
+            code='memory',
+            name='Память',
+            source_name='Память',
+        )
+        stdout = StringIO()
+        call_command(
+            'suggest_characteristic_aliases',
+            '--definition',
+            definition.code,
+            '--format',
+            'json',
+            stdout=stdout,
+        )
+        self.assertIn('"normalized_key": "128 gb"', stdout.getvalue())
 
 
 class HomeFeaturedProductsTest(TestCase):

@@ -1,0 +1,69 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+<div id="content-main">
+    <h1>{{ title }}</h1>
+    <p>
+        Характеристика: <strong>{{ definition.name }}</strong><br>
+        Source name: <code>{{ definition.source_name }}</code><br>
+        Код фильтра: <code>{{ definition.code }}</code>
+    </p>
+
+    {% if suggestions %}
+    <form method="post">
+        {% csrf_token %}
+        <table class="adminlist">
+            <thead>
+                <tr>
+                    <th>Выбрать</th>
+                    <th>Группа</th>
+                    <th>Отображаемое значение</th>
+                    <th>Товаров</th>
+                    <th>Raw values</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for suggestion in suggestions %}
+                <tr>
+                    <td>
+                        <input
+                            type="checkbox"
+                            name="selected_groups"
+                            value="{{ suggestion.normalized_key }}"
+                            {% if not suggestion.already_covered %}checked{% endif %}
+                        >
+                    </td>
+                    <td><code>{{ suggestion.normalized_key }}</code></td>
+                    <td>
+                        <input
+                            type="text"
+                            name="{{ suggestion.display_field_name }}"
+                            value="{{ suggestion.suggested_display }}"
+                            style="width: 100%; min-width: 220px;"
+                        >
+                    </td>
+                    <td>{{ suggestion.product_count }}</td>
+                    <td>
+                        {% for raw_value in suggestion.raw_values %}
+                        <div>
+                            <code>{{ raw_value.raw_value }}</code>
+                            ({{ raw_value.product_count }})
+                            {% if raw_value.alias_exists %}
+                            already configured{% if not raw_value.alias_is_active %}, inactive{% endif %}
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div style="margin-top: 16px;">
+            <button type="submit" class="default">Создать алиасы для выбранных групп</button>
+        </div>
+    </form>
+    {% else %}
+    <p>Для этой характеристики пока нет raw values в ProductCharacteristic.</p>
+    {% endif %}
+</div>
+{% endblock %}

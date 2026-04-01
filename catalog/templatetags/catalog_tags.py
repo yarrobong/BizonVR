@@ -6,6 +6,7 @@ from django.utils.safestring import mark_safe
 
 from config.formatting import format_amount, format_currency_amount, format_decimal_amount
 
+from ..pricing import get_purchase_mode_label
 from ..stock import public_stock_status
 
 register = template.Library()
@@ -24,47 +25,74 @@ _TAG_STYLE_BY_KEYWORD = (
 )
 
 
+def _iter_remove_keys(remove_keys):
+    if not remove_keys:
+        return []
+    if isinstance(remove_keys, str):
+        return [part.strip() for part in remove_keys.split(',') if part.strip()]
+    return [str(part).strip() for part in remove_keys if str(part).strip()]
+
+
+def _apply_query_updates(request, *, remove_keys=None, updates=None, empty_result=''):
+    if not request:
+        return empty_result
+    params = request.GET.copy()
+    for key in _iter_remove_keys(remove_keys):
+        params.pop(key, None)
+    for key, value in (updates or {}).items():
+        if value is None or value == '':
+            params.pop(key, None)
+        else:
+            params[key] = str(value)
+    qs = params.urlencode()
+    return ('?' + qs) if qs else '?'
+
+
 @register.simple_tag(takes_context=True)
 def filter_url(context, **kwargs):
     """Строит query string с обновлёнными GET-параметрами. Удалить: param=None."""
     request = context.get('request')
-    if not request:
-        return ''
-    params = request.GET.copy()
-    for key, val in kwargs.items():
-        if val is None or val == '':
-            params.pop(key, None)
-        else:
-            params[key] = str(val)
-    qs = params.urlencode()
-    return ('?' + qs) if qs else ''
+    return _apply_query_updates(request, updates=kwargs, empty_result='')
 
 
 @register.simple_tag(takes_context=True)
 def filter_url_set(context, key, value):
     """Строит query string с установленным/удалённым параметром (value='' удаляет)."""
     request = context.get('request')
-    if not request:
-        return ''
-    params = request.GET.copy()
-    if value:
-        params[key] = str(value)
-    else:
-        params.pop(key, None)
-    qs = params.urlencode()
-    return ('?' + qs) if qs else '?'
+    return _apply_query_updates(
+        request,
+        updates={key: value},
+        empty_result='',
+    )
 
 
 @register.simple_tag(takes_context=True)
 def filter_url_unset(context, key):
     """Строит query string без указанного параметра."""
     request = context.get('request')
-    if not request:
-        return ''
-    params = request.GET.copy()
-    params.pop(key, None)
-    qs = params.urlencode()
-    return ('?' + qs) if qs else '?'
+    return _apply_query_updates(request, remove_keys=[key], empty_result='')
+
+
+@register.simple_tag(takes_context=True)
+def filter_url_char_set(context, key, value, remove_keys=''):
+    """Строит query string для char_* с возможностью очистить связанные legacy/canonical параметры."""
+    request = context.get('request')
+    return _apply_query_updates(
+        request,
+        remove_keys=remove_keys,
+        updates={key: value},
+        empty_result='',
+    )
+
+
+@register.simple_tag(takes_context=True)
+def filter_url_char_unset(context, key, remove_keys=''):
+    """Строит query string без указанного char_* параметра и его alias-ключей."""
+    request = context.get('request')
+    keys_to_remove = _iter_remove_keys(remove_keys)
+    if key not in keys_to_remove:
+        keys_to_remove.append(key)
+    return _apply_query_updates(request, remove_keys=keys_to_remove, empty_result='')
 
 
 @register.simple_tag(takes_context=True)
@@ -176,6 +204,12 @@ def to_json(value):
 def stock_status(quantity):
     """Публичный статус наличия по количеству."""
     return public_stock_status(quantity)
+
+
+@register.filter
+def purchase_mode_label(value):
+    """Человекочитаемая подпись режима покупки."""
+    return get_purchase_mode_label(value)
 
 
 @register.filter

@@ -118,6 +118,186 @@ curl -I https://www.bizon-business.ru/
 - checkout;
 - страницу заказа или оплаты, если меняли checkout/payments.
 
+## Управляемые фильтры каталога
+
+После деплоя с новой системой фильтров каталог продолжит работать по старой логике, даже если ничего не настраивать в админке. Новый управляемый режим включается только там, где вы явно создали `CategoryFilterConfig` или `SectionFilterConfig`.
+
+### Что обязательно выполнить на сервере
+
+После выкладки кода примените миграции:
+
+```bash
+cd /opt/BizonVR
+.venv/bin/python manage.py migrate
+```
+
+Если хотите сразу развернуть управляемые фильтры, дальше используйте bootstrap-команды ниже.
+
+### Быстрый сценарий первичной настройки
+
+1. Создайте `CharacteristicDefinition` из текущих `ProductCharacteristic.name`.
+2. Посмотрите suggested grouping для значений.
+3. Подтвердите нужные alias-группы в админке.
+4. Сгенерируйте config-ы для нужной категории или раздела.
+5. Проверьте каталог в браузере.
+
+### Команды для сервера
+
+Черновой просмотр характеристик, которые будут добавлены:
+
+```bash
+cd /opt/BizonVR
+.venv/bin/python manage.py bootstrap_characteristic_definitions
+```
+
+Фактическое создание `CharacteristicDefinition`:
+
+```bash
+cd /opt/BizonVR
+.venv/bin/python manage.py bootstrap_characteristic_definitions --apply
+```
+
+Можно ограничить bootstrap только частью характеристик:
+
+```bash
+.venv/bin/python manage.py bootstrap_characteristic_definitions --starts-with "Ц"
+.venv/bin/python manage.py bootstrap_characteristic_definitions --contains "пам"
+.venv/bin/python manage.py bootstrap_characteristic_definitions --source-name "Память" --apply
+```
+
+Посмотреть suggested grouping raw values для конкретной характеристики:
+
+```bash
+.venv/bin/python manage.py suggest_characteristic_aliases --definition memory
+```
+
+Если нужен JSON-вывод для анализа:
+
+```bash
+.venv/bin/python manage.py suggest_characteristic_aliases --definition memory --format json
+```
+
+Посмотреть, какие config-ы будут созданы для категории:
+
+```bash
+.venv/bin/python manage.py bootstrap_catalog_filter_configs --category vr-shlemy
+```
+
+Создать config-ы для категории:
+
+```bash
+.venv/bin/python manage.py bootstrap_catalog_filter_configs --category vr-shlemy --apply
+```
+
+Аналогично для раздела:
+
+```bash
+.venv/bin/python manage.py bootstrap_catalog_filter_configs --section vr-attraktsiony
+.venv/bin/python manage.py bootstrap_catalog_filter_configs --section vr-attraktsiony --apply
+```
+
+В `--category` и `--section` можно передавать как `slug`, так и числовой `id`.
+
+### Как работать через Django admin
+
+В админке появились новые разделы каталога:
+
+- `Определения характеристик`
+- `Алиасы значений характеристик`
+- `Конфиги фильтров категорий`
+- `Конфиги фильтров разделов`
+
+Рекомендуемый порядок работы:
+
+1. Откройте `Каталог -> Определения характеристик`.
+2. Проверьте, что нужные характеристики созданы bootstrap-командой.
+3. У каждой характеристики:
+   - `source_name` должен точно совпадать с `ProductCharacteristic.name`;
+   - `code` можно не заполнять вручную, он генерируется автоматически;
+   - `name` — это заголовок фильтра на витрине.
+4. Откройте нужную характеристику и нажмите `Подсказать алиасы`.
+5. На странице preview:
+   - просмотрите suggested groups;
+   - при необходимости поправьте `Отображаемое значение`;
+   - оставьте отмеченными только те группы, которые действительно нужно создать;
+   - нажмите `Создать алиасы для выбранных групп`.
+6. После этого создайте config-ы:
+   - либо через команду `bootstrap_catalog_filter_configs --apply`;
+   - либо через actions в списке категорий/разделов:
+     - `Создать конфиги фильтров для выбранных категорий`
+     - `Создать конфиги фильтров для выбранных разделов`
+7. В `Конфигах фильтров` при необходимости вручную настройте:
+   - `sort_order`
+   - `is_quick_filter`
+   - `is_visible`
+   - `show_top_n`
+   - `hide_single_value`
+
+### Что именно делает нормализация значений
+
+Suggestions и alias helper пока делают только безопасную базовую нормализацию:
+
+- trim по краям;
+- lowercase;
+- схлопывание повторных пробелов;
+- базовую нормализацию единиц вроде `gb`, `g b`, `гб`, `г б` в одну группу;
+- аналогично для `tb` и `тб`.
+
+Это означает, что значения вроде:
+
+- `128 GB`
+- `128Gb`
+- `128 ГБ`
+- `128гб`
+
+будут предложены как одна группа. Но спорные бизнес-объединения всё равно нужно подтверждать вручную в админке.
+
+### Как теперь работает каталог
+
+- Если для категории есть `CategoryFilterConfig`, используется управляемый режим категории.
+- Если для категории конфига нет, но у раздела есть `SectionFilterConfig`, используется управляемый режим раздела.
+- Если config-ов нет, каталог работает по legacy-логике из `ProductCharacteristic`.
+- Старые ссылки с параметрами вида `char_<raw source_name>` продолжают работать.
+- Новые ссылки на витрине генерируются в canonical-формате `char_<code>`.
+
+### Пример безопасного запуска на проде
+
+```bash
+cd /opt/BizonVR
+.venv/bin/python manage.py migrate
+.venv/bin/python manage.py bootstrap_characteristic_definitions
+.venv/bin/python manage.py bootstrap_characteristic_definitions --apply
+.venv/bin/python manage.py suggest_characteristic_aliases --definition memory
+.venv/bin/python manage.py bootstrap_catalog_filter_configs --category vr-shlemy
+.venv/bin/python manage.py bootstrap_catalog_filter_configs --category vr-shlemy --apply
+```
+
+После этого:
+
+1. зайдите в админку;
+2. откройте `Определения характеристик`;
+3. у нужных definitions нажмите `Подсказать алиасы`;
+4. подтвердите нужные группы;
+5. откройте категорию на витрине и проверьте фильтры.
+
+### Что проверить после настройки фильтров
+
+Откройте в браузере:
+
+- страницу нужной категории;
+- страницу раздела, если настраивали `SectionFilterConfig`;
+- переход по тегам внутри каталога;
+- применение и сброс характеристик;
+- поиск, сортировку и фильтр по цене вместе с `char_*`.
+
+Проверьте руками, что:
+
+- в фильтрах нет шумовых характеристик;
+- порядок фильтров соответствует `sort_order`;
+- быстрые фильтры показываются корректно;
+- одинаковые значения склеились в один пункт;
+- переход по тегам не сбрасывает активные `char_*` без причины.
+
 ## Если что-то пошло не так
 
 Смотреть последние логи приложения:

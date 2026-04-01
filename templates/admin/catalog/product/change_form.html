@@ -3,7 +3,9 @@
 
 {% block form_top %}
 {{ block.super }}
-<div class="product-admin-dashboard" data-product-admin-dashboard data-mode="{% if is_add_product %}add{% else %}change{% endif %}">
+<div class="product-admin-dashboard" data-product-admin-dashboard data-mode="{% if is_add_product %}add{% else %}change{% endif %}"
+     data-search-url="{% url 'admin:catalog_product_product_search' %}"
+     data-blocks-url="{% url 'admin:catalog_product_content_blocks' 0 %}">
     {% if is_add_product %}
     <section class="product-admin-panel product-admin-panel--guide">
         <div class="product-admin-hero">

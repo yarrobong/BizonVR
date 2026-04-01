@@ -47,7 +47,7 @@ class ProductVariantCharacteristicInline(admin.TabularInline):
 class ProductVariantInline(admin.TabularInline):
     model = ProductVariant
     extra = 1
-    fields = ('image_preview', 'name', 'sku', 'image', 'price_override', 'order')
+    fields = ('image_preview', 'name', 'sku', 'image', 'price_override', 'price_on_request_override', 'order')
     readonly_fields = ('image_preview',)
     show_change_link = True
     verbose_name = 'Вариант товара'
@@ -136,7 +136,7 @@ class ProductContentBlockInline(SortableInlineAdminMixin, admin.StackedInline):
 
 @admin.register(ProductVariant)
 class ProductVariantAdmin(admin.ModelAdmin):
-    list_display = ('name', 'sku', 'product', 'price_override', 'order')
+    list_display = ('name', 'sku', 'product', 'price_override', 'price_on_request_override', 'order')
     list_filter = ('product__category',)
     search_fields = ('name', 'sku', 'product__name', 'product__sku')
     autocomplete_fields = ('product',)
@@ -169,6 +169,7 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
         'image_preview',
         'category',
         'price',
+        'price_on_request',
         'option_label',
         'is_active',
         'allow_order_on_request',
@@ -197,6 +198,7 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
                 'sku',
                 'category',
                 'price',
+                'price_on_request',
                 'is_active',
                 'allow_order_on_request',
                 'avito_url',
@@ -231,6 +233,7 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
                         'sku',
                         'category',
                         'price',
+                        'price_on_request',
                         'is_active',
                         'allow_order_on_request',
                         'avito_url',
@@ -297,6 +300,12 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
                 'Подпись над выбором вариантов на странице товара. '
                 'Например: «Цвет», «Объём памяти» или «Комплектация».'
             )
+
+        if db_field.name == 'price':
+            formfield.help_text = 'Текущая цена из наличия. Именно она используется в каталоге для сортировки и фильтрации.'
+
+        if db_field.name == 'price_on_request':
+            formfield.help_text = 'Более низкая цена для покупки под заказ. Если не заполнена, товар продаётся только по цене из наличия.'
 
         return formfield
 
@@ -505,6 +514,7 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
             path('restore-backup/', self.admin_site.admin_view(self.restore_backup_view), name='catalog_product_restore_backup'),
             path('commercial-proposal/', self.admin_site.admin_view(self.commercial_proposal_export_view), name='catalog_product_commercial_proposal'),
             path('product-search/', self.admin_site.admin_view(self.product_search_api_view), name='catalog_product_product_search'),
+            path('product-content-blocks/<int:product_id>/', self.admin_site.admin_view(self.product_content_blocks_api_view), name='catalog_product_content_blocks'),
         ]
         return custom_urls + urls
 
@@ -532,6 +542,39 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
                 'category': p.category.name,
                 'image_url': image_url,
             })
+        return HttpResponse(json.dumps(result, ensure_ascii=False), content_type='application/json; charset=utf-8')
+
+    def product_content_blocks_api_view(self, request, product_id):
+        """JSON API: возвращает блоки подробного описания товара для копирования. Доступ при catalog.view_product."""
+        if not request.user.has_perm('catalog.view_product'):
+            return HttpResponseForbidden('Недостаточно прав.')
+        try:
+            product = Product.objects.get(pk=product_id)
+        except Product.DoesNotExist:
+            from django.http import JsonResponse
+            return JsonResponse({'error': 'Товар не найден.'}, status=404)
+        blocks = (
+            ProductContentBlock.objects
+            .filter(product=product, is_active=True)
+            .order_by('sort_order', 'id')
+        )
+        blocks_data = []
+        for b in blocks:
+            blocks_data.append({
+                'id': b.pk,
+                'block_type': b.block_type,
+                'title': b.title or '',
+                'text': b.text or '',
+                'image_position': b.image_position or 'left',
+                'caption': b.caption or '',
+                'rutube_url': b.rutube_url or '',
+                'sort_order': b.sort_order,
+                'is_active': b.is_active,
+            })
+        result = {
+            'product': {'id': product.pk, 'name': product.name},
+            'blocks': blocks_data,
+        }
         return HttpResponse(json.dumps(result, ensure_ascii=False), content_type='application/json; charset=utf-8')
 
     def commercial_proposal_export_view(self, request):

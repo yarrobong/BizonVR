@@ -11,16 +11,23 @@ from django_ratelimit.decorators import ratelimit
 
 from ..cart_services import get_cart_count, get_cart_items, save_cart_to_db, save_cart_to_session
 from ..models import CartShare, Product, ProductVariant
+from ..pricing import normalize_purchase_mode, resolve_price_for_mode
 from .common import _get_stock_total
 
 CART_SHARE_TTL_DAYS = 30
 
 
 def _parse_share_item_key(raw_key):
-    """Разобрать ключ позиции в формате product_id:variant_id|none."""
+    """Разобрать ключ позиции в формате product_id:variant_id|none:purchase_mode:bundle_id|none."""
     if not raw_key or ':' not in raw_key:
         return None
-    product_part, variant_part = raw_key.split(':', 1)
+    parts = raw_key.split(':')
+    if len(parts) < 2:
+        return None
+    product_part = parts[0]
+    variant_part = parts[1]
+    purchase_mode_part = parts[2] if len(parts) >= 3 else 'stock'
+    bundle_part = parts[3] if len(parts) >= 4 else 'none'
     try:
         product_id = int(product_part)
     except (TypeError, ValueError):
@@ -31,7 +38,14 @@ def _parse_share_item_key(raw_key):
         variant_id = int(variant_part)
     except (TypeError, ValueError):
         return None
-    return product_id, variant_id
+    if bundle_part in ('', 'none', 'null'):
+        bundle_id = None
+    else:
+        try:
+            bundle_id = int(bundle_part)
+        except (TypeError, ValueError):
+            return None
+    return product_id, variant_id, normalize_purchase_mode(purchase_mode_part), bundle_id
 
 
 def _generate_cart_share_code():
@@ -74,6 +88,7 @@ def _resolve_cart_share_items(items_payload):
             'product_id': product_id,
             'variant_id': variant_id,
             'quantity': quantity,
+            'purchase_mode': normalize_purchase_mode(raw_item.get('purchase_mode')),
         })
         product_ids.add(product_id)
         if variant_id is not None:
@@ -104,7 +119,8 @@ def _resolve_cart_share_items(items_payload):
             variant = variant_map.get((product_id, variant_id))
             if variant is None:
                 continue
-        price = float(variant.price) if variant else float(product.price)
+        purchase_mode = normalize_purchase_mode(item.get('purchase_mode'))
+        price = float(resolve_price_for_mode(product, variant, purchase_mode))
         image_url = ''
         if variant and variant.image:
             image_url = variant.image.url
@@ -119,6 +135,7 @@ def _resolve_cart_share_items(items_payload):
             'quantity': quantity,
             'subtotal': price * quantity,
             'image_url': image_url,
+            'purchase_mode': purchase_mode,
             'product_slug': product.slug,
             '_product_obj': product,
             '_variant_obj': variant,
@@ -161,7 +178,12 @@ def cart_share_create_view(request):
                 item_variant_id = int(raw_item_variant_id)
             except (TypeError, ValueError):
                 continue
-        item_key = (item_product_id, item_variant_id)
+        item_key = (
+            item_product_id,
+            item_variant_id,
+            normalize_purchase_mode(item.get('purchase_mode')),
+            item.get('bundle_id'),
+        )
         if item_key in selected_pairs_set:
             try:
                 quantity = max(1, int(item.get('quantity', 1) or 1))
@@ -171,6 +193,7 @@ def cart_share_create_view(request):
                 'product_id': item_product_id,
                 'variant_id': item_variant_id,
                 'quantity': quantity,
+                'purchase_mode': normalize_purchase_mode(item.get('purchase_mode')),
             })
 
     resolved_items = _resolve_cart_share_items(selected_payload)
@@ -186,6 +209,7 @@ def cart_share_create_view(request):
             'product_id': item['product_id'],
             'variant_id': item['variant_id'],
             'quantity': item['quantity'],
+            'purchase_mode': item['purchase_mode'],
         }
         for item in resolved_items
     ]
@@ -234,6 +258,7 @@ def cart_share_add_all_view(request):
             item['variant_id'],
             item['_variant_obj'],
             item['quantity'],
+            purchase_mode=item.get('purchase_mode'),
         )
 
     if request.user.is_authenticated:
