@@ -1,0 +1,58 @@
+<section id="checkout-summary-card"{% if oob_swap %} hx-swap-oob="{{ oob_swap }}"{% endif %} class="rounded-[2rem] border border-white/10 bg-dark-800/90 p-3.5 sm:p-4">
+  <div class="flex items-center justify-between gap-3">
+    <div>
+      <p class="text-xs uppercase tracking-[0.22em] text-accent/80">Summary</p>
+      <h2 class="mt-1 text-lg font-semibold text-white">Ваш заказ</h2>
+    </div>
+    <span class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-gray-300">{{ cart_items|length }} шт.</span>
+  </div>
+  <ul class="mt-2.5 space-y-2">
+    {% for item in cart_items %}
+      <li class="flex items-start justify-between gap-2 text-sm">
+        <div class="min-w-0">
+          <p class="text-sm leading-5 text-white">{{ item.name }}</p>
+          <p class="mt-1 text-xs {% if item.is_checkout_available %}text-gray-500{% else %}text-amber-300{% endif %}">
+            Количество: {{ item.quantity }}
+            {% if item.is_on_request_purchase %} · под заказ{% endif %}
+            {% if not item.is_checkout_available %} · {{ item.checkout_unavailable_reason }}{% endif %}
+          </p>
+        </div>
+        <p class="whitespace-nowrap text-sm font-semibold {% if item.is_checkout_available %}text-white{% else %}text-gray-500{% endif %}">
+          {{ item.checkout_subtotal|default:item.subtotal|price_format }} ₽
+        </p>
+      </li>
+    {% endfor %}
+  </ul>
+  <div class="mt-2.5 space-y-1.5 border-t border-white/10 pt-2.5 text-sm">
+    <div class="flex items-center justify-between text-gray-300">
+      <span>Товары</span>
+      <span>{{ cart_total|price_format }} ₽</span>
+    </div>
+    {% if promo_discount > 0 %}
+      <div class="flex items-center justify-between text-emerald-200">
+        <span>{{ promo_discount_label }}</span>
+        <span>−{{ promo_discount|price_format }} ₽</span>
+      </div>
+    {% endif %}
+    <div class="flex items-center justify-between text-base font-semibold text-white">
+      <span>Итого</span>
+      <span>{{ grand_total|price_format }} ₽</span>
+    </div>
+  </div>
+  <div class="mt-3 space-y-3 border-t border-white/10 pt-3">
+    <div class="rounded-2xl border border-accent/20 bg-accent/10 p-3.5">
+      <p class="text-sm font-medium text-white">Доставка рассчитывается после подтверждения</p>
+      <p class="mt-1 text-xs leading-5 text-gray-300">Сначала проверим наличие и уточним удобный ПВЗ СДЭК, чтобы назвать точную стоимость.</p>
+    </div>
+    <div class="rounded-2xl border border-white/10 bg-white/5 p-3.5">
+      <p class="text-sm font-medium text-white">Менеджер свяжется в течение дня</p>
+      <p class="mt-1 text-xs leading-5 text-gray-400">Подтвердим заявку по телефону или в мессенджере, если вы его указали.</p>
+    </div>
+    <div class="rounded-2xl border border-white/10 bg-dark-900/60 p-3.5 text-sm text-gray-300">
+      <p class="text-xs uppercase tracking-[0.22em] text-accent/80">Что дальше</p>
+      <p class="mt-2">1. Подтвердим наличие.</p>
+      <p class="mt-1">2. Уточним ПВЗ и доставку.</p>
+      <p class="mt-1">3. Свяжемся с вами для подтверждения.</p>
+    </div>
+  </div>
+</section>

@@ -9,6 +9,11 @@
         Подсказать алиасы
     </a>
 </li>
+<li>
+    <a href="{% url 'admin:catalog_characteristicdefinition_source_alias_suggestions' original.pk %}">
+        Подсказать source aliases
+    </a>
+</li>
 {% endif %}
 {{ block.super }}
 {% endblock %}

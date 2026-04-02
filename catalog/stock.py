@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 
-PUBLIC_STOCK_HIGH_THRESHOLD = 10
+PUBLIC_STOCK_HIGH_THRESHOLD = 5
 
 
 def public_stock_status(quantity):

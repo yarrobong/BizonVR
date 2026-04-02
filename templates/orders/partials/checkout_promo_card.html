@@ -1,0 +1,69 @@
+<section id="checkout-promo-card" class="rounded-[2rem] border border-white/10 bg-dark-800/90 p-3.5 sm:p-4">
+  <div class="mb-2.5">
+    <p class="text-xs uppercase tracking-[0.22em] text-accent/80">Промокод</p>
+    <h2 class="mt-1 text-xl font-semibold text-white">Скидка к заказу</h2>
+    <p class="mt-1 text-sm leading-5 text-gray-400">Если у вас есть промокод, примените его до отправки заявки.</p>
+  </div>
+
+  {% if applied_promo %}
+    <div class="rounded-[1.75rem] border border-emerald-400/20 bg-emerald-500/10 p-3 sm:p-3.5">
+      <div class="flex flex-col gap-2.5 sm:flex-row sm:items-start sm:justify-between">
+        <div class="min-w-0">
+          <p class="text-xs uppercase tracking-[0.22em] text-emerald-200/80">Промокод применён</p>
+          <p class="mt-1 text-base font-semibold text-white">{{ applied_promo.code }}</p>
+          <p class="mt-1 text-sm text-gray-200">{{ promo_discount_label }}: −{{ promo_discount|price_format }} ₽</p>
+        </div>
+        <button
+          type="submit"
+          name="promo_action"
+          value="remove"
+          formnovalidate
+          hx-post="{{ checkout_promo_apply_url }}"
+          hx-include="#checkout-form"
+          hx-target="#checkout-promo-card"
+          hx-swap="outerHTML"
+          class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:border-white/20 hover:bg-white/10"
+        >
+          Убрать
+        </button>
+      </div>
+      <input type="hidden" name="checkout_mode" value="{{ checkout_mode }}" />
+    </div>
+  {% else %}
+    <div class="rounded-[1.75rem] border border-white/10 bg-dark-900/60 p-3 sm:p-3.5">
+      <div class="flex flex-col gap-2.5 sm:flex-row sm:items-end">
+        <div class="min-w-0 flex-1">
+          <label for="id_checkout_promo_code_input" class="mb-1 block text-sm font-medium text-gray-200">Введите промокод</label>
+          <input
+            id="id_checkout_promo_code_input"
+            type="text"
+            name="promo_code_input"
+            value="{{ promo_input_value }}"
+            placeholder="Например, BIZON500"
+            autocomplete="off"
+            class="w-full rounded-2xl border border-white/10 bg-dark-700/80 px-4 py-2.5 text-white placeholder:text-gray-500 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
+          />
+          <input type="hidden" name="checkout_mode" value="{{ checkout_mode }}" />
+          {% if promo_error %}
+            <p class="mt-1 text-sm text-red-400">{{ promo_error }}</p>
+          {% else %}
+            <p class="mt-1 text-xs text-gray-500">Проверим код и сразу пересчитаем итоговую сумму.</p>
+          {% endif %}
+        </div>
+        <button
+          type="submit"
+          name="promo_action"
+          value="apply"
+          formnovalidate
+          hx-post="{{ checkout_promo_apply_url }}"
+          hx-include="#checkout-form"
+          hx-target="#checkout-promo-card"
+          hx-swap="outerHTML"
+          class="inline-flex items-center justify-center rounded-full border border-accent/20 bg-accent/10 px-5 py-2.5 text-sm font-bold uppercase tracking-[0.16em] text-accent transition hover:border-accent/35 hover:bg-accent/15 sm:min-w-[11rem]"
+        >
+          Применить
+        </button>
+      </div>
+    </div>
+  {% endif %}
+</section>

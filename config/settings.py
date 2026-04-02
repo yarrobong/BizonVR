@@ -38,7 +38,8 @@ CSRF_TRUSTED_ORIGINS = [x.strip() for x in config('CSRF_TRUSTED_ORIGINS', defaul
 # Application definition
 
 INSTALLED_APPS = [
-    'django.contrib.admin',
+    'config.apps.ConfigAppConfig',
+    'config.apps.ConfigAdminConfig',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',

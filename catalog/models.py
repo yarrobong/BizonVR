@@ -648,6 +648,13 @@ class ProductCharacteristic(models.Model):
 class CharacteristicDefinition(models.Model):
     """Управляемая характеристика каталога, связанная с raw ProductCharacteristic.name."""
 
+    class SortingMode(models.TextChoices):
+        ALPHA = 'alpha', 'Алфавит'
+        NUMERIC_UNIT = 'numeric_unit', 'Число + единица (ГБ, Гц…)'
+        SCREEN_SIZE = 'screen_size', 'Диагональ (дюймы)'
+        BOOLEAN = 'boolean', 'Да / Нет'
+        RESOLUTION = 'resolution', 'Разрешение (WxH)'
+
     code = models.SlugField('Код', max_length=100, unique=True, blank=True)
     name = models.CharField('Название', max_length=200)
     source_name = models.CharField(
@@ -655,6 +662,12 @@ class CharacteristicDefinition(models.Model):
         max_length=200,
         unique=True,
         help_text='Точное значение ProductCharacteristic.name, из которого собираются данные фильтра.',
+    )
+    sorting_mode = models.CharField(
+        'Сортировка значений',
+        max_length=50,
+        choices=SortingMode.choices,
+        default=SortingMode.ALPHA,
     )
     is_filterable = models.BooleanField('Использовать в фильтрах', default=True)
     sort_order = models.IntegerField('Порядок', default=0, db_index=True)
@@ -674,6 +687,40 @@ class CharacteristicDefinition(models.Model):
 
             self.code = generate_unique_characteristic_code(self.source_name, exclude_pk=self.pk)
         super().save(*args, **kwargs)
+
+
+class CharacteristicSourceAlias(models.Model):
+    """Дополнительные raw source names, которые относятся к одной definition."""
+
+    characteristic_definition = models.ForeignKey(
+        CharacteristicDefinition,
+        on_delete=models.CASCADE,
+        related_name='source_aliases',
+        verbose_name='Характеристика',
+    )
+    raw_source_name = models.CharField('Сырое имя характеристики', max_length=200)
+    sort_order = models.IntegerField('Порядок', default=0)
+    is_active = models.BooleanField('Активен', default=True, db_index=True)
+
+    class Meta:
+        verbose_name = 'Алиас source name'
+        verbose_name_plural = 'Алиасы source name'
+        ordering = ('characteristic_definition', 'sort_order', 'raw_source_name')
+        constraints = [
+            models.UniqueConstraint(
+                fields=['characteristic_definition', 'raw_source_name'],
+                name='catalog_char_source_alias_unique',
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=['characteristic_definition', 'is_active'],
+                name='catalog_char_src_active_idx',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.characteristic_definition.code}: {self.raw_source_name}'
 
 
 class CharacteristicValueAlias(models.Model):
@@ -712,56 +759,34 @@ class CharacteristicValueAlias(models.Model):
         return f'{self.characteristic_definition.code}: {self.raw_value} -> {self.normalized_value}'
 
 
-class CategoryFilterConfig(models.Model):
-    """Настройка фильтра каталога для конкретной категории."""
+class FilterConfig(models.Model):
+    """Настройка фильтров для категории или раздела.
+
+    Ровно одно из полей category / section должно быть заполнено.
+    Если для категории нет конфигов — используются конфиги раздела.
+    Если нет ни тех ни других — показываются все активные фильтры (legacy-режим).
+    """
 
     category = models.ForeignKey(
         Category,
         on_delete=models.CASCADE,
         related_name='filter_configs',
+        null=True,
+        blank=True,
         verbose_name='Категория',
     )
-    characteristic_definition = models.ForeignKey(
-        CharacteristicDefinition,
-        on_delete=models.CASCADE,
-        related_name='category_filter_configs',
-        verbose_name='Характеристика',
-    )
-    is_visible = models.BooleanField('Показывать', default=True, db_index=True)
-    is_quick_filter = models.BooleanField('Быстрый фильтр', default=False)
-    sort_order = models.IntegerField('Порядок', default=0, db_index=True)
-    is_expanded_by_default = models.BooleanField('Раскрыт по умолчанию', default=False)
-    show_top_n = models.PositiveIntegerField('Показывать первых N значений', null=True, blank=True)
-    hide_single_value = models.BooleanField('Скрывать при одном значении', default=True)
-
-    class Meta:
-        verbose_name = 'Конфиг фильтра категории'
-        verbose_name_plural = 'Конфиги фильтров категорий'
-        ordering = ('category', 'sort_order', 'characteristic_definition__sort_order', 'id')
-        constraints = [
-            models.UniqueConstraint(
-                fields=['category', 'characteristic_definition'],
-                name='catalog_category_filter_config_unique',
-            ),
-        ]
-
-    def __str__(self):
-        return f'{self.category.name}: {self.characteristic_definition.name}'
-
-
-class SectionFilterConfig(models.Model):
-    """Настройка фильтра каталога для раздела, когда категория не задаёт override."""
-
     section = models.ForeignKey(
         CatalogSection,
         on_delete=models.CASCADE,
         related_name='filter_configs',
-        verbose_name='Раздел каталога',
+        null=True,
+        blank=True,
+        verbose_name='Раздел',
     )
     characteristic_definition = models.ForeignKey(
         CharacteristicDefinition,
         on_delete=models.CASCADE,
-        related_name='section_filter_configs',
+        related_name='filter_configs',
         verbose_name='Характеристика',
     )
     is_visible = models.BooleanField('Показывать', default=True, db_index=True)
@@ -772,17 +797,32 @@ class SectionFilterConfig(models.Model):
     hide_single_value = models.BooleanField('Скрывать при одном значении', default=True)
 
     class Meta:
-        verbose_name = 'Конфиг фильтра раздела'
-        verbose_name_plural = 'Конфиги фильтров разделов'
-        ordering = ('section', 'sort_order', 'characteristic_definition__sort_order', 'id')
+        verbose_name = 'Конфиг фильтра'
+        verbose_name_plural = 'Конфиги фильтров'
+        ordering = ('sort_order', 'characteristic_definition__sort_order', 'id')
         constraints = [
             models.UniqueConstraint(
+                fields=['category', 'characteristic_definition'],
+                condition=models.Q(category__isnull=False),
+                name='catalog_filter_config_category_def_unique',
+            ),
+            models.UniqueConstraint(
                 fields=['section', 'characteristic_definition'],
-                name='catalog_section_filter_config_unique',
+                condition=models.Q(section__isnull=False),
+                name='catalog_filter_config_section_def_unique',
             ),
         ]
 
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if self.category_id and self.section_id:
+            raise ValidationError('Нельзя указать одновременно категорию и раздел.')
+        if not self.category_id and not self.section_id:
+            raise ValidationError('Необходимо указать категорию или раздел.')
+
     def __str__(self):
+        if self.category_id:
+            return f'{self.category.name}: {self.characteristic_definition.name}'
         return f'{self.section.name}: {self.characteristic_definition.name}'
 
 

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<yml_catalog date="{{ generated_at }}">
+  <shop>
+    <name>{{ shop_name }}</name>
+    <company>{{ shop_company }}</company>
+    <url>{{ shop_url }}</url>
+    <currencies>
+      <currency id="RUR" rate="1" />
+    </currencies>
+    <categories>
+      {% for category in categories %}
+      <category id="{{ category.pk }}">{{ category.name }}</category>
+      {% endfor %}
+    </categories>
+    <offers>
+      {% for offer in offers %}
+      <offer id="{{ offer.id }}" available="{{ offer.available }}">
+        <url>{{ offer.url }}</url>
+        <price>{{ offer.price }}</price>
+        <currencyId>RUR</currencyId>
+        <categoryId>{{ offer.category_id }}</categoryId>
+        {% if offer.picture %}<picture>{{ offer.picture }}</picture>{% endif %}
+        <name>{{ offer.name }}</name>
+        {% if offer.description %}<description>{{ offer.description }}</description>{% endif %}
+      </offer>
+      {% endfor %}
+    </offers>
+  </shop>
+</yml_catalog>

@@ -1,0 +1,17 @@
+<div id="checkout-mobile-bar"{% if oob_swap %} hx-swap-oob="{{ oob_swap }}"{% endif %} class="fixed inset-x-0 border-t border-white/10 bg-dark-900/95 px-4 py-2.5 backdrop-blur sm:hidden" style="bottom: env(safe-area-inset-bottom); z-index: 60010;">
+  <div class="mx-auto flex max-w-6xl items-center gap-3">
+    <div class="min-w-0 flex-1">
+      <p class="truncate text-sm font-semibold text-white">{{ grand_total|price_format }} ₽</p>
+      <p class="text-xs text-gray-400">
+        {% if promo_discount > 0 %}
+          {{ promo_discount_label }}: −{{ promo_discount|price_format }} ₽
+        {% else %}
+          Менеджер свяжется с вами для подтверждения
+        {% endif %}
+      </p>
+    </div>
+    <button type="submit" form="checkout-form" {% if not has_checkout_items %}disabled{% endif %} class="inline-flex items-center justify-center rounded-full bg-accent px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-dark-900 transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50">
+      Отправить на подтверждение
+    </button>
+  </div>
+</div>
