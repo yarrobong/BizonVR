@@ -15,6 +15,9 @@ class NormalizedCharacteristicValue:
     cleaned_value: str
     normalized_key: str
     suggested_display: str
+    number_value: str
+    unit_key: str
+    safe_merge_key: str
 
 
 def _collapse_spaces(value: str) -> str:
@@ -29,9 +32,13 @@ def normalize_characteristic_value(raw_value: str) -> NormalizedCharacteristicVa
     normalized_key = _collapse_spaces(lowered)
 
     match = UNIT_VALUE_RE.match(normalized_key)
+    number_value = ''
+    unit_key = ''
     if match:
         number = match.group('number')
-        unit = match.group('unit').upper().replace('GB', 'ГБ').replace('TB', 'ТБ')
+        unit_key = match.group('unit').lower()
+        number_value = number.replace(',', '.')
+        unit = unit_key.upper().replace('GB', 'ГБ').replace('TB', 'ТБ')
         suggested_display = f'{number} {unit}'
     else:
         suggested_display = cleaned_value
@@ -40,4 +47,7 @@ def normalize_characteristic_value(raw_value: str) -> NormalizedCharacteristicVa
         cleaned_value=cleaned_value,
         normalized_key=normalized_key,
         suggested_display=suggested_display,
+        number_value=number_value,
+        unit_key=unit_key,
+        safe_merge_key=f'{number_value}:{unit_key}' if number_value and unit_key else normalized_key,
     )

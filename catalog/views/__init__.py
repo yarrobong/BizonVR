@@ -8,6 +8,7 @@ from .cart_mutations import (
 )
 from .cart_share import cart_share_add_all_view, cart_share_create_view
 from .favorites import favorite_list_view, toggle_favorite_view
+from .feeds import vr_attractions_yml_feed_view
 from .footer import footer_products_feed_view
 from .products import BundleDetailView, ProductDetailView, ProductListView
 
@@ -28,4 +29,5 @@ __all__ = [
     'favorite_list_view',
     'footer_products_feed_view',
     'toggle_favorite_view',
+    'vr_attractions_yml_feed_view',
 ]

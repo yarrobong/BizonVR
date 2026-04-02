@@ -43,24 +43,8 @@
   }
 
   .catalog-filters .filters-panel-scroll {
-    max-height: calc(100vh - 7rem);
-    overflow-y: auto;
-    overflow-x: hidden;
-    overscroll-behavior: contain;
-  }
-
-  .catalog-filters .filters-panel-scroll::-webkit-scrollbar {
-    width: 6px;
-  }
-
-  .catalog-filters .filters-panel-scroll::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.03);
-    border-radius: 999px;
-  }
-
-  .catalog-filters .filters-panel-scroll::-webkit-scrollbar-thumb {
-    background: rgba(143, 160, 190, 0.22);
-    border-radius: 999px;
+    max-height: none;
+    overflow: visible;
   }
 }
 
@@ -108,9 +92,6 @@
   box-shadow:
     var(--filter-shadow-strong),
     0 0 0 1px rgba(255, 255, 255, 0.025);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  -webkit-overflow-scrolling: touch;
 }
 
 .filters-panel-header,
@@ -705,6 +686,7 @@
   gap: 0.38rem;
   min-width: 13.5rem;
   flex-shrink: 0;
+  position: relative;
 }
 
 .catalog-sort-label {
@@ -716,6 +698,7 @@
 }
 
 .catalog-sort-select {
+  width: 100%;
   min-height: 2.7rem;
   padding: 0.72rem 2.5rem 0.72rem 0.9rem;
   border-radius: 0.95rem;
@@ -724,7 +707,12 @@
     linear-gradient(180deg, rgba(31, 38, 53, 0.96), rgba(16, 20, 29, 0.98));
   color: #f4f8ff;
   font-size: 0.9rem;
+  font-family: inherit;
   line-height: 1.2;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
 }
 
@@ -735,6 +723,24 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.02),
     0 0 0 1px rgba(0, 212, 255, 0.22),
     0 0 0 4px rgba(0, 212, 255, 0.08);
+}
+
+.catalog-control-bar-sort::after {
+  content: "";
+  position: absolute;
+  right: 1rem;
+  bottom: 1.08rem;
+  width: 0.62rem;
+  height: 0.62rem;
+  border-right: 1.5px solid rgba(200, 233, 248, 0.72);
+  border-bottom: 1.5px solid rgba(200, 233, 248, 0.72);
+  transform: rotate(45deg);
+  pointer-events: none;
+  transition: border-color 180ms ease;
+}
+
+.catalog-control-bar-sort:focus-within::after {
+  border-color: rgba(145, 231, 255, 0.96);
 }
 
 .filters-summary-card {
@@ -1059,7 +1065,14 @@
   align-items: start;
 }
 
-.filters-modal-scroll,
+.filters-modal-scroll {
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: auto;
+}
+
 .filters-mobile-scroll {
   overflow: visible;
   touch-action: auto;
@@ -1177,8 +1190,6 @@
 }
 
 .filters-modal-footer--desktop {
-  position: sticky;
-  bottom: 0;
   z-index: 2;
   display: flex;
   flex-direction: row;

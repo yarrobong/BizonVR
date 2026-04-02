@@ -2,7 +2,12 @@ import json
 
 from django.core.management.base import BaseCommand, CommandError
 
-from catalog.filter_bootstrap import build_alias_suggestions, resolve_characteristic_definition
+from catalog.cache_utils import invalidate_catalog_cache
+from catalog.filter_bootstrap import (
+    build_alias_suggestions,
+    create_aliases_from_suggestions,
+    resolve_characteristic_definition,
+)
 
 
 class Command(BaseCommand):
@@ -16,6 +21,11 @@ class Command(BaseCommand):
             choices=('table', 'json'),
             help='Формат вывода preview.',
         )
+        parser.add_argument(
+            '--auto-apply-safe',
+            action='store_true',
+            help='Создать missing alias-ы только для safe auto-applicable групп.',
+        )
 
     def handle(self, *args, **options):
         try:
@@ -24,6 +34,21 @@ class Command(BaseCommand):
             raise CommandError(str(exc)) from exc
 
         suggestions = build_alias_suggestions(definition)
+        if options['auto_apply_safe']:
+            result = create_aliases_from_suggestions(
+                definition,
+                selected_normalized_keys=[item['normalized_key'] for item in suggestions if item['safe_auto_applicable']],
+                safe_only=True,
+            )
+            if result['created']:
+                invalidate_catalog_cache()
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"Safe auto-apply: создано {result['created']}, "
+                    f"существующих {result['skipped_existing']}, пропущено unsafe {result['skipped_unsafe']}"
+                )
+            )
+            suggestions = build_alias_suggestions(definition)
         if options['format'] == 'json':
             payload = [
                 {
@@ -31,6 +56,8 @@ class Command(BaseCommand):
                     'suggested_display': suggestion['suggested_display'],
                     'product_count': suggestion['product_count'],
                     'already_covered': suggestion['already_covered'],
+                    'status': suggestion['status'],
+                    'safe_auto_applicable': suggestion['safe_auto_applicable'],
                     'raw_values': [
                         {
                             'raw_value': raw_value.raw_value,
@@ -54,7 +81,7 @@ class Command(BaseCommand):
         for suggestion in suggestions:
             self.stdout.write(
                 f"- {suggestion['normalized_key']} -> {suggestion['suggested_display']} "
-                f"(товаров: {suggestion['product_count']}, covered: {suggestion['already_covered']})"
+                f"(товаров: {suggestion['product_count']}, covered: {suggestion['already_covered']}, status: {suggestion['status']})"
             )
             for raw_value in suggestion['raw_values']:
                 status = 'existing'

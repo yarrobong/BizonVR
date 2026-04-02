@@ -1,0 +1,188 @@
+{% extends "admin/base_site.html" %}
+
+{% load admin_urls %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">Главная</a>
+    &rsaquo; <a href="{% url 'admin:app_list' app_label=opts.app_label %}">{{ opts.app_config.verbose_name }}</a>
+    &rsaquo; <a href="{% url opts|admin_urlname:'changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a>
+    &rsaquo; <a href="{% url opts|admin_urlname:'change' original.pk %}">{{ original }}</a>
+    &rsaquo; Мастер настройки фильтров
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+    <h1>{{ title }}</h1>
+    <p>{{ wizard.scope_label }}. Товаров в scope: {{ wizard.product_count }}, raw source names: {{ wizard.source_name_count }}.</p>
+
+    <form method="post">
+        {% csrf_token %}
+
+        <fieldset class="module aligned">
+            <h2>1. Missing Definitions</h2>
+            {% if wizard.missing_definitions %}
+            <table>
+                <thead>
+                    <tr>
+                        <th></th>
+                        <th>Source name</th>
+                        <th>Товаров</th>
+                        <th>Код</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in wizard.missing_definitions %}
+                    <tr>
+                        <td><input type="checkbox" name="missing_definitions" value="{{ item.source_name }}" checked></td>
+                        <td>{{ item.source_name }}</td>
+                        <td>{{ item.product_count }}</td>
+                        <td><code>{{ item.suggested_code }}</code></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p>Новых definitions для этого scope не требуется.</p>
+            {% endif %}
+        </fieldset>
+
+        <fieldset class="module aligned">
+            <h2>2. Source Alias Suggestions</h2>
+            {% if wizard.source_alias_suggestions %}
+                {% for group in wizard.source_alias_suggestions %}
+                <h3>{{ group.definition.name }} (<code>{{ group.definition.code }}</code>)</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th></th>
+                            <th>Raw source name</th>
+                            <th>Товаров</th>
+                            <th>Similarity</th>
+                            <th>Overlap values</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in group.items %}
+                        <tr>
+                            <td><input type="checkbox" name="source_aliases" value="{{ item.selection_value }}" checked></td>
+                            <td>{{ item.raw_source_name }}</td>
+                            <td>{{ item.product_count }}</td>
+                            <td>{{ item.similarity_score }}</td>
+                            <td>{{ item.overlap_value_count }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% endfor %}
+            {% else %}
+            <p>Подходящих source alias suggestions нет.</p>
+            {% endif %}
+        </fieldset>
+
+        <fieldset class="module aligned">
+            <h2>3. Safe Value Aliases</h2>
+            {% if wizard.safe_value_alias_suggestions %}
+                {% for group in wizard.safe_value_alias_suggestions %}
+                <h3>{{ group.definition.name }} (<code>{{ group.definition.code }}</code>)</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th></th>
+                            <th>Значение</th>
+                            <th>Товаров</th>
+                            <th>Новых raw values</th>
+                            <th>Raw values</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in group.items %}
+                        <tr>
+                            <td><input type="checkbox" name="value_aliases" value="{{ item.selection_value }}" checked></td>
+                            <td>{{ item.suggested_display }}</td>
+                            <td>{{ item.product_count }}</td>
+                            <td>{{ item.missing_count }}</td>
+                            <td>{{ item.raw_values|join:", " }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% endfor %}
+            {% else %}
+            <p>Safe value alias suggestions нет.</p>
+            {% endif %}
+        </fieldset>
+
+        <fieldset class="module aligned">
+            <h2>4. Missing Filter Configs</h2>
+            {% if wizard.missing_configs %}
+            <p>
+                <label>
+                    <input type="checkbox" name="apply_missing_configs" value="1" checked>
+                    Создать отсутствующие `FilterConfig` для текущего scope
+                </label>
+            </p>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Definition</th>
+                        <th>Показывать</th>
+                        <th>Quick filter</th>
+                        <th>Порядок</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in wizard.missing_configs %}
+                    <tr>
+                        <td>{{ item.definition.name }} (<code>{{ item.definition.code }}</code>)</td>
+                        <td>{{ item.defaults.is_visible|yesno:"Да,Нет" }}</td>
+                        <td>{{ item.defaults.is_quick_filter|yesno:"Да,Нет" }}</td>
+                        <td>{{ item.defaults.sort_order }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p>Отсутствующих конфигов сейчас нет.</p>
+            {% endif %}
+        </fieldset>
+
+        <fieldset class="module aligned">
+            <h2>5. Quick Filter Recommendations</h2>
+            {% if wizard.quick_filter_recommendations %}
+            <table>
+                <thead>
+                    <tr>
+                        <th></th>
+                        <th>Definition</th>
+                        <th>Значений</th>
+                        <th>Покрытие</th>
+                        <th>Singleton</th>
+                        <th>Причина</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in wizard.quick_filter_recommendations %}
+                    <tr>
+                        <td><input type="checkbox" name="quick_filters" value="{{ item.selection_value }}" checked></td>
+                        <td>{{ item.definition.name }} (<code>{{ item.definition.code }}</code>)</td>
+                        <td>{{ item.distinct_value_count }}</td>
+                        <td>{{ item.coverage_ratio_percent }}%</td>
+                        <td>{{ item.singleton_ratio_percent }}%</td>
+                        <td>{{ item.reason }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p>Подходящих quick filter recommendations нет.</p>
+            {% endif %}
+        </fieldset>
+
+        <div class="submit-row">
+            <input type="submit" value="Применить выбранное" class="default">
+        </div>
+    </form>
+</div>
+{% endblock %}

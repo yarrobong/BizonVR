@@ -6,6 +6,7 @@ from django.db import transaction
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.views.decorators.http import require_POST
 
 try:
     from django_ratelimit.decorators import ratelimit
@@ -34,6 +35,8 @@ from ..forms import CheckoutForm
 from ..models import Order, OrderItem, PromoCode, resolve_order_item_image_url
 from ..services import build_order_status_summary, issue_guest_access, send_order_event_notifications, sync_order_state_side_effects
 from .utils import _discount_for_promo
+
+CHECKOUT_APPLIED_PROMOS_SESSION_KEY = 'checkout_applied_promos'
 
 
 def _get_saved_addresses(user):
@@ -91,6 +94,51 @@ def _get_checkout_initial(request, saved_address):
     return initial
 
 
+def _normalize_checkout_source(value):
+    return 'buy_now' if (value or '').strip() == 'buy_now' else 'cart'
+
+
+def _build_checkout_url_for_source(items_source):
+    url = reverse('orders:checkout')
+    if items_source == 'buy_now':
+        return f'{url}?mode=buy_now'
+    return url
+
+
+def _get_checkout_promo_session_map(request):
+    value = request.session.get(CHECKOUT_APPLIED_PROMOS_SESSION_KEY)
+    return value if isinstance(value, dict) else {}
+
+
+def _set_checkout_promo_code(request, items_source, code):
+    promo_map = dict(_get_checkout_promo_session_map(request))
+    if code:
+        promo_map[items_source] = str(code).strip()
+    else:
+        promo_map.pop(items_source, None)
+
+    if promo_map:
+        request.session[CHECKOUT_APPLIED_PROMOS_SESSION_KEY] = promo_map
+    else:
+        request.session.pop(CHECKOUT_APPLIED_PROMOS_SESSION_KEY, None)
+    request.session.modified = True
+
+
+def _resolve_checkout_promo(request, items_source, *, clear_invalid=False):
+    promo_map = _get_checkout_promo_session_map(request)
+    raw_code = str(promo_map.get(items_source) or '').strip()
+    if not raw_code:
+        return None, ''
+
+    promo = PromoCode.objects.filter(code__iexact=raw_code, is_active=True).first()
+    if promo is not None:
+        return promo, ''
+
+    if clear_invalid:
+        _set_checkout_promo_code(request, items_source, None)
+    return None, raw_code
+
+
 def _sync_profile_from_checkout(user, cleaned_data):
     profile = ensure_profile(user)
     update_fields = []
@@ -113,21 +161,57 @@ def _sync_profile_from_checkout(user, cleaned_data):
         profile.save(update_fields=update_fields)
 
 
-def _build_checkout_context(request, form, cart_items, saved_addresses, selected_saved_address):
+def _build_checkout_pricing_context(request, cart_items, items_source, *, promo_input_value='', promo_error=''):
     lines, unavailable_lines = _build_checkout_lines(cart_items)
     display_items = enrich_cart_items(cart_items)
-    cart_total = sum(Decimal(str(item.get('checkout_subtotal', 0))) for item in display_items)
-    checkout_mode = (request.GET.get('mode') or '').strip()
-    session_city = _get_session_selected_city(request)
+    applied_promo, _ = _resolve_checkout_promo(request, items_source, clear_invalid=True)
+    cart_total = sum(line['price'] * line['quantity'] for line in lines)
+    promo_discount = _discount_for_promo(cart_total, applied_promo)
+    grand_total = cart_total - promo_discount
+
+    if applied_promo and not promo_error:
+        promo_input_value = applied_promo.code
+
     return {
         'cart_items': display_items,
         'cart_total': cart_total,
-        'online_total': cart_total,
-        'grand_total': cart_total,
-        'form': form,
-        'cart_empty': not cart_items,
+        'online_total': grand_total,
+        'grand_total': grand_total,
         'has_checkout_items': bool(lines),
         'checkout_unavailable_lines': unavailable_lines,
+        'applied_promo': applied_promo,
+        'promo_discount': promo_discount,
+        'promo_error': promo_error,
+        'promo_input_value': promo_input_value,
+        'promo_discount_label': f'Скидка ({applied_promo.code})' if applied_promo else 'Скидка',
+        'checkout_items_source': items_source,
+        'checkout_promo_apply_url': reverse('orders:checkout_promo'),
+    }
+
+
+def _build_checkout_context(
+    request,
+    form,
+    cart_items,
+    saved_addresses,
+    selected_saved_address,
+    items_source,
+    *,
+    promo_input_value='',
+    promo_error='',
+):
+    pricing_context = _build_checkout_pricing_context(
+        request,
+        cart_items,
+        items_source,
+        promo_input_value=promo_input_value,
+        promo_error=promo_error,
+    )
+    checkout_mode = 'buy_now' if items_source == 'buy_now' else ''
+    session_city = _get_session_selected_city(request)
+    return {
+        'form': form,
+        'cart_empty': not cart_items,
         'request_mode': False,
         'saved_addresses': saved_addresses,
         'selected_saved_address_id': selected_saved_address.pk if selected_saved_address else None,
@@ -144,6 +228,7 @@ def _build_checkout_context(request, form, cart_items, saved_addresses, selected
             selected_saved_address=selected_saved_address,
             session_city=session_city,
         ),
+        **pricing_context,
     }
 
 
@@ -318,7 +403,14 @@ def checkout_view(request):
         return render(
             request,
             'orders/checkout.html',
-            _build_checkout_context(request, form, cart_items, saved_addresses, selected_saved_address),
+            _build_checkout_context(
+                request,
+                form,
+                cart_items,
+                saved_addresses,
+                selected_saved_address,
+                items_source,
+            ),
         )
 
     form = CheckoutForm(request.POST, user=request.user)
@@ -330,7 +422,14 @@ def checkout_view(request):
         return render(
             request,
             'orders/checkout.html',
-            _build_checkout_context(request, form, cart_items, saved_addresses, selected_saved_address),
+            _build_checkout_context(
+                request,
+                form,
+                cart_items,
+                saved_addresses,
+                selected_saved_address,
+                items_source,
+            ),
         )
 
     lines, unavailable_lines = _build_checkout_lines(cart_items)
@@ -339,13 +438,37 @@ def checkout_view(request):
         return render(
             request,
             'orders/checkout.html',
-            _build_checkout_context(request, form, cart_items, saved_addresses, selected_saved_address),
+            _build_checkout_context(
+                request,
+                form,
+                cart_items,
+                saved_addresses,
+                selected_saved_address,
+                items_source,
+            ),
         )
 
-    promo = None
-    promo_code = form.cleaned_data.get('promo_code') or ''
-    if promo_code:
-        promo = PromoCode.objects.filter(code__iexact=promo_code, is_active=True).first()
+    promo, invalid_promo_code = _resolve_checkout_promo(request, items_source, clear_invalid=True)
+    if invalid_promo_code:
+        return render(
+            request,
+            'orders/checkout.html',
+            _build_checkout_context(
+                request,
+                form,
+                cart_items,
+                saved_addresses,
+                selected_saved_address,
+                items_source,
+                promo_input_value=invalid_promo_code,
+                promo_error='Промокод больше недействителен. Примените новый код, если он у вас есть.',
+            ),
+        )
+
+    if promo is None:
+        promo_code = (form.cleaned_data.get('promo_code') or '').strip()
+        if promo_code:
+            promo = PromoCode.objects.filter(code__iexact=promo_code, is_active=True).first()
 
     subtotal = sum(line['price'] * line['quantity'] for line in lines)
     promo_discount = _discount_for_promo(subtotal, promo)
@@ -422,6 +545,7 @@ def checkout_view(request):
         clear_buy_now_checkout_items(request)
     else:
         remove_cart_items(request, lines)
+    _set_checkout_promo_code(request, items_source, None)
     if request.user.is_authenticated:
         _sync_profile_from_checkout(request.user, form.cleaned_data)
 
@@ -435,6 +559,52 @@ def checkout_view(request):
     if params:
         success_url = f'{success_url}?{urlencode(params)}'
     return redirect(success_url)
+
+
+@require_POST
+@ratelimit(key='ip', rate='30/m', method='POST')
+def checkout_promo_view(request):
+    items_source = _normalize_checkout_source(request.POST.get('checkout_mode'))
+    if items_source == 'buy_now':
+        cart_items = get_buy_now_checkout_items(request)
+    else:
+        cart_items = get_cart_items(request)
+    saved_addresses = _get_saved_addresses(request.user) if request.user.is_authenticated else []
+    selected_saved_address = _get_selected_saved_address(request, saved_addresses) if request.user.is_authenticated else None
+
+    promo_action = (request.POST.get('promo_action') or 'apply').strip().lower()
+    promo_input_value = (request.POST.get('promo_code_input') or '').strip()
+    promo_error = ''
+
+    if not cart_items:
+        _set_checkout_promo_code(request, items_source, None)
+        promo_error = 'Добавьте товары в корзину, чтобы применить промокод.'
+    elif promo_action == 'remove' or not promo_input_value:
+        _set_checkout_promo_code(request, items_source, None)
+        promo_input_value = ''
+    else:
+        promo = PromoCode.objects.filter(code__iexact=promo_input_value, is_active=True).first()
+        if promo is None:
+            promo_error = 'Промокод не найден или недействителен.'
+        else:
+            _set_checkout_promo_code(request, items_source, promo.code)
+            promo_input_value = promo.code
+
+    if request.headers.get('HX-Request') != 'true':
+        return redirect(_build_checkout_url_for_source(items_source))
+
+    form = CheckoutForm(initial=_get_checkout_initial(request, selected_saved_address), user=request.user)
+    context = _build_checkout_context(
+        request,
+        form,
+        cart_items,
+        saved_addresses,
+        selected_saved_address,
+        items_source,
+        promo_input_value=promo_input_value if promo_error else '',
+        promo_error=promo_error,
+    )
+    return render(request, 'orders/partials/checkout_promo_response.html', context)
 
 
 def request_created_view(request, request_id):

@@ -40,6 +40,7 @@ from config.views import (
     uslugi_view,
 )
 from config.sitemaps import BundleSitemap, ProductSitemap, StaticViewSitemap
+from catalog.views import vr_attractions_yml_feed_view
 
 handler403 = 'config.views.permission_denied_view'
 handler404 = 'config.views.not_found_view'
@@ -47,6 +48,7 @@ handler404 = 'config.views.not_found_view'
 urlpatterns = [
     path('favicon.ico', favicon_view),
     path('robots.txt', robots_txt_view),
+    path('feeds/vr-attractions.yml', vr_attractions_yml_feed_view, name='vr_attractions_yml_feed'),
     path('admin/', admin.site.urls),
     path('arenda/', arenda_view, name='arenda'),
     path('conference-attractions/', conference_attractions_view, name='conference_attractions'),

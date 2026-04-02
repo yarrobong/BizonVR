@@ -10,7 +10,7 @@ from catalog.filter_bootstrap import (
 
 
 class Command(BaseCommand):
-    help = 'Создаёт отсутствующие CategoryFilterConfig/SectionFilterConfig по реально встречающимся характеристикам.'
+    help = 'Создаёт отсутствующие FilterConfig для категории/раздела по реально встречающимся характеристикам.'
 
     def add_arguments(self, parser):
         scope_group = parser.add_mutually_exclusive_group(required=True)

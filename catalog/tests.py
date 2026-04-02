@@ -5,6 +5,7 @@ import re
 import shutil
 import tempfile
 import zipfile
+from xml.etree import ElementTree as ET
 from datetime import timedelta
 from decimal import Decimal
 from io import BytesIO, StringIO
@@ -18,6 +19,7 @@ from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.core.management.base import CommandError
+from django.http import Http404
 from django.test import Client, TestCase, override_settings
 from django.test.client import RequestFactory
 from django.urls import NoReverseMatch, reverse
@@ -31,32 +33,44 @@ from orders.models import Order, OrderItem
 from .cart_services import get_cart_count, get_cart_items, get_favorite_product_ids
 from .characteristic_normalization import normalize_characteristic_value
 from .context_processors import catalog_menu
+from .filter_audit import (
+    build_filter_audit_dashboard_context,
+    get_new_uncovered_sources,
+    get_new_uncovered_values,
+    sync_catalog_filter_audit_snapshots,
+)
 from .filter_bootstrap import build_alias_suggestions
+from .filter_bootstrap import SAFE_AUTO_APPLICABLE
+from .filter_presets import get_typed_value_sort_key
+from .filter_setup_wizard import CatalogFilterSetupWizard
 from .models import (
     CartItem,
     CartShare,
     CallbackRequest,
     CatalogSection,
-    CategoryFilterConfig,
     Category,
     CharacteristicDefinition,
+    CharacteristicSourceAlias,
     CharacteristicValueAlias,
     City,
     ContactRequest,
     Favorite,
+    FilterConfig,
     PickupPoint,
     Product,
     ProductBundle,
     ProductBundleItem,
     ProductCharacteristic,
     ProductContentBlock,
+    ProductImage,
     ProductStock,
     ProductTag,
     ProductVideo,
     ProductVariant,
-    SectionFilterConfig,
     Service,
 )
+from .views import feeds as feed_views
+from .views.feeds import vr_attractions_yml_feed_view
 from .admin.filters import CharacteristicDefinitionAdminForm
 
 User = get_user_model()
@@ -334,6 +348,8 @@ class VariantGalleryAndCatalogCardsTest(TestCase):
         self.assertGreaterEqual(len(links), 2)
 
     def test_variant_card_uses_variant_price_and_public_stock_label(self):
+        self.variant_one.price_on_request_override = Decimal('1100.00')
+        self.variant_one.save(update_fields=['price_on_request_override'])
         ProductStock.objects.create(
             product=self.product,
             variant=self.variant_one,
@@ -346,7 +362,12 @@ class VariantGalleryAndCatalogCardsTest(TestCase):
         self.assertEqual(resp.context['variant_stock_total'].get(self.variant_one.pk), 3)
         self.assertNotIn('variant_stock_in_city', resp.context)
         self.assertContains(resp, '1 200 ₽')
+        self.assertContains(resp, 'В наличии')
         self.assertContains(resp, 'Мало')
+        self.assertContains(resp, 'Доставка за 5 дней')
+        self.assertContains(resp, 'Под заказ —')
+        self.assertContains(resp, '1 100 ₽')
+        self.assertContains(resp, 'Срок поставки: до 35 дней')
         self.assertNotContains(resp, 'В наличии:')
         self.assertNotContains(resp, 'шт. осталось')
 
@@ -360,12 +381,60 @@ class VariantGalleryAndCatalogCardsTest(TestCase):
 
         resp = self.client.get(reverse('catalog:product_list'), {'category': self.category.slug})
         self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'В наличии')
         self.assertContains(resp, 'Много')
 
     def test_variant_card_shows_on_request_without_stock(self):
+        self.variant_one.price_on_request_override = Decimal('1100.00')
+        self.variant_one.save(update_fields=['price_on_request_override'])
         resp = self.client.get(reverse('catalog:product_list'), {'category': self.category.slug})
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, 'Под заказ')
+        self.assertContains(resp, '1 100 ₽')
+        self.assertContains(resp, 'Срок поставки: до 35 дней')
+        self.assertNotContains(resp, '1 200 ₽')
+
+    def test_product_detail_shows_in_stock_and_on_request_delivery_terms(self):
+        self.variant_one.price_on_request_override = Decimal('1100.00')
+        self.variant_one.save(update_fields=['price_on_request_override'])
+        ProductStock.objects.create(
+            product=self.product,
+            variant=self.variant_one,
+            pickup_point=self.pickup_point,
+            quantity=3,
+        )
+
+        resp = self.client.get(
+            reverse('catalog:product_detail', kwargs={'slug': self.product.slug}),
+            {'variant': self.variant_one.pk},
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        data = self._extract_product_detail_data(resp)
+        self.assertContains(resp, 'В наличии')
+        self.assertContains(resp, 'Мало')
+        self.assertContains(resp, 'Доставка за 5 дней')
+        self.assertContains(resp, 'Под заказ')
+        self.assertContains(resp, 'Срок поставки: до 35 дней')
+        variant_payload = next(item for item in data['variants'] if item['id'] == self.variant_one.pk)
+        self.assertEqual(variant_payload['onRequestPrice'], 1100.0)
+
+    def test_product_detail_shows_only_on_request_price_when_out_of_stock(self):
+        self.variant_one.price_on_request_override = Decimal('1100.00')
+        self.variant_one.save(update_fields=['price_on_request_override'])
+
+        resp = self.client.get(
+            reverse('catalog:product_detail', kwargs={'slug': self.product.slug}),
+            {'variant': self.variant_one.pk},
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        data = self._extract_product_detail_data(resp)
+        self.assertContains(resp, 'Под заказ')
+        self.assertContains(resp, 'Срок поставки: до 35 дней')
+        variant_payload = next(item for item in data['variants'] if item['id'] == self.variant_one.pk)
+        self.assertEqual(variant_payload['onRequestPrice'], 1100.0)
+        self.assertEqual(variant_payload['inStockPrice'], 1200.0)
 
     def test_product_detail_data_uses_total_stock_only(self):
         ProductStock.objects.create(
@@ -817,6 +886,37 @@ class CatalogManagedFiltersTest(TestCase):
         )
         return memory, color, warranty
 
+    def test_managed_filters_use_source_aliases_and_legacy_raw_source_params_still_work(self):
+        memory, _, _ = self._create_managed_definitions()
+        CharacteristicSourceAlias.objects.create(
+            characteristic_definition=memory,
+            raw_source_name='Объем памяти',
+        )
+        ProductCharacteristic.objects.filter(product=self.black_128, name='Память').delete()
+        ProductCharacteristic.objects.create(product=self.black_128, name='Объем памяти', value='128Gb')
+        FilterConfig.objects.create(
+            category=self.category,
+            characteristic_definition=memory,
+            is_visible=True,
+            is_quick_filter=True,
+            sort_order=10,
+            hide_single_value=False,
+        )
+
+        resp = self.client.get(reverse('catalog:product_list'), {'category': self.category.slug})
+        self.assertEqual(resp.status_code, 200)
+        memory_group = resp.context['characteristic_filters'][0]
+        option_counts = {option['label']: option['count'] for option in memory_group['options']}
+        self.assertEqual(option_counts['128 ГБ'], 2)
+
+        legacy_resp = self.client.get(
+            reverse('catalog:product_list'),
+            {'category': self.category.slug, 'char_Объем памяти': '128Gb'},
+        )
+        self.assertEqual(legacy_resp.status_code, 200)
+        legacy_slugs = {product.slug for product in legacy_resp.context['products']}
+        self.assertEqual(legacy_slugs, {self.white_128.slug, self.black_128.slug})
+
     def test_legacy_fallback_keeps_auto_filters_and_raw_char_filter(self):
         resp = self.client.get(
             reverse('catalog:product_list'),
@@ -831,21 +931,21 @@ class CatalogManagedFiltersTest(TestCase):
 
     def test_managed_category_filters_use_config_order_and_quick_flags(self):
         memory, color, warranty = self._create_managed_definitions()
-        CategoryFilterConfig.objects.create(
+        FilterConfig.objects.create(
             category=self.category,
             characteristic_definition=memory,
             is_visible=True,
             is_quick_filter=True,
             sort_order=20,
         )
-        CategoryFilterConfig.objects.create(
+        FilterConfig.objects.create(
             category=self.category,
             characteristic_definition=color,
             is_visible=True,
             is_quick_filter=False,
             sort_order=10,
         )
-        CategoryFilterConfig.objects.create(
+        FilterConfig.objects.create(
             category=self.category,
             characteristic_definition=warranty,
             is_visible=True,
@@ -864,7 +964,7 @@ class CatalogManagedFiltersTest(TestCase):
 
     def test_managed_filters_normalize_values_and_merge_counts(self):
         memory, _, _ = self._create_managed_definitions()
-        CategoryFilterConfig.objects.create(
+        FilterConfig.objects.create(
             category=self.category,
             characteristic_definition=memory,
             is_visible=True,
@@ -882,14 +982,14 @@ class CatalogManagedFiltersTest(TestCase):
 
     def test_managed_filters_hide_single_value_only_when_flag_enabled(self):
         memory, _, warranty = self._create_managed_definitions()
-        CategoryFilterConfig.objects.create(
+        FilterConfig.objects.create(
             category=self.category,
             characteristic_definition=memory,
             is_visible=True,
             sort_order=5,
             hide_single_value=False,
         )
-        CategoryFilterConfig.objects.create(
+        FilterConfig.objects.create(
             category=self.category,
             characteristic_definition=warranty,
             is_visible=True,
@@ -901,8 +1001,8 @@ class CatalogManagedFiltersTest(TestCase):
         self.assertEqual(hidden_resp.context['filter_mode'], 'category')
         self.assertEqual([item['label'] for item in hidden_resp.context['characteristic_filters']], ['Память'])
 
-        CategoryFilterConfig.objects.filter(category=self.category).delete()
-        CategoryFilterConfig.objects.create(
+        FilterConfig.objects.filter(category=self.category).delete()
+        FilterConfig.objects.create(
             category=self.category,
             characteristic_definition=warranty,
             is_visible=True,
@@ -916,7 +1016,7 @@ class CatalogManagedFiltersTest(TestCase):
 
     def test_section_config_used_for_section_page_and_category_config_overrides_it(self):
         memory, color, _ = self._create_managed_definitions()
-        SectionFilterConfig.objects.create(
+        FilterConfig.objects.create(
             section=self.section,
             characteristic_definition=color,
             is_visible=True,
@@ -928,7 +1028,7 @@ class CatalogManagedFiltersTest(TestCase):
         self.assertEqual(section_resp.context['filter_mode'], 'section')
         self.assertEqual([item['label'] for item in section_resp.context['characteristic_filters']], ['Цвет'])
 
-        CategoryFilterConfig.objects.create(
+        FilterConfig.objects.create(
             category=self.category,
             characteristic_definition=memory,
             is_visible=True,
@@ -943,7 +1043,7 @@ class CatalogManagedFiltersTest(TestCase):
 
     def test_existing_raw_param_and_canonical_param_both_work_and_code_wins(self):
         memory, _, _ = self._create_managed_definitions()
-        CategoryFilterConfig.objects.create(
+        FilterConfig.objects.create(
             category=self.category,
             characteristic_definition=memory,
             is_visible=True,
@@ -977,7 +1077,7 @@ class CatalogManagedFiltersTest(TestCase):
 
     def test_tag_links_preserve_active_characteristic_params(self):
         memory, _, _ = self._create_managed_definitions()
-        CategoryFilterConfig.objects.create(
+        FilterConfig.objects.create(
             category=self.category,
             characteristic_definition=memory,
             is_visible=True,
@@ -1004,7 +1104,7 @@ class CatalogManagedFiltersTest(TestCase):
             is_filterable=True,
             is_active=True,
         )
-        CategoryFilterConfig.objects.create(
+        FilterConfig.objects.create(
             category=self.category,
             characteristic_definition=ghost,
             is_visible=True,
@@ -1015,6 +1115,269 @@ class CatalogManagedFiltersTest(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.context['filter_mode'], 'legacy')
         self.assertEqual([item['label'] for item in resp.context['characteristic_filters']], ['Память', 'Цвет'])
+
+    def test_managed_filters_sort_numeric_values_by_preset_and_global_fallback(self):
+        memory = CharacteristicDefinition.objects.create(
+            code='memory',
+            name='Память',
+            source_name='Память',
+            sorting_mode='numeric_unit',
+            sort_order=10,
+            is_filterable=True,
+            is_active=True,
+        )
+        series = CharacteristicDefinition.objects.create(
+            code='series',
+            name='Поколение',
+            source_name='Поколение',
+            sorting_mode='numeric_unit',
+            sort_order=20,
+            is_filterable=True,
+            is_active=True,
+        )
+        product_64 = Product.objects.create(
+            category=self.category,
+            name='Quest 3 64 White',
+            slug='quest-3-64-white',
+            price=95,
+            is_active=True,
+        )
+        ProductCharacteristic.objects.create(product=product_64, name='Память', value='64 GB')
+        ProductCharacteristic.objects.create(product=self.white_128, name='Поколение', value='2')
+        ProductCharacteristic.objects.create(product=self.black_128, name='Поколение', value='10')
+        ProductCharacteristic.objects.create(product=self.black_256, name='Поколение', value='3')
+        for raw_value, normalized_value, display_value in (
+            ('64 GB', '64 gb', '64 ГБ'),
+            ('128 GB', '128 gb', '128 ГБ'),
+            ('128Gb', '128 gb', '128 ГБ'),
+            ('256 ГБ', '256 gb', '256 ГБ'),
+        ):
+            CharacteristicValueAlias.objects.create(
+                characteristic_definition=memory,
+                raw_value=raw_value,
+                normalized_value=normalized_value,
+                display_value=display_value,
+            )
+        FilterConfig.objects.create(
+            category=self.category,
+            characteristic_definition=memory,
+            is_visible=True,
+            sort_order=10,
+            hide_single_value=False,
+        )
+        FilterConfig.objects.create(
+            category=self.category,
+            characteristic_definition=series,
+            is_visible=True,
+            sort_order=20,
+            hide_single_value=False,
+        )
+
+        response = self.client.get(reverse('catalog:product_list'), {'category': self.category.slug})
+        self.assertEqual(response.status_code, 200)
+        groups = {group['label']: group for group in response.context['characteristic_filters']}
+        self.assertEqual(
+            [option['label'] for option in groups['Память']['options']],
+            ['64 ГБ', '128 ГБ', '256 ГБ'],
+        )
+        self.assertEqual(
+            [option['label'] for option in groups['Поколение']['options']],
+            ['2', '3', '10'],
+        )
+
+
+@override_settings(
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    }
+)
+class CatalogFilterAuditTest(TestCase):
+    def setUp(self):
+        self.now = timezone.now()
+        self.old = self.now - timedelta(days=10)
+
+        self.managed_section = CatalogSection.objects.create(name='Managed', slug='audit-managed')
+        self.legacy_section = CatalogSection.objects.create(name='Legacy', slug='audit-legacy')
+        self.weak_section = CatalogSection.objects.create(name='Weak', slug='audit-weak')
+
+        self.managed_category = Category.objects.create(
+            name='Managed category',
+            slug='audit-managed-category',
+            section=self.managed_section,
+        )
+        self.legacy_category = Category.objects.create(
+            name='Legacy category',
+            slug='audit-legacy-category',
+            section=self.legacy_section,
+        )
+        self.weak_category = Category.objects.create(
+            name='Weak category',
+            slug='audit-weak-category',
+            section=self.weak_section,
+        )
+
+        self.memory = CharacteristicDefinition.objects.create(
+            code='memory',
+            name='Память',
+            source_name='Память',
+            is_filterable=True,
+            is_active=True,
+        )
+        self.color = CharacteristicDefinition.objects.create(
+            code='color',
+            name='Цвет',
+            source_name='Цвет',
+            is_filterable=True,
+            is_active=False,
+        )
+        self.ghost = CharacteristicDefinition.objects.create(
+            code='ghost',
+            name='Призрак',
+            source_name='Несуществующая характеристика',
+            is_filterable=True,
+            is_active=True,
+        )
+        CharacteristicValueAlias.objects.create(
+            characteristic_definition=self.memory,
+            raw_value='128 GB',
+            normalized_value='128 gb',
+            display_value='128 ГБ',
+            is_active=True,
+        )
+
+        self.managed_recent = Product.objects.create(
+            category=self.managed_category,
+            name='Managed recent',
+            slug='audit-managed-recent',
+            price=100,
+            is_active=True,
+        )
+        ProductCharacteristic.objects.create(product=self.managed_recent, name='Память', value='256 GB')
+        ProductCharacteristic.objects.create(product=self.managed_recent, name='Цвет', value='Черный')
+
+        self.managed_old_covered = Product.objects.create(
+            category=self.managed_category,
+            name='Managed old covered',
+            slug='audit-managed-old-covered',
+            price=110,
+            is_active=True,
+        )
+        ProductCharacteristic.objects.create(product=self.managed_old_covered, name='Память', value='128 GB')
+
+        self.managed_old_uncovered = Product.objects.create(
+            category=self.managed_category,
+            name='Managed old uncovered',
+            slug='audit-managed-old-uncovered',
+            price=120,
+            is_active=True,
+        )
+        ProductCharacteristic.objects.create(product=self.managed_old_uncovered, name='Память', value='512 GB')
+
+        self.legacy_recent = Product.objects.create(
+            category=self.legacy_category,
+            name='Legacy recent',
+            slug='audit-legacy-recent',
+            price=130,
+            is_active=True,
+        )
+        ProductCharacteristic.objects.create(product=self.legacy_recent, name='Материал', value='Пластик')
+
+        self.legacy_old = Product.objects.create(
+            category=self.legacy_category,
+            name='Legacy old',
+            slug='audit-legacy-old',
+            price=140,
+            is_active=True,
+        )
+        ProductCharacteristic.objects.create(product=self.legacy_old, name='Форм-фактор', value='Standalone')
+
+        self.weak_product = Product.objects.create(
+            category=self.weak_category,
+            name='Weak product',
+            slug='audit-weak-product',
+            price=150,
+            is_active=True,
+        )
+        ProductCharacteristic.objects.create(product=self.weak_product, name='Цвет', value='Белый')
+
+        Product.objects.filter(pk=self.managed_recent.pk).update(updated_at=self.now, created_at=self.now)
+        Product.objects.filter(pk=self.legacy_recent.pk).update(updated_at=self.now, created_at=self.now)
+        Product.objects.filter(pk=self.weak_product.pk).update(updated_at=self.now, created_at=self.now)
+        Product.objects.filter(pk=self.managed_old_covered.pk).update(updated_at=self.old, created_at=self.old)
+        Product.objects.filter(pk=self.managed_old_uncovered.pk).update(updated_at=self.old, created_at=self.old)
+        Product.objects.filter(pk=self.legacy_old.pk).update(updated_at=self.old, created_at=self.old)
+
+        FilterConfig.objects.create(
+            category=self.managed_category,
+            characteristic_definition=self.memory,
+            is_visible=True,
+            is_quick_filter=False,
+            hide_single_value=False,
+        )
+        FilterConfig.objects.create(
+            section=self.weak_section,
+            characteristic_definition=self.ghost,
+            is_visible=True,
+            is_quick_filter=False,
+            hide_single_value=False,
+        )
+
+    def test_build_filter_audit_dashboard_context_uses_live_queries(self):
+        context = build_filter_audit_dashboard_context(days=7)
+
+        self.assertTrue(context['is_live_audit'])
+        self.assertFalse(context['supports_historical_snapshots'])
+
+        uncovered_sources = {row['name']: row['product_count'] for row in context['uncovered_source_names']}
+        self.assertEqual(uncovered_sources, {'Материал': 1, 'Форм-фактор': 1})
+
+        uncovered_values = {
+            (row['definition'].code, row['raw_value']): row['product_count']
+            for row in context['uncovered_raw_values']
+        }
+        self.assertEqual(uncovered_values, {('memory', '256 GB'): 1, ('memory', '512 GB'): 1})
+
+        self.assertEqual(
+            [item.slug for item in context['legacy_categories']],
+            [self.legacy_category.slug, self.weak_category.slug],
+        )
+        self.assertEqual([item.slug for item in context['legacy_sections']], [self.legacy_section.slug])
+        self.assertEqual(
+            [item.slug for item in context['managed_categories_without_quick_filters']],
+            [self.managed_category.slug],
+        )
+        self.assertEqual(
+            [item.slug for item in context['weak_managed_sections']],
+            [self.weak_section.slug],
+        )
+        self.assertEqual(context['weak_managed_categories'], [])
+
+        disabled = {
+            item['definition'].code: item['product_count']
+            for item in context['disabled_definitions_with_raw_data']
+        }
+        self.assertEqual(disabled, {'color': 2})
+
+    def test_recent_live_audit_helpers_filter_by_recently_updated_products(self):
+        recent_sources = {
+            item['raw_source_name']: item['recent_product_count']
+            for item in get_new_uncovered_sources(days=7)
+        }
+        self.assertEqual(recent_sources, {'Материал': 1})
+
+        recent_values, uncovered_pairs = get_new_uncovered_values(days=7)
+        self.assertEqual(uncovered_pairs, {('Память', '256 GB'), ('Память', '512 GB')})
+        self.assertEqual(
+            {(item['raw_source_name'], item['raw_value']): item['recent_product_count'] for item in recent_values},
+            {('Память', '256 GB'): 1},
+        )
+
+    def test_sync_catalog_filter_audit_snapshots_returns_live_stats(self):
+        stats = sync_catalog_filter_audit_snapshots()
+        self.assertEqual(stats['mode'], 'live')
+        self.assertEqual(stats['uncovered_source_count'], 2)
+        self.assertEqual(stats['uncovered_value_count'], 2)
 
 
 @override_settings(
@@ -1088,6 +1451,17 @@ class CatalogFilterAutomationTest(TestCase):
         call_command('bootstrap_characteristic_definitions', '--apply')
         self.assertEqual(CharacteristicDefinition.objects.count(), 2)
 
+    def test_bootstrap_definitions_skips_source_name_already_covered_by_source_alias(self):
+        definition = CharacteristicDefinition.objects.create(code='memory', name='Память', source_name='Память')
+        CharacteristicSourceAlias.objects.create(
+            characteristic_definition=definition,
+            raw_source_name='Встроенная память',
+        )
+        ProductCharacteristic.objects.create(product=self.product_a, name='Встроенная память', value='128 GB')
+
+        call_command('bootstrap_characteristic_definitions', '--apply')
+        self.assertEqual(CharacteristicDefinition.objects.filter(source_name='Встроенная память').count(), 0)
+
     def test_source_name_admin_form_uses_distinct_choices_and_allows_current_value(self):
         blank_form = CharacteristicDefinitionAdminForm()
         blank_choices = {value for value, _ in blank_form.fields['source_name'].choices}
@@ -1132,6 +1506,7 @@ class CatalogFilterAutomationTest(TestCase):
         grouped = {item['normalized_key']: item for item in suggestions}
         self.assertEqual(grouped['128 gb']['product_count'], 2)
         self.assertEqual(grouped['128 gb']['suggested_display'], '128 ГБ')
+        self.assertEqual(grouped['128 gb']['status'], SAFE_AUTO_APPLICABLE)
 
     def test_alias_helper_page_creates_missing_aliases_without_duplicates(self):
         definition = CharacteristicDefinition.objects.create(
@@ -1168,6 +1543,58 @@ class CatalogFilterAutomationTest(TestCase):
             },
         )
         self.assertEqual(CharacteristicValueAlias.objects.filter(characteristic_definition=definition).count(), 2)
+
+    def test_safe_auto_apply_command_creates_only_safe_groups(self):
+        definition = CharacteristicDefinition.objects.create(
+            code='memory',
+            name='Память',
+            source_name='Память',
+        )
+        CharacteristicValueAlias.objects.create(
+            characteristic_definition=definition,
+            raw_value='256 ГБ',
+            normalized_value='manual-256',
+            display_value='256 ГБ',
+        )
+        stdout = StringIO()
+        call_command(
+            'suggest_characteristic_aliases',
+            '--definition',
+            definition.code,
+            '--auto-apply-safe',
+            stdout=stdout,
+        )
+        self.assertEqual(
+            CharacteristicValueAlias.objects.filter(characteristic_definition=definition, raw_value__in=['128 GB', '128Gb']).count(),
+            2,
+        )
+        self.assertEqual(
+            CharacteristicValueAlias.objects.filter(characteristic_definition=definition, raw_value='256 ГБ').count(),
+            1,
+        )
+        self.assertIn('Safe auto-apply', stdout.getvalue())
+
+    def test_source_alias_helper_page_creates_source_aliases(self):
+        definition = CharacteristicDefinition.objects.create(
+            code='memory',
+            name='Память',
+            source_name='Память',
+        )
+        ProductCharacteristic.objects.create(product=self.product_a, name='Объем памяти', value='128 GB')
+        self.client.force_login(self.admin_user)
+        url = reverse('admin:catalog_characteristicdefinition_source_alias_suggestions', args=[definition.pk])
+
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Объем памяти')
+
+        self.client.post(url, data={'selected_source_names': ['Объем памяти']}, follow=True)
+        self.assertTrue(
+            CharacteristicSourceAlias.objects.filter(
+                characteristic_definition=definition,
+                raw_source_name='Объем памяти',
+            ).exists()
+        )
 
     def test_definition_admin_action_redirects_to_alias_helper_for_single_selection(self):
         definition = CharacteristicDefinition.objects.create(
@@ -1226,9 +1653,9 @@ class CatalogFilterAutomationTest(TestCase):
         self.assertIn('would_create: color / Цвет', preview_output.getvalue())
 
         call_command('bootstrap_catalog_filter_configs', '--category', self.category.slug, '--apply')
-        self.assertEqual(CategoryFilterConfig.objects.filter(category=self.category).count(), 2)
-        memory_config = CategoryFilterConfig.objects.get(category=self.category, characteristic_definition=memory)
-        color_config = CategoryFilterConfig.objects.get(category=self.category, characteristic_definition=color)
+        self.assertEqual(FilterConfig.objects.filter(category=self.category).count(), 2)
+        memory_config = FilterConfig.objects.get(category=self.category, characteristic_definition=memory)
+        color_config = FilterConfig.objects.get(category=self.category, characteristic_definition=color)
         self.assertEqual(memory_config.sort_order, 20)
         self.assertTrue(memory_config.hide_single_value)
         self.assertTrue(memory_config.is_visible)
@@ -1236,7 +1663,7 @@ class CatalogFilterAutomationTest(TestCase):
         self.assertFalse(color_config.is_visible)
 
         call_command('bootstrap_catalog_filter_configs', '--category', self.category.slug, '--apply')
-        self.assertEqual(CategoryFilterConfig.objects.filter(category=self.category).count(), 2)
+        self.assertEqual(FilterConfig.objects.filter(category=self.category).count(), 2)
 
     def test_bootstrap_catalog_filter_configs_command_creates_section_configs(self):
         CharacteristicDefinition.objects.create(
@@ -1265,7 +1692,7 @@ class CatalogFilterAutomationTest(TestCase):
         )
         self.assertIn('would_create: memory / Память', preview_output.getvalue())
         call_command('bootstrap_catalog_filter_configs', '--section', self.section.slug, '--apply')
-        self.assertEqual(SectionFilterConfig.objects.filter(section=self.section).count(), 2)
+        self.assertEqual(FilterConfig.objects.filter(section=self.section).count(), 2)
 
     def test_category_and_section_admin_actions_create_configs(self):
         CharacteristicDefinition.objects.create(
@@ -1289,24 +1716,124 @@ class CatalogFilterAutomationTest(TestCase):
         category_response = self.client.post(
             reverse('admin:catalog_category_changelist'),
             {
-                'action': 'bootstrap_filter_configs',
+                'action': 'bootstrap_filter_configs_action',
                 '_selected_action': [self.category.pk],
             },
             follow=True,
         )
         self.assertEqual(category_response.status_code, 200)
-        self.assertEqual(CategoryFilterConfig.objects.filter(category=self.category).count(), 2)
+        self.assertEqual(FilterConfig.objects.filter(category=self.category).count(), 2)
 
         section_response = self.client.post(
             reverse('admin:catalog_catalogsection_changelist'),
             {
-                'action': 'bootstrap_filter_configs',
+                'action': 'bootstrap_filter_configs_action',
                 '_selected_action': [self.section.pk],
             },
             follow=True,
         )
         self.assertEqual(section_response.status_code, 200)
-        self.assertEqual(SectionFilterConfig.objects.filter(section=self.section).count(), 2)
+        self.assertEqual(FilterConfig.objects.filter(section=self.section).count(), 2)
+
+    def test_filter_setup_wizard_preview_splits_missing_definitions_aliases_and_quick_filters(self):
+        memory = CharacteristicDefinition.objects.create(
+            code='memory',
+            name='Память',
+            source_name='Память',
+            is_filterable=True,
+            is_active=True,
+        )
+        ProductCharacteristic.objects.create(product=self.product_c, name='Объем памяти', value='256 ГБ')
+        ProductCharacteristic.objects.create(product=self.product_a, name='Частота обновления', value='90 Гц')
+        ProductCharacteristic.objects.create(product=self.product_b, name='Частота обновления', value='120 Гц')
+        ProductCharacteristic.objects.create(product=self.product_c, name='Частота обновления', value='120 Гц')
+
+        wizard = CatalogFilterSetupWizard('category', self.category)
+        preview = wizard.build_preview()
+
+        self.assertEqual([item['source_name'] for item in preview['missing_definitions']], ['Частота обновления'])
+        self.assertEqual(len(preview['source_alias_suggestions']), 1)
+        self.assertEqual(preview['source_alias_suggestions'][0]['definition'], memory)
+        self.assertEqual(
+            [item['raw_source_name'] for item in preview['source_alias_suggestions'][0]['items']],
+            ['Объем памяти'],
+        )
+        self.assertEqual(len(preview['safe_value_alias_suggestions']), 1)
+        self.assertEqual(
+            [item['normalized_key'] for item in preview['safe_value_alias_suggestions'][0]['items']],
+            ['128 gb', '256 gb'],
+        )
+        self.assertEqual(
+            [item['definition'].code for item in preview['missing_configs']],
+            ['memory'],
+        )
+        self.assertEqual(
+            [item['definition'].code for item in preview['quick_filter_recommendations']],
+            ['memory'],
+        )
+
+    def test_category_filter_setup_wizard_admin_page_applies_selected_steps(self):
+        memory = CharacteristicDefinition.objects.create(
+            code='memory',
+            name='Память',
+            source_name='Память',
+            is_filterable=True,
+            is_active=True,
+        )
+        ProductCharacteristic.objects.create(product=self.product_c, name='Объем памяти', value='256 ГБ')
+        ProductCharacteristic.objects.create(product=self.product_a, name='Частота обновления', value='90 Гц')
+        ProductCharacteristic.objects.create(product=self.product_b, name='Частота обновления', value='120 Гц')
+        ProductCharacteristic.objects.create(product=self.product_c, name='Частота обновления', value='120 Гц')
+
+        self.client.force_login(self.admin_user)
+        url = reverse('admin:catalog_category_filter_setup_wizard', args=[self.category.pk])
+
+        get_response = self.client.get(url)
+        self.assertEqual(get_response.status_code, 200)
+        self.assertContains(get_response, 'Объем памяти')
+        self.assertContains(get_response, 'Частота обновления')
+
+        post_response = self.client.post(
+            url,
+            data={
+                'missing_definitions': ['Частота обновления'],
+                'source_aliases': [f'{memory.pk}::Объем памяти'],
+                'value_aliases': [f'{memory.pk}::128 gb', f'{memory.pk}::256 gb'],
+                'apply_missing_configs': '1',
+                'quick_filters': [str(memory.pk)],
+            },
+            follow=True,
+        )
+        self.assertEqual(post_response.status_code, 200)
+        self.assertTrue(
+            CharacteristicDefinition.objects.filter(source_name='Частота обновления').exists()
+        )
+        self.assertTrue(
+            CharacteristicSourceAlias.objects.filter(
+                characteristic_definition=memory,
+                raw_source_name='Объем памяти',
+            ).exists()
+        )
+        self.assertEqual(
+            CharacteristicValueAlias.objects.filter(
+                characteristic_definition=memory,
+                raw_value__in=['128 GB', '128Gb', '256 ГБ'],
+            ).count(),
+            3,
+        )
+        self.assertEqual(FilterConfig.objects.filter(category=self.category).count(), 2)
+        self.assertTrue(
+            FilterConfig.objects.get(category=self.category, characteristic_definition=memory).is_quick_filter
+        )
+
+    def test_category_change_form_contains_filter_setup_wizard_link(self):
+        self.client.force_login(self.admin_user)
+        response = self.client.get(reverse('admin:catalog_category_change', args=[self.category.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            reverse('admin:catalog_category_filter_setup_wizard', args=[self.category.pk]),
+        )
 
     def test_suggest_characteristic_aliases_command_outputs_json(self):
         definition = CharacteristicDefinition.objects.create(
@@ -1324,6 +1851,19 @@ class CatalogFilterAutomationTest(TestCase):
             stdout=stdout,
         )
         self.assertIn('"normalized_key": "128 gb"', stdout.getvalue())
+
+    def test_typed_sort_key_supports_screen_size_and_boolean(self):
+        screen_values = sorted(
+            ['15.6"', '13"', '14"'],
+            key=lambda value: get_typed_value_sort_key(value, sorting_mode='screen_size'),
+        )
+        boolean_values = sorted(
+            ['Нет', 'Да'],
+            key=lambda value: get_typed_value_sort_key(value, sorting_mode='boolean'),
+        )
+
+        self.assertEqual(screen_values, ['13"', '14"', '15.6"'])
+        self.assertEqual(boolean_values, ['Да', 'Нет'])
 
 
 class HomeFeaturedProductsTest(TestCase):
@@ -2331,6 +2871,392 @@ class FooterProductsFeedTest(TestCase):
         html = resp.content.decode()
         self.assertIn('Показать все товары', html)
         self.assertNotIn('page=9', html)
+
+
+class VrAttractionsYmlFeedTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.section, _ = CatalogSection.objects.get_or_create(
+            slug='vr-attrakciony',
+            defaults={'name': 'VR-аттракционы', 'order': 1},
+        )
+        self.other_section, _ = CatalogSection.objects.get_or_create(
+            slug='vr-oborudovanie',
+            defaults={'name': 'VR-оборудование', 'order': 2},
+        )
+        self.category = Category.objects.create(name='Стационарные', slug='stationary-attractions', section=self.section)
+        self.variant_category = Category.objects.create(name='Симуляторы', slug='simulators', section=self.section)
+        self.other_category = Category.objects.create(name='Шлемы', slug='headsets', section=self.other_section)
+        self.city = City.objects.create(name='Москва', slug='moscow-feed')
+        self.pickup_point = PickupPoint.objects.create(city=self.city, name='Склад', address='Тестовая улица, 1')
+
+        self.single_product = Product.objects.create(
+            category=self.category,
+            name='VR-аттракцион Solo',
+            slug='vr-attraction-solo',
+            description='Одиночный аттракцион для парков.',
+            price=Decimal('100000.00'),
+            is_active=True,
+            allow_order_on_request=False,
+        )
+        ProductStock.objects.create(
+            product=self.single_product,
+            pickup_point=self.pickup_point,
+            quantity=3,
+        )
+
+        self.on_request_with_special_price = Product.objects.create(
+            category=self.category,
+            name='VR-аттракцион Special Order',
+            slug='vr-attraction-special-order',
+            description='Под заказ со спецценой.',
+            price=Decimal('210000.00'),
+            price_on_request=Decimal('199000.00'),
+            is_active=True,
+            allow_order_on_request=True,
+        )
+
+        self.on_request_without_special_price = Product.objects.create(
+            category=self.category,
+            name='VR-аттракцион Standard Order',
+            slug='vr-attraction-standard-order',
+            description='Под заказ по обычной цене.',
+            price=Decimal('155000.00'),
+            is_active=True,
+            allow_order_on_request=True,
+        )
+
+        self.variant_product = Product.objects.create(
+            category=self.variant_category,
+            name='VR-симулятор Drift',
+            slug='vr-simulator-drift',
+            description='Симулятор гонок с вариантами комплектации.',
+            price=Decimal('300000.00'),
+            is_active=True,
+            allow_order_on_request=True,
+        )
+        self.variant_stock = ProductVariant.objects.create(
+            product=self.variant_product,
+            name='Стандарт',
+            sku='drift-std',
+            price_override=Decimal('320000.00'),
+            order=0,
+        )
+        self.variant_on_request = ProductVariant.objects.create(
+            product=self.variant_product,
+            name='Премиум',
+            sku='drift-premium',
+            price_override=Decimal('350000.00'),
+            price_on_request_override=Decimal('340000.00'),
+            order=1,
+        )
+        ProductStock.objects.create(
+            product=self.variant_product,
+            variant=self.variant_stock,
+            pickup_point=self.pickup_point,
+            quantity=2,
+        )
+
+        self.other_section_product = Product.objects.create(
+            category=self.other_category,
+            name='Quest 3',
+            slug='quest-3-feed-excluded',
+            description='Товар другого раздела.',
+            price=Decimal('50000.00'),
+            is_active=True,
+        )
+        ProductStock.objects.create(
+            product=self.other_section_product,
+            pickup_point=self.pickup_point,
+            quantity=5,
+        )
+
+        self.unavailable_product = Product.objects.create(
+            category=self.category,
+            name='Недоступный аттракцион',
+            slug='unavailable-attraction',
+            description='Без остатка и без заказа под заказ.',
+            price=Decimal('88000.00'),
+            is_active=True,
+            allow_order_on_request=False,
+        )
+
+        self.inactive_product = Product.objects.create(
+            category=self.category,
+            name='Неактивный аттракцион',
+            slug='inactive-attraction',
+            description='Не должен попасть в фид.',
+            price=Decimal('93000.00'),
+            is_active=False,
+            allow_order_on_request=True,
+        )
+
+    def _get_feed_response(self):
+        return self.client.get(reverse('vr_attractions_yml_feed'))
+
+    def _parse_feed(self):
+        response = self._get_feed_response()
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('application/xml', response['Content-Type'])
+        return response, ET.fromstring(response.content)
+
+    def _offers_by_id(self, xml_root):
+        offers = {}
+        for offer in xml_root.findall('./shop/offers/offer'):
+            offers[offer.attrib['id']] = {
+                'available': offer.attrib.get('available'),
+                'url': (offer.findtext('url') or '').strip(),
+                'price': (offer.findtext('price') or '').strip(),
+                'categoryId': (offer.findtext('categoryId') or '').strip(),
+                'name': (offer.findtext('name') or '').strip(),
+                'description': (offer.findtext('description') or '').strip(),
+            }
+        return offers
+
+    def test_feed_returns_valid_xml_with_only_vr_attractions_products(self):
+        response, xml_root = self._parse_feed()
+
+        self.assertEqual(xml_root.tag, 'yml_catalog')
+        self.assertIn('date', xml_root.attrib)
+        self.assertEqual(response.status_code, 200)
+
+        offers = self._offers_by_id(xml_root)
+        self.assertIn(f'product-{self.single_product.pk}', offers)
+        self.assertNotIn(f'product-{self.other_section_product.pk}', offers)
+        self.assertNotIn(f'product-{self.unavailable_product.pk}', offers)
+        self.assertNotIn(f'product-{self.inactive_product.pk}', offers)
+
+        category_ids = {
+            category.attrib['id']
+            for category in xml_root.findall('./shop/categories/category')
+        }
+        self.assertEqual(category_ids, {str(self.category.pk), str(self.variant_category.pk)})
+
+    def test_feed_uses_absolute_product_urls(self):
+        _, xml_root = self._parse_feed()
+
+        offers = self._offers_by_id(xml_root)
+        offer = offers[f'product-{self.single_product.pk}']
+        self.assertEqual(
+            offer['url'],
+            f'http://testserver{self.single_product.get_absolute_url()}',
+        )
+
+    def test_feed_builds_separate_variant_offers_with_correct_names_and_prices(self):
+        _, xml_root = self._parse_feed()
+
+        offers = self._offers_by_id(xml_root)
+        stock_offer = offers[f'product-{self.variant_product.pk}-variant-{self.variant_stock.pk}']
+        on_request_offer = offers[f'product-{self.variant_product.pk}-variant-{self.variant_on_request.pk}']
+
+        self.assertEqual(stock_offer['name'], 'VR-симулятор Drift - Стандарт')
+        self.assertEqual(stock_offer['price'], '320000.00')
+        self.assertEqual(stock_offer['available'], 'true')
+
+        self.assertEqual(on_request_offer['name'], 'VR-симулятор Drift - Премиум')
+        self.assertEqual(on_request_offer['price'], '340000.00')
+        self.assertEqual(on_request_offer['available'], 'true')
+
+    def test_feed_keeps_on_request_products_and_uses_checkout_price_rules(self):
+        _, xml_root = self._parse_feed()
+
+        offers = self._offers_by_id(xml_root)
+        special_price_offer = offers[f'product-{self.on_request_with_special_price.pk}']
+        regular_price_offer = offers[f'product-{self.on_request_without_special_price.pk}']
+
+        self.assertEqual(special_price_offer['price'], '199000.00')
+        self.assertEqual(regular_price_offer['price'], '155000.00')
+        self.assertEqual(special_price_offer['available'], 'true')
+        self.assertEqual(regular_price_offer['available'], 'true')
+
+    def test_feed_uses_only_variant_offers_and_skips_empty_categories(self):
+        empty_category = Category.objects.create(
+            name='Пустые аттракционы',
+            slug='empty-attractions',
+            section=self.section,
+        )
+        Product.objects.create(
+            category=empty_category,
+            name='Пустой аттракцион',
+            slug='empty-attraction-product',
+            description='Нет ни цены выгрузки, ни доступности.',
+            price=Decimal('120000.00'),
+            is_active=True,
+            allow_order_on_request=False,
+        )
+
+        _, xml_root = self._parse_feed()
+        offers = self._offers_by_id(xml_root)
+        category_ids = {
+            category.attrib['id']
+            for category in xml_root.findall('./shop/categories/category')
+        }
+
+        self.assertNotIn(f'product-{self.variant_product.pk}', offers)
+        self.assertNotIn(str(empty_category.pk), category_ids)
+
+
+@override_settings(
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    }
+)
+class VrAttractionsYmlFeedPicturesTest(TestCase):
+    def setUp(self):
+        self.media_root = tempfile.mkdtemp()
+        self.media_override = override_settings(MEDIA_ROOT=self.media_root)
+        self.media_override.enable()
+        self.addCleanup(self.media_override.disable)
+        self.addCleanup(shutil.rmtree, self.media_root, True)
+
+        self.client = Client()
+        self.section, _ = CatalogSection.objects.get_or_create(
+            slug='vr-attrakciony',
+            defaults={
+                'name': 'VR-аттракционы',
+                'order': 1,
+            },
+        )
+        self.category = Category.objects.create(
+            name='Аттракционы с фото',
+            slug='attractions-with-images',
+            section=self.section,
+        )
+        self.city = City.objects.create(name='Екатеринбург', slug='yekaterinburg-feed')
+        self.pickup_point = PickupPoint.objects.create(
+            city=self.city,
+            name='Склад фидов',
+            address='Промышленная улица, 7',
+        )
+
+    def _png_file(self, name):
+        png_bytes = (
+            b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01'
+            b'\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDAT\x08\xd7c\xf8\xff\xff?'
+            b'\x00\x05\xfe\x02\xfeA\xd9\x89\xc9\x00\x00\x00\x00IEND\xaeB`\x82'
+        )
+        return SimpleUploadedFile(name, png_bytes, content_type='image/png')
+
+    def _parse_feed(self):
+        response = self.client.get(reverse('vr_attractions_yml_feed'))
+        self.assertEqual(response.status_code, 200)
+        return ET.fromstring(response.content)
+
+    def _offer_picture_by_id(self, xml_root):
+        return {
+            offer.attrib['id']: (offer.findtext('picture') or '').strip()
+            for offer in xml_root.findall('./shop/offers/offer')
+        }
+
+    def test_feed_prefers_variant_picture_over_product_picture(self):
+        product = Product.objects.create(
+            category=self.category,
+            name='VR-симулятор с вариантами',
+            slug='vr-simulator-with-variant-picture',
+            price=Decimal('450000.00'),
+            image=self._png_file('feed-product-main.png'),
+            is_active=True,
+            allow_order_on_request=True,
+        )
+        variant = ProductVariant.objects.create(
+            product=product,
+            name='Максимум',
+            image=self._png_file('feed-variant-main.png'),
+            order=0,
+        )
+        ProductStock.objects.create(
+            product=product,
+            variant=variant,
+            pickup_point=self.pickup_point,
+            quantity=1,
+        )
+
+        pictures = self._offer_picture_by_id(self._parse_feed())
+
+        self.assertEqual(
+            pictures[f'product-{product.pk}-variant-{variant.pk}'],
+            'http://testserver/media/products/feed-variant-main.png',
+        )
+
+    def test_feed_uses_gallery_picture_when_product_has_no_main_image(self):
+        product = Product.objects.create(
+            category=self.category,
+            name='VR-аттракцион с галереей',
+            slug='vr-attraction-gallery-picture',
+            price=Decimal('180000.00'),
+            is_active=True,
+            allow_order_on_request=False,
+        )
+        ProductImage.objects.create(
+            product=product,
+            image=self._png_file('feed-gallery-image.png'),
+            order=0,
+        )
+        ProductStock.objects.create(
+            product=product,
+            pickup_point=self.pickup_point,
+            quantity=2,
+        )
+
+        pictures = self._offer_picture_by_id(self._parse_feed())
+
+        self.assertEqual(
+            pictures[f'product-{product.pk}'],
+            'http://testserver/media/products/feed-gallery-image.png',
+        )
+
+
+class VrAttractionsYmlFeedHelpersTest(TestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.section, _ = CatalogSection.objects.get_or_create(
+            slug='vr-attrakciony',
+            defaults={
+                'name': 'VR-аттракционы',
+                'order': 1,
+            },
+        )
+        self.category = Category.objects.create(
+            name='Хелперы фида',
+            slug='feed-helpers',
+            section=self.section,
+        )
+        self.product = Product.objects.create(
+            category=self.category,
+            name='VR-аттракцион helper',
+            slug='vr-attraction-helper',
+            price=Decimal('99000.00'),
+            is_active=True,
+            allow_order_on_request=True,
+        )
+
+    @override_settings(SITE_URL='https://bizonvr.example')
+    def test_build_absolute_url_falls_back_to_site_url_when_request_builder_fails(self):
+        request = self.factory.get('/feeds/vr-attractions.yml')
+        request.build_absolute_uri = Mock(side_effect=RuntimeError('boom'))
+
+        absolute_url = feed_views._build_absolute_url(request, '/media/products/test.png')
+
+        self.assertEqual(absolute_url, 'https://bizonvr.example/media/products/test.png')
+
+    def test_build_offer_payload_returns_none_when_price_is_unresolved(self):
+        request = self.factory.get('/feeds/vr-attractions.yml')
+
+        with patch('catalog.views.feeds._get_stock_total', return_value=0):
+            with patch('catalog.views.feeds.resolve_on_request_price', return_value=None):
+                with patch('catalog.views.feeds.resolve_in_stock_price', return_value=None):
+                    offer = feed_views._build_offer_payload(request, self.product)
+
+        self.assertIsNone(offer)
+
+
+class VrAttractionsYmlFeedMissingSectionTest(TestCase):
+    def test_feed_returns_404_when_vr_attractions_section_is_missing(self):
+        CatalogSection.objects.filter(slug='vr-attrakciony').delete()
+        request = RequestFactory().get(reverse('vr_attractions_yml_feed'))
+        with self.assertRaisesMessage(Http404, 'VR attractions section is not configured.'):
+            vr_attractions_yml_feed_view(request)
 
 
 class SeoFilesTest(TestCase):

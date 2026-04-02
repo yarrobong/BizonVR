@@ -1,0 +1,10 @@
+{% extends "admin/change_form.html" %}
+
+{% block object-tools-items %}
+{% if original and original.pk and filter_setup_wizard_url %}
+<li>
+    <a href="{{ filter_setup_wizard_url }}">Мастер настройки фильтров</a>
+</li>
+{% endif %}
+{{ block.super }}
+{% endblock %}

@@ -143,6 +143,19 @@ class CheckoutTest(TestCase):
         session['cart_items'] = items
         session.save()
 
+    def _set_checkout_promo(self, *, cart=None, buy_now=None):
+        session = self.client.session
+        payload = {}
+        if cart:
+            payload['cart'] = cart
+        if buy_now:
+            payload['buy_now'] = buy_now
+        if payload:
+            session['checkout_applied_promos'] = payload
+        else:
+            session.pop('checkout_applied_promos', None)
+        session.save()
+
     def test_checkout_available_for_guest(self):
         resp = self.client.get(reverse('orders:checkout'))
         self.assertEqual(resp.status_code, 200)
@@ -160,10 +173,67 @@ class CheckoutTest(TestCase):
         self.assertContains(resp, 'cdek-selection-empty')
         self.assertContains(resp, 'cdek-widget-modal')
         self.assertContains(resp, 'Выбрать ПВЗ СДЭК')
+        self.assertContains(resp, 'Скидка к заказу')
+        self.assertContains(resp, 'Введите промокод')
         self.assertNotContains(resp, 'cdek-widget-inline-root')
         self.assertNotContains(resp, '<label for="id_city_text"', html=False)
         self.assertNotContains(resp, '<label for="id_address_line"', html=False)
         self.assertNotContains(resp, 'Еще товары')
+
+    def test_checkout_promo_endpoint_applies_valid_code_and_updates_summary(self):
+        self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 2})
+
+        response = self.client.post(
+            reverse('orders:checkout_promo'),
+            {
+                'checkout_mode': '',
+                'promo_action': 'apply',
+                'promo_code_input': 'BIZON500',
+            },
+            HTTP_HX_REQUEST='true',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.client.session['checkout_applied_promos']['cart'], 'BIZON500')
+        self.assertContains(response, 'Промокод применён')
+        self.assertContains(response, 'Скидка (BIZON500)')
+        self.assertContains(response, '−50 ₽')
+        self.assertContains(response, '50 ₽')
+
+    def test_checkout_promo_endpoint_rejects_invalid_code(self):
+        self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
+
+        response = self.client.post(
+            reverse('orders:checkout_promo'),
+            {
+                'checkout_mode': '',
+                'promo_action': 'apply',
+                'promo_code_input': 'NOPE',
+            },
+            HTTP_HX_REQUEST='true',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn('checkout_applied_promos', self.client.session)
+        self.assertContains(response, 'Промокод не найден или недействителен.')
+
+    def test_checkout_promo_endpoint_removes_applied_code(self):
+        self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
+        self._set_checkout_promo(cart='BIZON500')
+
+        response = self.client.post(
+            reverse('orders:checkout_promo'),
+            {
+                'checkout_mode': '',
+                'promo_action': 'remove',
+            },
+            HTTP_HX_REQUEST='true',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn('checkout_applied_promos', self.client.session)
+        self.assertContains(response, 'Введите промокод')
+        self.assertNotContains(response, 'Промокод применён')
 
     def test_buy_now_checkout_get_uses_draft_instead_of_regular_cart(self):
         self._set_session_cart([{
@@ -273,6 +343,64 @@ class CheckoutTest(TestCase):
         self.assertEqual(order.items.first().product, self.product_second)
         self.assertEqual(len(self.client.session.get('cart_items', [])), 1)
         self.assertNotIn('buy_now_checkout', self.client.session)
+
+    def test_checkout_uses_applied_session_promo_when_creating_order(self):
+        self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 2})
+        self._set_checkout_promo(cart='BIZON500')
+
+        response = self.client.post(reverse('orders:checkout'), self._checkout_payload())
+
+        self.assertEqual(response.status_code, 302)
+        order = Order.objects.get()
+        self.assertEqual(order.promo_code, self.promo)
+        self.assertEqual(order.promo_discount, Decimal('50.00'))
+        self.assertEqual(order.total_to_pay, Decimal('150.00'))
+        self.assertNotIn('checkout_applied_promos', self.client.session)
+
+    def test_buy_now_checkout_uses_applied_promo_for_its_source(self):
+        self._set_session_cart([{
+            'product_id': self.product.pk,
+            'variant_id': None,
+            'variant_name': None,
+            'name': self.product.name,
+            'price': 100.0,
+            'quantity': 1,
+            'image_url': '',
+            'subtotal': 100.0,
+        }])
+        self._set_buy_now_items([{
+            'product_id': self.product_second.pk,
+            'variant_id': None,
+            'variant_name': None,
+            'name': self.product_second.name,
+            'price': 200.0,
+            'quantity': 1,
+            'image_url': '',
+            'subtotal': 200.0,
+        }])
+        self._set_checkout_promo(buy_now='BIZON500')
+
+        response = self.client.post(f"{reverse('orders:checkout')}?mode=buy_now", self._checkout_payload())
+
+        self.assertEqual(response.status_code, 302)
+        order = Order.objects.get()
+        self.assertEqual(order.items.first().product, self.product_second)
+        self.assertEqual(order.promo_code, self.promo)
+        self.assertEqual(order.promo_discount, Decimal('50.00'))
+        self.assertNotIn('checkout_applied_promos', self.client.session)
+
+    def test_checkout_submit_rejects_stale_applied_promo(self):
+        self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
+        self._set_checkout_promo(cart='BIZON500')
+        self.promo.is_active = False
+        self.promo.save(update_fields=['is_active'])
+
+        response = self.client.post(reverse('orders:checkout'), self._checkout_payload())
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Промокод больше недействителен.')
+        self.assertEqual(Order.objects.count(), 0)
+        self.assertNotIn('checkout_applied_promos', self.client.session)
 
     def test_buy_now_checkout_creates_authenticated_order_and_preserves_regular_cart(self):
         self.client.force_login(self.user)

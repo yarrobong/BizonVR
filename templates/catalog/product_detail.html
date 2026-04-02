@@ -261,13 +261,20 @@
     }
     return this.data.stockStatusProduct || 'on_request';
   },
-  get stockStatusLabel() {
-    const labels = {
-      in_stock_high: 'Много',
-      in_stock_low: 'Мало',
-      on_request: 'Под заказ',
-    };
-    return labels[this.stockStatus] || 'Под заказ';
+  get stockLevelLabel() {
+    return this.stockStatus === 'in_stock_high' ? 'Много' : 'Мало';
+  },
+  get inStockDeliveryDays() {
+    return 5;
+  },
+  get onRequestDeliveryDays() {
+    return 35;
+  },
+  get inStockDeliveryText() {
+    return `Доставка за ${this.inStockDeliveryDays} дней`;
+  },
+  get onRequestDeliveryText() {
+    return `Срок поставки: до ${this.onRequestDeliveryDays} дней`;
   },
   get currentInStockPrice() {
     if (this.selectedVariant) {
@@ -298,33 +305,6 @@
       return 'on_request';
     }
     return 'stock';
-  },
-  get activePrice() {
-    if (this.selectedPurchaseMode === 'on_request' && this.currentOnRequestPrice !== null && this.currentOnRequestPrice !== undefined) {
-      return this.currentOnRequestPrice;
-    }
-    return this.currentInStockPrice;
-  },
-  get comparePrice() {
-    if (this.selectedPurchaseMode === 'on_request') {
-      if (this.currentOnRequestPrice !== null && this.currentOnRequestPrice !== undefined && this.currentOnRequestPrice !== this.currentInStockPrice) {
-        return this.currentInStockPrice;
-      }
-      return null;
-    }
-    if (this.currentOnRequestPrice !== null && this.currentOnRequestPrice !== undefined) {
-      return this.currentOnRequestPrice;
-    }
-    return null;
-  },
-  get purchaseModeHint() {
-    if (this.stockTotal > 0 && this.allowOnRequest) {
-      return 'Можно купить дешевле под заказ';
-    }
-    if (this.stockTotal <= 0 && this.allowOnRequest) {
-      return 'Товар доступен только под заказ';
-    }
-    return '';
   },
   get canSubmitMobileCart() {
     return (this.variants.length === 0 || !!this.selectedVariant) && this.isPurchaseModeAvailable(this.selectedPurchaseMode);
@@ -606,12 +586,68 @@
 
       <!-- Mobile: minimal info from DB -->
       <div class="mobile-card mobile-only">
-        <div class="mobile-price" x-text="window.formatRub(activePrice)"></div>
-        <div class="mt-2 flex flex-wrap items-center gap-2 text-xs">
-          <span x-show="selectedPurchaseMode === 'on_request' && comparePrice !== null" x-cloak class="text-gray-500 line-through" x-text="window.formatRub(comparePrice)"></span>
-          <span x-show="selectedPurchaseMode === 'stock' && comparePrice !== null" x-cloak class="text-emerald-300" x-text="`Под заказ: ${window.formatRub(comparePrice)}`"></span>
-        </div>
-        <p x-show="purchaseModeHint" x-cloak class="mt-2 text-xs text-emerald-300" x-text="purchaseModeHint"></p>
+        <!-- В наличии -->
+        <template x-if="stockStatus !== 'on_request'">
+          <div class="offer-stack">
+            <button type="button"
+                    class="offer-panel offer-panel--primary"
+                    :class="{ 'is-selected': selectedPurchaseMode === 'stock' }"
+                    @click="setPurchaseMode('stock')">
+              <div class="price-row">
+                <span class="main-price" x-text="window.formatRub(currentInStockPrice)"></span>
+              </div>
+              <div class="offer-meta">
+                <div class="offer-status-row">
+                  <span class="offer-status-label">В наличии</span>
+                  <span class="offer-stock-badge"
+                        :class="stockStatus === 'in_stock_high' ? 'is-high' : 'is-low'"
+                        x-text="stockLevelLabel">Мало</span>
+                </div>
+                <p class="offer-meta-text" x-text="inStockDeliveryText">Доставка за 5 дней</p>
+              </div>
+            </button>
+            <template x-if="allowOnRequest && currentOnRequestPrice !== null">
+              <button type="button"
+                      class="offer-panel offer-panel--secondary"
+                      :class="{ 'is-selected': selectedPurchaseMode === 'on_request' }"
+                      @click="setPurchaseMode('on_request')">
+                <div class="offer-secondary-row">
+                  <span class="offer-secondary-label">Под заказ</span>
+                  <span class="offer-secondary-price" x-text="window.formatRub(currentOnRequestPrice)">4 490 ₽</span>
+                </div>
+                <p class="offer-secondary-meta" x-text="onRequestDeliveryText">Срок поставки: до 35 дней</p>
+              </button>
+            </template>
+          </div>
+        </template>
+        <!-- Под заказ (нет в наличии) -->
+        <template x-if="stockStatus === 'on_request'">
+          <div>
+            <template x-if="allowOnRequest && currentOnRequestPrice !== null">
+              <div class="offer-stack">
+                <div class="offer-panel offer-panel--primary offer-panel--solo">
+                  <div class="offer-secondary-row offer-secondary-row--solo">
+                    <span class="offer-secondary-label">Под заказ</span>
+                  </div>
+                  <div class="price-row">
+                    <span class="main-price" x-text="window.formatRub(currentOnRequestPrice)">4 490 ₽</span>
+                  </div>
+                  <p class="offer-meta-text" x-text="onRequestDeliveryText">Срок поставки: до 35 дней</p>
+                </div>
+              </div>
+            </template>
+            <template x-if="!allowOnRequest || currentOnRequestPrice === null">
+              <div class="offer-stack">
+                <div class="offer-panel offer-panel--primary offer-panel--solo">
+                  <div class="offer-secondary-row offer-secondary-row--solo">
+                    <span class="offer-secondary-label">Нет в наличии</span>
+                  </div>
+                  <p class="offer-meta-text">Уточните поставку у менеджера</p>
+                </div>
+              </div>
+            </template>
+          </div>
+        </template>
         <h1 class="mobile-product-title">{{ product.name }}</h1>
       </div>
 
@@ -632,30 +668,6 @@
         </div>
       </div>
       {% endif %}
-
-      <div class="mobile-card mobile-only">
-        <div class="variants-title">Способ покупки</div>
-        <div class="mt-3 grid gap-2 sm:grid-cols-2">
-          <button type="button"
-                  class="rounded-2xl border px-4 py-3 text-left transition"
-                  :class="selectedPurchaseMode === 'stock' ? 'border-accent bg-accent/10 text-white' : 'border-white/10 bg-white/5 text-gray-300'"
-                  :disabled="stockTotal <= 0"
-                  @click="setPurchaseMode('stock')">
-            <span class="block text-xs uppercase tracking-[0.18em] text-gray-400">Из наличия</span>
-            <span class="mt-1 block text-base font-semibold" x-text="window.formatRub(currentInStockPrice)"></span>
-            <span class="mt-1 block text-xs text-gray-400" x-text="stockTotal > 0 ? 'Можно оформить сразу' : 'Сейчас недоступно'"></span>
-          </button>
-          <button type="button"
-                  class="rounded-2xl border px-4 py-3 text-left transition"
-                  :class="selectedPurchaseMode === 'on_request' ? 'border-emerald-400 bg-emerald-500/10 text-white' : 'border-white/10 bg-white/5 text-gray-300'"
-                  :disabled="!allowOnRequest"
-                  @click="setPurchaseMode('on_request')">
-            <span class="block text-xs uppercase tracking-[0.18em] text-gray-400">Под заказ</span>
-            <span class="mt-1 block text-base font-semibold" x-text="currentOnRequestPrice !== null ? window.formatRub(currentOnRequestPrice) : 'Недоступно'"></span>
-            <span class="mt-1 block text-xs text-gray-400" x-text="allowOnRequest ? 'Дешевле, но потребует ожидания' : 'Цена под заказ не настроена'"></span>
-          </button>
-        </div>
-      </div>
 
       <div class="product-info desktop-only">
         <h1>{{ product.name }}</h1>
@@ -695,32 +707,64 @@
       <div class="right-col">
       <div class="buy-box desktop-only">
         <div class="price-block">
-          <div class="price-row">
-            <span class="main-price" x-text="window.formatRub(activePrice)"></span>
-          </div>
-          <div class="mt-2 flex flex-wrap items-center gap-2 text-sm">
-            <span x-show="selectedPurchaseMode === 'on_request' && comparePrice !== null" x-cloak class="text-gray-500 line-through" x-text="window.formatRub(comparePrice)"></span>
-            <span x-show="selectedPurchaseMode === 'stock' && comparePrice !== null" x-cloak class="text-emerald-300" x-text="`Под заказ: ${window.formatRub(comparePrice)}`"></span>
-          </div>
-          <p x-show="purchaseModeHint" x-cloak class="mt-2 text-sm text-emerald-300" x-text="purchaseModeHint"></p>
-          <div class="mt-4 grid gap-2">
-            <button type="button"
-                    class="rounded-2xl border px-4 py-3 text-left transition"
-                    :class="selectedPurchaseMode === 'stock' ? 'border-accent bg-accent/10 text-white' : 'border-white/10 bg-white/5 text-gray-300'"
-                    :disabled="stockTotal <= 0"
-                    @click="setPurchaseMode('stock')">
-              <span class="block text-xs uppercase tracking-[0.18em] text-gray-400">Из наличия</span>
-              <span class="mt-1 block text-lg font-semibold" x-text="window.formatRub(currentInStockPrice)"></span>
-            </button>
-            <button type="button"
-                    class="rounded-2xl border px-4 py-3 text-left transition"
-                    :class="selectedPurchaseMode === 'on_request' ? 'border-emerald-400 bg-emerald-500/10 text-white' : 'border-white/10 bg-white/5 text-gray-300'"
-                    :disabled="!allowOnRequest"
-                    @click="setPurchaseMode('on_request')">
-              <span class="block text-xs uppercase tracking-[0.18em] text-gray-400">Под заказ</span>
-              <span class="mt-1 block text-lg font-semibold" x-text="currentOnRequestPrice !== null ? window.formatRub(currentOnRequestPrice) : 'Недоступно'"></span>
-            </button>
-          </div>
+          <!-- В наличии -->
+          <template x-if="stockStatus !== 'on_request'">
+            <div class="offer-stack">
+              <button type="button"
+                      class="offer-panel offer-panel--primary"
+                      :class="{ 'is-selected': selectedPurchaseMode === 'stock' }"
+                      @click="setPurchaseMode('stock')">
+                <div class="price-row">
+                  <span class="main-price" x-text="window.formatRub(currentInStockPrice)"></span>
+                </div>
+                <div class="offer-meta">
+                  <div class="offer-status-row">
+                    <span class="offer-status-label">В наличии</span>
+                    <span class="offer-stock-badge"
+                          :class="stockStatus === 'in_stock_high' ? 'is-high' : 'is-low'"
+                          x-text="stockLevelLabel">Мало</span>
+                  </div>
+                  <p class="offer-meta-text" x-text="inStockDeliveryText">Доставка за 5 дней</p>
+                </div>
+              </button>
+              <template x-if="allowOnRequest && currentOnRequestPrice !== null">
+                <button type="button"
+                        class="offer-panel offer-panel--secondary"
+                        :class="{ 'is-selected': selectedPurchaseMode === 'on_request' }"
+                        @click="setPurchaseMode('on_request')">
+                  <div class="offer-secondary-row">
+                    <span class="offer-secondary-label">Под заказ</span>
+                    <span class="offer-secondary-price" x-text="window.formatRub(currentOnRequestPrice)">4 490 ₽</span>
+                  </div>
+                  <p class="offer-secondary-meta" x-text="onRequestDeliveryText">Срок поставки: до 35 дней</p>
+                </button>
+              </template>
+            </div>
+          </template>
+          <!-- Под заказ (нет в наличии) -->
+          <template x-if="stockStatus === 'on_request'">
+            <div class="offer-stack">
+              <template x-if="allowOnRequest && currentOnRequestPrice !== null">
+                <div class="offer-panel offer-panel--primary offer-panel--solo">
+                  <div class="offer-secondary-row offer-secondary-row--solo">
+                    <span class="offer-secondary-label">Под заказ</span>
+                  </div>
+                  <div class="price-row">
+                    <span class="main-price" x-text="window.formatRub(currentOnRequestPrice)">4 490 ₽</span>
+                  </div>
+                  <p class="offer-meta-text" x-text="onRequestDeliveryText">Срок поставки: до 35 дней</p>
+                </div>
+              </template>
+              <template x-if="!allowOnRequest || currentOnRequestPrice === null">
+                <div class="offer-panel offer-panel--primary offer-panel--solo">
+                  <div class="offer-secondary-row offer-secondary-row--solo">
+                    <span class="offer-secondary-label">Нет в наличии</span>
+                  </div>
+                  <p class="offer-meta-text">Уточните поставку у менеджера</p>
+                </div>
+              </template>
+            </div>
+          </template>
         </div>
 
         <form action="{% url 'catalog:add_to_cart' product.pk %}" method="post"
@@ -753,25 +797,6 @@
       </div>
 
       {% include "catalog/partials/product_marketplace_links.html" with product=product only %}
-
-      <div class="delivery-section">
-          <h3 class="delivery-section-title">Наличие и доставка</h3>
-          <div class="delivery-row">
-            <i data-lucide="package" class="w-4 h-4 inline-block" style="vertical-align: middle;"></i>
-            <div>
-              <strong x-text="stockStatusLabel"></strong><br>
-              <span style="color: #9ca3af; font-size: 12px;">Статус по общему остатку на складе</span>
-            </div>
-          </div>
-          <div class="delivery-row">
-            <i data-lucide="truck" class="w-4 h-4 inline-block" style="vertical-align: middle;"></i>
-            <div>
-              <strong>Доставка</strong><br>
-              <span style="font-weight: bold;">По всей России</span>
-            </div>
-            <span style="margin-left: auto; font-size: 12px; font-weight: bold;">Без доплат</span>
-          </div>
-        </div>
       </div>
     </div>
 

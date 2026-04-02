@@ -7,15 +7,21 @@ from typing import Iterable
 from django.db.models import Count, Max, Min, Prefetch, Q
 from django.utils.functional import cached_property
 
+from .filter_presets import get_typed_value_sort_key
+from .characteristic_sources import (
+    get_definition_remove_keys,
+    get_definition_source_names,
+    map_definitions_by_source_name,
+)
 from .models import (
     Category,
-    CategoryFilterConfig,
     CharacteristicDefinition,
+    CharacteristicSourceAlias,
     CharacteristicValueAlias,
+    FilterConfig,
     Product,
     ProductCharacteristic,
     ProductTag,
-    SectionFilterConfig,
 )
 
 
@@ -97,6 +103,11 @@ class CatalogFilterService:
             .filter(is_active=True)
             .prefetch_related(
                 Prefetch(
+                    'source_aliases',
+                    queryset=CharacteristicSourceAlias.objects.filter(is_active=True).order_by('sort_order', 'id'),
+                    to_attr='active_source_aliases',
+                ),
+                Prefetch(
                     'value_aliases',
                     queryset=CharacteristicValueAlias.objects.filter(is_active=True).order_by('sort_order', 'id'),
                     to_attr='active_value_aliases',
@@ -111,7 +122,7 @@ class CatalogFilterService:
 
     @cached_property
     def definitions_by_source_name(self):
-        return {definition.source_name: definition for definition in self.active_definitions}
+        return map_definitions_by_source_name(self.active_definitions)
 
     @cached_property
     def definitions_by_pk(self):
@@ -203,7 +214,7 @@ class CatalogFilterService:
                     label=definition.name,
                     selected_value=self._normalize_selected_value(definition, value),
                     request_identifier=identifier,
-                    remove_keys=(f'char_{definition.code}', f'char_{definition.source_name}'),
+                    remove_keys=get_definition_remove_keys(definition),
                     definition=definition,
                 )
             )
@@ -283,7 +294,7 @@ class CatalogFilterService:
                     )
                     allowed_values.add(active_filter.selected_value)
                     qs = qs.filter(
-                        characteristics__name=active_filter.definition.source_name,
+                        characteristics__name__in=get_definition_source_names(active_filter.definition),
                         characteristics__value__in=allowed_values,
                     )
                 else:
@@ -318,10 +329,9 @@ class CatalogFilterService:
 
     @cached_property
     def scope_filter_config(self):
-        category_configs = []
         if self.selected_category is not None:
             category_configs = list(
-                CategoryFilterConfig.objects
+                FilterConfig.objects
                 .filter(
                     category=self.selected_category,
                     is_visible=True,
@@ -336,7 +346,7 @@ class CatalogFilterService:
 
         if self.selected_section is not None:
             section_configs = list(
-                SectionFilterConfig.objects
+                FilterConfig.objects
                 .filter(
                     section=self.selected_section,
                     is_visible=True,
@@ -376,7 +386,7 @@ class CatalogFilterService:
         scoped_qs = self.build_filter_queryset(include_char_filters=True, exclude_char_key=definition.code)
         rows = (
             ProductCharacteristic.objects
-            .filter(product__in=scoped_qs, name=definition.source_name)
+            .filter(product__in=scoped_qs, name__in=get_definition_source_names(definition))
             .values_list('product_id', 'value')
             .distinct()
         )
@@ -414,32 +424,21 @@ class CatalogFilterService:
                     'label': bucket['label'],
                     'count': len(bucket['count_product_ids']),
                     'selected': selected_value == bucket['value'],
+                    'sort_order': bucket['sort_order'],
+                    'typed_sort_key': get_typed_value_sort_key(bucket['label'], sorting_mode=definition.sorting_mode),
                     'url': self.build_char_set_url(
                         definition.code,
                         bucket['value'],
-                        remove_keys=(f'char_{definition.code}', f'char_{definition.source_name}'),
+                        remove_keys=get_definition_remove_keys(definition),
                     ),
                 }
             )
 
         options.sort(
             key=lambda option: (
-                next(
-                    (
-                        bucket['sort_order']
-                        for bucket in buckets.values()
-                        if bucket['value'] == option['value']
-                    ),
-                    None,
-                ) is None,
-                next(
-                    (
-                        bucket['sort_order']
-                        for bucket in buckets.values()
-                        if bucket['value'] == option['value']
-                    ),
-                    0,
-                ),
+                option['sort_order'] is None,
+                option['sort_order'] if option['sort_order'] is not None else 0,
+                option['typed_sort_key'],
                 option['label'].lower(),
             )
         )
@@ -453,12 +452,12 @@ class CatalogFilterService:
         return {
             'key': definition.code,
             'legacy_key': definition.source_name,
-            'remove_keys_csv': f'char_{definition.code},char_{definition.source_name}',
+            'remove_keys_csv': ','.join(get_definition_remove_keys(definition)),
             'label': definition.name,
             'selected_value': selected_value,
             'all_url': self.build_char_unset_url(
                 definition.code,
-                remove_keys=(f'char_{definition.code}', f'char_{definition.source_name}'),
+                remove_keys=get_definition_remove_keys(definition),
             ),
             'options': options,
             'show_as_list': len(options) > 6,
