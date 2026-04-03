@@ -58,7 +58,7 @@ class Command(BaseCommand):
 
                 writer.writerow([
                     product.name,
-                    str(product.price),
+                    '' if product.price is None else str(product.price),
                     product.slug,
                     product.category.name,
                     product.description or '',

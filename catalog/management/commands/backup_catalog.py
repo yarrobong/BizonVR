@@ -119,7 +119,7 @@ class Command(BaseCommand):
                 'name': product.name,
                 'slug': product.slug,
                 'description': product.description,
-                'price': str(product.price),
+                'price': '' if product.price is None else str(product.price),
                 'image': product.image.name if product.image else None,
                 'is_active': product.is_active,
                 'allow_order_on_request': product.allow_order_on_request,

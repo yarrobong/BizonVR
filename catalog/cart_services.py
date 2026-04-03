@@ -6,11 +6,15 @@ from django.contrib.auth import get_user_model
 from .models import CartItem, Favorite, Product, ProductVariant
 from .pricing import (
     PURCHASE_MODE_ON_REQUEST,
+    PURCHASE_MODE_REQUEST_ONLY,
     PURCHASE_MODE_STOCK,
+    has_explicit_in_stock_price,
     has_explicit_on_request_price,
     normalize_purchase_mode,
+    resolve_catalog_effective_price,
     resolve_in_stock_price,
     resolve_on_request_price,
+    resolve_public_purchase_mode,
 )
 
 User = get_user_model()
@@ -44,6 +48,10 @@ def invalidate_favorites_request_cache(request):
     _clear_request_cached_values(request, _REQUEST_FAVORITES_ATTR)
 
 
+def _float_or_none(value):
+    return float(value) if value is not None else None
+
+
 def _cart_item_to_dict(item, product=None, variant=None):
     """Преобразовать CartItem в dict формата сессии (включая bundle и скидку)."""
     if not hasattr(item, 'product_id'):
@@ -52,7 +60,7 @@ def _cart_item_to_dict(item, product=None, variant=None):
     v = item.variant if variant is None else variant
     purchase_mode = normalize_purchase_mode(getattr(item, 'purchase_mode', PURCHASE_MODE_STOCK))
     display_name = f'{p.name} ({v.name})' if v else p.name
-    original_price = float(resolve_in_stock_price(p, v))
+    original_price = _float_or_none(resolve_in_stock_price(p, v))
     price = float(item.price_override) if getattr(item, 'price_override', None) is not None else original_price
     bundle = getattr(item, 'bundle', None)
     bundle_id = bundle.pk if bundle else None
@@ -81,7 +89,7 @@ def _cart_item_to_dict(item, product=None, variant=None):
 def _ensure_subtotal(item_dict):
     """Добавить subtotal в dict позиции."""
     q = item_dict.get('quantity', 1)
-    p = item_dict.get('price', 0)
+    p = item_dict.get('price') or 0
     item_dict['subtotal'] = p * q
     return item_dict
 
@@ -108,7 +116,7 @@ def get_cart_items(request):
             if not ci.product.is_active:
                 continue
             d = _cart_item_to_dict(ci)
-            d['subtotal'] = d['price'] * d['quantity']
+            d['subtotal'] = (d['price'] or 0) * d['quantity']
             result.append(d)
         return _set_request_cached_value(request, _REQUEST_CART_ITEMS_ATTR, result)
     session_items = request.session.get('cart_items', []) or []
@@ -247,7 +255,11 @@ def enrich_cart_items(cart_items):
         bundle_id = item.get('bundle_id')
 
         item['purchase_mode'] = purchase_mode
-        item['purchase_mode_label'] = 'Под заказ' if purchase_mode == PURCHASE_MODE_ON_REQUEST else 'Из наличия'
+        item['purchase_mode_label'] = (
+            'Под заказ'
+            if purchase_mode == PURCHASE_MODE_ON_REQUEST
+            else 'Из наличия'
+        )
         item['product_slug'] = product_slug
         item['stock_total'] = stock_total
         item['share_item_key'] = build_cart_item_share_key(item)
@@ -258,11 +270,20 @@ def enrich_cart_items(cart_items):
         if product:
             in_stock_price = resolve_in_stock_price(product, variant)
             on_request_price = resolve_on_request_price(product, variant)
-            item['price_in_stock'] = float(in_stock_price)
-            item['price_on_request'] = float(on_request_price) if on_request_price is not None else None
+            public_purchase_mode = resolve_public_purchase_mode(product, variant, stock_total=stock_total)
+            item['price_in_stock'] = _float_or_none(in_stock_price)
+            item['price_on_request'] = _float_or_none(on_request_price)
+            item['catalog_effective_price'] = _float_or_none(resolve_catalog_effective_price(product, variant, stock_total=stock_total))
+            item['public_purchase_mode'] = public_purchase_mode
+            item['is_request_only'] = public_purchase_mode == PURCHASE_MODE_REQUEST_ONLY
+            item['has_in_stock_price'] = has_explicit_in_stock_price(product, variant)
         else:
-            item['price_in_stock'] = float(item.get('original_price') or item.get('price') or 0)
+            item['price_in_stock'] = _float_or_none(item.get('original_price') or item.get('price'))
             item['price_on_request'] = None
+            item['catalog_effective_price'] = _float_or_none(item.get('price'))
+            item['public_purchase_mode'] = PURCHASE_MODE_REQUEST_ONLY
+            item['is_request_only'] = True
+            item['has_in_stock_price'] = False
 
         is_checkout_available = True
         checkout_unavailable_reason = ''
@@ -270,16 +291,20 @@ def enrich_cart_items(cart_items):
             is_checkout_available = False
             checkout_unavailable_reason = 'Товар больше недоступен.'
         elif purchase_mode == PURCHASE_MODE_ON_REQUEST:
-            if not product.allow_order_on_request:
+            if not product.allow_order_on_request or not has_explicit_on_request_price(product, variant):
                 is_checkout_available = False
                 checkout_unavailable_reason = 'Товар больше нельзя оформить под заказ.'
-        elif stock_total < quantity or stock_total <= 0:
+        elif stock_total <= 0 or stock_total < quantity or not has_explicit_in_stock_price(product, variant):
             is_checkout_available = False
-            checkout_unavailable_reason = 'Только под заказ.'
+            checkout_unavailable_reason = (
+                'Только под заказ.'
+                if product.allow_order_on_request and has_explicit_on_request_price(product, variant)
+                else 'Товар доступен только по заявке.'
+            )
 
         item['is_checkout_available'] = is_checkout_available
         item['checkout_unavailable_reason'] = checkout_unavailable_reason
-        item['checkout_subtotal'] = item.get('subtotal', 0) if is_checkout_available else 0
+        item['checkout_subtotal'] = (item.get('subtotal') or 0) if is_checkout_available else 0
         item['bundle_id'] = bundle_id
         enriched.append(item)
     return enriched

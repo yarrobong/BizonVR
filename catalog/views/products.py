@@ -19,11 +19,15 @@ from ..models import (
     ProductStock,
 )
 from ..pricing import (
+    PURCHASE_MODE_REQUEST_ONLY,
     PURCHASE_MODE_ON_REQUEST,
     PURCHASE_MODE_STOCK,
+    has_explicit_in_stock_price,
     has_explicit_on_request_price,
+    resolve_catalog_effective_price,
     resolve_in_stock_price,
     resolve_on_request_price,
+    resolve_public_purchase_mode,
 )
 from ..recommendations import build_pdp_recommendations
 from ..stock import public_stock_status
@@ -162,9 +166,9 @@ class ProductListView(ListView):
                 )
             ).order_by('-relevance', '-created_at')
         elif sort == 'price_asc':
-            qs = qs.order_by('price')
+            qs = qs.order_by(F('catalog_effective_price').asc(nulls_last=True), '-created_at')
         elif sort == 'price_desc':
-            qs = qs.order_by('-price')
+            qs = qs.order_by(F('catalog_effective_price').desc(nulls_last=True), '-created_at')
         elif sort == 'name':
             qs = qs.order_by('name')
         elif sort == 'popularity':
@@ -317,6 +321,10 @@ class ProductListView(ListView):
         return context
 
 
+def _float_or_none(value):
+    return float(value) if value is not None else None
+
+
 class ProductDetailView(DetailView):
     """Детальная страница товара."""
     model = Product
@@ -355,6 +363,7 @@ class ProductDetailView(DetailView):
             get_favorite_product_ids,
             is_favorite,
         )
+        from orders.forms import PurchaseRequestForm
 
         context['is_favorite'] = is_favorite(self.request, self.object.pk)
         context['favorite_product_ids'] = get_favorite_product_ids(self.request)
@@ -464,18 +473,34 @@ class ProductDetailView(DetailView):
         context['product_media'] = product_media
         context['active_content_blocks'] = list(getattr(self.object, 'active_content_blocks', []))
 
-        variants_data = [
-            {
-                'id': v.pk,
-                'name': v.name,
-                'price': float(v.price),
-                'inStockPrice': float(resolve_in_stock_price(self.object, v)),
-                'onRequestPrice': float(resolve_on_request_price(self.object, v)) if resolve_on_request_price(self.object, v) is not None else None,
-                'hasOnRequestPrice': has_explicit_on_request_price(self.object, v),
-                'imageUrl': _safe_image_url(v.image),
-            }
-            for v in self.object.variants.all()
-        ]
+        variants_data = []
+        for variant in self.object.variants.all():
+            variant_stock_total = context['stock_by_variant'].get(variant.pk, 0)
+            variant_in_stock_price = resolve_in_stock_price(self.object, variant)
+            variant_on_request_price = resolve_on_request_price(self.object, variant)
+            variant_public_mode = resolve_public_purchase_mode(
+                self.object,
+                variant,
+                stock_total=variant_stock_total,
+            )
+            variants_data.append({
+                'id': variant.pk,
+                'name': variant.name,
+                'price': _float_or_none(variant.price),
+                'inStockPrice': _float_or_none(variant_in_stock_price),
+                'onRequestPrice': _float_or_none(variant_on_request_price),
+                'hasInStockPrice': has_explicit_in_stock_price(self.object, variant),
+                'hasOnRequestPrice': has_explicit_on_request_price(self.object, variant),
+                'publicPurchaseMode': variant_public_mode,
+                'effectivePrice': _float_or_none(
+                    resolve_catalog_effective_price(
+                        self.object,
+                        variant,
+                        stock_total=variant_stock_total,
+                    )
+                ),
+                'imageUrl': _safe_image_url(variant.image),
+            })
         initial_variant_id = None
         raw_variant_id = (self.request.GET.get('variant') or '').strip()
         if raw_variant_id:
@@ -485,19 +510,36 @@ class ProductDetailView(DetailView):
                 requested_variant_id = None
             if requested_variant_id and self.object.variants.filter(pk=requested_variant_id).exists():
                 initial_variant_id = requested_variant_id
-        default_purchase_mode = PURCHASE_MODE_STOCK
+        purchase_request_source_path = self.object.get_absolute_url()
+        if initial_variant_id:
+            purchase_request_source_path = f'{purchase_request_source_path}?variant={initial_variant_id}'
+        product_in_stock_price = resolve_in_stock_price(self.object)
+        product_on_request_price = resolve_on_request_price(self.object)
         has_product_on_request_price = has_explicit_on_request_price(self.object)
         product_stock_total = context['stock_total'] if context['stock_total'] is not None else 0
-        if product_stock_total <= 0 and has_product_on_request_price and self.object.allow_order_on_request:
+        product_public_purchase_mode = resolve_public_purchase_mode(
+            self.object,
+            stock_total=product_stock_total,
+        )
+        default_purchase_mode = PURCHASE_MODE_STOCK
+        if product_public_purchase_mode == PURCHASE_MODE_ON_REQUEST:
             default_purchase_mode = PURCHASE_MODE_ON_REQUEST
 
         context['product_detail_data'] = {
             'variants': variants_data,
             'productImage': _safe_image_url(self.object.image),
-            'productPrice': float(self.object.price),
-            'productInStockPrice': float(resolve_in_stock_price(self.object)),
-            'productOnRequestPrice': float(resolve_on_request_price(self.object)) if resolve_on_request_price(self.object) is not None else None,
+            'productPrice': _float_or_none(self.object.price),
+            'productInStockPrice': _float_or_none(product_in_stock_price),
+            'productOnRequestPrice': _float_or_none(product_on_request_price),
+            'productHasInStockPrice': has_explicit_in_stock_price(self.object),
             'productHasOnRequestPrice': has_product_on_request_price,
+            'productPublicPurchaseMode': product_public_purchase_mode,
+            'productEffectivePrice': _float_or_none(
+                resolve_catalog_effective_price(
+                    self.object,
+                    stock_total=product_stock_total,
+                )
+            ),
             'productGallery': gallery,
             'productMedia': product_media,
             'productCharacteristics': [[c.name, c.value] for c in self.object.characteristics.all()],
@@ -511,9 +553,18 @@ class ProductDetailView(DetailView):
             'purchaseModes': {
                 'stock': PURCHASE_MODE_STOCK,
                 'on_request': PURCHASE_MODE_ON_REQUEST,
+                'request_only': PURCHASE_MODE_REQUEST_ONLY,
             },
             'allowOrderOnRequest': self.object.allow_order_on_request,
         }
+        context['purchase_request_source_path'] = purchase_request_source_path
+        if 'purchase_request_form' not in context:
+            context['purchase_request_form'] = PurchaseRequestForm(initial={
+                'product_id': self.object.pk,
+                'variant_id': initial_variant_id,
+                'source_path': purchase_request_source_path,
+            })
+        context['purchase_request_variant_id'] = context['purchase_request_form']['variant_id'].value()
 
         cart_qty_product = {
             PURCHASE_MODE_STOCK: 0,

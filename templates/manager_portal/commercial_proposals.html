@@ -174,6 +174,29 @@
             </div>
           </div>
 
+          <div class="mt-5 grid gap-4 lg:grid-cols-2">
+            <label class="block">
+              <span class="mb-2 block text-sm font-medium text-slate-200">Условия работы</span>
+              <textarea
+                id="proposal-work-terms"
+                name="work_terms"
+                rows="4"
+                class="min-h-28 w-full rounded-2xl border border-slate-700 bg-slate-950/70 px-4 py-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
+                placeholder="Например: Предоплата 70%, остаток перед отгрузкой."
+              ></textarea>
+            </label>
+            <label class="block">
+              <span class="mb-2 block text-sm font-medium text-slate-200">Сроки доставки</span>
+              <textarea
+                id="proposal-delivery-terms"
+                name="delivery_terms"
+                rows="4"
+                class="min-h-28 w-full rounded-2xl border border-slate-700 bg-slate-950/70 px-4 py-3 text-sm text-slate-100 placeholder:text-slate-500 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
+                placeholder="Например: Отгрузка 2-3 рабочих дня после поступления оплаты."
+              ></textarea>
+            </label>
+          </div>
+
           <div class="manager-proposal-action-grid mt-5">
             <div class="manager-proposal-action-card">
               <p class="manager-proposal-action-label">Черновик</p>
@@ -242,6 +265,8 @@
       const saveDraftBtn = document.getElementById('save-draft-btn');
       const draftStatusNode = document.getElementById('draft-status');
       const hiddenInputs = document.getElementById('hidden-inputs');
+      const workTermsInput = document.getElementById('proposal-work-terms');
+      const deliveryTermsInput = document.getElementById('proposal-delivery-terms');
       const selectedCountNode = document.getElementById('selected-count');
       const selectedTotalNode = document.getElementById('selected-total');
       const progressFillNode = document.getElementById('proposal-progress-fill');
@@ -296,6 +321,13 @@
           minimumFractionDigits: isInteger ? 0 : 2,
           maximumFractionDigits: 2
         }).format(safe).replace(/[\u00A0\u202F]/g, ' ');
+      }
+
+      function formatPriceLabel(value) {
+        if (value === '' || value == null) {
+          return 'Цена не указана';
+        }
+        return formatMoney(parseMoneyInput(value)) + ' ₽';
       }
 
       function formatDraftTimestamp(value) {
@@ -408,8 +440,8 @@
           name: product.name || '',
           category: product.category || '',
           image_url: product.image_url || '',
-          price: product.price != null ? String(product.price) : '0',
-          base_price: product.base_price != null ? String(product.base_price) : (product.price != null ? String(product.price) : '0')
+          price: product.price != null ? String(product.price) : '',
+          base_price: product.base_price != null ? String(product.base_price) : (product.price != null ? String(product.price) : '')
         }));
         resultsContainer.innerHTML = '';
 
@@ -430,7 +462,7 @@
             '<div class="manager-proposal-result-info">' +
               '<div class="manager-proposal-result-name">' + escapeHtml(product.name) + '</div>' +
               '<div class="manager-proposal-result-meta">' + escapeHtml(product.category) + '</div>' +
-              '<div class="manager-proposal-result-price">Базовая цена: ' + formatMoney(parseMoneyInput(product.base_price)) + ' ₽</div>' +
+              '<div class="manager-proposal-result-price">Базовая цена: ' + formatPriceLabel(product.base_price) + '</div>' +
             '</div>' +
             '<button type="button" class="manager-proposal-result-button' + (isSelected ? ' is-selected' : '') + '">' +
               (isSelected ? '+1 ещё' : 'Добавить') +
@@ -487,8 +519,8 @@
           name: product.name || '',
           category: product.category || '',
           image_url: product.image_url || '',
-          price: product.price != null ? String(product.price) : '0',
-          base_price: product.base_price != null ? String(product.base_price) : (product.price != null ? String(product.price) : '0')
+          price: product.price != null ? String(product.price) : '',
+          base_price: product.base_price != null ? String(product.base_price) : (product.price != null ? String(product.price) : '')
         };
 
         if (selected.has(normalizedProduct.id)) {
@@ -512,9 +544,10 @@
 
         selected.set(normalizedProduct.id, normalizedProduct);
         const qtyValue = sanitizeQtyValue(options.qty || 1);
-        const priceValue = formatInputNumber(
-          Math.max(0, parseMoneyInput(options.price != null ? options.price : normalizedProduct.price))
-        );
+        const initialPriceRaw = options.price != null ? options.price : normalizedProduct.price;
+        const priceValue = initialPriceRaw === '' || initialPriceRaw == null
+          ? ''
+          : formatInputNumber(Math.max(0, parseMoneyInput(initialPriceRaw)));
         const card = document.createElement('div');
         card.className = 'manager-proposal-card';
         card.dataset.productId = normalizedProduct.id;
@@ -525,7 +558,7 @@
           '<div class="manager-proposal-thumb">' + imageHtml + '</div>' +
           '<div class="manager-proposal-info">' +
             '<div class="manager-proposal-name">' + escapeHtml(normalizedProduct.name) + '</div>' +
-            '<div class="manager-proposal-meta">' + escapeHtml(normalizedProduct.category) + ' · базовая: ' + formatMoney(parseMoneyInput(normalizedProduct.base_price)) + ' ₽</div>' +
+            '<div class="manager-proposal-meta">' + escapeHtml(normalizedProduct.category) + ' · базовая: ' + formatPriceLabel(normalizedProduct.base_price) + '</div>' +
           '</div>' +
           '<div class="manager-proposal-field manager-proposal-field-qty"><label>Кол-во</label><input type="number" name="qty_' + normalizedProduct.id + '" value="' + qtyValue + '" min="1"></div>' +
           '<div class="manager-proposal-field manager-proposal-field-price"><label>Цена за шт.</label><input type="number" name="price_' + normalizedProduct.id + '" value="' + priceValue + '" min="0" step="0.01"></div>' +
@@ -592,7 +625,15 @@
         }
         try {
           const savedAt = new Date().toISOString();
-          localStorage.setItem(draftStorageKey, JSON.stringify({ savedAt, items }));
+          localStorage.setItem(
+            draftStorageKey,
+            JSON.stringify({
+              savedAt,
+              items,
+              work_terms: workTermsInput.value,
+              delivery_terms: deliveryTermsInput.value
+            })
+          );
           updateDraftStatus('Черновик сохранён: ' + formatDraftTimestamp(savedAt), 'success');
         } catch (error) {
           updateDraftStatus('Не удалось сохранить черновик в браузере.', 'error');
@@ -611,6 +652,8 @@
             updateDraftStatus('Черновик пока не сохранён.', 'idle');
             return;
           }
+          workTermsInput.value = typeof draft.work_terms === 'string' ? draft.work_terms : '';
+          deliveryTermsInput.value = typeof draft.delivery_terms === 'string' ? draft.delivery_terms : '';
           draft.items.forEach(item => {
             addProduct(item, {
               incrementIfExists: false,

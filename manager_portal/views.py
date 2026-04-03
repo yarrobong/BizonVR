@@ -3108,6 +3108,14 @@ def _manager_proposal_contact_data(user):
     }
 
 
+def _manager_product_default_price(product):
+    return product.price if product.price is not None else product.price_on_request
+
+
+def _manager_price_text(value):
+    return '' if value is None else str(value)
+
+
 def _commercial_proposal_products(request):
     product_ids = request.POST.getlist('products')
     if not product_ids:
@@ -3127,15 +3135,16 @@ def _commercial_proposal_products(request):
         except ValueError:
             qty = 1
         price_str = request.POST.get(f'price_{product.pk}', '').strip()
+        fallback_price = _manager_product_default_price(product) or Decimal('0')
         if price_str:
             try:
                 price = Decimal(price_str.replace(',', '.'))
                 if price < 0:
-                    price = product.price
+                    price = fallback_price
             except Exception:
-                price = product.price
+                price = fallback_price
         else:
-            price = product.price
+            price = fallback_price
         row_total = price * qty
         total += row_total
         img = product.get_display_image()
@@ -3176,7 +3185,7 @@ def commercial_proposals_search_view(request):
             {
                 'id': product.pk,
                 'name': product.name,
-                'price': str(product.price),
+                'price': _manager_price_text(_manager_product_default_price(product)),
                 'category': product.category.name,
                 'image_url': image_url,
             }
@@ -3235,6 +3244,8 @@ def commercial_proposals_view(request):
         timestamp = timezone.now().strftime('%Y%m%d_%H%M')
         date_display = timezone.now().strftime('%d.%m.%Y')
         valid_until = (timezone.now() + timezone.timedelta(days=7)).strftime('%d.%m.%Y')
+        work_terms = (request.POST.get('work_terms') or '').strip()
+        delivery_terms = (request.POST.get('delivery_terms') or '').strip()
         html_content = build_commercial_proposal_html(
             rows=rows,
             total=total,
@@ -3250,6 +3261,8 @@ def commercial_proposals_view(request):
             site_phone=getattr(settings, 'SITE_CONTACT_PHONE', ''),
             site_email=getattr(settings, 'SITE_CONTACT_EMAIL', ''),
             site_address=getattr(settings, 'SITE_CONTACT_ADDRESS', ''),
+            work_terms=work_terms,
+            delivery_terms=delivery_terms,
             **_manager_proposal_contact_data(request.user),
         )
         export_format = (request.POST.get('export_format') or 'pdf').lower()
@@ -4174,7 +4187,7 @@ def order_create_view(request):
             {
                 'id': product.pk,
                 'name': product.name,
-                'price': str(product.price),
+                'price': _manager_price_text(_manager_product_default_price(product)),
                 'image_url': resolve_order_item_image_url(product=product),
             }
             for product in Product.objects.filter(is_active=True).prefetch_related('variants', 'images').order_by('name')

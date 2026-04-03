@@ -11,6 +11,12 @@ from .models import Order, OrderItem, OrderNotificationLog, PromoCode, PurchaseR
 from .services import sync_order_state_side_effects
 
 
+def _catalog_price_or_fallback(product):
+    if product is None:
+        return None
+    return product.price if product.price is not None else product.price_on_request
+
+
 def _recalculate_order_total(order):
     total = sum((item.subtotal for item in order.items.all()), Decimal('0'))
     if order.total != total:
@@ -35,7 +41,7 @@ class OrderItemAdminForm(forms.ModelForm):
         if product is not None:
             cleaned['product_name'] = product.name
             if cleaned.get('price') in (None, ''):
-                cleaned['price'] = product.price
+                cleaned['price'] = _catalog_price_or_fallback(product)
             if not (cleaned.get('product_image_url') or '').strip():
                 cleaned['product_image_url'] = resolve_order_item_image_url(product=product, variant=cleaned.get('variant'))
         elif not product_name:
@@ -279,7 +285,7 @@ class OrderItemAdmin(admin.ModelAdmin):
         if obj is None:
             return 'Сохраните позицию, чтобы увидеть превью.'
         image_url = obj.display_image_url
-        catalog_price = obj.product.price if obj.product_id else None
+        catalog_price = _catalog_price_or_fallback(obj.product) if obj.product_id else None
         if not image_url and catalog_price is None:
             return 'Нет связанного товара из каталога.'
         preview_parts = []
@@ -302,10 +308,22 @@ class OrderItemAdmin(admin.ModelAdmin):
 
 @admin.register(PurchaseRequest)
 class PurchaseRequestAdmin(admin.ModelAdmin):
-    list_display = ('id', 'phone', 'telegram', 'total', 'status', 'created_at')
+    list_display = ('id', 'first_item_summary', 'phone', 'telegram', 'total', 'status', 'created_at')
     list_filter = ('status',)
-    search_fields = ('phone', 'telegram')
-    readonly_fields = ('created_at',)
+    search_fields = ('phone', 'telegram', 'items')
+    readonly_fields = ('created_at', 'first_item_summary')
+
+    def first_item_summary(self, obj):
+        items = obj.items if isinstance(obj.items, list) else []
+        if not items:
+            return '—'
+        first_item = items[0] or {}
+        name = (first_item.get('name') or '').strip()
+        variant_name = (first_item.get('variant_name') or '').strip()
+        if variant_name:
+            return f'{name} — {variant_name}'
+        return name or '—'
+    first_item_summary.short_description = 'Товар'
 
 
 @admin.register(OrderNotificationLog)

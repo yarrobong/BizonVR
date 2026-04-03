@@ -52,7 +52,7 @@
     {% if card_variant %}
       {% with stock=variant_stock_total|get_item:card_variant.id|default:0 %}
       <div class="mt-2">
-        {% if stock > 0 %}
+        {% if stock > 0 and card_variant.in_stock_price is not None %}
           <div class="text-[1.35rem] font-bold leading-none text-accent">{{ card_variant.in_stock_price|price_format }} ₽</div>
           <div class="mt-2 flex items-center gap-2 text-xs text-white/92">
             <span class="inline-block h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(74,222,128,0.45)]"></span>
@@ -60,30 +60,29 @@
           </div>
           <p class="mt-1 text-xs text-gray-400">Доставка за 5 дней</p>
           {% if product.allow_order_on_request and card_variant.on_request_price %}
-          <p class="mt-1 text-[11px] text-gray-500">Под заказ от {{ card_variant.on_request_price|price_format }} ₽</p>
+          <p class="mt-1 text-[11px] text-gray-500">Под заказ — {{ card_variant.on_request_price|price_format }} ₽</p>
+          <p class="mt-1 text-[11px] text-gray-500">Срок поставки: до 35 дней</p>
           {% endif %}
-        {% else %}
-          {% if product.allow_order_on_request and card_variant.on_request_price %}
+        {% elif product.allow_order_on_request and card_variant.on_request_price %}
           <div class="text-[1.35rem] font-bold leading-none text-accent">{{ card_variant.on_request_price|price_format }} ₽</div>
           <div class="mt-2 flex items-center gap-2 text-xs text-white/88">
             <span class="inline-block h-2.5 w-2.5 rounded-full bg-amber-300 shadow-[0_0_10px_rgba(253,224,71,0.28)]"></span>
             <span class="font-medium">Под заказ</span>
           </div>
           <p class="mt-1 text-xs text-gray-400">Привезём до 35 дней</p>
-          {% else %}
-          <div class="text-[1.35rem] font-bold leading-none text-accent">{{ card_variant.in_stock_price|price_format }} ₽</div>
+        {% else %}
+          <div class="text-[1.1rem] font-bold leading-none text-accent">Цена не указана</div>
           <div class="mt-2 flex items-center gap-2 text-xs text-white/80">
             <span class="inline-block h-2.5 w-2.5 rounded-full bg-slate-500"></span>
             <span class="font-medium">Нет в наличии</span>
           </div>
-          {% endif %}
         {% endif %}
       </div>
       {% endwith %}
     {% else %}
       {% with stock=product_stock_total|get_item:product.id|default:0 %}
       <div class="mt-2">
-        {% if stock > 0 %}
+        {% if stock > 0 and product.in_stock_price is not None %}
           <div class="text-[1.35rem] font-bold leading-none text-accent">{{ product.in_stock_price|price_format }} ₽</div>
           <div class="mt-2 flex items-center gap-2 text-xs text-white/92">
             <span class="inline-block h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(74,222,128,0.45)]"></span>
@@ -91,50 +90,116 @@
           </div>
           <p class="mt-1 text-xs text-gray-400">Доставка за 5 дней</p>
           {% if product.allow_order_on_request and product.on_request_price %}
-          <p class="mt-1 text-[11px] text-gray-500">Под заказ от {{ product.on_request_price|price_format }} ₽</p>
+          <p class="mt-1 text-[11px] text-gray-500">Под заказ — {{ product.on_request_price|price_format }} ₽</p>
+          <p class="mt-1 text-[11px] text-gray-500">Срок поставки: до 35 дней</p>
           {% endif %}
-        {% else %}
-          {% if product.allow_order_on_request and product.on_request_price %}
+        {% elif product.allow_order_on_request and product.on_request_price %}
           <div class="text-[1.35rem] font-bold leading-none text-accent">{{ product.on_request_price|price_format }} ₽</div>
           <div class="mt-2 flex items-center gap-2 text-xs text-white/88">
             <span class="inline-block h-2.5 w-2.5 rounded-full bg-amber-300 shadow-[0_0_10px_rgba(253,224,71,0.28)]"></span>
             <span class="font-medium">Под заказ</span>
           </div>
           <p class="mt-1 text-xs text-gray-400">Привезём до 35 дней</p>
-          {% else %}
-          <div class="text-[1.35rem] font-bold leading-none text-accent">{{ product.in_stock_price|price_format }} ₽</div>
+        {% else %}
+          <div class="text-[1.1rem] font-bold leading-none text-accent">Цена не указана</div>
           <div class="mt-2 flex items-center gap-2 text-xs text-white/80">
             <span class="inline-block h-2.5 w-2.5 rounded-full bg-slate-500"></span>
             <span class="font-medium">Нет в наличии</span>
           </div>
-          {% endif %}
         {% endif %}
       </div>
       {% endwith %}
     {% endif %}
     {% if show_add_button %}
-    <form action="{% url 'catalog:add_to_cart' product.pk %}" method="post"
-          hx-post="{% url 'catalog:add_to_cart' product.pk %}"
-          hx-target="#cart-modal-content"
-          hx-swap="innerHTML"
-          class="mt-auto pt-3">
-      {% csrf_token %}
-      <input type="hidden" name="quantity" value="1" />
-      <input type="hidden" name="next" value="{{ request.get_full_path }}" />
       {% if card_variant %}
-      <input type="hidden" name="variant_id" value="{{ card_variant.id }}" />
+        {% with stock=variant_stock_total|get_item:card_variant.id|default:0 %}
+          {% if stock > 0 and card_variant.in_stock_price is not None %}
+            <form action="{% url 'catalog:add_to_cart' product.pk %}" method="post"
+                  hx-post="{% url 'catalog:add_to_cart' product.pk %}"
+                  hx-target="#cart-modal-content"
+                  hx-swap="innerHTML"
+                  class="mt-auto pt-3">
+              {% csrf_token %}
+              <input type="hidden" name="quantity" value="1" />
+              <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+              <input type="hidden" name="variant_id" value="{{ card_variant.id }}" />
+              <button type="submit"
+                      class="w-full h-9 rounded-lg bg-accent hover:bg-accent-hover text-dark-900 text-xs font-bold uppercase tracking-wide transition-colors shadow-[0_8px_20px_rgba(0,212,255,0.24)]">
+                + В корзину
+              </button>
+            </form>
+          {% elif product.allow_order_on_request and card_variant.on_request_price %}
+            <form action="{% url 'catalog:add_to_cart' product.pk %}" method="post"
+                  hx-post="{% url 'catalog:add_to_cart' product.pk %}"
+                  hx-target="#cart-modal-content"
+                  hx-swap="innerHTML"
+                  class="mt-auto pt-3">
+              {% csrf_token %}
+              <input type="hidden" name="quantity" value="1" />
+              <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+              <input type="hidden" name="variant_id" value="{{ card_variant.id }}" />
+              <input type="hidden" name="purchase_mode" value="on_request" />
+              <button type="submit"
+                      class="w-full h-9 rounded-lg bg-accent hover:bg-accent-hover text-dark-900 text-xs font-bold uppercase tracking-wide transition-colors shadow-[0_8px_20px_rgba(0,212,255,0.24)]">
+                + В корзину
+              </button>
+            </form>
+          {% else %}
+            <a href="{% url 'catalog:product_detail' product.slug %}?variant={{ card_variant.id }}#purchase-request"
+               class="mt-auto inline-flex h-9 items-center justify-center rounded-lg border border-white/10 bg-white/5 pt-0 text-xs font-bold uppercase tracking-wide text-white transition-colors hover:border-white/20 hover:bg-white/10">
+              Оставить заявку
+            </a>
+          {% endif %}
+        {% endwith %}
       {% else %}
-        {% with recommended_variant_id=recommended_variant_ids|get_item:product.id %}
-        {% if recommended_variant_id %}
-        <input type="hidden" name="variant_id" value="{{ recommended_variant_id }}" />
-        {% endif %}
+        {% with stock=product_stock_total|get_item:product.id|default:0 %}
+          {% if stock > 0 and product.in_stock_price is not None %}
+            <form action="{% url 'catalog:add_to_cart' product.pk %}" method="post"
+                  hx-post="{% url 'catalog:add_to_cart' product.pk %}"
+                  hx-target="#cart-modal-content"
+                  hx-swap="innerHTML"
+                  class="mt-auto pt-3">
+              {% csrf_token %}
+              <input type="hidden" name="quantity" value="1" />
+              <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+              {% with recommended_variant_id=recommended_variant_ids|get_item:product.id %}
+              {% if recommended_variant_id %}
+              <input type="hidden" name="variant_id" value="{{ recommended_variant_id }}" />
+              {% endif %}
+              {% endwith %}
+              <button type="submit"
+                      class="w-full h-9 rounded-lg bg-accent hover:bg-accent-hover text-dark-900 text-xs font-bold uppercase tracking-wide transition-colors shadow-[0_8px_20px_rgba(0,212,255,0.24)]">
+                + В корзину
+              </button>
+            </form>
+          {% elif product.allow_order_on_request and product.on_request_price %}
+            <form action="{% url 'catalog:add_to_cart' product.pk %}" method="post"
+                  hx-post="{% url 'catalog:add_to_cart' product.pk %}"
+                  hx-target="#cart-modal-content"
+                  hx-swap="innerHTML"
+                  class="mt-auto pt-3">
+              {% csrf_token %}
+              <input type="hidden" name="quantity" value="1" />
+              <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+              {% with recommended_variant_id=recommended_variant_ids|get_item:product.id %}
+              {% if recommended_variant_id %}
+              <input type="hidden" name="variant_id" value="{{ recommended_variant_id }}" />
+              {% endif %}
+              {% endwith %}
+              <input type="hidden" name="purchase_mode" value="on_request" />
+              <button type="submit"
+                      class="w-full h-9 rounded-lg bg-accent hover:bg-accent-hover text-dark-900 text-xs font-bold uppercase tracking-wide transition-colors shadow-[0_8px_20px_rgba(0,212,255,0.24)]">
+                + В корзину
+              </button>
+            </form>
+          {% else %}
+            <a href="{% url 'catalog:product_detail' product.slug %}#purchase-request"
+               class="mt-auto inline-flex h-9 items-center justify-center rounded-lg border border-white/10 bg-white/5 pt-0 text-xs font-bold uppercase tracking-wide text-white transition-colors hover:border-white/20 hover:bg-white/10">
+              Оставить заявку
+            </a>
+          {% endif %}
         {% endwith %}
       {% endif %}
-      <button type="submit"
-              class="w-full h-9 rounded-lg bg-accent hover:bg-accent-hover text-dark-900 text-xs font-bold uppercase tracking-wide transition-colors shadow-[0_8px_20px_rgba(0,212,255,0.24)]">
-        + В корзину
-      </button>
-    </form>
     {% endif %}
   </div>
 </article>

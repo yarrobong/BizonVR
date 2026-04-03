@@ -50,6 +50,8 @@ class CheckoutTest(TestCase):
         self.client = Client()
         self.user = User.objects.create_user(username='79991234567', password='testpass')
         cat = Category.objects.create(name='Тест', slug='test')
+        self.city = City.objects.create(name='Москва', slug='msk-checkout')
+        self.pickup_point = PickupPoint.objects.create(city=self.city, name='Основной ПВЗ')
         self.product = Product.objects.create(
             category=cat,
             name='Товар',
@@ -64,6 +66,8 @@ class CheckoutTest(TestCase):
             price=Decimal('200.00'),
             is_active=True,
         )
+        ProductStock.objects.create(product=self.product, pickup_point=self.pickup_point, quantity=10)
+        ProductStock.objects.create(product=self.product_second, pickup_point=self.pickup_point, quantity=10)
         self.promo = PromoCode.objects.create(code='BIZON500', discount_amount=Decimal('50.00'))
 
     def _checkout_payload(self, **overrides):
@@ -427,6 +431,7 @@ class CheckoutTest(TestCase):
         self.assertNotIn('buy_now_checkout', self.client.session)
 
     def test_add_to_cart_blocks_when_stock_missing_and_order_on_request_disabled(self):
+        ProductStock.objects.filter(product=self.product).delete()
         self.product.allow_order_on_request = False
         self.product.save(update_fields=['allow_order_on_request'])
         self.client.force_login(self.user)
@@ -444,6 +449,7 @@ class CheckoutTest(TestCase):
         self.assertEqual(Order.objects.count(), 0)
 
     def test_checkout_blocks_stale_cart_item_when_stock_missing_and_order_on_request_disabled(self):
+        ProductStock.objects.filter(product=self.product).delete()
         self.product.allow_order_on_request = False
         self.product.save(update_fields=['allow_order_on_request'])
         self.client.force_login(self.user)
@@ -451,21 +457,57 @@ class CheckoutTest(TestCase):
 
         resp = self.client.post(reverse('orders:checkout'), self._checkout_payload())
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, 'Недостаточно товара')
+        self.assertContains(resp, 'В заявке не осталось доступных позиций для оформления.')
         self.assertEqual(Order.objects.count(), 0)
 
-    def test_checkout_marks_item_as_on_request_when_stock_missing(self):
+    def test_checkout_marks_item_as_on_request_when_stock_missing_with_on_request_price(self):
+        ProductStock.objects.filter(product=self.product).delete()
+        self.product.price_on_request = Decimal('80.00')
+        self.product.save(update_fields=['price_on_request'])
         self.client.force_login(self.user)
-        self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
+        self.client.post(
+            reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}),
+            {'quantity': 1, 'purchase_mode': 'on_request'},
+        )
 
         resp = self.client.post(reverse('orders:checkout'), self._checkout_payload())
         self.assertEqual(resp.status_code, 302)
         order = Order.objects.get()
         self.assertTrue(order.items.get().is_on_request)
+        self.assertEqual(order.items.get().price, Decimal('80.00'))
+
+    def test_add_to_cart_blocks_when_in_stock_price_missing_even_if_stock_exists(self):
+        self.product.price = None
+        self.product.price_on_request = Decimal('80.00')
+        self.product.save(update_fields=['price', 'price_on_request'])
+        self.client.force_login(self.user)
+
+        resp = self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
+
+        self.assertEqual(resp.status_code, 302)
+        self.assertFalse(CartItem.objects.filter(user=self.user, product=self.product).exists())
+
+    def test_checkout_blocks_stale_stock_item_when_in_stock_price_missing(self):
+        self.product.price = None
+        self.product.price_on_request = Decimal('80.00')
+        self.product.save(update_fields=['price', 'price_on_request'])
+        self.client.force_login(self.user)
+        CartItem.objects.create(user=self.user, product=self.product, quantity=1)
+
+        resp = self.client.post(reverse('orders:checkout'), self._checkout_payload())
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'В заявке не осталось доступных позиций для оформления.')
+        self.assertEqual(Order.objects.count(), 0)
 
     def test_checkout_creates_manager_portal_entities_for_website_order(self):
+        self.product.price_on_request = Decimal('80.00')
+        self.product.save(update_fields=['price_on_request'])
         self.client.force_login(self.user)
-        self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
+        self.client.post(
+            reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}),
+            {'quantity': 1, 'purchase_mode': 'on_request'},
+        )
 
         response = self.client.post(reverse('orders:checkout'), self._checkout_payload())
 
@@ -501,7 +543,12 @@ class CheckoutTest(TestCase):
         self.assertEqual(Order.objects.get().payment_status, Order.PAYMENT_STATUS_PAID)
 
     def test_checkout_discards_public_email_override(self):
-        self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
+        self.product.price_on_request = Decimal('80.00')
+        self.product.save(update_fields=['price_on_request'])
+        self.client.post(
+            reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}),
+            {'quantity': 1, 'purchase_mode': 'on_request'},
+        )
 
         response = self.client.post(reverse('orders:checkout'), self._checkout_payload(email='client@example.com'))
 
@@ -509,7 +556,12 @@ class CheckoutTest(TestCase):
         self.assertEqual(Order.objects.get().email, '')
 
     def test_checkout_infers_telegram_contact_from_username(self):
-        self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
+        self.product.price_on_request = Decimal('80.00')
+        self.product.save(update_fields=['price_on_request'])
+        self.client.post(
+            reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}),
+            {'quantity': 1, 'purchase_mode': 'on_request'},
+        )
 
         response = self.client.post(
             reverse('orders:checkout'),
@@ -520,6 +572,72 @@ class CheckoutTest(TestCase):
         order = Order.objects.get()
         self.assertEqual(order.contact_channel, Order.CONTACT_CHANNEL_TELEGRAM)
         self.assertEqual(order.contact_handle, '@bizonvr')
+
+    def test_product_detail_shows_request_only_form_when_out_of_stock_without_on_request_price(self):
+        ProductStock.objects.filter(product=self.product).delete()
+        response = self.client.get(self.product.get_absolute_url())
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Оставить заявку')
+        self.assertContains(response, reverse('orders:purchase_request_create'))
+        self.assertContains(response, 'x-show="isRequestOnlySelection"', html=False)
+
+    def test_product_card_links_to_request_form_when_out_of_stock_without_on_request_price(self):
+        ProductStock.objects.filter(product=self.product).delete()
+        response = self.client.get(reverse('catalog:product_list'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, f'{self.product.get_absolute_url()}#purchase-request')
+        self.assertContains(response, 'Оставить заявку')
+
+    def test_product_detail_shows_request_only_form_when_both_prices_missing(self):
+        self.product.price = None
+        self.product.price_on_request = None
+        self.product.save(update_fields=['price', 'price_on_request'])
+        response = self.client.get(self.product.get_absolute_url())
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Цена не указана')
+        self.assertContains(response, 'Оставить заявку')
+
+    def test_purchase_request_create_saves_request_only_snapshot(self):
+        ProductStock.objects.filter(product=self.product).delete()
+        response = self.client.post(reverse('orders:purchase_request_create'), {
+            'product_id': self.product.pk,
+            'variant_id': '',
+            'source_path': self.product.get_absolute_url(),
+            'phone': '+7 999 123 45 67',
+            'telegram': '',
+            'agree_personal_data': 'on',
+        })
+
+        self.assertEqual(response.status_code, 302)
+        purchase_request = PurchaseRequest.objects.get()
+        self.assertEqual(response.url, reverse('orders:request_created', kwargs={'request_id': purchase_request.pk}))
+        self.assertEqual(purchase_request.total, Decimal('0'))
+        self.assertEqual(purchase_request.telegram, '')
+        self.assertEqual(purchase_request.items[0]['product_id'], self.product.pk)
+        self.assertEqual(purchase_request.items[0]['requested_mode'], 'request_only')
+        self.assertEqual(purchase_request.items[0]['stock_total'], 0)
+        self.assertEqual(purchase_request.items[0]['price_in_stock'], 100.0)
+        self.assertIsNone(purchase_request.items[0]['price_on_request'])
+
+    def test_purchase_request_create_saves_null_in_stock_price_when_price_missing(self):
+        self.product.price = None
+        self.product.price_on_request = None
+        self.product.save(update_fields=['price', 'price_on_request'])
+        response = self.client.post(reverse('orders:purchase_request_create'), {
+            'product_id': self.product.pk,
+            'variant_id': '',
+            'source_path': self.product.get_absolute_url(),
+            'phone': '+7 999 123 45 67',
+            'telegram': '',
+            'agree_personal_data': 'on',
+        })
+
+        self.assertEqual(response.status_code, 302)
+        purchase_request = PurchaseRequest.objects.get(phone='+7 999 123 45 67')
+        self.assertIsNone(purchase_request.items[0]['price_in_stock'])
 
     def test_checkout_infers_whatsapp_contact_from_phone(self):
         self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
@@ -604,11 +722,21 @@ class CheckoutTest(TestCase):
 class CheckoutFormsLegalValidationTest(TestCase):
     def test_purchase_request_form_requires_personal_data_consent(self):
         form = PurchaseRequestForm(data={
+            'product_id': 1,
             'phone': '+7 999 111 22 33',
-            'telegram': '@test',
         })
         self.assertFalse(form.is_valid())
         self.assertIn('agree_personal_data', form.errors)
+
+    def test_purchase_request_form_allows_blank_telegram(self):
+        form = PurchaseRequestForm(data={
+            'product_id': 1,
+            'phone': '+7 999 111 22 33',
+            'telegram': '',
+            'agree_personal_data': 'on',
+        })
+        self.assertTrue(form.is_valid())
+        self.assertEqual(form.cleaned_data['telegram'], '')
 
     def test_checkout_form_requires_offer_and_personal_data_consents(self):
         form = CheckoutForm(data={

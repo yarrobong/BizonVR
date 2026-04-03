@@ -394,6 +394,45 @@ class VariantGalleryAndCatalogCardsTest(TestCase):
         self.assertContains(resp, 'Срок поставки: до 35 дней')
         self.assertNotContains(resp, '1 200 ₽')
 
+    def test_variant_card_prefers_on_request_when_stock_exists_but_in_stock_price_missing(self):
+        self.product.price = None
+        self.product.save(update_fields=['price'])
+        self.variant_one.price_override = None
+        self.variant_one.price_on_request_override = Decimal('1100.00')
+        self.variant_one.save(update_fields=['price_override', 'price_on_request_override'])
+        ProductStock.objects.create(
+            product=self.product,
+            variant=self.variant_one,
+            pickup_point=self.pickup_point,
+            quantity=2,
+        )
+
+        resp = self.client.get(reverse('catalog:product_list'), {'category': self.category.slug})
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Под заказ')
+        self.assertContains(resp, '1 100 ₽')
+        self.assertNotContains(resp, 'В наличии')
+
+    def test_variant_card_shows_price_not_specified_when_no_public_price(self):
+        self.product.price = None
+        self.product.save(update_fields=['price'])
+        self.variant_one.price_override = None
+        self.variant_one.price_on_request_override = None
+        self.variant_one.save(update_fields=['price_override', 'price_on_request_override'])
+        ProductStock.objects.create(
+            product=self.product,
+            variant=self.variant_one,
+            pickup_point=self.pickup_point,
+            quantity=2,
+        )
+
+        resp = self.client.get(reverse('catalog:product_list'), {'category': self.category.slug})
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Цена не указана')
+        self.assertContains(resp, 'Оставить заявку')
+
     def test_product_detail_shows_in_stock_and_on_request_delivery_terms(self):
         self.variant_one.price_on_request_override = Decimal('1100.00')
         self.variant_one.save(update_fields=['price_on_request_override'])
@@ -435,6 +474,32 @@ class VariantGalleryAndCatalogCardsTest(TestCase):
         variant_payload = next(item for item in data['variants'] if item['id'] == self.variant_one.pk)
         self.assertEqual(variant_payload['onRequestPrice'], 1100.0)
         self.assertEqual(variant_payload['inStockPrice'], 1200.0)
+
+    def test_product_detail_switches_to_request_only_when_variant_has_no_public_price(self):
+        self.product.price = None
+        self.product.save(update_fields=['price'])
+        self.variant_one.price_override = None
+        self.variant_one.price_on_request_override = None
+        self.variant_one.save(update_fields=['price_override', 'price_on_request_override'])
+        ProductStock.objects.create(
+            product=self.product,
+            variant=self.variant_one,
+            pickup_point=self.pickup_point,
+            quantity=1,
+        )
+
+        resp = self.client.get(
+            reverse('catalog:product_detail', kwargs={'slug': self.product.slug}),
+            {'variant': self.variant_one.pk},
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        data = self._extract_product_detail_data(resp)
+        variant_payload = next(item for item in data['variants'] if item['id'] == self.variant_one.pk)
+        self.assertEqual(variant_payload['publicPurchaseMode'], 'request_only')
+        self.assertIsNone(variant_payload['effectivePrice'])
+        self.assertContains(resp, 'Цена не указана')
+        self.assertContains(resp, 'Оставить заявку')
 
     def test_product_detail_data_uses_total_stock_only(self):
         ProductStock.objects.create(
@@ -742,27 +807,49 @@ class CatalogPriceBoundsTest(TestCase):
         self.client = Client()
         self.section = CatalogSection.objects.create(name='VR', slug='vr-price')
         self.category = Category.objects.create(name='Шлемы', slug='price-headsets', section=self.section)
-        Product.objects.create(
+        self.city = City.objects.create(name='Тестоград', slug='price-test-city')
+        self.pickup_point = PickupPoint.objects.create(city=self.city, name='Склад цен')
+        self.low_product = Product.objects.create(
             category=self.category,
             name='Базовый шлем',
             slug='price-low',
             price=100,
             is_active=True,
         )
-        Product.objects.create(
+        self.mid_product = Product.objects.create(
             category=self.category,
             name='Средний шлем',
             slug='price-mid',
             price=500,
             is_active=True,
         )
-        Product.objects.create(
+        self.high_product = Product.objects.create(
             category=self.category,
             name='Топовый шлем',
             slug='price-high',
             price=900,
             is_active=True,
         )
+        self.on_request_product = Product.objects.create(
+            category=self.category,
+            name='Под заказ',
+            slug='price-on-request',
+            price=650,
+            price_on_request=700,
+            is_active=True,
+            allow_order_on_request=True,
+        )
+        self.unpriced_product = Product.objects.create(
+            category=self.category,
+            name='Без цены',
+            slug='price-unpriced',
+            price=None,
+            price_on_request=None,
+            is_active=True,
+        )
+        ProductStock.objects.create(product=self.low_product, pickup_point=self.pickup_point, quantity=5)
+        ProductStock.objects.create(product=self.mid_product, pickup_point=self.pickup_point, quantity=5)
+        ProductStock.objects.create(product=self.high_product, pickup_point=self.pickup_point, quantity=5)
 
     def test_price_filter_keeps_full_category_bounds(self):
         resp = self.client.get(
@@ -774,6 +861,36 @@ class CatalogPriceBoundsTest(TestCase):
         self.assertEqual(resp.context['filter_price_max'], 900)
         self.assertEqual(resp.context['price_min_filter'], '500')
         self.assertEqual(resp.context['price_max_filter'], '700')
+
+    def test_price_filter_uses_effective_catalog_price_for_on_request_products(self):
+        resp = self.client.get(
+            reverse('catalog:product_list'),
+            {'category': self.category.slug, 'price_min': '650', 'price_max': '750'},
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        slugs = [product.slug for product in resp.context['products']]
+        self.assertIn(self.on_request_product.slug, slugs)
+        self.assertNotIn(self.unpriced_product.slug, slugs)
+
+    def test_price_sort_puts_unpriced_products_last(self):
+        resp = self.client.get(
+            reverse('catalog:product_list'),
+            {'category': self.category.slug, 'sort': 'price_asc'},
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        slugs = [product.slug for product in resp.context['products']]
+        self.assertEqual(
+            slugs,
+            [
+                self.low_product.slug,
+                self.mid_product.slug,
+                self.on_request_product.slug,
+                self.high_product.slug,
+                self.unpriced_product.slug,
+            ],
+        )
 
 
 @override_settings(
@@ -3062,12 +3179,10 @@ class VrAttractionsYmlFeedTest(TestCase):
 
         offers = self._offers_by_id(xml_root)
         special_price_offer = offers[f'product-{self.on_request_with_special_price.pk}']
-        regular_price_offer = offers[f'product-{self.on_request_without_special_price.pk}']
 
         self.assertEqual(special_price_offer['price'], '199000.00')
-        self.assertEqual(regular_price_offer['price'], '155000.00')
         self.assertEqual(special_price_offer['available'], 'true')
-        self.assertEqual(regular_price_offer['available'], 'true')
+        self.assertNotIn(f'product-{self.on_request_without_special_price.pk}', offers)
 
     def test_feed_uses_only_variant_offers_and_skips_empty_categories(self):
         empty_category = Category.objects.create(
@@ -3244,11 +3359,21 @@ class VrAttractionsYmlFeedHelpersTest(TestCase):
         request = self.factory.get('/feeds/vr-attractions.yml')
 
         with patch('catalog.views.feeds._get_stock_total', return_value=0):
-            with patch('catalog.views.feeds.resolve_on_request_price', return_value=None):
-                with patch('catalog.views.feeds.resolve_in_stock_price', return_value=None):
-                    offer = feed_views._build_offer_payload(request, self.product)
+            offer = feed_views._build_offer_payload(request, self.product)
 
         self.assertIsNone(offer)
+
+    def test_build_offer_payload_uses_on_request_price_when_stock_exists_but_in_stock_price_missing(self):
+        request = self.factory.get('/feeds/vr-attractions.yml')
+        self.product.price = None
+        self.product.price_on_request = Decimal('88000.00')
+        self.product.save(update_fields=['price', 'price_on_request'])
+
+        with patch('catalog.views.feeds._get_stock_total', return_value=2):
+            offer = feed_views._build_offer_payload(request, self.product)
+
+        self.assertIsNotNone(offer)
+        self.assertEqual(offer['price'], '88000.00')
 
 
 class VrAttractionsYmlFeedMissingSectionTest(TestCase):

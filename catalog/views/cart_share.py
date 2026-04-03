@@ -120,7 +120,10 @@ def _resolve_cart_share_items(items_payload):
             if variant is None:
                 continue
         purchase_mode = normalize_purchase_mode(item.get('purchase_mode'))
-        price = float(resolve_price_for_mode(product, variant, purchase_mode))
+        price_value = resolve_price_for_mode(product, variant, purchase_mode)
+        if price_value is None:
+            continue
+        price = float(price_value)
         image_url = ''
         if variant and variant.image:
             image_url = variant.image.url

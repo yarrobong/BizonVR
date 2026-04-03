@@ -34,6 +34,25 @@ from .proposal_html import build_commercial_proposal_html
 from .shared import _admin_image_preview
 
 
+def _decimal_to_str_or_empty(value):
+    return '' if value is None else str(value)
+
+
+def _product_default_price(product):
+    return product.price if product.price is not None else product.price_on_request
+
+
+def _parse_decimal_or_fallback(raw_value, fallback):
+    if raw_value:
+        try:
+            value = Decimal(raw_value.replace(',', '.'))
+            if value >= 0:
+                return value
+        except Exception:
+            pass
+    return fallback
+
+
 class ProductCharacteristicInline(admin.TabularInline):
     model = ProductCharacteristic
     extra = 1
@@ -205,7 +224,7 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
                 'ozon_url',
                 'wildberries_url',
             ),
-            'description': 'Минимум для публикации: название, категория и цена.',
+            'description': 'Минимум для публикации: название и категория. Можно заполнить цену из наличия, цену под заказ, обе сразу или оставить обе пустыми.',
             'classes': ('product-fieldset', 'product-fieldset--primary'),
         }),
         ('Публикация и структура', {
@@ -240,7 +259,7 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
                         'ozon_url',
                         'wildberries_url',
                     ),
-                    'description': 'Сначала заполните название, категорию и цену. Описание можно добавить здесь же или на вкладке «Описание».',
+                    'description': 'Сначала заполните название и категорию. Цену из наличия и цену под заказ можно указать сразу, по отдельности или позже.',
                     'classes': ('product-fieldset', 'product-fieldset--primary'),
                 }),
                 ('Описание', {
@@ -302,10 +321,10 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
             )
 
         if db_field.name == 'price':
-            formfield.help_text = 'Текущая цена из наличия. Именно она используется в каталоге для сортировки и фильтрации.'
+            formfield.help_text = 'Цена из наличия. Необязательна: можно оставить пустой и использовать только цену под заказ или сохранить товар без публичной цены.'
 
         if db_field.name == 'price_on_request':
-            formfield.help_text = 'Более низкая цена для покупки под заказ. Если не заполнена, товар продаётся только по цене из наличия.'
+            formfield.help_text = 'Цена под заказ. Необязательна: можно заполнить только её, заполнить обе цены или оставить поле пустым.'
 
         return formfield
 
@@ -400,7 +419,7 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
                 # Записываем строку товара в CSV
                 writer.writerow([
                     product.name,
-                    str(product.price),
+                    _decimal_to_str_or_empty(product.price),
                     product.slug,
                     product.category.name,
                     product.description or '',
@@ -538,7 +557,7 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
             result.append({
                 'id': p.pk,
                 'name': p.name,
-                'price': str(p.price),
+                'price': _decimal_to_str_or_empty(_product_default_price(p)),
                 'category': p.category.name,
                 'image_url': image_url,
             })
@@ -601,15 +620,7 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
                 except ValueError:
                     qty = 1
                 price_str = request.POST.get(f'price_{product.pk}', '').strip()
-                if price_str:
-                    try:
-                        price = Decimal(price_str.replace(',', '.'))
-                        if price < 0:
-                            price = product.price
-                    except Exception:
-                        price = product.price
-                else:
-                    price = product.price
+                price = _parse_decimal_or_fallback(price_str, _product_default_price(product) or Decimal('0'))
                 row_total = price * qty
                 total += row_total
                 img = product.get_display_image()
@@ -627,6 +638,8 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
             timestamp = timezone.now().strftime('%Y%m%d_%H%M')
             date_display = timezone.now().strftime('%d.%m.%Y')
             valid_until = (timezone.now() + timezone.timedelta(days=7)).strftime('%d.%m.%Y')
+            work_terms = (request.POST.get('work_terms') or '').strip()
+            delivery_terms = (request.POST.get('delivery_terms') or '').strip()
             manager_first_name = (request.user.first_name or '').strip()
             manager_last_name = (request.user.last_name or '').strip()
             manager_email = (getattr(request.user, 'email', '') or '').strip()
@@ -674,6 +687,8 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
                 site_phone=site_phone,
                 site_email=site_email,
                 site_address=site_address,
+                work_terms=work_terms,
+                delivery_terms=delivery_terms,
             )
             export_format = (request.POST.get('export_format') or 'pdf').lower()
             if export_format == 'pdf':
