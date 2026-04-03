@@ -8,7 +8,11 @@ from django.template.response import TemplateResponse
 from django.utils import timezone
 
 from ..models import CatalogSection, Category, Product, ProductImage, ProductVariant
-from ..pricing import resolve_in_stock_price, resolve_on_request_price
+from ..pricing import (
+    PURCHASE_MODE_REQUEST_ONLY,
+    resolve_catalog_effective_price,
+    resolve_public_purchase_mode,
+)
 from .common import _get_stock_total
 
 
@@ -46,17 +50,11 @@ def _get_offer_picture_url(request, product, variant=None):
 
 def _build_offer_payload(request, product, variant=None):
     stock_total = _get_stock_total(product.pk, getattr(variant, 'pk', None))
-    available = stock_total > 0 or product.allow_order_on_request
-    if not available:
+    public_purchase_mode = resolve_public_purchase_mode(product, variant, stock_total=stock_total)
+    if public_purchase_mode == PURCHASE_MODE_REQUEST_ONLY:
         return None
 
-    if stock_total > 0:
-        price = resolve_in_stock_price(product, variant)
-    else:
-        price = resolve_on_request_price(product, variant)
-        if price is None:
-            price = resolve_in_stock_price(product, variant)
-
+    price = resolve_catalog_effective_price(product, variant, stock_total=stock_total)
     if price is None:
         return None
 

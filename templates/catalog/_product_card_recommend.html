@@ -28,6 +28,14 @@
       {% endwith %}
     </a>
   </div>
-  <div class="card-price">{{ product.price|price_format }} ₽</div>
+  <div class="card-price">
+    {% if product.in_stock_price is not None %}
+      {{ product.in_stock_price|price_format }} ₽
+    {% elif product.allow_order_on_request and product.on_request_price %}
+      {{ product.on_request_price|price_format }} ₽
+    {% else %}
+      Цена не указана
+    {% endif %}
+  </div>
   <div class="card-title">{{ product.name }}</div>
 </div>

@@ -18,6 +18,7 @@ from ..models import Product, ProductBundle, ProductVariant
 from ..pricing import (
     PURCHASE_MODE_ON_REQUEST,
     PURCHASE_MODE_STOCK,
+    has_explicit_in_stock_price,
     has_explicit_on_request_price,
     normalize_purchase_mode,
     resolve_in_stock_price,
@@ -77,6 +78,16 @@ def _get_requested_purchase_mode(request):
     return normalize_purchase_mode(request.POST.get('purchase_mode'))
 
 
+def _float_or_none(value):
+    return float(value) if value is not None else None
+
+
+def _stock_purchase_unavailable_message(product, variant):
+    if getattr(product, 'allow_order_on_request', True) and has_explicit_on_request_price(product, variant):
+        return 'Товар доступен только под заказ. Выберите цену на странице товара.'
+    return 'Товар доступен только по заявке.'
+
+
 def _resolve_purchase_mode(product, variant, requested_mode):
     purchase_mode = normalize_purchase_mode(requested_mode)
     if purchase_mode == PURCHASE_MODE_ON_REQUEST:
@@ -84,6 +95,8 @@ def _resolve_purchase_mode(product, variant, requested_mode):
             return None, 'Товар недоступен под заказ.'
         if not has_explicit_on_request_price(product, variant):
             return None, 'Для товара не настроена цена под заказ.'
+    elif not has_explicit_in_stock_price(product, variant):
+        return None, _stock_purchase_unavailable_message(product, variant)
     return purchase_mode, ''
 
 
@@ -152,20 +165,12 @@ def add_to_cart_view(request, product_id):
                 fallback_url=product.get_absolute_url(),
             )
     elif purchase_mode == PURCHASE_MODE_STOCK:
-        if not getattr(product, 'allow_order_on_request', True):
-            return _render_or_redirect_cart_error(
-                request,
-                cart_items=enrich_cart_items(cart_items),
-                message='Товар недоступен для заказа.',
-                fallback_url=product.get_absolute_url(),
-            )
-        if has_explicit_on_request_price(product, variant):
-            return _render_or_redirect_cart_error(
-                request,
-                cart_items=enrich_cart_items(cart_items),
-                message='Товар доступен только под заказ. Выберите цену на странице товара.',
-                fallback_url=product.get_absolute_url(),
-            )
+        return _render_or_redirect_cart_error(
+            request,
+            cart_items=enrich_cart_items(cart_items),
+            message=_stock_purchase_unavailable_message(product, variant),
+            fallback_url=product.get_absolute_url(),
+        )
 
     for item in cart_items:
         if _cart_item_matches(item, product_id, variant_id, purchase_mode):
@@ -280,22 +285,29 @@ def cart_update_view(request):
                 if request.headers.get('HX-Request'):
                     return _render_cart_error(request, enrich_cart_items(cart_items), purchase_mode_error)
                 return redirect(request.POST.get('next') or request.GET.get('next') or reverse('catalog:cart'))
+            if purchase_mode_error and existing_item is not None:
+                if existing_index is not None and existing_index <= len(cart_items):
+                    cart_items.insert(existing_index, existing_item)
+                else:
+                    cart_items.append(existing_item)
+                quantity = 0
             stock_total = _get_stock_total(product_id, variant_id)
-            if purchase_mode == PURCHASE_MODE_STOCK:
+            if quantity > 0 and purchase_mode == PURCHASE_MODE_STOCK:
                 if stock_total > 0:
                     quantity = min(quantity, stock_total)
-                elif has_explicit_on_request_price(product, variant):
+                elif existing_item is not None:
                     if existing_item is not None:
                         quantity = min(quantity, max(1, int(existing_item.get('quantity') or 1)))
-                    else:
-                        quantity = 0
+                else:
+                    quantity = 0
             display_name = f'{product.name} ({variant.name})' if variant else product.name
-            price = float(resolve_price_for_mode(product, variant, purchase_mode))
+            price_value = resolve_price_for_mode(product, variant, purchase_mode)
+            price = _float_or_none(price_value)
             if variant and variant.image:
                 image_url = variant.image.url
             else:
                 image_url = product.image.url if product.image else ''
-            if quantity > 0:
+            if quantity > 0 and price is not None:
                 updated_item = {
                     'product_id': product.pk,
                     'variant_id': variant_id,
@@ -305,7 +317,7 @@ def cart_update_view(request):
                     'quantity': quantity,
                     'image_url': image_url,
                     'subtotal': price * quantity,
-                    'original_price': float(resolve_in_stock_price(product, variant)),
+                    'original_price': _float_or_none(resolve_in_stock_price(product, variant)),
                     'purchase_mode': purchase_mode,
                 }
                 if existing_index is not None and existing_index <= len(cart_items):
@@ -358,11 +370,14 @@ def _add_product_to_cart_items(
     """Добавить или обновить позицию товара в cart_items. Возвращает (cart_items, added_item_dict)."""
     display_name = f'{product.name} ({variant.name})' if variant else product.name
     purchase_mode = normalize_purchase_mode(purchase_mode)
-    original_price = float(resolve_in_stock_price(product, variant))
-    price = float(price_override) if price_override is not None else float(resolve_price_for_mode(product, variant, purchase_mode))
+    original_price = _float_or_none(resolve_in_stock_price(product, variant))
+    resolved_price = price_override if price_override is not None else resolve_price_for_mode(product, variant, purchase_mode)
+    price = _float_or_none(resolved_price)
     image_url = (variant.image.url if variant and variant.image else product.image.url) if product.image else ''
     if not image_url and variant and variant.image:
         image_url = variant.image.url
+    if price is None:
+        raise ValueError('Cannot add product to cart without a public price for the selected purchase mode.')
     extra = {
         'bundle_id': bundle_id,
         'bundle_name': bundle_name,
@@ -544,20 +559,12 @@ def buy_now_product_view(request, product_id):
             fallback_url=product.get_absolute_url(),
         )
     if purchase_mode == PURCHASE_MODE_STOCK and stock_total <= 0:
-        if not getattr(product, 'allow_order_on_request', True):
-            return _render_or_redirect_cart_error(
-                request,
-                cart_items=enrich_cart_items(get_cart_items(request)),
-                message='Товар недоступен для заказа.',
-                fallback_url=product.get_absolute_url(),
-            )
-        if has_explicit_on_request_price(product, variant):
-            return _render_or_redirect_cart_error(
-                request,
-                cart_items=enrich_cart_items(get_cart_items(request)),
-                message='Товар доступен только под заказ. Выберите цену на странице товара.',
-                fallback_url=product.get_absolute_url(),
-            )
+        return _render_or_redirect_cart_error(
+            request,
+            cart_items=enrich_cart_items(get_cart_items(request)),
+            message=_stock_purchase_unavailable_message(product, variant),
+            fallback_url=product.get_absolute_url(),
+        )
 
     buy_now_items, _ = _add_product_to_cart_items(
         [],

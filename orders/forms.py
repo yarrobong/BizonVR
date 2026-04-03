@@ -11,7 +11,10 @@ from .models import Order
 
 
 class PurchaseRequestForm(forms.Form):
-    """Форма заявки на покупку: телефон и Telegram."""
+    """Форма заявки на покупку: телефон обязателен, Telegram опционален."""
+    product_id = forms.IntegerField(required=True, widget=forms.HiddenInput())
+    variant_id = forms.IntegerField(required=False, widget=forms.HiddenInput())
+    source_path = forms.CharField(required=False, widget=forms.HiddenInput())
     phone = forms.CharField(
         label='Телефон',
         max_length=20,
@@ -26,7 +29,7 @@ class PurchaseRequestForm(forms.Form):
     telegram = forms.CharField(
         label='Telegram',
         max_length=100,
-        required=True,
+        required=False,
         widget=forms.TextInput(attrs={
             'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
             'placeholder': '@username или ссылка t.me/username',
@@ -46,11 +49,36 @@ class PurchaseRequestForm(forms.Form):
             raise forms.ValidationError('Введите корректный номер телефона.')
         return value
 
+    def clean_product_id(self):
+        return int(self.cleaned_data.get('product_id') or 0)
+
+    def clean_variant_id(self):
+        value = self.cleaned_data.get('variant_id')
+        if value in (None, ''):
+            return None
+        return int(value)
+
+    def clean_source_path(self):
+        value = (self.cleaned_data.get('source_path') or '').strip()
+        return value[:500]
+
     def clean_telegram(self):
         value = (self.cleaned_data.get('telegram') or '').strip()
         if not value:
-            raise forms.ValidationError('Укажите ваш Telegram.')
-        return value
+            return ''
+        lower_value = value.lower()
+        if lower_value.startswith('https://t.me/'):
+            value = value.split('t.me/', 1)[1]
+        elif lower_value.startswith('http://t.me/'):
+            value = value.split('t.me/', 1)[1]
+        elif lower_value.startswith('t.me/'):
+            value = value.split('t.me/', 1)[1]
+        value = value.strip().lstrip('@')
+        if not value:
+            return ''
+        if ' ' in value:
+            return (self.cleaned_data.get('telegram') or '').strip()
+        return f'@{value}'
 
 
 class CheckoutForm(forms.Form):

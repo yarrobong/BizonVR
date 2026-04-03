@@ -4,7 +4,8 @@ from collections import OrderedDict, defaultdict
 from dataclasses import dataclass
 from typing import Iterable
 
-from django.db.models import Count, Max, Min, Prefetch, Q
+from django.db.models import Count, Max, Min, Prefetch, Q, Sum, Value
+from django.db.models.functions import Coalesce
 from django.utils.functional import cached_property
 
 from .filter_presets import get_typed_value_sort_key
@@ -23,6 +24,7 @@ from .models import (
     ProductCharacteristic,
     ProductTag,
 )
+from .pricing import build_catalog_effective_price_expression
 
 
 @dataclass(frozen=True)
@@ -41,6 +43,15 @@ class CatalogFilterService:
 
     def __init__(self, request):
         self.request = request
+
+    def annotate_catalog_pricing(self, qs):
+        return qs.annotate(
+            catalog_stock_total=Coalesce(Sum('stocks__quantity'), Value(0)),
+        ).annotate(
+            catalog_effective_price=build_catalog_effective_price_expression(
+                stock_total_field='catalog_stock_total',
+            ),
+        )
 
     def build_query_string(self, *, remove_keys: Iterable[str] | None = None, **updates) -> str:
         params = self.request.GET.copy()
@@ -267,17 +278,19 @@ class CatalogFilterService:
         if tag_slug and not ignore_tag:
             qs = qs.filter(tags__slug=tag_slug)
 
+        qs = self.annotate_catalog_pricing(qs)
+
         if not ignore_price:
             price_min = self.request.GET.get('price_min')
             if price_min:
                 try:
-                    qs = qs.filter(price__gte=float(price_min))
+                    qs = qs.filter(catalog_effective_price__gte=float(price_min))
                 except (TypeError, ValueError):
                     pass
             price_max = self.request.GET.get('price_max')
             if price_max:
                 try:
-                    qs = qs.filter(price__lte=float(price_max))
+                    qs = qs.filter(catalog_effective_price__lte=float(price_max))
                 except (TypeError, ValueError):
                     pass
 
@@ -310,7 +323,7 @@ class CatalogFilterService:
 
     def get_price_bounds(self):
         price_bounds_qs = self.build_filter_queryset(include_char_filters=True, ignore_price=True)
-        price_agg = price_bounds_qs.aggregate(min_p=Min('price'), max_p=Max('price'))
+        price_agg = price_bounds_qs.aggregate(min_p=Min('catalog_effective_price'), max_p=Max('catalog_effective_price'))
         return {
             'filter_price_min': int(price_agg['min_p']) if price_agg['min_p'] is not None else 0,
             'filter_price_max': int(price_agg['max_p']) if price_agg['max_p'] is not None else 0,

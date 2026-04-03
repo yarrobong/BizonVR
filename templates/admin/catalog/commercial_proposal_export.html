@@ -242,6 +242,39 @@
   font-size: 14px;
 }
 
+.cp-details-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  margin-top: 20px;
+}
+.cp-details-field label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--cp-text);
+}
+.cp-details-field textarea {
+  width: 100%;
+  min-height: 110px;
+  padding: 12px 14px;
+  border: 1px solid var(--cp-border);
+  border-radius: var(--cp-radius-sm);
+  resize: vertical;
+  font: inherit;
+  line-height: 1.45;
+  color: var(--cp-text);
+  background: var(--cp-bg);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.cp-details-field textarea::placeholder { color: var(--cp-muted); opacity: 0.85; }
+.cp-details-field textarea:focus {
+  outline: none;
+  border-color: var(--cp-brand);
+  box-shadow: var(--cp-shadow-focus);
+}
+
 .cp-submit-row { margin-top: 22px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
 .cp-submit-btn {
   padding: 14px 22px;
@@ -345,6 +378,7 @@
   }
 
   .cp-empty-msg { padding: 24px 16px; font-size: 13px; }
+  .cp-details-grid { grid-template-columns: 1fr; gap: 14px; }
 
   .cp-submit-row {
     margin-top: 18px;
@@ -397,6 +431,16 @@
         <div id="empty-msg" class="cp-empty-msg">Выберите товары через поиск выше</div>
       </div>
     </div>
+    <div class="cp-details-grid">
+      <div class="cp-details-field">
+        <label for="id_work_terms">Условия работы</label>
+        <textarea id="id_work_terms" name="work_terms" placeholder="Например: Предоплата 70%, остаток перед отгрузкой."></textarea>
+      </div>
+      <div class="cp-details-field">
+        <label for="id_delivery_terms">Сроки доставки</label>
+        <textarea id="id_delivery_terms" name="delivery_terms" placeholder="Например: Отгрузка 2-3 рабочих дня после поступления оплаты."></textarea>
+      </div>
+    </div>
     <div class="cp-submit-row">
       <button type="submit" id="submit-pdf-btn" class="cp-submit-btn" name="export_format" value="pdf" disabled>Скачать PDF</button>
       <button type="submit" id="submit-html-btn" class="cp-submit-btn" name="export_format" value="html" disabled>Скачать HTML</button>
@@ -443,13 +487,15 @@
     const imgHtml = product.image_url
       ? '<img src="' + product.image_url.replace(/"/g, '&quot;') + '" alt="">'
       : '<div class="cp-thumb-placeholder">Нет фото</div>';
+    const hasBasePrice = product.price !== '' && product.price != null;
+    const displayPrice = hasBasePrice ? product.price : '';
     card.innerHTML =
       imgHtml +
       '<div class="cp-card-info"><div class="cp-card-name">' + escapeHtml(product.name) + '</div>' +
-      '<div class="cp-card-meta">' + escapeHtml(product.category) + ' · базовая: ' + formatMoney(product.price) + ' ₽</div></div>' +
+      '<div class="cp-card-meta">' + escapeHtml(product.category) + ' · базовая: ' + formatPriceLabel(product.price) + '</div></div>' +
       '<div class="cp-field cp-card-qty"><label>Кол-во</label><input type="number" name="qty_' + product.id + '" value="1" min="1" data-product-id="' + product.id + '"></div>' +
-      '<div class="cp-field cp-card-price"><label>Цена за шт. (₽)</label><input type="number" name="price_' + product.id + '" value="' + product.price + '" min="0" step="0.01" data-product-id="' + product.id + '" data-base-price="' + product.price + '"></div>' +
-      '<div class="cp-card-sum" data-product-id="' + product.id + '">' + formatMoney(product.price) + ' ₽</div>' +
+      '<div class="cp-field cp-card-price"><label>Цена за шт. (₽)</label><input type="number" name="price_' + product.id + '" value="' + displayPrice + '" min="0" step="0.01" data-product-id="' + product.id + '" data-base-price="' + displayPrice + '"></div>' +
+      '<div class="cp-card-sum" data-product-id="' + product.id + '">' + formatPriceLabel(hasBasePrice ? product.price : null) + '</div>' +
       '<button type="button" class="cp-card-remove">Удалить</button>';
     card.querySelector('.cp-card-remove').onclick = function() {
       card.remove();
@@ -487,6 +533,13 @@
     }).format(safe).replace(/[\u00A0\u202F]/g, ' ');
   }
 
+  function formatPriceLabel(value) {
+    if (value === '' || value == null) {
+      return 'Цена не указана';
+    }
+    return formatMoney(value) + ' ₽';
+  }
+
   function doSearch() {
     const q = searchInput.value.trim();
     if (q.length < 2) {
@@ -510,7 +563,7 @@
             item.innerHTML = imgHtml +
               '<div class="cp-item-info"><div class="cp-item-name">' + escapeHtml(p.name) + '</div>' +
               '<div class="cp-item-meta">' + escapeHtml(p.category) + '</div></div>' +
-              '<div class="cp-item-price">' + formatMoney(p.price) + ' ₽</div>';
+              '<div class="cp-item-price">' + formatPriceLabel(p.price) + '</div>';
             item.onclick = function() {
               addProduct(p);
               searchInput.value = '';

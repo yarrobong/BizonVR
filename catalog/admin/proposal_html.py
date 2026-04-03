@@ -29,6 +29,8 @@ def build_commercial_proposal_html(
     site_phone,
     site_email,
     site_address,
+    work_terms='',
+    delivery_terms='',
 ):
     """Собирает HTML-документ коммерческого предложения в стиле kp.html (тёмная тема, неоновые акценты)."""
     def _fmt(val):
@@ -53,6 +55,12 @@ def build_commercial_proposal_html(
         if cut.endswith(('…', '.', ',', ';', ':')):
             cut = cut.rstrip('. ,;:')
         return cut + '…'
+
+    def _multiline_html(text: str) -> str:
+        normalized = (text or '').replace('\r\n', '\n').replace('\r', '\n').strip()
+        if not normalized:
+            return ''
+        return '<br>'.join(escape(line) for line in normalized.split('\n'))
 
     css = '''
     @page { size: A4; margin: 0; }
@@ -146,6 +154,29 @@ def build_commercial_proposal_html(
     .date-signature { display: flex; justify-content: space-between; font-size: 12px; color: #666;
         border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px; }
     .legal-note { margin-top: 14px; font-size: 11px; line-height: 1.45; color: rgba(229,231,235,0.65); }
+    .legal-note p + p { margin-top: 6px; }
+    .proposal-terms {
+        margin-top: 16px;
+        padding: 14px 16px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.10);
+        border-radius: 18px;
+    }
+    .proposal-term + .proposal-term { margin-top: 12px; }
+    .proposal-term-title {
+        display: block;
+        margin-bottom: 4px;
+        font-size: 11px;
+        font-weight: 700;
+        color: rgba(0, 212, 255, 0.95);
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+    }
+    .proposal-term-body {
+        font-size: 12px;
+        line-height: 1.5;
+        color: rgba(229,231,235,0.82);
+    }
     @media print {
         body { padding: 0; background-color: #0b0d14; }
         .a4-page { box-shadow: none; margin: 0; border: none; border-radius: 0; }
@@ -224,9 +255,28 @@ def build_commercial_proposal_html(
     )
     lines.append(
         '<div class="legal-note">'
-        'Данное коммерческое предложение является официальным и действует в течение 7 дней с даты составления.<br>'
-        'Цена не включает в себя доставку. Доставка оплачивается покупателем при получении.'
+        '<p>Данное коммерческое предложение является официальным и действует в течение 7 дней с даты составления.</p>'
+        '<p>Цена не включает в себя доставку. Доставка оплачивается покупателем при получении.</p>'
         '</div>'
     )
+    work_terms_html = _multiline_html(work_terms)
+    delivery_terms_html = _multiline_html(delivery_terms)
+    if work_terms_html or delivery_terms_html:
+        lines.append('<div class="proposal-terms">')
+        if work_terms_html:
+            lines.append(
+                '<div class="proposal-term">'
+                '<span class="proposal-term-title">Условия работы</span>'
+                f'<div class="proposal-term-body">{work_terms_html}</div>'
+                '</div>'
+            )
+        if delivery_terms_html:
+            lines.append(
+                '<div class="proposal-term">'
+                '<span class="proposal-term-title">Сроки доставки</span>'
+                f'<div class="proposal-term-body">{delivery_terms_html}</div>'
+                '</div>'
+            )
+        lines.append('</div>')
     lines.append('</div></body></html>')
     return '\n'.join(lines)

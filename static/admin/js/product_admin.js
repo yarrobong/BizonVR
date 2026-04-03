@@ -832,19 +832,16 @@
                 missingRequired.push('категория');
             }
 
-            if (priceValue) requiredComplete += 1;
-            else missingRequired.push('цена');
-
             if (photoCount > 0) requiredComplete += 1;
             else missingRequired.push('фото');
 
-            progressPercent = Math.round((requiredComplete / 4) * 100);
+            progressPercent = Math.round((requiredComplete / 3) * 100);
 
             setText('[data-summary-progress-label]', String(progressPercent) + '%');
             setWidth('[data-summary-progress-bar]', String(progressPercent) + '%');
 
-            if (requiredComplete === 4) {
-                setText('[data-summary-progress-text]', 'База карточки готова. Можно сохранять и переходить к вариантам, остаткам и комплектам.');
+            if (requiredComplete === 3) {
+                setText('[data-summary-progress-text]', 'База карточки готова. Цену можно указать сейчас, позже или оставить пустой для сценария заявки.');
             } else {
                 setText(
                     '[data-summary-progress-text]',
@@ -860,7 +857,7 @@
 
             setCheckState('[data-check-name]', nameValue ? 'is-complete' : 'is-pending', nameValue ? 'Заполнено' : 'Обязательно');
             setCheckState('[data-check-category]', hasCategory ? 'is-complete' : 'is-pending', hasCategory ? 'Выбрана' : 'Обязательно');
-            setCheckState('[data-check-price]', priceValue ? 'is-complete' : 'is-pending', priceValue ? 'Указана' : 'Обязательно');
+            setCheckState('[data-check-price]', priceValue ? 'is-complete' : 'is-pending', priceValue ? 'Указана' : 'Не указана');
             setCheckState('[data-check-photos]', photoCount > 0 ? 'is-complete' : 'is-pending', photoCount > 0 ? String(photoCount) + ' фото' : 'Добавьте фото');
 
             if (variantCount > 0) {
@@ -879,7 +876,7 @@
 
             updateFieldHighlight(nameInput, !nameValue);
             updateFieldHighlight(categoryInput, !hasCategory);
-            updateFieldHighlight(priceInput, !priceValue);
+            updateFieldHighlight(priceInput, false);
 
             if (!nameValue) {
                 alerts.push({ level: 'warning', text: 'Добавьте название товара. Без него карточка не сохранится корректно.' });
@@ -890,7 +887,7 @@
             }
 
             if (!priceValue) {
-                alerts.push({ level: 'warning', text: 'Укажите базовую цену товара. Она нужна даже если часть вариантов будет со своей ценой.' });
+                alerts.push({ level: 'info', text: 'Базовая цена не указана. Можно сохранить товар так, заполнить только цену под заказ или оставить карточку для сценария заявки.' });
             }
 
             if (photoCount === 0) {

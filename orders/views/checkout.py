@@ -2,6 +2,7 @@ from decimal import Decimal
 from urllib.parse import urlencode
 
 from django.conf import settings
+from django.contrib import messages
 from django.db import transaction
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -26,17 +27,29 @@ from catalog.cart_services import (
     remove_cart_items,
 )
 from catalog.models import City, Product, ProductVariant
-from catalog.pricing import PURCHASE_MODE_ON_REQUEST, has_explicit_on_request_price, normalize_purchase_mode
+from catalog.pricing import (
+    PURCHASE_MODE_ON_REQUEST,
+    PURCHASE_MODE_REQUEST_ONLY,
+    has_explicit_on_request_price,
+    normalize_purchase_mode,
+    resolve_in_stock_price,
+    resolve_on_request_price,
+    resolve_public_purchase_mode,
+)
 from catalog.views.common import _get_stock_total
 from config.legal_consent import build_legal_acceptance_payload
 from config.legal_consent import get_legal_bundle_version
 
-from ..forms import CheckoutForm
-from ..models import Order, OrderItem, PromoCode, resolve_order_item_image_url
+from ..forms import CheckoutForm, PurchaseRequestForm
+from ..models import Order, OrderItem, PromoCode, PurchaseRequest, resolve_order_item_image_url
 from ..services import build_order_status_summary, issue_guest_access, send_order_event_notifications, sync_order_state_side_effects
 from .utils import _discount_for_promo
 
 CHECKOUT_APPLIED_PROMOS_SESSION_KEY = 'checkout_applied_promos'
+
+
+def _float_or_none(value):
+    return float(value) if value is not None else None
 
 
 def _get_saved_addresses(user):
@@ -278,22 +291,35 @@ def _build_checkout_lines(cart_items):
         stock_total = _get_stock_total(product_id, variant_id)
         purchase_mode = normalize_purchase_mode(item.get('purchase_mode'))
         is_on_request = purchase_mode == PURCHASE_MODE_ON_REQUEST
+        in_stock_price = resolve_in_stock_price(product, variant)
+        on_request_price = resolve_on_request_price(product, variant)
+        item_price = Decimal(str(item.get('price', 0) or 0))
         if is_on_request:
-            if not product.allow_order_on_request:
+            if not product.allow_order_on_request or on_request_price is None:
                 unavailable_lines.append(item.get('name') or product.name)
                 continue
+            item_price = Decimal(str(on_request_price))
+        elif in_stock_price is None:
+            unavailable_lines.append(item.get('name') or product.name)
+            continue
         elif stock_total < quantity or stock_total <= 0:
-            if product.allow_order_on_request and not has_explicit_on_request_price(product, variant):
+            if product.allow_order_on_request and has_explicit_on_request_price(product, variant):
                 is_on_request = True
+                purchase_mode = PURCHASE_MODE_ON_REQUEST
             else:
                 unavailable_lines.append(item.get('name') or product.name)
                 continue
+        else:
+            item_price = Decimal(str(item.get('price', in_stock_price) or in_stock_price))
+
+        if is_on_request and (stock_total < quantity or stock_total <= 0):
+            item_price = Decimal(str(on_request_price))
 
         lines.append({
             'product': product,
             'variant': variant,
             'quantity': quantity,
-            'price': Decimal(str(item.get('price', 0))),
+            'price': item_price,
             'variant_name': item.get('variant_name') or (variant.name if variant else ''),
             'is_on_request': is_on_request,
             'purchase_mode': purchase_mode,
@@ -610,6 +636,90 @@ def checkout_promo_view(request):
 def request_created_view(request, request_id):
     """Нейтральная legacy-страница после заявки без раскрытия данных по id."""
     return render(request, 'orders/request_created.html')
+
+
+def _build_purchase_request_source_path(product, variant=None):
+    url = product.get_absolute_url()
+    if variant is not None:
+        url = f'{url}?{urlencode({"variant": variant.pk})}'
+    return url
+
+
+def _render_purchase_request_product_page(request, product, *, form, variant=None, status=400):
+    from catalog.views.products import ProductDetailView
+
+    view = ProductDetailView()
+    view.request = request
+    view.args = ()
+    view.kwargs = {'slug': product.slug}
+    view.object = product
+    context = view.get_context_data(object=product, purchase_request_form=form)
+    if variant is not None:
+        context['product_detail_data']['initialVariantId'] = variant.pk
+    return render(request, view.template_name, context, status=status)
+
+
+@require_POST
+@ratelimit(key='ip', rate='15/m', method='POST')
+def purchase_request_create_view(request):
+    form = PurchaseRequestForm(request.POST)
+
+    raw_product_id = request.POST.get('product_id')
+    raw_variant_id = request.POST.get('variant_id')
+    product = None
+    variant = None
+
+    try:
+        product_id = int(raw_product_id)
+    except (TypeError, ValueError):
+        product_id = None
+    if product_id:
+        product = Product.objects.filter(pk=product_id, is_active=True).first()
+
+    try:
+        variant_id = int(raw_variant_id) if raw_variant_id else None
+    except (TypeError, ValueError):
+        variant_id = None
+    if product and variant_id:
+        variant = ProductVariant.objects.filter(product_id=product.pk, pk=variant_id).first()
+
+    if product is None:
+        messages.error(request, 'Не удалось определить товар для заявки. Попробуйте открыть карточку товара ещё раз.')
+        return redirect('catalog:product_list')
+
+    if raw_variant_id and variant is None:
+        form.add_error(None, 'Не удалось определить выбранный вариант товара.')
+        return _render_purchase_request_product_page(request, product, form=form, status=400)
+
+    if not form.is_valid():
+        return _render_purchase_request_product_page(request, product, form=form, variant=variant, status=400)
+
+    stock_total = _get_stock_total(product.pk, variant.pk if variant else None)
+    public_purchase_mode = resolve_public_purchase_mode(product, variant, stock_total=stock_total)
+    if public_purchase_mode != PURCHASE_MODE_REQUEST_ONLY:
+        form.add_error(None, 'Эту позицию можно оформить через корзину. Заявка нужна только для товаров без наличия и цены под заказ.')
+        return _render_purchase_request_product_page(request, product, form=form, variant=variant, status=400)
+
+    source_path = (form.cleaned_data.get('source_path') or '').strip() or _build_purchase_request_source_path(product, variant)
+    item_snapshot = {
+        'product_id': product.pk,
+        'variant_id': variant.pk if variant else None,
+        'name': product.name,
+        'variant_name': variant.name if variant else '',
+        'requested_mode': 'request_only',
+        'stock_total': stock_total,
+        'price_in_stock': _float_or_none(resolve_in_stock_price(product, variant)),
+        'price_on_request': _float_or_none(resolve_on_request_price(product, variant)),
+        'source_path': source_path,
+    }
+    purchase_request = PurchaseRequest.objects.create(
+        phone=form.cleaned_data['phone'],
+        telegram=form.cleaned_data.get('telegram', ''),
+        items=[item_snapshot],
+        total=Decimal('0'),
+        **build_legal_acceptance_payload(request),
+    )
+    return redirect('orders:request_created', request_id=purchase_request.pk)
 
 
 def order_created_view(request, order_id):

@@ -231,7 +231,7 @@ class Product(models.Model):
     )
     slug = models.SlugField('Slug', max_length=300, unique=True, blank=True)
     description = models.TextField('Описание', blank=True)
-    price = models.DecimalField('Цена из наличия', max_digits=12, decimal_places=2)
+    price = models.DecimalField('Цена из наличия', max_digits=12, decimal_places=2, null=True, blank=True)
     price_on_request = models.DecimalField(
         'Цена под заказ',
         max_digits=12,
@@ -883,7 +883,7 @@ class ProductBundle(models.Model):
     @property
     def total_price_without_discount(self):
         """Сумма по полным ценам товаров (без скидки)."""
-        total = sum(float(i.product.price) * i.quantity for i in self.items.all())
+        total = sum(float(resolve_in_stock_price(i.product) or 0) * i.quantity for i in self.items.all())
         return total
 
 
@@ -925,14 +925,20 @@ class ProductBundleItem(models.Model):
 
     def save(self, *args, **kwargs):
         if self.product_id:
-            self.price = (Decimal(str(self.product.price)) * Decimal('0.95')).quantize(Decimal('0.01'))
+            base_price = resolve_in_stock_price(self.product)
+            if base_price is not None:
+                self.price = (Decimal(str(base_price)) * Decimal('0.95')).quantize(Decimal('0.01'))
+            else:
+                self.price = None
         super().save(*args, **kwargs)
 
     @property
     def effective_price(self):
         """Цена за единицу в комплекте (автоматически −5% от цены товара)."""
         if self.product_id:
-            return (Decimal(str(self.product.price)) * Decimal('0.95')).quantize(Decimal('0.01'))
+            base_price = resolve_in_stock_price(self.product)
+            if base_price is not None:
+                return (Decimal(str(base_price)) * Decimal('0.95')).quantize(Decimal('0.01'))
         return Decimal('0')
 
     def __str__(self):

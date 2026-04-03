@@ -1863,6 +1863,8 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
                 'products': [str(self.product.pk)],
                 f'qty_{self.product.pk}': '0',
                 f'price_{self.product.pk}': '-10',
+                'work_terms': 'Предоплата 70%.\nОстаток перед отгрузкой.',
+                'delivery_terms': '2-3 рабочих дня после оплаты.',
                 'export_format': 'html',
             },
         )
@@ -1879,6 +1881,10 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         self.assertIn('https://bizonvr.ru', content)
         self.assertNotIn('http://localhost:8000', content)
         self.assertIn('100 000 ₽', content)
+        self.assertIn('Условия работы', content)
+        self.assertIn('Предоплата 70%', content)
+        self.assertIn('Сроки доставки', content)
+        self.assertIn('2-3 рабочих дня после оплаты.', content)
 
     def test_commercial_proposal_pdf_export_downloads_attachment(self):
         self.login_staff()
