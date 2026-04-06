@@ -176,10 +176,13 @@ class CheckoutTest(TestCase):
         self.assertContains(resp, 'Оформление заявки')
         self.assertContains(resp, 'cdek-selection-empty')
         self.assertContains(resp, 'cdek-widget-modal')
+        self.assertContains(resp, 'cdek-osm-map')
+        self.assertContains(resp, 'cdek-city-search-input')
         self.assertContains(resp, 'Выбрать ПВЗ СДЭК')
         self.assertContains(resp, 'Скидка к заказу')
         self.assertContains(resp, 'Введите промокод')
-        self.assertNotContains(resp, 'cdek-widget-inline-root')
+        self.assertContains(resp, 'OpenStreetMap')
+        self.assertNotContains(resp, 'CDEKWidget')
         self.assertNotContains(resp, '<label for="id_city_text"', html=False)
         self.assertNotContains(resp, '<label for="id_address_line"', html=False)
         self.assertNotContains(resp, 'Еще товары')
@@ -922,6 +925,22 @@ class CdekWidgetProxyTest(TestCase):
         self.assertEqual(mock_post.call_count, 1)
         mock_get.assert_called_once()
         self.assertEqual(mock_get.call_args.kwargs['params']['action'], 'offices')
+
+    @patch('orders.views.cdek_widget.requests.get')
+    @patch('orders.views.cdek_widget.requests.post')
+    def test_proxy_forwards_cities_request(self, mock_post, mock_get):
+        mock_post.return_value = self._auth_response()
+        mock_get.return_value = self._json_response('[{"code":44,"city":"Москва"}]')
+
+        response = self.client.get(self.url, {'action': 'cities', 'city': 'Москва', 'country_code': 'RU'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertJSONEqual(response.content, [{'code': 44, 'city': 'Москва'}])
+        self.assertEqual(mock_post.call_count, 1)
+        mock_get.assert_called_once()
+        self.assertEqual(mock_get.call_args.kwargs['params']['city'], 'Москва')
+        self.assertEqual(mock_get.call_args.kwargs['params']['country_codes'], 'RU')
+        self.assertNotIn('action', mock_get.call_args.kwargs['params'])
 
     @patch('orders.views.cdek_widget.requests.get')
     @patch('orders.views.cdek_widget.requests.post')

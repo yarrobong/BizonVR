@@ -27,7 +27,7 @@
 cd /opt/BizonVR
 sudo git pull
 .venv/bin/pip install -r requirements.txt
-npm install
+npm installd
 npm run build:css
 .venv/bin/python scripts/check_single_db_contract.py
 .venv/bin/python manage.py migrate

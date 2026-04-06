@@ -215,7 +215,7 @@
             </div>
           {% else %}
             <div class="rounded-3xl border border-red-400/20 bg-red-500/10 p-4 text-sm leading-6 text-red-100">
-              Карта ПВЗ CDEK временно недоступна: проверьте настройки `CDEK_WIDGET_ACCOUNT`, `CDEK_WIDGET_PASSWORD` и `YANDEX_MAPS_API_KEY`.
+              Карта ПВЗ CDEK временно недоступна: проверьте настройки `CDEK_WIDGET_ACCOUNT` и `CDEK_WIDGET_PASSWORD`.
             </div>
           {% endif %}
         </section>
@@ -315,9 +315,9 @@
       <div class="flex h-full w-full flex-col bg-dark-900 md:max-w-5xl md:overflow-hidden md:rounded-[2rem] md:border md:border-white/10 md:bg-dark-900/95" style="height: min(82vh, 780px);">
         <div class="flex items-center justify-between border-b border-white/10 px-4 py-4 sm:px-6">
           <div>
-            <p class="text-xs uppercase tracking-[0.22em] text-accent/80">CDEK</p>
+            <p class="text-xs uppercase tracking-[0.22em] text-accent/80">CDEK + OpenStreetMap</p>
             <h2 class="mt-1 text-lg font-semibold text-white">Выберите ПВЗ</h2>
-            <p class="mt-1 text-sm text-gray-400">Карта открыта отдельно, чтобы форма заказа оставалась короткой и удобной.</p>
+            <p class="mt-1 text-sm text-gray-400">Сначала найдите город, затем выберите удобный пункт выдачи на карте или в списке.</p>
           </div>
           <button
             type="button"
@@ -328,17 +328,66 @@
             <i data-lucide="x" class="h-5 w-5"></i>
           </button>
         </div>
-        <div class="flex-1 px-4 py-4 sm:px-6 sm:py-5">
-          <div
-            id="cdek-widget-modal-root"
-            class="h-full overflow-hidden rounded-[1.75rem] border border-white/10 bg-dark-800/90"
-          ></div>
+        <div class="flex-1 overflow-hidden px-4 py-4 sm:px-6 sm:py-5">
+          <div class="flex h-full min-h-0 flex-col gap-3 lg:grid lg:grid-cols-[minmax(0,1.25fr)_minmax(19rem,0.9fr)]">
+            <section class="flex min-h-0 flex-col overflow-hidden rounded-[1.75rem] border border-white/10 bg-dark-800/90">
+              <div class="border-b border-white/10 px-4 py-3.5">
+                <label for="cdek-city-search-input" class="block text-xs uppercase tracking-[0.22em] text-accent/80">Город</label>
+                <div class="mt-2 flex flex-col gap-2 sm:flex-row">
+                  <input
+                    id="cdek-city-search-input"
+                    type="text"
+                    class="w-full rounded-2xl border border-white/10 bg-dark-700/80 px-4 py-2.5 text-white placeholder:text-gray-500 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
+                    placeholder="Например, Москва"
+                    autocomplete="address-level2"
+                  >
+                  <button
+                    type="button"
+                    class="inline-flex shrink-0 items-center justify-center rounded-full bg-accent px-5 py-2.5 text-sm font-bold uppercase tracking-wide text-dark-900 transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+                    id="cdek-city-search-submit"
+                  >
+                    Найти ПВЗ
+                  </button>
+                </div>
+                <p class="mt-2 text-xs leading-5 text-gray-400">
+                  Карта использует OpenStreetMap, а список пунктов выдачи загружается напрямую из CDEK.
+                </p>
+              </div>
+              <div class="relative flex-1">
+                <div id="cdek-map-loading" class="absolute inset-x-4 top-4 z-[500] hidden rounded-2xl border border-white/10 bg-dark-900/90 px-4 py-3 text-sm text-gray-200">
+                  Загружаем пункты выдачи CDEK…
+                </div>
+                <div id="cdek-map-error" class="absolute inset-x-4 top-4 z-[500] hidden rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100"></div>
+                <div id="cdek-osm-map" class="h-full min-h-[18rem] w-full bg-dark-950 lg:min-h-0"></div>
+              </div>
+              <div class="border-t border-white/10 px-4 py-3 text-xs leading-5 text-gray-500">
+                Данные карты: OpenStreetMap contributors.
+              </div>
+            </section>
+
+            <section class="flex min-h-0 flex-col overflow-hidden rounded-[1.75rem] border border-white/10 bg-dark-900/70">
+              <div class="border-b border-white/10 px-4 py-3.5">
+                <div class="flex items-center justify-between gap-3">
+                  <div>
+                    <p class="text-xs uppercase tracking-[0.22em] text-accent/80">Пункты выдачи</p>
+                    <h3 class="mt-1 text-base font-semibold text-white">Список ПВЗ</h3>
+                  </div>
+                  <span id="cdek-office-count" class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-gray-300">0 ПВЗ</span>
+                </div>
+                <p id="cdek-office-caption" class="mt-2 text-sm text-gray-400">Введите город, чтобы загрузить доступные ПВЗ CDEK.</p>
+              </div>
+              <div id="cdek-city-results" class="hidden border-b border-white/10 px-4 py-3"></div>
+              <div id="cdek-office-list" class="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
+                <div class="rounded-2xl border border-dashed border-white/10 bg-white/[0.03] p-4 text-sm text-gray-500">
+                  Здесь появится список ПВЗ после выбора города.
+                </div>
+              </div>
+            </section>
+          </div>
         </div>
       </div>
     </div>
   </div>
-  <script src="https://cdn.jsdelivr.net/npm/@cdek-it/widget@3" charset="utf-8"></script>
-  <script src="{% static 'js/orders/checkout_cdek_widget.js' %}"></script>
 {% endif %}
 {% endblock %}
 

@@ -104,6 +104,17 @@ def _proxy_to_cdek(payload):
             headers=common_headers,
             timeout=HTTP_TIMEOUT_SECONDS,
         )
+    elif action == 'cities':
+        city_payload = dict(payload)
+        city_payload.pop('action', None)
+        if 'country_code' in city_payload and 'country_codes' not in city_payload:
+            city_payload['country_codes'] = city_payload.pop('country_code')
+        response = requests.get(
+            f"{settings.CDEK_WIDGET_API_BASE}/location/cities",
+            params=city_payload,
+            headers=common_headers,
+            timeout=HTTP_TIMEOUT_SECONDS,
+        )
     elif action == 'calculate':
         response = requests.post(
             f"{settings.CDEK_WIDGET_API_BASE}/calculator/tarifflist",
@@ -132,7 +143,7 @@ def cdek_widget_service_view(request):
         return _json_error('Invalid JSON body')
     if 'action' not in payload:
         return _json_error('Action is required')
-    if payload.get('action') not in {'offices', 'calculate'}:
+    if payload.get('action') not in {'offices', 'cities', 'calculate'}:
         return _json_error('Unknown action')
 
     try:
