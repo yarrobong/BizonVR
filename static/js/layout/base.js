@@ -355,9 +355,14 @@
       });
     }
 
-    function normalizePhoneDigits(value) {
-      let digits = (value || '').replace(/\D/g, '');
-      if (digits.length === 11 && (digits[0] === '7' || digits[0] === '8')) {
+    function normalizePhoneDigits(value, hasBuiltInPrefix) {
+      const stringValue = String(value || '');
+      let digits = stringValue.replace(/\D/g, '');
+      const normalizedValue = stringValue.replace(/\s+/g, '');
+
+      if (hasBuiltInPrefix && normalizedValue.startsWith('+7')) {
+        digits = digits.slice(1);
+      } else if (digits.length === 11 && (digits[0] === '7' || digits[0] === '8')) {
         digits = digits.slice(1);
       }
       return digits.slice(0, 10);
@@ -387,12 +392,17 @@
       return formatted;
     }
 
-    function getCaretPositionByDigits(formattedValue, digitsBeforeCaret) {
+    function getCaretPositionByDigits(formattedValue, digitsBeforeCaret, hasExternalPrefix) {
       if (digitsBeforeCaret <= 0) return 0;
 
       let seenDigits = 0;
+      let skippedPrefixDigits = 0;
       for (let index = 0; index < formattedValue.length; index += 1) {
         if (/\d/.test(formattedValue[index])) {
+          if (hasExternalPrefix && skippedPrefixDigits < 1) {
+            skippedPrefixDigits += 1;
+            continue;
+          }
           seenDigits += 1;
           if (seenDigits >= digitsBeforeCaret) {
             return index + 1;
@@ -410,11 +420,13 @@
       inputs.forEach(input => {
         const wrapper = input.closest('.phone-input-wrapper');
         const bracket = wrapper ? wrapper.querySelector('.phone-prefix-bracket') : null;
+        const hasExternalPrefix = !wrapper;
+        const hasBuiltInPrefix = !wrapper;
         const syncValue = preserveCaret => {
           const currentValue = input.value || '';
           const selectionStart = typeof input.selectionStart === 'number' ? input.selectionStart : currentValue.length;
-          const digitsBeforeCaret = normalizePhoneDigits(currentValue.slice(0, selectionStart)).length;
-          const digits = normalizePhoneDigits(currentValue);
+          const digitsBeforeCaret = normalizePhoneDigits(currentValue.slice(0, selectionStart), hasBuiltInPrefix).length;
+          const digits = normalizePhoneDigits(currentValue, hasBuiltInPrefix);
           const formattedValue = formatPhoneDigits(digits, Boolean(wrapper));
 
           if (currentValue !== formattedValue) {
@@ -430,14 +442,14 @@
             && document.activeElement === input
             && typeof input.setSelectionRange === 'function'
           ) {
-            const caretPosition = getCaretPositionByDigits(formattedValue, digitsBeforeCaret);
+            const caretPosition = getCaretPositionByDigits(formattedValue, digitsBeforeCaret, hasExternalPrefix);
             requestAnimationFrame(() => input.setSelectionRange(caretPosition, caretPosition));
           }
         };
 
         if (!input.dataset.phoneMaskBound) {
           input.addEventListener('input', () => syncValue(true));
-          input.addEventListener('focus', () => syncValue(true));
+          input.addEventListener('focus', () => syncValue(false));
           input.addEventListener('blur', () => syncValue(false));
           input.dataset.phoneMaskBound = '1';
         }

@@ -352,7 +352,6 @@ def _is_cdek_widget_enabled():
     return bool(
         getattr(settings, 'CDEK_WIDGET_ACCOUNT', '').strip()
         and getattr(settings, 'CDEK_WIDGET_PASSWORD', '').strip()
-        and getattr(settings, 'YANDEX_MAPS_API_KEY', '').strip()
     )
 
 
@@ -383,20 +382,37 @@ def _resolve_cdek_default_location(form, *, selected_saved_address, session_city
     if session_city and (session_city.name or '').strip():
         return session_city.name.strip()
     # Координаты Екатеринбурга как безопасный fallback:
-    # widget не пытается геокодировать строку при первом рендере.
+    # Leaflet ожидает центр карты ещё до загрузки офисов CDEK.
     return [60.597465, 56.838011]
 
 
+def _resolve_cdek_default_city(form, *, selected_saved_address, session_city):
+    office_snapshot = _extract_bound_office_snapshot(form)
+    if office_snapshot.get('city'):
+        return str(office_snapshot['city']).strip()
+    if selected_saved_address and (selected_saved_address.city or '').strip():
+        return selected_saved_address.city.strip()
+    if session_city and (session_city.name or '').strip():
+        return session_city.name.strip()
+    return 'Екатеринбург'
+
+
 def _build_cdek_widget_config(request, form, *, selected_saved_address, session_city):
+    office_snapshot = _extract_bound_office_snapshot(form)
     return {
         'enabled': _is_cdek_widget_enabled(),
-        'apiKey': getattr(settings, 'YANDEX_MAPS_API_KEY', '').strip(),
         'servicePath': request.build_absolute_uri(reverse('orders:cdek_widget_service')),
         'defaultLocation': _resolve_cdek_default_location(
             form,
             selected_saved_address=selected_saved_address,
             session_city=session_city,
         ),
+        'defaultCity': _resolve_cdek_default_city(
+            form,
+            selected_saved_address=selected_saved_address,
+            session_city=session_city,
+        ),
+        'defaultCityCode': office_snapshot.get('city_code') if office_snapshot.get('city_code') else None,
         'forceFilters': {
             'type': 'PVZ',
         },
