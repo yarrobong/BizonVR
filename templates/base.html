@@ -8,6 +8,7 @@
   <title>{% block title %}BizonVR — VR оборудование и аттракционы{% endblock %}</title>
   <meta name="description" content="{% block description %}Магазин VR оборудования, аттракционов и аксессуаров. Лучшие цены, гарантия качества, доставка по всей России.{% endblock %}">
   <link rel="canonical" href="https://bizonvr.ru{{ request.path }}">
+  {% include "layout/_alfatrack.html" %}
   {% include "layout/_head_assets.html" %}
   {% block extra_head %}{% endblock %}
   <script>
