@@ -22,6 +22,11 @@
       return `${formatted} ₽`;
     };
   </script>
+<!-- calltouch -->
+<script>
+(function(w,d,n,c){w.CalltouchDataObject=n;w[n]=function(){w[n]["callbacks"].push(arguments)};if(!w[n]["callbacks"]){w[n]["callbacks"]=[]}w[n]["loaded"]=false;if(typeof c!=="object"){c=[c]}w[n]["counters"]=c;for(var i=0;i<c.length;i+=1){p(c[i])}function p(cId){var a=d.getElementsByTagName("script")[0],s=d.createElement("script"),i=function(){a.parentNode.insertBefore(s,a)},m=typeof Array.prototype.find === 'function',n=m?"init-min.js":"init.js";s.async=true;s.src="https://mod.calltouch.ru/"+n+"?id="+cId;if(w.opera=="[object Opera]"){d.addEventListener("DOMContentLoaded",i,false)}else{i()}}})(window,document,"ct","mswgnlnh");
+</script>
+<!-- calltouch -->
 </head>
 <body class="min-h-screen bg-dark-900 text-white font-sans preload"
       id="main-body"
@@ -118,7 +123,55 @@
     document.body.scrollTop = 0;
     window.scrollTo(0, 0);
   </script> -->
-
+<!-- calltouch requests -->
+<script>
+Element.prototype.matches||(Element.prototype.matches=Element.prototype.matchesSelector||Element.prototype.webkitMatchesSelector||Element.prototype.mozMatchesSelector||Element.prototype.msMatchesSelector),Element.prototype.closest||(Element.prototype.closest=function(e){for(var t=this;t;){if(t.matches(e))return t;t=t.parentElement}return null});
+var ct_get_val=function(form,selector){if(!!form.querySelector(selector)){return form.querySelector(selector).value;}else{return '';}}
+document.addEventListener('click', function(e) {                                           
+    var t_el = e.target;
+    if (t_el.closest('form [type="submit"]:not([name="promo_action"]')){ try {
+        var f = t_el.closest('form'); 
+        var f_attr_xShow = f.getAttribute('x-show');
+        var f_attr_id = f.getAttribute('id');
+        var fio = ct_get_val(f,'input[name="name"],input[name="contact_name"],input[name="first_name"]');
+        var phone = ct_get_val(f,'input[name="phone"]');
+        var email = ct_get_val(f,'input[name="email"]');
+        var password1 = ct_get_val(f,'input[name="password1"]');
+        var password2 = ct_get_val(f,'input[name="password2"]');
+        var comment = ct_get_val(f,'textarea[name="message"]');
+        var sub = 'Заявка с ' + location.hostname;
+        var ct_valid = !!phone || !!email;
+        if (f_attr_xShow == 'registrationOpen'){
+            sub = 'Регистрация с ' + location.hostname;
+            ct_valid = !!email && !!fio && !!password1 && !!password2;
+        }
+        if (f_attr_id == 'checkout-form'){
+            sub = 'Корзина с ' + location.hostname;
+            ct_valid = !!phone && !!fio;
+        }
+        var ct_data = {            
+            fio: fio,
+            phoneNumber: phone,
+            email: email,
+            subject: sub,
+            requestUrl: location.href,
+            comment: comment,
+            sessionId: window.call_value
+        };
+        var post_data = Object.keys(ct_data).reduce(function(a,k){if(!!ct_data[k]){a.push(k+'='+encodeURIComponent(ct_data[k]));}return a},[]).join('&');
+        var site_id = '78900';
+        var CT_URL = 'https://api.calltouch.ru/calls-service/RestAPI/requests/'+site_id+'/register/';
+        console.log(ct_data,ct_valid);
+        if (ct_valid && !window.ct_snd_flag){
+            window.ct_snd_flag = 1; setTimeout(function(){ window.ct_snd_flag = 0; }, 20000);
+            var request = window.ActiveXObject?new ActiveXObject("Microsoft.XMLHTTP"):new XMLHttpRequest();
+            request.open("POST", CT_URL, true); request.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+            request.send(post_data);
+        }
+    } catch (e) { console.log(e); } }
+});
+</script>
+<!-- calltouch requests -->
 
   {% include "layout/_catalog_overlay.html" %}
 
@@ -139,5 +192,6 @@
   {% block footer %}
   {% include "layout/_footer.html" %}
   {% endblock %}
+
 </body>
 </html>
