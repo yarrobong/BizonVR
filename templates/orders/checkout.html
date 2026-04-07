@@ -311,13 +311,13 @@
     class="fixed inset-0 z-[70000] hidden bg-dark-900/95 backdrop-blur"
     aria-hidden="true"
   >
-    <div class="flex h-full items-end justify-center md:items-center md:p-6">
-      <div class="flex h-full w-full flex-col bg-dark-900 md:max-w-5xl md:overflow-hidden md:rounded-[2rem] md:border md:border-white/10 md:bg-dark-900/95" style="height: min(82vh, 780px);">
+    <div class="flex h-full justify-center md:items-center md:p-6">
+      <div class="flex h-full w-full flex-col bg-dark-900 md:h-[82vh] md:max-h-[780px] md:max-w-5xl md:overflow-hidden md:rounded-[2rem] md:border md:border-white/10 md:bg-dark-900/95">
         <div class="flex items-center justify-between border-b border-white/10 px-4 py-4 sm:px-6">
           <div>
             <p class="text-xs uppercase tracking-[0.22em] text-accent/80">CDEK + OpenStreetMap</p>
             <h2 class="mt-1 text-lg font-semibold text-white">Выберите ПВЗ</h2>
-            <p class="mt-1 text-sm text-gray-400">Сначала найдите город, затем выберите удобный пункт выдачи на карте или в списке.</p>
+            <p class="mt-1 hidden text-sm text-gray-400 sm:block">Сначала найдите город, затем выберите удобный пункт выдачи на карте или в списке.</p>
           </div>
           <button
             type="button"
@@ -328,12 +328,12 @@
             <i data-lucide="x" class="h-5 w-5"></i>
           </button>
         </div>
-        <div class="flex-1 overflow-hidden px-4 py-4 sm:px-6 sm:py-5">
-          <div class="flex h-full min-h-0 flex-col gap-3 lg:grid lg:grid-cols-[minmax(0,1.25fr)_minmax(19rem,0.9fr)]">
-            <section class="flex min-h-0 flex-col overflow-hidden rounded-[1.75rem] border border-white/10 bg-dark-800/90">
+        <div class="flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5 lg:overflow-hidden">
+          <div class="flex flex-col gap-3 lg:h-full lg:min-h-0 lg:grid lg:grid-cols-[minmax(0,1.25fr)_minmax(19rem,0.9fr)]">
+            <section class="flex flex-col overflow-hidden rounded-[1.75rem] border border-white/10 bg-dark-800/90 lg:min-h-0">
               <div class="border-b border-white/10 px-4 py-3.5">
                 <label for="cdek-city-search-input" class="block text-xs uppercase tracking-[0.22em] text-accent/80">Город</label>
-                <div class="mt-2 flex flex-col gap-2 sm:flex-row">
+                <div class="mt-2 flex flex-row gap-2">
                   <input
                     id="cdek-city-search-input"
                     type="text"
@@ -358,14 +358,14 @@
                   Загружаем пункты выдачи CDEK…
                 </div>
                 <div id="cdek-map-error" class="absolute inset-x-4 top-4 z-[500] hidden rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100"></div>
-                <div id="cdek-osm-map" class="h-full min-h-[18rem] w-full bg-dark-950 lg:min-h-0"></div>
+                <div id="cdek-osm-map" class="h-full min-h-[13rem] w-full bg-dark-950 lg:min-h-0"></div>
               </div>
               <div class="border-t border-white/10 px-4 py-3 text-xs leading-5 text-gray-500">
                 Данные карты: OpenStreetMap contributors.
               </div>
             </section>
 
-            <section class="flex min-h-0 flex-col overflow-hidden rounded-[1.75rem] border border-white/10 bg-dark-900/70">
+            <section class="flex min-h-0 flex-col overflow-hidden rounded-[1.75rem] border border-white/10 bg-dark-900/70 max-h-72 lg:max-h-none">
               <div class="border-b border-white/10 px-4 py-3.5">
                 <div class="flex items-center justify-between gap-3">
                   <div>
