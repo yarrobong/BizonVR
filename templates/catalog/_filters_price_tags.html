@@ -7,6 +7,7 @@
        data-filters-price
        data-min="{{ filter_price_min }}"
        data-max="{{ filter_price_max }}"
+       x-id="['price-range-min', 'price-range-max']"
        x-init="$nextTick(() => syncPriceRange($el))">
     <div class="filter-price-grid" data-filters-price-inputs>
       <label class="filter-price-field">
@@ -28,12 +29,14 @@
       <div class="filter-price-range-track"></div>
       <div class="filter-price-range-active"></div>
       <input type="range"
+             :id="$id('price-range-min')"
              min="{{ filter_price_min }}"
              max="{{ filter_price_max }}"
              value="{{ price_min_filter|default:filter_price_min }}"
              data-price-range="min"
              @input="syncPriceRange($el.closest('[data-filters-price]'), 'min-range')">
       <input type="range"
+             :id="$id('price-range-max')"
              min="{{ filter_price_min }}"
              max="{{ filter_price_max }}"
              value="{{ price_max_filter|default:filter_price_max }}"
@@ -60,6 +63,7 @@
          data-filters-price
          data-min="{{ filter_price_min }}"
          data-max="{{ filter_price_max }}"
+         x-id="['price-range-min', 'price-range-max']"
          x-init="$nextTick(() => syncPriceRange($el))">
       <div class="filter-price-grid">
         <label class="filter-price-field">
@@ -81,12 +85,14 @@
         <div class="filter-price-range-track"></div>
         <div class="filter-price-range-active"></div>
         <input type="range"
+               :id="$id('price-range-min')"
                min="{{ filter_price_min }}"
                max="{{ filter_price_max }}"
                value="{{ price_min_filter|default:filter_price_min }}"
                data-price-range="min"
                @input="syncPriceRange($el.closest('[data-filters-price]'), 'min-range')">
         <input type="range"
+               :id="$id('price-range-max')"
                min="{{ filter_price_min }}"
                max="{{ filter_price_max }}"
                value="{{ price_max_filter|default:filter_price_max }}"

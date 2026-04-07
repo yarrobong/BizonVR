@@ -84,7 +84,9 @@
 
   <label class="catalog-control-bar-sort">
     <span class="catalog-sort-label">Сортировка</span>
-    <select onchange="var u=new URL(location.href); u.searchParams.set('sort', this.value); u.searchParams.delete('page'); location.href=u.toString();"
+    <select id="catalog-sort-select"
+            name="sort"
+            onchange="var u=new URL(location.href); u.searchParams.set('sort', this.value); u.searchParams.delete('page'); location.href=u.toString();"
             class="catalog-sort-select">
       <option value="relevance" {% if current_sort == 'relevance' %}selected{% endif %}>По релевантности</option>
       <option value="popularity" {% if current_sort == 'popularity' %}selected{% endif %}>По популярности</option>

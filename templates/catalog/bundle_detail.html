@@ -20,6 +20,7 @@
      }"
      x-init="$nextTick(() => updateHeaderFilled())"
      @scroll.window.passive="updateHeaderFilled()"
+     @pageshow.window="mobileSearchOpen = false; $nextTick(() => updateHeaderFilled())"
      @resize.window="updateHeaderFilled()">
   <div class="pd-mobile-header-bar" :class="{ 'is-filled': headerFilled }">
     <button type="button"
@@ -65,7 +66,7 @@
   </div>
   <div class="pd-mobile-search-overlay" x-show="mobileSearchOpen" x-cloak x-transition.opacity>
     <div class="pd-mobile-search-row">
-      <form action="{% url 'catalog:product_list' %}" method="get" class="pd-mobile-search-form">
+      <form action="{% url 'catalog:product_list' %}" method="get" hx-boost="false" class="pd-mobile-search-form">
         <button type="submit" class="pd-mobile-search-submit" aria-label="Искать">
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"></circle>

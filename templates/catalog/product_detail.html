@@ -24,6 +24,7 @@
      x-init="$nextTick(() => updateHeaderFilled())"
      @scroll.window.passive="updateHeaderFilled()"
      @resize.window="updateHeaderFilled()"
+     @pageshow.window="mobileSearchOpen = false; $nextTick(() => updateHeaderFilled())"
      @pd-variant-change.window="mobileVariantName = ($event.detail && $event.detail.name) ? $event.detail.name : ''">
   <div class="pd-mobile-header-bar" :class="{ 'is-filled': headerFilled }">
     <button type="button"
@@ -96,7 +97,7 @@
 
   <div class="pd-mobile-search-overlay" x-show="mobileSearchOpen" x-cloak x-transition.opacity>
     <div class="pd-mobile-search-row">
-      <form action="{% url 'catalog:product_list' %}" method="get" class="pd-mobile-search-form">
+      <form action="{% url 'catalog:product_list' %}" method="get" hx-boost="false" class="pd-mobile-search-form">
         <button type="submit" class="pd-mobile-search-submit" aria-label="Искать">
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"></circle>
@@ -596,84 +597,98 @@
         </div>
       </div>
 
-      <!-- Mobile: minimal info from DB -->
-      <div class="mobile-card mobile-only">
-        <template x-if="currentPublicPurchaseMode === 'stock'">
-          <div class="offer-stack">
-            <button type="button"
-                    class="offer-panel offer-panel--primary"
-                    :class="{ 'is-selected': selectedPurchaseMode === 'stock' }"
-                    @click="setPurchaseMode('stock')">
-              <div class="price-row">
-                <span class="main-price" x-text="window.formatRub(currentInStockPrice)"></span>
-              </div>
-              <div class="offer-meta">
-                <div class="offer-status-row">
-                  <span class="offer-status-label">В наличии</span>
-                  <span class="offer-stock-badge"
-                        :class="stockStatus === 'in_stock_high' ? 'is-high' : 'is-low'"
-                        x-text="stockLevelLabel">Мало</span>
-                </div>
-                <p class="offer-meta-text" x-text="inStockDeliveryText">Доставка за 5 дней</p>
-              </div>
-            </button>
-            <template x-if="allowOnRequest && currentOnRequestPrice !== null">
-              <button type="button"
-                      class="offer-panel offer-panel--secondary"
-                      :class="{ 'is-selected': selectedPurchaseMode === 'on_request' }"
-                      @click="setPurchaseMode('on_request')">
-                <div class="offer-secondary-row">
-                  <span class="offer-secondary-label">Под заказ</span>
-                  <span class="offer-secondary-price" x-text="window.formatRub(currentOnRequestPrice)">4 490 ₽</span>
-                </div>
-                <p class="offer-secondary-meta" x-text="onRequestDeliveryText">Срок поставки: до 35 дней</p>
-              </button>
+      <div class="mobile-hero-card mobile-only">
+        <div class="mobile-hero-copy">
+          <div class="mobile-hero-eyebrow-row">
+            <span class="mobile-hero-eyebrow">{{ product.category.name }}</span>
+            <template x-if="selectedVariant">
+              <span class="mobile-hero-selected-variant" x-text="selectedVariant.name"></span>
             </template>
           </div>
-        </template>
-        <template x-if="currentPublicPurchaseMode === 'on_request'">
-          <div class="offer-stack">
-            <div class="offer-panel offer-panel--primary offer-panel--solo">
-              <div class="offer-secondary-row offer-secondary-row--solo">
-                <span class="offer-secondary-label">Под заказ</span>
-              </div>
-              <div class="price-row">
-                <span class="main-price" x-text="window.formatRub(currentOnRequestPrice)">4 490 ₽</span>
-              </div>
-              <p class="offer-meta-text" x-text="onRequestDeliveryText">Срок поставки: до 35 дней</p>
-            </div>
-          </div>
-        </template>
-        <template x-if="currentPublicPurchaseMode === 'request_only'">
-          <div class="offer-stack">
-            <div class="offer-panel offer-panel--primary offer-panel--solo">
-              <div class="offer-secondary-row offer-secondary-row--solo">
-                <span class="offer-secondary-label">Цена не указана</span>
-              </div>
-              <p class="offer-meta-text">Оставьте заявку, и менеджер уточнит поставку, срок доставки и стоимость.</p>
-            </div>
-          </div>
-        </template>
-        <h1 class="mobile-product-title">{{ product.name }}</h1>
-      </div>
+          <h1 class="mobile-product-title">{{ product.name }}</h1>
+        </div>
 
-      {% if product.variants.all %}
-      <div class="mobile-card mobile-only">
-        <div class="variants-title">{{ product.option_label|default:"Вариант" }}: <strong x-text="selectedVariant ? selectedVariant.name : ''"></strong></div>
-        <div class="color-variants">
-          <template x-for="v in variants" :key="v.id">
-	            <div class="color-opt" :class="selectedVariant && selectedVariant.id === v.id ? 'selected' : ''" @click="setVariant(v)">
-              <template x-if="v.imageUrl">
-                <img :src="v.imageUrl" alt="" loading="lazy" />
-              </template>
-              <template x-if="!v.imageUrl">
-                <div style="width: 100%; height: 100%; background: rgba(255,255,255,0.06);"></div>
+        <div class="mobile-hero-purchase">
+          <template x-if="currentPublicPurchaseMode === 'stock'">
+            <div class="offer-stack">
+              <button type="button"
+                      class="offer-panel offer-panel--primary"
+                      :class="{ 'is-selected': selectedPurchaseMode === 'stock' }"
+                      @click="setPurchaseMode('stock')">
+                <div class="price-row">
+                  <span class="main-price" x-text="window.formatRub(currentInStockPrice)"></span>
+                </div>
+                <div class="offer-meta">
+                  <div class="offer-status-row">
+                    <span class="offer-status-label">В наличии</span>
+                    <span class="offer-stock-badge"
+                          :class="stockStatus === 'in_stock_high' ? 'is-high' : 'is-low'"
+                          x-text="stockLevelLabel">Мало</span>
+                  </div>
+                  <p class="offer-meta-text" x-text="inStockDeliveryText">Доставка за 5 дней</p>
+                </div>
+              </button>
+              <template x-if="allowOnRequest && currentOnRequestPrice !== null">
+                <button type="button"
+                        class="offer-panel offer-panel--secondary"
+                        :class="{ 'is-selected': selectedPurchaseMode === 'on_request' }"
+                        @click="setPurchaseMode('on_request')">
+                  <div class="offer-secondary-row">
+                    <span class="offer-secondary-label">Под заказ</span>
+                    <span class="offer-secondary-price" x-text="window.formatRub(currentOnRequestPrice)">4 490 ₽</span>
+                  </div>
+                  <p class="offer-secondary-meta" x-text="onRequestDeliveryText">Срок поставки: до 35 дней</p>
+                </button>
               </template>
             </div>
           </template>
+          <template x-if="currentPublicPurchaseMode === 'on_request'">
+            <div class="offer-stack">
+              <div class="offer-panel offer-panel--primary offer-panel--solo">
+                <div class="offer-secondary-row offer-secondary-row--solo">
+                  <span class="offer-secondary-label">Под заказ</span>
+                </div>
+                <div class="price-row">
+                  <span class="main-price" x-text="window.formatRub(currentOnRequestPrice)">4 490 ₽</span>
+                </div>
+                <p class="offer-meta-text" x-text="onRequestDeliveryText">Срок поставки: до 35 дней</p>
+              </div>
+            </div>
+          </template>
+          <template x-if="currentPublicPurchaseMode === 'request_only'">
+            <div class="offer-stack">
+              <div class="offer-panel offer-panel--primary offer-panel--solo">
+                <div class="offer-secondary-row offer-secondary-row--solo">
+                  <span class="offer-secondary-label">Цена не указана</span>
+                </div>
+                <p class="offer-meta-text">Оставьте заявку ниже, и менеджер уточнит поставку, срок доставки и стоимость.</p>
+              </div>
+            </div>
+          </template>
         </div>
+
+        {% if product.variants.all %}
+          <div class="mobile-hero-variants">
+            <div class="mobile-hero-section-head">
+              <span class="mobile-hero-section-title">{{ product.option_label|default:"Вариант" }}</span>
+              <strong class="mobile-hero-section-value" x-text="selectedVariant ? selectedVariant.name : ''"></strong>
+            </div>
+            <div class="color-variants mobile-hero-variants-grid">
+              <template x-for="v in variants" :key="v.id">
+                <div class="color-opt" :class="selectedVariant && selectedVariant.id === v.id ? 'selected' : ''" @click="setVariant(v)">
+                  <template x-if="v.imageUrl">
+                    <img :src="v.imageUrl" alt="" loading="lazy" />
+                  </template>
+                  <template x-if="!v.imageUrl">
+                    <div style="width: 100%; height: 100%; background: rgba(255,255,255,0.06);"></div>
+                  </template>
+                </div>
+              </template>
+            </div>
+          </div>
+        {% endif %}
+
       </div>
-      {% endif %}
 
       <div class="product-info desktop-only">
         <h1>{{ product.name }}</h1>
@@ -800,11 +815,12 @@
             {% endif %}
           </form>
         </div>
+      </div>
 
-        <section id="purchase-request"
-                 x-show="isRequestOnlySelection"
+        <div id="purchase-request" class="purchase-request-anchor" aria-hidden="true"></div>
+        <section x-show="isRequestOnlySelection"
                  x-cloak
-                 class="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-left">
+                 class="purchase-request-panel mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-left">
           <div class="flex items-start justify-between gap-3">
             <div>
               <p class="text-sm font-semibold text-white">Оставить заявку</p>
@@ -851,179 +867,185 @@
             <button type="submit" class="add-cart-btn mb-0">Оставить заявку</button>
           </form>
         </section>
-      </div>
-
-      {% include "catalog/partials/product_marketplace_links.html" with product=product only %}
+        {% include "catalog/partials/product_marketplace_links.html" with product=product only %}
       </div>
     </div>
 
     <!-- Floating Action Bar (Mobile Only) -->
     <div class="floating-action mobile-only" x-show="!isRequestOnlySelection" x-cloak>
-        <form action="{% url 'catalog:add_to_cart' product.pk %}" method="post"
-              x-show="currentCartQty === 0 && !mobileQtyRemoving"
-              x-cloak
-              @htmx:before-request="handleMobileAddBeforeRequest()"
-              @htmx:after-request="handleMobileAddAfterRequest($event)"
-              hx-post="{% url 'catalog:add_to_cart' product.pk %}"
-              hx-target="#cart-modal-content"
-              hx-swap="innerHTML"
-              hx-push-url="false"
-              style="width: 100%;">
-          {% csrf_token %}
-          <input type="hidden" name="quantity" value="1" />
-          <input type="hidden" name="purchase_mode" :value="selectedPurchaseMode" />
-          {% if product.variants.all %}
-          <input type="hidden" name="variant_id" :value="selectedVariant ? selectedVariant.id : ''" />
-          <button type="submit" class="cta-btn" :disabled="mobileAddBusy || !canSubmitMobileCart"><span class="cta-btn-text">В корзину</span></button>
-          {% else %}
-          <button type="submit" class="cta-btn" :disabled="mobileAddBusy || !canSubmitMobileCart"><span class="cta-btn-text">В корзину</span></button>
-          {% endif %}
-        </form>
-
-        <div class="cta-cart-row"
-             :class="{ 'is-entering': mobileAddTransitioning, 'is-leaving': mobileQtyRemoving }"
-             x-show="currentCartQty > 0 || mobileQtyRemoving"
-             x-cloak>
-          <div class="cta-cart-state">В корзине</div>
-          <form action="{% url 'catalog:cart_update' %}"
-                method="post"
-                x-ref="mobileQtyForm"
-                @htmx:before-request="handleMobileQtyBeforeRequest()"
-                @htmx:after-request="handleMobileQtyAfterRequest($event)"
-                hx-post="{% url 'catalog:cart_update' %}"
+        <div class="floating-action__inner">
+          <form action="{% url 'catalog:add_to_cart' product.pk %}" method="post"
+                x-show="currentCartQty === 0 && !mobileQtyRemoving"
+                x-cloak
+                @htmx:before-request="handleMobileAddBeforeRequest()"
+                @htmx:after-request="handleMobileAddAfterRequest($event)"
+                hx-post="{% url 'catalog:add_to_cart' product.pk %}"
                 hx-target="#cart-modal-content"
                 hx-swap="innerHTML"
                 hx-push-url="false"
-                class="cta-qty-wrap">
+                class="floating-action__controls">
             {% csrf_token %}
-            <input type="hidden" name="product_id" value="{{ product.pk }}" />
-            <input type="hidden" name="quantity" x-ref="mobileQtyHidden" value="1" />
+            <input type="hidden" name="quantity" value="1" />
             <input type="hidden" name="purchase_mode" :value="selectedPurchaseMode" />
+            {% if product.variants.all %}
             <input type="hidden" name="variant_id" :value="selectedVariant ? selectedVariant.id : ''" />
-            <input type="hidden" name="next" value="{{ request.get_full_path }}" />
-            <button type="button" class="cta-qty-btn" @click="decrementMobileQty()" :disabled="mobileQtyBusy || mobileQtyRemoving || !canSubmitMobileCart">−</button>
-            <input type="number" min="0" max="99" class="cta-qty-input" :value="currentCartQty" @change="applyMobileQtyInput($event)" />
-            <button type="button" class="cta-qty-btn" @click="incrementMobileQty()" :disabled="mobileQtyBusy || mobileQtyRemoving || !canSubmitMobileCart">+</button>
+            <button type="submit" class="cta-btn" :disabled="mobileAddBusy || !canSubmitMobileCart"><span class="cta-btn-text">В корзину</span></button>
+            {% else %}
+            <button type="submit" class="cta-btn" :disabled="mobileAddBusy || !canSubmitMobileCart"><span class="cta-btn-text">В корзину</span></button>
+            {% endif %}
           </form>
+
+          <div class="cta-cart-row floating-action__controls"
+               :class="{ 'is-entering': mobileAddTransitioning, 'is-leaving': mobileQtyRemoving }"
+               x-show="currentCartQty > 0 || mobileQtyRemoving"
+               x-cloak>
+            <div class="cta-cart-state">В корзине</div>
+            <form action="{% url 'catalog:cart_update' %}"
+                  method="post"
+                  x-ref="mobileQtyForm"
+                  @htmx:before-request="handleMobileQtyBeforeRequest()"
+                  @htmx:after-request="handleMobileQtyAfterRequest($event)"
+                  hx-post="{% url 'catalog:cart_update' %}"
+                  hx-target="#cart-modal-content"
+                  hx-swap="innerHTML"
+                  hx-push-url="false"
+                  class="cta-qty-wrap">
+              {% csrf_token %}
+              <input type="hidden" name="product_id" value="{{ product.pk }}" />
+              <input type="hidden" name="quantity" x-ref="mobileQtyHidden" value="1" />
+              <input type="hidden" name="purchase_mode" :value="selectedPurchaseMode" />
+              <input type="hidden" name="variant_id" :value="selectedVariant ? selectedVariant.id : ''" />
+              <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+              <button type="button" class="cta-qty-btn" @click="decrementMobileQty()" :disabled="mobileQtyBusy || mobileQtyRemoving || !canSubmitMobileCart">−</button>
+              <input id="mobile-qty-visible" type="number" min="0" max="99" inputmode="numeric" class="cta-qty-input" :value="currentCartQty" @change="applyMobileQtyInput($event)" />
+              <button type="button" class="cta-qty-btn" @click="incrementMobileQty()" :disabled="mobileQtyBusy || mobileQtyRemoving || !canSubmitMobileCart">+</button>
+            </form>
+          </div>
         </div>
+    </div>
+
+    <div class="product-details-block">
+      <h2 class="section-title">Описание</h2>
+      <div class="details-section" id="desc">
+        {% if product.description or active_content_blocks %}
+          <div class="details-collapsible">
+            <div class="details-collapsible-content">
+              {% if product.description %}
+                <div class="desc-text">
+                  {{ product.description|linebreaks }}
+                </div>
+              {% endif %}
+
+              {% if active_content_blocks %}
+                {% include "catalog/partials/product_content_blocks.html" with content_blocks=active_content_blocks product=product %}
+              {% endif %}
+            </div>
+          </div>
+        {% else %}
+          <div class="desc-text">
+            <span style="color: var(--pd-muted);">Описание пока не добавлено.</span>
+          </div>
+        {% endif %}
+
+        <h3 class="specs-title">Характеристики</h3>
+        <div class="mobile-specs-list mobile-only">
+          <template x-for="(ch, idx) in displayCharacteristics" :key="ch[0] + ch[1] + '-m'">
+            <div class="mobile-specs-item">
+              <div class="mobile-specs-label" x-text="ch[0]"></div>
+              <div class="mobile-specs-value" x-text="ch[1]"></div>
+            </div>
+          </template>
+        </div>
+
+        <div class="specs-grid desktop-only">
+          <div class="col">
+            <template x-for="(ch, idx) in displayCharacteristics.filter((_, i) => i % 2 === 0)" :key="ch[0] + ch[1]">
+              <div class="spec-item">
+                <div class="spec-label" x-text="ch[0]"></div>
+                <div class="spec-value" x-text="ch[1]"></div>
+              </div>
+            </template>
+          </div>
+          <div class="col">
+            <template x-for="(ch, idx) in displayCharacteristics.filter((_, i) => i % 2 === 1)" :key="ch[0] + ch[1] + '-r'">
+              <div class="spec-item">
+                <div class="spec-label" x-text="ch[0]"></div>
+                <div class="spec-value" x-text="ch[1]"></div>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
     </div>
 
     {% if bundles %}
-      <h2 class="section-title">В комплекте</h2>
-      {% for bundle in bundles %}
-        <div class="rec-panel mb-6">
-          <div class="rec-caption mb-3">
-            {% if bundle.name %}
-              <strong>{{ bundle.name }}</strong>
-              <span> — {{ bundle.total_price|rub }}</span>
-            {% else %}
-              <strong>Состав комплекта</strong>
-              <span> — {{ bundle.total_price|rub }}</span>
-            {% endif %}
-          </div>
-          <div class="rec-grid mb-4">
-            {% for item in bundle.items.all %}
-              {% if item.product_id != product.pk %}
-                {% include "catalog/_product_card.html" with product=item.product show_favorite=True favorite_product_ids=favorite_product_ids product_stock_total=product_stock_total show_add_button=False %}
+      <div class="product-bundles-block">
+        <h2 class="section-title">В комплекте</h2>
+        {% for bundle in bundles %}
+          <div class="rec-panel mb-6">
+            <div class="rec-caption mb-3">
+              {% if bundle.name %}
+                <strong>{{ bundle.name }}</strong>
+                <span> — {{ bundle.total_price|rub }}</span>
+              {% else %}
+                <strong>Состав комплекта</strong>
+                <span> — {{ bundle.total_price|rub }}</span>
               {% endif %}
-            {% endfor %}
+            </div>
+            <div class="rec-grid mb-4">
+              {% for item in bundle.items.all %}
+                {% if item.product_id != product.pk %}
+                  {% include "catalog/_product_card.html" with product=item.product show_favorite=True favorite_product_ids=favorite_product_ids product_stock_total=product_stock_total show_add_button=False %}
+                {% endif %}
+              {% endfor %}
+            </div>
+            <form action="{% url 'catalog:add_bundle_to_cart' %}" method="post"
+                  hx-post="{% url 'catalog:add_bundle_to_cart' %}"
+                  hx-target="#cart-modal-content"
+                  hx-swap="innerHTML">
+              {% csrf_token %}
+              <input type="hidden" name="bundle_id" value="{{ bundle.pk }}" />
+              <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+              <button type="submit" class="add-cart-btn" style="max-width: 320px;">Купить комплект — {{ bundle.total_price|rub }}</button>
+            </form>
           </div>
-          <form action="{% url 'catalog:add_bundle_to_cart' %}" method="post"
-                hx-post="{% url 'catalog:add_bundle_to_cart' %}"
-                hx-target="#cart-modal-content"
-                hx-swap="innerHTML">
-            {% csrf_token %}
-            <input type="hidden" name="bundle_id" value="{{ bundle.pk }}" />
-            <input type="hidden" name="next" value="{{ request.get_full_path }}" />
-            <button type="submit" class="add-cart-btn" style="max-width: 320px;">Купить комплект — {{ bundle.total_price|rub }}</button>
-          </form>
-        </div>
-      {% endfor %}
+        {% endfor %}
+      </div>
     {% endif %}
 
     {% if recommendation_sections %}
-      <h2 class="section-title">Похожие</h2>
-      <div class="px-4 md:px-0 mb-10" x-data="{ recTab: '{{ recommendation_sections.0.key }}' }">
-        <div class="rec-panel">
-          {% if recommendation_sections|length > 1 %}
-            <div class="rec-tabs">
-              {% for section in recommendation_sections %}
-                <button type="button"
-                        @click="recTab = '{{ section.key }}'"
-                        :class="recTab === '{{ section.key }}' ? 'rec-tab-btn is-active' : 'rec-tab-btn'"
-                        class="rec-tab-btn">
-                  {{ section.title }}
-                </button>
-              {% endfor %}
-            </div>
-          {% endif %}
-
-          {% for section in recommendation_sections %}
-            <div x-show="recTab === '{{ section.key }}'" x-cloak>
-              <div class="rec-grid">
-                {% for p in section.products %}
-                  {% with card_variant=recommended_variants|get_dict_item:p.id %}
-                    {% include "catalog/_product_card.html" with product=p card_variant=card_variant show_favorite=True favorite_product_ids=favorite_product_ids product_stock_total=product_stock_total variant_stock_total=variant_stock_total show_add_button=False recommended_variant_ids=recommended_variant_ids in_recommendations=True %}
-                  {% endwith %}
+      <div class="product-recommendations-block">
+        <h2 class="section-title">Похожие</h2>
+        <div class="px-4 md:px-0 mb-10" x-data="{ recTab: '{{ recommendation_sections.0.key }}' }">
+          <div class="rec-panel">
+            {% if recommendation_sections|length > 1 %}
+              <div class="rec-tabs">
+                {% for section in recommendation_sections %}
+                  <button type="button"
+                          @click="recTab = '{{ section.key }}'"
+                          :class="recTab === '{{ section.key }}' ? 'rec-tab-btn is-active' : 'rec-tab-btn'"
+                          class="rec-tab-btn">
+                    {{ section.title }}
+                  </button>
                 {% endfor %}
               </div>
-            </div>
-          {% endfor %}
+            {% endif %}
+
+            {% for section in recommendation_sections %}
+              <div x-show="recTab === '{{ section.key }}'" x-cloak>
+                <div class="rec-grid">
+                  {% for p in section.products %}
+                    {% with card_variant=recommended_variants|get_dict_item:p.id %}
+                      {% include "catalog/_product_card.html" with product=p card_variant=card_variant show_favorite=True favorite_product_ids=favorite_product_ids product_stock_total=product_stock_total variant_stock_total=variant_stock_total show_add_button=False recommended_variant_ids=recommended_variant_ids in_recommendations=True %}
+                    {% endwith %}
+                  {% endfor %}
+                </div>
+              </div>
+            {% endfor %}
+          </div>
         </div>
       </div>
     {% endif %}
-
-    <h2 class="section-title">Описание</h2>
-    <div class="details-section" id="desc">
-      {% if product.description or active_content_blocks %}
-        <div class="details-collapsible">
-          <div class="details-collapsible-content">
-            {% if product.description %}
-              <div class="desc-text">
-                {{ product.description|linebreaks }}
-              </div>
-            {% endif %}
-
-            {% if active_content_blocks %}
-              {% include "catalog/partials/product_content_blocks.html" with content_blocks=active_content_blocks product=product %}
-            {% endif %}
-          </div>
-        </div>
-      {% else %}
-        <div class="desc-text">
-          <span style="color: var(--pd-muted);">Описание пока не добавлено.</span>
-        </div>
-      {% endif %}
-
-      <h3 class="specs-title">Характеристики</h3>
-      <div class="mobile-specs-list mobile-only">
-        <template x-for="(ch, idx) in displayCharacteristics" :key="ch[0] + ch[1] + '-m'">
-          <div class="mobile-specs-item">
-            <div class="mobile-specs-label" x-text="ch[0]"></div>
-            <div class="mobile-specs-value" x-text="ch[1]"></div>
-          </div>
-        </template>
-      </div>
-
-      <div class="specs-grid desktop-only">
-        <div class="col">
-          <template x-for="(ch, idx) in displayCharacteristics.filter((_, i) => i % 2 === 0)" :key="ch[0] + ch[1]">
-            <div class="spec-item">
-              <div class="spec-label" x-text="ch[0]"></div>
-              <div class="spec-value" x-text="ch[1]"></div>
-            </div>
-          </template>
-        </div>
-        <div class="col">
-          <template x-for="(ch, idx) in displayCharacteristics.filter((_, i) => i % 2 === 1)" :key="ch[0] + ch[1] + '-r'">
-            <div class="spec-item">
-              <div class="spec-label" x-text="ch[0]"></div>
-              <div class="spec-value" x-text="ch[1]"></div>
-            </div>
-          </template>
-        </div>
-      </div>
-    </div>
   </main>
 </div>
 {% endblock %}

@@ -100,6 +100,7 @@
            data-filters-price
            data-min="{{ filter_price_min }}"
            data-max="{{ filter_price_max }}"
+           x-id="['price-range-min', 'price-range-max']"
            x-init="$nextTick(() => syncPriceRange($el))">
         <div class="filter-price-grid filter-price-grid--compact">
           <label class="filter-price-field filter-price-field--compact">
@@ -123,12 +124,14 @@
           <div class="filter-price-range-track"></div>
           <div class="filter-price-range-active"></div>
           <input type="range"
+                 :id="$id('price-range-min')"
                  min="{{ filter_price_min }}"
                  max="{{ filter_price_max }}"
                  value="{{ price_min_filter|default:filter_price_min }}"
                  data-price-range="min"
                  @input="syncPriceRange($el.closest('[data-filters-price]'), 'min-range'); queueQuickPriceSubmit($el.form.closest('form'))">
           <input type="range"
+                 :id="$id('price-range-max')"
                  min="{{ filter_price_min }}"
                  max="{{ filter_price_max }}"
                  value="{{ price_max_filter|default:filter_price_max }}"

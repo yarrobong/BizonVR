@@ -236,6 +236,92 @@ class VariantGalleryAndCatalogCardsTest(TestCase):
         self.assertIn('aria-label="Назад"', html)
         self.assertNotIn('pd-mobile-back-btn__label', html)
 
+    def test_product_detail_mobile_search_uses_full_navigation_and_visible_qty_has_id(self):
+        resp = self.client.get(reverse('catalog:product_detail', kwargs={'slug': self.product.slug}))
+        self.assertEqual(resp.status_code, 200)
+        html = resp.content.decode()
+
+        self.assertIn('method="get" hx-boost="false" class="pd-mobile-search-form"', html)
+        self.assertIn('id="mobile-qty-visible"', html)
+        self.assertIn('@pageshow.window="mobileSearchOpen = false; $nextTick(() => updateHeaderFilled())"', html)
+
+    def test_product_detail_renders_unified_mobile_hero_layout(self):
+        resp = self.client.get(reverse('catalog:product_detail', kwargs={'slug': self.product.slug}))
+        self.assertEqual(resp.status_code, 200)
+        html = resp.content.decode()
+
+        self.assertIn('class="mobile-hero-card mobile-only"', html)
+        self.assertIn('class="mobile-hero-purchase"', html)
+        self.assertNotIn('class="mobile-card mobile-only"', html)
+        self.assertNotIn('class="mobile-hero-about"', html)
+        self.assertNotIn('class="mobile-hero-subtitle"', html)
+        self.assertNotIn('class="floating-action__summary"', html)
+
+    def test_product_detail_keeps_variant_picker_inside_mobile_hero(self):
+        resp = self.client.get(reverse('catalog:product_detail', kwargs={'slug': self.product.slug}))
+        self.assertEqual(resp.status_code, 200)
+        html = resp.content.decode()
+
+        hero_index = html.index('class="mobile-hero-card mobile-only"')
+        variants_index = html.index('class="mobile-hero-variants"')
+        desktop_info_index = html.index('class="product-info desktop-only"')
+
+        self.assertLess(hero_index, variants_index)
+        self.assertLess(variants_index, desktop_info_index)
+
+    def test_product_detail_places_mobile_marketplaces_before_description_block(self):
+        self.product.avito_url = 'https://example.com/avito'
+        self.product.save(update_fields=['avito_url'])
+
+        resp = self.client.get(reverse('catalog:product_detail', kwargs={'slug': self.product.slug}))
+        self.assertEqual(resp.status_code, 200)
+        html = resp.content.decode()
+
+        self.assertIn('data-marketplace-link="avito"', html)
+        self.assertIn('class="product-details-block"', html)
+        self.assertLess(
+            html.index('data-marketplace-link="avito"'),
+            html.index('class="product-details-block"'),
+        )
+
+    def test_bundle_detail_mobile_search_uses_full_navigation(self):
+        bundle = ProductBundle.objects.create(
+            name='Quest Pro Pack',
+            slug='quest-pro-pack',
+        )
+        ProductBundleItem.objects.create(bundle=bundle, product=self.product, quantity=1)
+        ProductBundleItem.objects.create(bundle=bundle, product=self.foreign_product, quantity=1)
+
+        resp = self.client.get(reverse('catalog:bundle_detail', kwargs={'slug': bundle.slug}))
+        self.assertEqual(resp.status_code, 200)
+        html = resp.content.decode()
+
+        self.assertIn('method="get" hx-boost="false" class="pd-mobile-search-form"', html)
+
+    def test_catalog_filters_and_sort_controls_render_identifiers_for_form_fields(self):
+        project_root = os.path.dirname(os.path.dirname(__file__))
+        with open(os.path.join(project_root, 'templates', 'catalog', '_filters_price_tags.html'), encoding='utf-8') as fh:
+            price_filters_html = fh.read()
+        with open(
+            os.path.join(project_root, 'templates', 'catalog', 'product_list', '_filters_summary.html'),
+            encoding='utf-8',
+        ) as fh:
+            filters_summary_html = fh.read()
+        with open(
+            os.path.join(project_root, 'templates', 'catalog', 'product_list', '_sort_controls.html'),
+            encoding='utf-8',
+        ) as fh:
+            sort_controls_html = fh.read()
+
+        self.assertIn('x-id="[\'price-range-min\', \'price-range-max\']"', price_filters_html)
+        self.assertIn(':id="$id(\'price-range-min\')"', price_filters_html)
+        self.assertIn(':id="$id(\'price-range-max\')"', price_filters_html)
+        self.assertIn('x-id="[\'price-range-min\', \'price-range-max\']"', filters_summary_html)
+        self.assertIn(':id="$id(\'price-range-min\')"', filters_summary_html)
+        self.assertIn(':id="$id(\'price-range-max\')"', filters_summary_html)
+        self.assertIn('id="catalog-sort-select"', sort_controls_html)
+        self.assertIn('name="sort"', sort_controls_html)
+
     def test_product_video_save_normalizes_public_rutube_url_and_fetches_metadata(self):
         with patch('catalog.models.requests.get') as mock_get:
             mock_get.return_value = self._mock_http_response(json_data={
@@ -500,6 +586,8 @@ class VariantGalleryAndCatalogCardsTest(TestCase):
         self.assertIsNone(variant_payload['effectivePrice'])
         self.assertContains(resp, 'Цена не указана')
         self.assertContains(resp, 'Оставить заявку')
+        self.assertContains(resp, 'class="purchase-request-panel', html=False)
+        self.assertContains(resp, 'id="purchase-request"', html=False)
 
     def test_product_detail_data_uses_total_stock_only(self):
         ProductStock.objects.create(
