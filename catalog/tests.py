@@ -5,6 +5,7 @@ import re
 import shutil
 import tempfile
 import zipfile
+from urllib.parse import urlencode
 from xml.etree import ElementTree as ET
 from datetime import timedelta
 from decimal import Decimal
@@ -20,6 +21,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.http import Http404
+from django.template import Context, Template
 from django.test import Client, TestCase, override_settings
 from django.test.client import RequestFactory
 from django.urls import NoReverseMatch, reverse
@@ -39,6 +41,7 @@ from .filter_audit import (
     get_new_uncovered_values,
     sync_catalog_filter_audit_snapshots,
 )
+from .filtering import CatalogFilterService
 from .filter_bootstrap import build_alias_suggestions
 from .filter_bootstrap import SAFE_AUTO_APPLICABLE
 from .filter_presets import get_typed_value_sort_key
@@ -842,15 +845,30 @@ class PublicLocationCleanupTest(TestCase):
             self.assertNotContains(resp, 'Все регионы')
 
 
+@override_settings(
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    }
+)
 class CatalogSectionFilterTest(TestCase):
     """Фильтры каталога должны быть ограничены выбранным разделом."""
 
     def setUp(self):
         self.client = Client()
-        self.section_vr = CatalogSection.objects.create(name='VR', slug='vr')
-        self.section_pc = CatalogSection.objects.create(name='PC', slug='pc')
-        self.cat_vr = Category.objects.create(name='VR Шлемы', slug='vr-headsets', section=self.section_vr)
-        self.cat_pc = Category.objects.create(name='Ноутбуки', slug='laptops', section=self.section_pc)
+        self.section_vr = CatalogSection.objects.create(name='VR', slug='vr-filter')
+        self.section_pc = CatalogSection.objects.create(name='PC', slug='pc-filter')
+        self.section_attractions = CatalogSection.objects.create(
+            name='VR аттракционы',
+            slug='vr-attrakciony-ad-filter',
+        )
+        self.cat_vr = Category.objects.create(name='VR Шлемы', slug='vr-headsets-filter', section=self.section_vr)
+        self.cat_pc = Category.objects.create(name='Ноутбуки', slug='laptops-filter', section=self.section_pc)
+        self.cat_attractions = Category.objects.create(
+            name='Стационарные аттракционы',
+            slug='stationary-attractions-filter',
+            section=self.section_attractions,
+        )
         self.tag_vr = ProductTag.objects.create(name='VR тег', slug='vr-tag', order=1)
         self.tag_pc = ProductTag.objects.create(name='PC тег', slug='pc-tag', order=2)
 
@@ -868,6 +886,13 @@ class CatalogSectionFilterTest(TestCase):
             price=200,
             is_active=True,
         )
+        self.attractions_product = Product.objects.create(
+            category=self.cat_attractions,
+            name='VR Arena',
+            slug='vr-arena',
+            price=300,
+            is_active=True,
+        )
         vr_product.tags.add(self.tag_vr)
         pc_product.tags.add(self.tag_pc)
 
@@ -877,6 +902,81 @@ class CatalogSectionFilterTest(TestCase):
         tag_slugs = {tag.slug for tag in resp.context['product_tags']}
         self.assertIn(self.tag_vr.slug, tag_slugs)
         self.assertNotIn(self.tag_pc.slug, tag_slugs)
+
+    def test_malformed_section_slug_recovers_valid_prefix_and_sanitizes_links(self):
+        malformed_section = f'{self.section_attractions.slug}/?calltouch_tm=yd_c:42'
+        response = self.client.get(
+            reverse('catalog:product_list'),
+            {
+                'section': malformed_section,
+                'utm_source': 'yandex',
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['current_section'], self.section_attractions.slug)
+        self.assertEqual(response.context['current_section_effective'], self.section_attractions.slug)
+        self.assertEqual(
+            {product.slug for product in response.context['products']},
+            {self.attractions_product.slug},
+        )
+
+        request = RequestFactory().get(
+            reverse('catalog:product_list'),
+            {'section': malformed_section, 'utm_source': 'yandex'},
+        )
+        built_url = CatalogFilterService(request).build_query_string(tag='vr-tag')
+        pagination_url = Template('{% load catalog_tags %}{% filter_url_pagination 2 %}').render(
+            Context({'request': request})
+        )
+        self.assertIn(f'section={self.section_attractions.slug}', built_url)
+        self.assertIn('utm_source=yandex', built_url)
+        self.assertNotIn(urlencode({'section': malformed_section}), built_url)
+        self.assertIn(f'section={self.section_attractions.slug}', pagination_url)
+        self.assertNotIn(urlencode({'section': malformed_section}), pagination_url)
+
+    def test_unknown_section_slug_falls_back_to_unfiltered_catalog(self):
+        response = self.client.get(
+            reverse('catalog:product_list'),
+            {'section': 'missing-section', 'utm_source': 'yandex'},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['current_section'], '')
+        self.assertEqual(response.context['current_section_effective'], '')
+        self.assertEqual(
+            {product.slug for product in response.context['products']},
+            {self.attractions_product.slug, 'quest-3', 'laptop'},
+        )
+
+    def test_malformed_category_slug_recovers_valid_prefix_and_sanitizes_links(self):
+        malformed_category = f'{self.cat_attractions.slug}/?calltouch_tm=yd_c:42'
+        response = self.client.get(
+            reverse('catalog:product_list'),
+            {
+                'category': malformed_category,
+                'utm_source': 'yandex',
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['current_category'], self.cat_attractions.slug)
+        self.assertEqual(response.context['current_section_effective'], self.section_attractions.slug)
+        self.assertEqual(
+            {product.slug for product in response.context['products']},
+            {self.attractions_product.slug},
+        )
+
+        request = RequestFactory().get(
+            reverse('catalog:product_list'),
+            {'category': malformed_category, 'utm_source': 'yandex'},
+        )
+        built_url = CatalogFilterService(request).build_query_string(tag='vr-tag')
+        pagination_url = Template('{% load catalog_tags %}{% filter_url_pagination 2 %}').render(
+            Context({'request': request})
+        )
+        self.assertIn(f'category={self.cat_attractions.slug}', built_url)
+        self.assertIn('utm_source=yandex', built_url)
+        self.assertNotIn(urlencode({'category': malformed_category}), built_url)
+        self.assertIn(f'category={self.cat_attractions.slug}', pagination_url)
+        self.assertNotIn(urlencode({'category': malformed_category}), pagination_url)
 
     def test_tags_in_filters_are_limited_by_selected_category(self):
         """При выбранной категории показываются только теги, у которых есть товары в этой категории (чтобы не вести в пустой каталог)."""

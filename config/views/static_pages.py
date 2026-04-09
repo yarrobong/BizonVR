@@ -9,9 +9,9 @@ from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
 
-from catalog.models import CallbackRequest, Service
+from catalog.models import CallbackRequest, ContactRequest, Service
 
-from ..forms import CallbackForm
+from ..forms import CallbackForm, CompactVRForm
 from ..legal_consent import build_legal_acceptance_payload
 
 CONFERENCE_ATTRACTIONS_DIRNAME = 'Конференция (Аттракционы)'
@@ -83,6 +83,35 @@ def conference_attractions_view(request, path=''):
     """Standalone-лендинг VR-аттракционов и его локальные ассеты."""
     landing_root = settings.BASE_DIR / CONFERENCE_ATTRACTIONS_DIRNAME
     return _serve_public_directory_file(landing_root, path, default_file='index.html')
+
+
+def compact_vr_view(request, path=''):
+    """Лендинг компактной VR-арены под ключ и его локальные ассеты."""
+    landing_root = settings.BASE_DIR / 'v2-vremenno'
+    if path:
+        return _serve_public_directory_file(landing_root, path, default_file='index.html')
+
+    lead_form = CompactVRForm()
+    if request.method == 'POST' and request.POST.get('form_type') == 'compact_vr':
+        lead_form = CompactVRForm(request.POST)
+        if lead_form.is_valid():
+            d = lead_form.cleaned_data
+            message_parts = [f'Город: {d["city"]}', f'Формат: {d["format"]}']
+            if d.get('premises'):
+                message_parts.append(f'Площадь / помещение: {d["premises"]}')
+            if d.get('comment'):
+                message_parts.append(f'Комментарий: {d["comment"]}')
+            ContactRequest.objects.create(
+                name=d['name'],
+                email=d.get('email', ''),
+                phone=d['contact'],
+                message='\n'.join(message_parts),
+                **build_legal_acceptance_payload(request),
+            )
+            messages.success(request, 'Заявка отправлена! Мы свяжемся с вами в ближайшее время.')
+            return redirect(reverse('compact_vr') + '#contact')
+
+    return render(request, 'compact_vr.html', {'lead_form': lead_form})
 
 
 def not_found_view(request, exception=None, unmatched_path=''):

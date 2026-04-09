@@ -22,6 +22,7 @@ from django.urls import path, include, re_path
 from config.env import config_bool
 from config.views import (
     arenda_view,
+    compact_vr_view,
     conference_attractions_view,
     contacts_view,
     cookies_policy_view,
@@ -51,6 +52,8 @@ urlpatterns = [
     path('feeds/vr-attractions.yml', vr_attractions_yml_feed_view, name='vr_attractions_yml_feed'),
     path('admin/', admin.site.urls),
     path('arenda/', arenda_view, name='arenda'),
+    path('compact-vr/', compact_vr_view, name='compact_vr'),
+    re_path(r'^compact-vr/(?P<path>.+)$', compact_vr_view),
     path('conference-attractions/', conference_attractions_view, name='conference_attractions'),
     re_path(r'^conference-attractions/(?P<path>.+)$', conference_attractions_view),
     path('uslugi/', uslugi_view, name='uslugi'),

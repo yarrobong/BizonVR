@@ -96,3 +96,23 @@ class CallbackForm(forms.Form):
         if len(digits) < 10:
             raise forms.ValidationError('Введите корректный номер телефона.')
         return value
+
+
+class CompactVRForm(forms.Form):
+    """Форма лида с лендинга Compact VR-арены."""
+    name = forms.CharField(label='Имя', max_length=150, required=True)
+    contact = forms.CharField(label='Телефон или Telegram', max_length=100, required=True)
+    city = forms.CharField(label='Город', max_length=150, required=True)
+    format = forms.ChoiceField(
+        label='Формат',
+        choices=[('Start', 'Start'), ('Core', 'Core'), ('Scale', 'Scale')],
+        required=True,
+    )
+    email = forms.EmailField(label='Email', required=False)
+    premises = forms.CharField(label='Площадь / тип помещения', max_length=300, required=False)
+    comment = forms.CharField(label='Комментарий', required=False, widget=forms.Textarea())
+    agree_personal_data = forms.BooleanField(
+        label='Согласие на обработку персональных данных',
+        required=True,
+        error_messages={'required': 'Необходимо согласие на обработку персональных данных.'},
+    )
