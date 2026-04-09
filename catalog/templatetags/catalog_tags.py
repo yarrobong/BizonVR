@@ -6,6 +6,7 @@ from django.utils.safestring import mark_safe
 
 from config.formatting import format_amount, format_currency_amount, format_decimal_amount
 
+from ..filtering import sanitize_catalog_query_params
 from ..pricing import get_purchase_mode_label
 from ..stock import public_stock_status
 
@@ -36,7 +37,7 @@ def _iter_remove_keys(remove_keys):
 def _apply_query_updates(request, *, remove_keys=None, updates=None, empty_result=''):
     if not request:
         return empty_result
-    params = request.GET.copy()
+    params = sanitize_catalog_query_params(request)
     for key in _iter_remove_keys(remove_keys):
         params.pop(key, None)
     for key, value in (updates or {}).items():
@@ -101,7 +102,7 @@ def filter_url_pagination(context, page):
     request = context.get('request')
     if not request:
         return '?page=' + str(page)
-    params = request.GET.copy()
+    params = sanitize_catalog_query_params(request)
     params['page'] = str(page)
     qs = params.urlencode()
     return '?' + qs

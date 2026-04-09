@@ -112,6 +112,14 @@ def _home_view_impl(request):
 
     hero_slides = [
         {
+            'title': 'Компактная VR-арена',
+            'description': 'Компактный формат запуска VR-локации под ключ: от 62 м², лизинг или покупка, гарантия 36 месяцев.',
+            'url': '/compact-vr/',
+            'btn': 'Подробнее',
+            'bg_url': request.build_absolute_uri('/compact-vr/img/katvrplayer.png'),
+            'bg_position': 'center center',
+        },
+        {
             'title': 'Цифровой магазин',
             'description': 'Цифровые товары и контент для VR. Ключи, подписки и лицензии в одном месте.',
             'url': f'{catalog_url}?section=cifrovye-tovary',

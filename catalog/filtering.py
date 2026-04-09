@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import OrderedDict, defaultdict
 from dataclasses import dataclass
+import re
 from typing import Iterable
 
 from django.db.models import Count, Max, Min, Prefetch, Q, Sum, Value
@@ -15,6 +16,7 @@ from .characteristic_sources import (
     map_definitions_by_source_name,
 )
 from .models import (
+    CatalogSection,
     Category,
     CharacteristicDefinition,
     CharacteristicSourceAlias,
@@ -26,6 +28,8 @@ from .models import (
 )
 from .pricing import build_catalog_effective_price_expression
 
+_SLUG_PREFIX_RE = re.compile(r'^[\w-]+', re.UNICODE)
+
 
 @dataclass(frozen=True)
 class ActiveCharacteristicFilter:
@@ -36,6 +40,87 @@ class ActiveCharacteristicFilter:
     request_identifier: str
     remove_keys: tuple[str, ...]
     definition: CharacteristicDefinition | None = None
+
+
+def _build_slug_candidates(raw_value: str) -> list[str]:
+    cleaned_value = (raw_value or '').strip()
+    if not cleaned_value:
+        return []
+
+    candidates = []
+    seen = set()
+
+    def _add(value: str):
+        normalized = (value or '').strip().strip('/')
+        if normalized and normalized not in seen:
+            seen.add(normalized)
+            candidates.append(normalized)
+
+    _add(cleaned_value)
+
+    prefix_match = _SLUG_PREFIX_RE.match(cleaned_value)
+    if prefix_match is not None:
+        _add(prefix_match.group(0))
+
+    for separator in ('?', '#', '&', '/'):
+        if separator in cleaned_value:
+            _add(cleaned_value.split(separator, 1)[0])
+
+    return candidates
+
+
+def _resolve_slug_object(queryset, raw_value: str):
+    for candidate in _build_slug_candidates(raw_value):
+        resolved = queryset.filter(slug=candidate).first()
+        if resolved is not None:
+            return resolved
+    return None
+
+
+def get_normalized_catalog_query_slugs(request) -> dict[str, str]:
+    if request is None:
+        return {'section': '', 'category': ''}
+
+    cached_result = getattr(request, '_catalog_normalized_query_slugs', None)
+    if cached_result is not None:
+        return cached_result
+
+    category = _resolve_slug_object(
+        Category.objects.select_related('section'),
+        request.GET.get('category', ''),
+    )
+    section = _resolve_slug_object(
+        CatalogSection.objects.all(),
+        request.GET.get('section', ''),
+    )
+
+    request._catalog_resolved_query_category = category
+    request._catalog_resolved_query_section = section
+    request._catalog_normalized_query_slugs = {
+        'section': section.slug if section is not None else '',
+        'category': category.slug if category is not None else '',
+    }
+    return request._catalog_normalized_query_slugs
+
+
+def sanitize_catalog_query_params(request, params=None):
+    if request is None:
+        return params
+
+    cleaned_params = params.copy() if params is not None else request.GET.copy()
+    normalized_slugs = get_normalized_catalog_query_slugs(request)
+
+    for key in ('section', 'category'):
+        raw_value = (request.GET.get(key) or '').strip()
+        normalized_value = normalized_slugs[key]
+        if not raw_value:
+            continue
+        if normalized_value:
+            cleaned_params[key] = normalized_value
+        else:
+            cleaned_params.pop(key, None)
+
+    return cleaned_params
 
 
 class CatalogFilterService:
@@ -54,7 +139,7 @@ class CatalogFilterService:
         )
 
     def build_query_string(self, *, remove_keys: Iterable[str] | None = None, **updates) -> str:
-        params = self.request.GET.copy()
+        params = sanitize_catalog_query_params(self.request)
         for key in remove_keys or ():
             params.pop(key, None)
         for key, value in updates.items():
@@ -77,17 +162,16 @@ class CatalogFilterService:
 
     @cached_property
     def current_category_slug(self) -> str:
-        return (self.request.GET.get('category') or '').strip()
+        return get_normalized_catalog_query_slugs(self.request)['category']
 
     @cached_property
     def current_section_slug(self) -> str:
-        return (self.request.GET.get('section') or '').strip()
+        return get_normalized_catalog_query_slugs(self.request)['section']
 
     @cached_property
     def selected_category(self) -> Category | None:
-        if not self.current_category_slug:
-            return None
-        return Category.objects.select_related('section').filter(slug=self.current_category_slug).first()
+        self.current_category_slug
+        return getattr(self.request, '_catalog_resolved_query_category', None)
 
     @cached_property
     def selected_section(self):
@@ -95,9 +179,7 @@ class CatalogFilterService:
             return self.selected_category.section
         if not self.current_section_slug:
             return None
-        from .models import CatalogSection
-
-        return CatalogSection.objects.filter(slug=self.current_section_slug).first()
+        return getattr(self.request, '_catalog_resolved_query_section', None)
 
     @cached_property
     def effective_section_slug(self) -> str:
