@@ -2415,6 +2415,9 @@ h3 {
   display: grid;
   place-items: center;
   padding: 24px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
   opacity: 0;
   pointer-events: none;
   transition: opacity 180ms ease;
@@ -2438,7 +2441,11 @@ h3 {
   width: min(1120px, 100%);
   max-height: min(88vh, 920px);
   padding: 0 26px 26px;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
@@ -2483,6 +2490,8 @@ h3 {
 
 .game-modal-stage-wrap {
   position: relative;
+  overflow: hidden;
+  border-radius: 24px 24px 0 0;
 }
 
 .game-modal-slide {
@@ -3999,23 +4008,105 @@ input[type="range"]::-webkit-slider-thumb {
   background: #20262d;
 }
 
-.faq-list {
+.faq-list,
+.faq-grid {
   display: grid;
-  gap: 14px;
+  gap: 16px;
+}
+
+.faq-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+
+.faq-item {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.02)),
+    radial-gradient(circle at top right, rgba(199, 143, 82, 0.16), transparent 34%);
+  transition:
+    border-color 180ms ease,
+    background 180ms ease,
+    transform 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.faq-item::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: linear-gradient(180deg, rgba(232, 184, 75, 0.92), rgba(199, 143, 82, 0.2));
+  opacity: 0.82;
+}
+
+.faq-item:hover {
+  transform: translateY(-2px);
+  border-color: rgba(199, 143, 82, 0.24);
+  box-shadow: 0 20px 44px rgba(3, 7, 11, 0.24);
+}
+
+.faq-item[open] {
+  border-color: rgba(199, 143, 82, 0.32);
+  background:
+    linear-gradient(180deg, rgba(199, 143, 82, 0.11), rgba(255, 255, 255, 0.028)),
+    radial-gradient(circle at top right, rgba(232, 184, 75, 0.18), transparent 38%);
+  box-shadow: 0 24px 48px rgba(3, 7, 11, 0.26);
 }
 
 .faq-item summary {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  align-items: center;
+  gap: 14px;
+  padding: 0;
   cursor: pointer;
   list-style: none;
-  font-weight: 600;
+  font-weight: 700;
+  color: #f4efe6;
 }
 
 .faq-item summary::-webkit-details-marker {
   display: none;
 }
 
+.faq-item summary::after {
+  content: "+";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: #e8b84b;
+  font-size: 1.55rem;
+  font-weight: 400;
+  line-height: 1;
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+  transition:
+    transform 180ms ease,
+    background 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease;
+}
+
+.faq-item[open] summary::after {
+  content: "−";
+  transform: rotate(180deg);
+  background: rgba(199, 143, 82, 0.16);
+  border-color: rgba(199, 143, 82, 0.28);
+  color: #f1c979;
+}
+
 .faq-item p {
   margin: 16px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(245, 240, 231, 0.68);
 }
 
 .cta-section {
@@ -4359,9 +4450,12 @@ input[type="range"]::-webkit-slider-thumb {
 
   .game-modal {
     padding: 12px;
+    place-items: start center;
   }
 
   .game-modal-dialog {
+    width: 100%;
+    max-height: calc(100dvh - 24px);
     padding: 0 18px 18px;
   }
 
@@ -4406,18 +4500,17 @@ input[type="range"]::-webkit-slider-thumb {
 
   .solution-mode-controls {
     width: 100%;
-    overflow-x: auto;
-    padding-bottom: 4px;
-    scrollbar-width: none;
-  }
-
-  .solution-mode-controls::-webkit-scrollbar {
-    display: none;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    overflow: visible;
+    padding-bottom: 0;
   }
 
   .solution-mode-tab {
-    flex: 0 0 auto;
-    min-width: 152px;
+    min-width: 0;
+    width: 100%;
+    touch-action: manipulation;
   }
 
   .solution-package-shell {
@@ -7316,18 +7409,17 @@ body {
 @media (max-width: 720px) {
   #solution .solution-mode-controls {
     width: 100%;
-    overflow-x: auto;
-    padding-bottom: 4px;
-    scrollbar-width: none;
-  }
-
-  #solution .solution-mode-controls::-webkit-scrollbar {
-    display: none;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    overflow: visible;
+    padding-bottom: 0;
   }
 
   #solution .solution-mode-tab {
-    flex: 0 0 auto;
-    min-width: 152px;
+    min-width: 0;
+    width: 100%;
+    touch-action: manipulation;
   }
 
   #solution .solution-package-shell {
