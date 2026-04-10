@@ -3,12 +3,78 @@
 {% block title %}Компактная VR-арена под ключ — BizonVR{% endblock %}
 {% block description %}Компактная VR-арена под ключ: сравнение с классической ареной и франшизами, форматы Start / Core / Scale, лизинг и покупка, экономика запуска, контент, сервис и гарантия.{% endblock %}
 
+{% block mobile_header %}
+<div class="compact-mobile-header md:hidden">
+  <div class="compact-mobile-header-inner">
+    <a class="compact-mobile-header-brand" href="{% url 'home' %}">BizonVR</a>
+    <a class="compact-mobile-header-link" href="#contact" data-cvr-scroll>Получить расчёт</a>
+  </div>
+</div>
+{% endblock %}
+
 {% block extra_head %}
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/compact-vr/styles.css">
 <style>
+:root {
+  --cvr-mobile-nav-top: calc(4.75rem + env(safe-area-inset-top, 0px));
+  --cvr-section-scroll-margin: 9rem;
+}
+
+.compact-mobile-header {
+  position: sticky;
+  top: 0;
+  z-index: 120;
+  padding: calc(0.65rem + env(safe-area-inset-top, 0px)) 1rem 0.75rem;
+  background: rgba(13, 16, 22, 0.94);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.compact-mobile-header-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.compact-mobile-header-brand {
+  font-family: 'Manrope', sans-serif;
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: #f7f2e8;
+  text-decoration: none;
+}
+
+.compact-mobile-header-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.5rem;
+  padding: 0 1rem;
+  border: 1px solid rgba(232, 184, 75, 0.28);
+  background: rgba(232, 184, 75, 0.1);
+  color: #f1d59c;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  text-decoration: none;
+  white-space: nowrap;
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+}
+
+@media (min-width: 768px) and (max-width: 1199px) {
+  :root {
+    --cvr-mobile-nav-top: 8.75rem;
+    --cvr-section-scroll-margin: 13rem;
+  }
+}
+
 /* ── Right rail nav ───────────────────────────────────────────── */
 .cvr-sidebar {
   position: fixed;
@@ -602,7 +668,7 @@
 .cvr-mobile-sheet {
   position: fixed;
   inset: 0;
-  z-index: 55;
+  z-index: 50010;
   align-items: flex-end;
   justify-content: center;
   padding: 1rem;
@@ -620,6 +686,11 @@
 .cvr-mobile-sheet-panel {
   position: relative;
   width: min(100%, 34rem);
+  max-height: min(100%, calc(100vh - 2rem - env(safe-area-inset-top, 0px)));
+  max-height: min(100%, calc(100dvh - 2rem - env(safe-area-inset-top, 0px)));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   padding: 1rem;
   transform: translateY(1.4rem);
   opacity: 0;
@@ -1202,7 +1273,7 @@
 }
 
 .section[id] {
-  scroll-margin-top: 9rem;
+  scroll-margin-top: var(--cvr-section-scroll-margin);
 }
 
 /* ── Reset topbar from standalone page (we use site header now) ─ */
@@ -1224,11 +1295,11 @@
   .cvr-sidebar { display: none; }
 
   .cvr-mobile-nav {
-    position: sticky;
-    top: calc(4.75rem + env(safe-area-inset-top, 0px));
+    position: static;
+    top: auto;
     z-index: 32;
     display: block;
-    padding: 0.75rem 1rem 0;
+    padding: 1rem 1rem 0;
   }
 
   .cvr-mobile-sheet {
@@ -1255,7 +1326,7 @@
   .hero-visual {
     width: 100%;
     max-width: 44rem;
-    margin: 0 auto;
+    margin: 0;
   }
 
   .compact-trust-grid,
@@ -1275,6 +1346,85 @@
 
   .premium-scenario-body {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1024px) {
+  .cvr-mobile-nav-bar {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.5rem;
+    padding: 0.85rem 0.95rem;
+    background: rgba(15, 19, 24, 0.94);
+  }
+
+  .cvr-mobile-nav-cta {
+    display: none;
+  }
+
+  .hero {
+    grid-template-columns: 1fr;
+    gap: 1.85rem;
+    align-items: start;
+  }
+
+  .hero-copy {
+    max-width: 42rem;
+  }
+
+  .hero-copy h1 {
+    max-width: 12ch;
+  }
+
+  .hero-quick-metrics {
+    max-width: 42rem;
+  }
+
+  .hero-proof-strip {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .hero-proof-card {
+    min-height: 0;
+  }
+
+  .hero-visual {
+    max-width: 42rem;
+  }
+
+  .launch-roadmap-head {
+    align-items: flex-start;
+  }
+
+  .launch-roadmap-head-text h3 {
+    white-space: normal;
+  }
+
+  .launch-roadmap-total {
+    margin-left: 0;
+  }
+
+  .launch-roadmap-track {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.8rem;
+    overflow: visible;
+    padding: 1rem 1rem 1.2rem;
+  }
+
+  .launch-roadmap-step {
+    min-height: 100%;
+    padding: 1rem 0.95rem 1.05rem;
+  }
+
+  .launch-roadmap-step h3 {
+    font-size: 0.92rem;
+  }
+
+  .launch-roadmap-step p {
+    font-size: 0.8rem;
+  }
+
+  .launch-roadmap-step-accent {
+    grid-column: 1 / -1;
   }
 }
 
@@ -1298,9 +1448,16 @@
 }
 
 @media (max-width: 767px) {
+  .compact-mobile-header-link {
+    min-height: 2.3rem;
+    padding-inline: 0.9rem;
+    font-size: 0.68rem;
+  }
+
   .hero {
     min-height: auto;
     gap: 1.5rem;
+    padding-top: 0.6rem;
   }
 
   .hero-copy h1 {
@@ -1405,6 +1562,7 @@
 
   .cvr-mobile-nav-bar {
     grid-template-columns: 1fr;
+    gap: 0.3rem;
   }
 
   .cvr-mobile-nav-cta {
@@ -1881,6 +2039,10 @@
   color: #e6c07a;
 }
 
+.launch-roadmap-swipe-hint {
+  display: none;
+}
+
 @media (max-width: 900px) {
   .launch-roadmap-track {
     grid-template-columns: repeat(7, minmax(138px, 1fr));
@@ -1919,53 +2081,44 @@
 
   .launch-roadmap-track {
     display: flex;
-    flex-direction: column;
-    gap: 0;
-    padding: 1rem 1.25rem 1.4rem;
-    overflow-x: visible;
+    flex-direction: row;
+    gap: 0.85rem;
+    padding: 1rem 1.25rem 0.55rem;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-snap-type: x mandatory;
+    scroll-padding-left: 1.25rem;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
     position: relative;
+    cursor: grab;
   }
 
   .launch-roadmap-track::before {
-    content: '';
-    position: absolute;
-    left: calc(1.25rem + 11px);
-    top: 1.25rem;
-    bottom: 1.75rem;
-    width: 1px;
-    background: linear-gradient(to bottom, rgba(199, 143, 82, 0.28), rgba(255, 255, 255, 0.06) 72%, transparent);
-    pointer-events: none;
+    display: none;
   }
 
   .launch-roadmap-step {
-    padding: 0.85rem 0.9rem;
-    margin-left: 1.6rem;
-    margin-bottom: 0.45rem;
+    flex: 0 0 clamp(15.25rem, 78vw, 18rem);
+    min-height: 100%;
+    padding: 0.95rem 0.95rem 1rem;
+    margin: 0;
     position: relative;
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
     clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
   }
 
   .launch-roadmap-step:last-child {
-    margin-bottom: 0;
+    margin-right: 0;
   }
 
   .launch-roadmap-step::before {
-    content: '';
-    position: absolute;
-    left: -1.65rem;
-    top: 1.1rem;
-    width: 9px;
-    height: 9px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.16);
-    border: 1px solid rgba(255, 255, 255, 0.22);
-    pointer-events: none;
+    display: none;
   }
 
   .launch-roadmap-step-accent::before {
-    background: rgba(199, 143, 82, 0.55);
-    border-color: rgba(199, 143, 82, 0.75);
-    box-shadow: 0 0 0 3px rgba(199, 143, 82, 0.12);
+    display: none;
   }
 
   .launch-roadmap-step h3 {
@@ -1976,6 +2129,26 @@
   .launch-roadmap-step p {
     font-size: 0.79rem;
     line-height: 1.58;
+  }
+
+  .launch-roadmap-swipe-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0 1.25rem 1.15rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: rgba(232, 184, 75, 0.74);
+  }
+
+  .launch-roadmap-swipe-hint::before {
+    content: '';
+    width: 1.6rem;
+    height: 1px;
+    background: linear-gradient(90deg, rgba(232, 184, 75, 0.15), rgba(232, 184, 75, 0.85));
+    box-shadow: 0 0 10px rgba(232, 184, 75, 0.18);
   }
 }
 
@@ -2160,8 +2333,66 @@
   }
 }
 
+@media (min-width: 768px) and (max-width: 1024px) {
+  .launch-roadmap-head {
+    align-items: flex-start;
+  }
+
+  .launch-roadmap-head-text h3 {
+    white-space: normal;
+  }
+
+  .launch-roadmap-total {
+    margin-left: 0;
+  }
+
+  .launch-roadmap-track {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.8rem;
+    overflow: visible;
+    padding: 1rem 1rem 1.2rem;
+  }
+
+  .launch-roadmap-step {
+    min-height: 100%;
+    padding: 1rem 0.95rem 1.05rem;
+  }
+
+  .launch-roadmap-step h3 {
+    font-size: 0.92rem;
+  }
+
+  .launch-roadmap-step p {
+    font-size: 0.8rem;
+  }
+
+  .launch-roadmap-step-accent {
+    grid-column: 1 / -1;
+  }
+}
+
 /* ── Very small phones (≤ 480 px) ── */
 @media (max-width: 480px) {
+  .compact-mobile-header {
+    padding-inline: 0.85rem;
+  }
+
+  .compact-mobile-header-brand {
+    font-size: 1.04rem;
+  }
+
+  .compact-mobile-header-link {
+    padding-inline: 0.8rem;
+    letter-spacing: 0.1em;
+  }
+
+  .cvr-mobile-nav {
+    padding-inline: 0.85rem;
+  }
+
+  .cvr-mobile-nav-bar {
+    padding-inline: 0.8rem;
+  }
 
   /* Hero metrics: single column on very narrow phones */
   .hero-quick-metrics {
@@ -2299,7 +2530,7 @@
   </div>
 </div>
 
-<div class="page-shell">
+<div class="page-shell" data-layout-sticky-header="off">
   <main>
     <section class="section hero" id="hero">
       <div class="hero-copy">
@@ -3484,21 +3715,21 @@
           <p>Эти игры усиливают загрузку и расширяют аудиторию.</p>
         </div>
         <div class="single-grid compact-single-grid">
-          <article class="panel single-game-card"><div class="game-cover cover-hero"><span>Batman Arkham Shadow</span></div><strong>Batman Arkham Shadow</strong></article>
-          <article class="panel single-game-card"><div class="game-cover cover-stealth"><span>Assassin's Creed Nexus VR</span></div><strong>Assassin's Creed Nexus VR</strong></article>
-          <article class="panel single-game-card"><div class="game-cover cover-sandbox"><span>BONELAB</span></div><strong>BONELAB</strong></article>
-          <article class="panel single-game-card"><div class="game-cover cover-melee"><span>Blade &amp; Sorcery</span></div><strong>Blade &amp; Sorcery: Nomad</strong></article>
-          <article class="panel single-game-card"><div class="game-cover cover-arena"><span>GORN</span></div><strong>GORN</strong></article>
-          <article class="panel single-game-card"><div class="game-cover cover-sniper"><span>Sniper Elite VR</span></div><strong>Sniper Elite VR</strong></article>
-          <article class="panel single-game-card"><div class="game-cover cover-horror"><span>Resident Evil 4</span></div><strong>Resident Evil 4</strong></article>
-          <article class="panel single-game-card"><div class="game-cover cover-walker"><span>Saints &amp; Sinners</span></div><strong>The Walking Dead: Saints &amp; Sinners</strong></article>
-          <article class="panel single-game-card"><div class="game-cover cover-sim"><span>Cooking Simulator VR</span></div><strong>Cooking Simulator VR</strong></article>
-          <article class="panel single-game-card"><div class="game-cover cover-iron"><span>Iron Man VR</span></div><strong>Marvel's Iron Man VR</strong></article>
-          <article class="panel single-game-card"><div class="game-cover cover-sports"><span>NFL PRO ERA II</span></div><strong>NFL PRO ERA II</strong></article>
-          <article class="panel single-game-card"><div class="game-cover cover-clean"><span>PowerWash Simulator</span></div><strong>PowerWash Simulator VR</strong></article>
-          <article class="panel single-game-card"><div class="game-cover cover-garage"><span>Car Mechanic</span></div><strong>Car Mechanic Simulator</strong></article>
-          <article class="panel single-game-card"><div class="game-cover cover-party"><span>I Am Cat</span></div><strong>I Am Cat</strong></article>
-          <article class="panel single-game-card"><div class="game-cover cover-stealth"><span>I Am Security</span></div><strong>I Am Security</strong></article>
+          <article class="panel single-game-card"><div class="game-cover game-cover-image"><img src="/compact-vr/img/Solo/batman-arkham-shadow.jpg" alt="Batman Arkham Shadow" loading="lazy" decoding="async"></div><strong>Batman Arkham Shadow</strong></article>
+          <article class="panel single-game-card"><div class="game-cover game-cover-image"><img src="/compact-vr/img/Solo/assassins-creed-nexus-vr.png" alt="Assassin's Creed Nexus VR" loading="lazy" decoding="async"></div><strong>Assassin's Creed Nexus VR</strong></article>
+          <article class="panel single-game-card"><div class="game-cover game-cover-image"><img src="/compact-vr/img/Solo/bonelab.jpg" alt="BONELAB" loading="lazy" decoding="async"></div><strong>BONELAB</strong></article>
+          <article class="panel single-game-card"><div class="game-cover game-cover-image"><img src="/compact-vr/img/Solo/blade-sorcery-nomad.jpg" alt="Blade &amp; Sorcery: Nomad" loading="lazy" decoding="async"></div><strong>Blade &amp; Sorcery: Nomad</strong></article>
+          <article class="panel single-game-card"><div class="game-cover game-cover-image"><img src="/compact-vr/img/Solo/gorn.jpg" alt="GORN" loading="lazy" decoding="async"></div><strong>GORN</strong></article>
+          <article class="panel single-game-card"><div class="game-cover game-cover-image"><img src="/compact-vr/img/Solo/sniper-elite-vr.jpg" alt="Sniper Elite VR" loading="lazy" decoding="async"></div><strong>Sniper Elite VR</strong></article>
+          <article class="panel single-game-card"><div class="game-cover game-cover-image"><img src="/compact-vr/img/Solo/resident-evil-4.jpg" alt="Resident Evil 4" loading="lazy" decoding="async"></div><strong>Resident Evil 4</strong></article>
+          <article class="panel single-game-card"><div class="game-cover game-cover-image"><img src="/compact-vr/img/Solo/saints-and-sinners.jpg" alt="The Walking Dead: Saints &amp; Sinners" loading="lazy" decoding="async"></div><strong>The Walking Dead: Saints &amp; Sinners</strong></article>
+          <article class="panel single-game-card"><div class="game-cover game-cover-image"><img src="/compact-vr/img/Solo/cooking-simulator-vr.jpg" alt="Cooking Simulator VR" loading="lazy" decoding="async"></div><strong>Cooking Simulator VR</strong></article>
+          <article class="panel single-game-card"><div class="game-cover game-cover-image"><img src="/compact-vr/img/Solo/iron-man-vr.jpg" alt="Marvel's Iron Man VR" loading="lazy" decoding="async"></div><strong>Marvel's Iron Man VR</strong></article>
+          <article class="panel single-game-card"><div class="game-cover game-cover-image"><img src="/compact-vr/img/Solo/nfl-pro-era-ii.jpg" alt="NFL PRO ERA II" loading="lazy" decoding="async"></div><strong>NFL PRO ERA II</strong></article>
+          <article class="panel single-game-card"><div class="game-cover game-cover-image"><img src="/compact-vr/img/Solo/powerwash-simulator-vr.jpg" alt="PowerWash Simulator VR" loading="lazy" decoding="async"></div><strong>PowerWash Simulator VR</strong></article>
+          <article class="panel single-game-card"><div class="game-cover game-cover-image"><img src="/compact-vr/img/Solo/car-mechanic-simulator.jpg" alt="Car Mechanic Simulator" loading="lazy" decoding="async"></div><strong>Car Mechanic Simulator</strong></article>
+          <article class="panel single-game-card"><div class="game-cover game-cover-image"><img src="/compact-vr/img/Solo/i-am-cat.jpg" alt="I Am Cat" loading="lazy" decoding="async"></div><strong>I Am Cat</strong></article>
+          <article class="panel single-game-card"><div class="game-cover game-cover-image"><img src="/compact-vr/img/Solo/i-am-security.jpg" alt="I Am Security" loading="lazy" decoding="async"></div><strong>I Am Security</strong></article>
         </div>
       </div>
 
@@ -3604,7 +3835,6 @@
       <div class="section-heading narrow">
         <span class="eyebrow">Под ключ</span>
         <h2>Что входит в запуск</h2>
-        <p>Короткий summary-блок, который показывает, что клиент покупает не набор железа, а полностью собранную систему запуска.</p>
       </div>
 
       <div class="launch-includes-grid">
@@ -3627,7 +3857,6 @@
       <div class="panel guarantee-redesign">
         <div class="guarantee-focus-grid">
           <div class="guarantee-focus-copy">
-            <span class="card-kicker">Ключевой акцент</span>
             <h3>24 месяца лизинга внутри 36 месяцев гарантии</h3>
             <p>Пока идут ежемесячные выплаты, оборудование уже находится под гарантийной защитой. После завершения лизинга у точки остаётся ещё 12 месяцев гарантии.</p>
           </div>
@@ -3710,6 +3939,7 @@
           <article class="panel launch-roadmap-step"><span class="launch-roadmap-day">День 38–42</span><h3>Тесты и подготовка к старту</h3><p>Проводим тестовый прогон, настраиваем сценарии работы, проверяем оборудование и обучаем команду.</p></article>
           <article class="panel launch-roadmap-step launch-roadmap-step-accent"><span class="launch-roadmap-day">День 42–45</span><h3>Запуск рекламы и старт работы точки</h3><p>Подключаем трафик, открываем бронирование и выводим площадку в рабочий режим с первых продаж.</p></article>
         </div>
+        <div class="launch-roadmap-swipe-hint">Листайте этапы вправо</div>
       </div>
     </section>
 
@@ -3827,11 +4057,24 @@
 <script src="/compact-vr/script.js"></script>
 <script>
 (function () {
-  const SECTIONS = ['hero', 'problem', 'solution', 'economics', 'games-library', 'guarantee', 'faq', 'contact'];
+  const SECTION_FLOW = [
+    { id: 'hero', navId: 'hero' },
+    { id: 'problem', navId: 'problem' },
+    { id: 'solution', navId: 'solution' },
+    { id: 'economics', navId: 'economics' },
+    { id: 'games-library', navId: 'games-library' },
+    { id: 'support', navId: 'games-library' },
+    { id: 'launch-includes', navId: 'games-library' },
+    { id: 'guarantee', navId: 'guarantee' },
+    { id: 'launch-steps', navId: 'guarantee' },
+    { id: 'faq', navId: 'faq' },
+    { id: 'contact', navId: 'contact' }
+  ];
   const items = document.querySelectorAll('[data-cvr-nav-item]');
   const brand = document.querySelector('.cvr-sidebar-brand');
   const scrollLinks = document.querySelectorAll('[data-cvr-scroll]');
   const mobileCurrent = document.querySelector('[data-cvr-mobile-current]');
+  const mobileNav = document.querySelector('.cvr-mobile-nav');
   const mobileSheet = document.querySelector('[data-cvr-mobile-sheet]');
   const mobileOpenButtons = document.querySelectorAll('[data-cvr-mobile-open]');
   const mobileCloseButtons = document.querySelectorAll('[data-cvr-mobile-close]');
@@ -3839,6 +4082,8 @@
   const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const navLabels = new Map();
   let mobileSheetCloseTimer = null;
+  let offsetUpdateFrame = null;
+  let activeSectionFrame = null;
 
   document.querySelectorAll('[data-cvr-nav-label]').forEach(function(item) {
     const href = item.getAttribute('href');
@@ -3910,6 +4155,93 @@
     }
   }
 
+  function getVisibleBottom(element) {
+    if (!element) {
+      return 0;
+    }
+    const style = window.getComputedStyle(element);
+    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+      return 0;
+    }
+    const rect = element.getBoundingClientRect();
+    if (rect.height <= 0) {
+      return 0;
+    }
+    return Math.max(0, rect.bottom);
+  }
+
+  function updateStickyOffsets() {
+    const headerSelectors = [
+      '.mobile-header',
+      '.mobile-header-fixed-search.visible',
+      '#sticky-header',
+      'header[style*="z-index: 50001"]'
+    ];
+    let headerBottom = 0;
+
+    headerSelectors.forEach(function(selector) {
+      document.querySelectorAll(selector).forEach(function(element) {
+        headerBottom = Math.max(headerBottom, getVisibleBottom(element));
+      });
+    });
+
+    const navHeight = mobileMediaQuery.matches && mobileNav ? mobileNav.getBoundingClientRect().height : 0;
+    const mobileTop = Math.max(Math.ceil(headerBottom + 8), 76);
+    const sectionMargin = Math.max(Math.ceil(headerBottom + navHeight + 24), 144);
+
+    document.documentElement.style.setProperty('--cvr-mobile-nav-top', mobileTop + 'px');
+    document.documentElement.style.setProperty('--cvr-section-scroll-margin', sectionMargin + 'px');
+  }
+
+  function scheduleStickyOffsetUpdate() {
+    if (offsetUpdateFrame !== null) {
+      return;
+    }
+    offsetUpdateFrame = window.requestAnimationFrame(function() {
+      offsetUpdateFrame = null;
+      updateStickyOffsets();
+    });
+  }
+
+  function getSectionActivationOffset() {
+    const rawValue = window.getComputedStyle(document.documentElement)
+      .getPropertyValue('--cvr-section-scroll-margin');
+    const parsed = Number.parseFloat(rawValue);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 144;
+  }
+
+  function resolveActiveNavId() {
+    const scrollPosition = window.scrollY + getSectionActivationOffset();
+    let activeNavId = 'hero';
+
+    SECTION_FLOW.forEach(function(section) {
+      const element = document.getElementById(section.id);
+      if (!element) {
+        return;
+      }
+      const sectionTop = element.getBoundingClientRect().top + window.scrollY;
+      if (scrollPosition >= sectionTop) {
+        activeNavId = section.navId;
+      }
+    });
+
+    return activeNavId;
+  }
+
+  function updateActiveSection() {
+    setActive(resolveActiveNavId());
+  }
+
+  function scheduleActiveSectionUpdate() {
+    if (activeSectionFrame !== null) {
+      return;
+    }
+    activeSectionFrame = window.requestAnimationFrame(function() {
+      activeSectionFrame = null;
+      updateActiveSection();
+    });
+  }
+
   function scrollToHash(hash) {
     if (!hash || !hash.startsWith('#')) {
       return;
@@ -3918,6 +4250,8 @@
     if (!target) {
       return;
     }
+    updateStickyOffsets();
+    updateActiveSection();
     target.scrollIntoView({
       behavior: prefersReducedMotion ? 'auto' : 'smooth',
       block: 'start'
@@ -3959,6 +4293,8 @@
     if (!event.matches) {
       closeMobileSheet(true);
     }
+    scheduleStickyOffsetUpdate();
+    scheduleActiveSectionUpdate();
   }
 
   if (typeof mobileMediaQuery.addEventListener === 'function') {
@@ -3967,20 +4303,20 @@
     mobileMediaQuery.addListener(handleMobileQueryChange);
   }
 
-  const sectionEls = SECTIONS.map(function(id) {
-    return document.getElementById(id);
-  }).filter(Boolean);
-
-  const observer = new IntersectionObserver(function(entries) {
-    entries.forEach(function(entry) {
-      if (entry.isIntersecting) {
-        setActive(entry.target.id);
-      }
-    });
-  }, { rootMargin: '-18% 0px -58% 0px', threshold: 0.05 });
-
-  sectionEls.forEach(function(el) { observer.observe(el); });
-  setActive('hero');
+  window.addEventListener('resize', function() {
+    scheduleStickyOffsetUpdate();
+    scheduleActiveSectionUpdate();
+  }, { passive: true });
+  window.addEventListener('scroll', function() {
+    scheduleStickyOffsetUpdate();
+    scheduleActiveSectionUpdate();
+  }, { passive: true });
+  window.addEventListener('load', function() {
+    scheduleStickyOffsetUpdate();
+    scheduleActiveSectionUpdate();
+  });
+  scheduleStickyOffsetUpdate();
+  scheduleActiveSectionUpdate();
 })();
 </script>
 {% endblock %}

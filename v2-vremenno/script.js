@@ -645,6 +645,7 @@ function setupForm() {
 function setupGameModal() {
   const cards = document.querySelectorAll(".game-card, .single-game-card");
   const modal = document.getElementById("gameModal");
+  const dialog = modal ? modal.querySelector(".game-modal-dialog") : null;
   const stage = document.getElementById("gameModalStage");
   const title = document.getElementById("gameModalTitle");
   const meta = document.getElementById("gameModalMeta");
@@ -654,7 +655,7 @@ function setupGameModal() {
   const next = document.getElementById("gameModalNext");
   const closeButtons = document.querySelectorAll("[data-close-modal]");
 
-  if (!cards.length || !modal || !stage || !title || !meta || !description || !specs || !prev || !next) {
+  if (!cards.length || !modal || !dialog || !stage || !title || !meta || !description || !specs || !prev || !next) {
     return;
   }
 
@@ -1192,14 +1193,48 @@ function setupGameModal() {
   };
 
   let currentGame = null;
+  let currentSlides = [];
   let currentSlide = 0;
+  let touchStartY = 0;
+  let touchStartX = 0;
+  let touchStartScrollTop = 0;
+  let touchScrollLocked = false;
+  let lockedPageScrollY = 0;
+
+  function getCardImageSlide(card, gameTitle) {
+    const image = card ? card.querySelector("img") : null;
+
+    if (!image || !image.getAttribute("src")) {
+      return null;
+    }
+
+    return {
+      type: "image",
+      src: image.getAttribute("src"),
+      label: "Фото игры",
+      title: image.getAttribute("alt") || gameTitle
+    };
+  }
+
+  function buildSlides(game, card, gameTitle) {
+    const baseSlides = Array.isArray(game.slides) ? game.slides.slice() : [];
+    const mediaSlides = baseSlides.filter((slide) => slide.type === "video" || slide.type === "image");
+
+    if (mediaSlides.length) {
+      return mediaSlides.concat(baseSlides.filter((slide) => slide.type !== "video" && slide.type !== "image"));
+    }
+
+    const fallbackImage = getCardImageSlide(card, gameTitle);
+    return fallbackImage ? [fallbackImage] : baseSlides;
+  }
 
   function renderSlide() {
-    if (!currentGame) {
+    if (!currentGame || !currentSlides.length) {
+      stage.innerHTML = "";
       return;
     }
 
-    const slide = currentGame.slides[currentSlide];
+    const slide = currentSlides[currentSlide];
     if (slide.type === "video") {
       stage.innerHTML = `
         <div class="game-modal-slide game-modal-media-slide">
@@ -1223,13 +1258,75 @@ function setupGameModal() {
 
   }
 
-  function openGameModal(gameTitle) {
+  function resetTouchScrollState() {
+    touchStartY = 0;
+    touchStartX = 0;
+    touchStartScrollTop = 0;
+    touchScrollLocked = false;
+  }
+
+  function lockPageScroll() {
+    lockedPageScrollY = window.scrollY || window.pageYOffset || 0;
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${lockedPageScrollY}px`;
+    document.body.style.left = "0";
+    document.body.style.right = "0";
+    document.body.style.width = "100%";
+    document.body.style.overflow = "hidden";
+  }
+
+  function unlockPageScroll() {
+    document.body.style.position = "";
+    document.body.style.top = "";
+    document.body.style.left = "";
+    document.body.style.right = "";
+    document.body.style.width = "";
+    document.body.style.overflow = "";
+    window.scrollTo(0, lockedPageScrollY);
+  }
+
+  function bindStageTouchScroll() {
+    stage.addEventListener("touchstart", (event) => {
+      if (!modal.classList.contains("is-open") || !event.touches.length) {
+        return;
+      }
+
+      const touch = event.touches[0];
+      touchStartY = touch.clientY;
+      touchStartX = touch.clientX;
+      touchStartScrollTop = dialog.scrollTop;
+      touchScrollLocked = dialog.scrollHeight > dialog.clientHeight;
+    }, { passive: true });
+
+    stage.addEventListener("touchmove", (event) => {
+      if (!touchScrollLocked || !event.touches.length) {
+        return;
+      }
+
+      const touch = event.touches[0];
+      const deltaY = touch.clientY - touchStartY;
+      const deltaX = touch.clientX - touchStartX;
+
+      if (Math.abs(deltaY) <= Math.abs(deltaX) || Math.abs(deltaY) < 6) {
+        return;
+      }
+
+      dialog.scrollTop = touchStartScrollTop - deltaY;
+      event.preventDefault();
+    }, { passive: false });
+
+    stage.addEventListener("touchend", resetTouchScrollState, { passive: true });
+    stage.addEventListener("touchcancel", resetTouchScrollState, { passive: true });
+  }
+
+  function openGameModal(gameTitle, card) {
     currentGame = gameData[gameTitle];
 
     if (!currentGame) {
       return;
     }
 
+    currentSlides = buildSlides(currentGame, card, gameTitle);
     currentSlide = 0;
     title.textContent = gameTitle;
     description.textContent = currentGame.description;
@@ -1263,13 +1360,15 @@ function setupGameModal() {
     renderSlide();
     modal.classList.add("is-open");
     modal.setAttribute("aria-hidden", "false");
-    document.body.style.overflow = "hidden";
+    dialog.scrollTop = 0;
+    lockPageScroll();
   }
 
   function closeGameModal() {
     modal.classList.remove("is-open");
     modal.setAttribute("aria-hidden", "true");
-    document.body.style.overflow = "";
+    unlockPageScroll();
+    resetTouchScrollState();
   }
 
   cards.forEach((card) => {
@@ -1283,7 +1382,7 @@ function setupGameModal() {
     card.setAttribute("role", "button");
     card.setAttribute("aria-label", `Открыть описание игры ${gameTitle}`);
 
-    const handler = () => openGameModal(gameTitle);
+    const handler = () => openGameModal(gameTitle, card);
     card.addEventListener("click", handler);
     card.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") {
@@ -1294,18 +1393,18 @@ function setupGameModal() {
   });
 
   prev.addEventListener("click", () => {
-    if (!currentGame) {
+    if (!currentGame || !currentSlides.length) {
       return;
     }
-    currentSlide = (currentSlide - 1 + currentGame.slides.length) % currentGame.slides.length;
+    currentSlide = (currentSlide - 1 + currentSlides.length) % currentSlides.length;
     renderSlide();
   });
 
   next.addEventListener("click", () => {
-    if (!currentGame) {
+    if (!currentGame || !currentSlides.length) {
       return;
     }
-    currentSlide = (currentSlide + 1) % currentGame.slides.length;
+    currentSlide = (currentSlide + 1) % currentSlides.length;
     renderSlide();
   });
 
@@ -1316,6 +1415,8 @@ function setupGameModal() {
       closeGameModal();
     }
   });
+
+  bindStageTouchScroll();
 }
 
 setupCalculator();
