@@ -1,0 +1,221 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}{{ title }} | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+<a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+&rsaquo; <a href="{% url 'admin:catalog_product_changelist' %}">Товары</a>
+&rsaquo; <a href="{{ upload_url }}">Импорт из JSON</a>
+&rsaquo; Проверка пакета #{{ batch.pk }}
+</div>
+{% endblock %}
+
+{% block content %}
+<h1>Проверка импорта JSON #{{ batch.pk }}</h1>
+
+<div style="max-width: 1240px; margin: 20px 0 40px;">
+    <div class="module" style="padding: 20px; border-radius: 8px; margin-bottom: 24px;">
+        <div style="display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; justify-content: space-between;">
+            <div>
+                <p style="margin: 0 0 8px;"><strong>Файл:</strong> {{ batch.source_filename }}</p>
+                <p style="margin: 0 0 8px;"><strong>Статус:</strong> {{ batch.get_status_display }}</p>
+                <p style="margin: 0;"><strong>Обновлён:</strong> {{ batch.updated_at }}</p>
+            </div>
+            <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+                <form method="post" action="{{ revalidate_url }}">
+                    {% csrf_token %}
+                    <button type="submit" class="button">Перепроверить</button>
+                </form>
+                <form method="post" action="{{ apply_clean_url }}">
+                    {% csrf_token %}
+                    <button type="submit" class="button default">Применить чистые записи</button>
+                </form>
+                <form method="post" action="{{ apply_resolved_url }}">
+                    {% csrf_token %}
+                    <button type="submit" class="button">Применить разрешённые конфликты</button>
+                </form>
+                <a href="{{ upload_url }}" class="button">Загрузить новый файл</a>
+            </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-top: 20px;">
+            <div style="padding: 14px; background: #f3f7fb; border-radius: 8px;">
+                <div style="font-size: 12px; text-transform: uppercase; color: #5b6b79;">Готово</div>
+                <div style="font-size: 28px; font-weight: 700;">{{ summary_counts.ready|default:0 }}</div>
+            </div>
+            <div style="padding: 14px; background: #fff8df; border-radius: 8px;">
+                <div style="font-size: 12px; text-transform: uppercase; color: #7a6400;">Без изменений</div>
+                <div style="font-size: 28px; font-weight: 700;">{{ summary_counts.noop|default:0 }}</div>
+            </div>
+            <div style="padding: 14px; background: #fdeeee; border-radius: 8px;">
+                <div style="font-size: 12px; text-transform: uppercase; color: #8a2d2d;">Конфликты</div>
+                <div style="font-size: 28px; font-weight: 700;">{{ summary_counts.pending_conflicts|default:0 }}</div>
+            </div>
+            <div style="padding: 14px; background: #f4eefc; border-radius: 8px;">
+                <div style="font-size: 12px; text-transform: uppercase; color: #5c3a92;">Блокирующие</div>
+                <div style="font-size: 28px; font-weight: 700;">{{ summary_counts.blocking_issues|default:0 }}</div>
+            </div>
+        </div>
+    </div>
+
+    {% if warnings %}
+    <div class="module" style="padding: 20px; border-radius: 8px; margin-bottom: 24px; background: #fff8df;">
+        <h2 style="margin-top: 0;">Предупреждения</h2>
+        <ul style="margin: 0; padding-left: 20px;">
+            {% for warning in warnings %}
+            <li>{{ warning }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    {% if pending_conflicts %}
+    <div class="module" style="padding: 20px; border-radius: 8px; margin-bottom: 24px;">
+        <h2 style="margin-top: 0;">Конфликты, требующие решения</h2>
+        {% for conflict in pending_conflicts %}
+        <div style="border: 1px solid #d9dfe4; border-radius: 10px; padding: 18px; margin-top: 18px;">
+            <div style="display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: center;">
+                <div>
+                    <div style="font-size: 19px; font-weight: 700;">{{ conflict.item_label }}</div>
+                    <div style="margin-top: 4px; color: #58636e;">
+                        {{ conflict.collection_label }} • {{ conflict.status_label }} • {{ conflict.conflict_kind }}
+                        {% if conflict.source_id %} • source id {{ conflict.source_id }}{% endif %}
+                    </div>
+                </div>
+                {% if conflict.admin_change_url %}
+                <a href="{{ conflict.admin_change_url }}" class="button" target="_blank" rel="noreferrer">Открыть текущую запись</a>
+                {% endif %}
+            </div>
+
+            <form method="post" action="{{ conflict.save_url }}" style="margin-top: 18px;">
+                {% csrf_token %}
+                {% for field in conflict.fields %}
+                <div style="border-top: 1px solid #eceff3; padding-top: 16px; margin-top: 16px;">
+                    <div style="font-weight: 700;">{{ field.label }}</div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-top: 10px;">
+                        <div>
+                            <div style="font-size: 12px; text-transform: uppercase; color: #677480;">Сейчас в БД</div>
+                            <div style="padding: 10px 12px; background: #f6f8fa; border-radius: 8px;">{{ field.current_display }}</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 12px; text-transform: uppercase; color: #677480;">Во входящем JSON</div>
+                            <div style="padding: 10px 12px; background: #f6f8fa; border-radius: 8px;">{{ field.incoming_display }}</div>
+                        </div>
+                        {% if field.chosen_display and field.chosen_display != '—' %}
+                        <div>
+                            <div style="font-size: 12px; text-transform: uppercase; color: #677480;">Выбранное значение</div>
+                            <div style="padding: 10px 12px; background: #f1f8f1; border-radius: 8px;">{{ field.chosen_display }}</div>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    {% if field.resolution_error %}
+                    <div style="margin-top: 10px; color: #ba2121;">{{ field.resolution_error }}</div>
+                    {% endif %}
+
+                    <div style="display: flex; flex-wrap: wrap; gap: 18px; margin-top: 12px;">
+                        <label><input type="radio" name="mode__{{ field.name }}" value="keep_current" {% if field.resolution_mode == 'keep_current' %}checked{% endif %}> Оставить текущее</label>
+                        <label><input type="radio" name="mode__{{ field.name }}" value="take_incoming" {% if field.resolution_mode == 'take_incoming' %}checked{% endif %}> Взять из JSON</label>
+                        <label><input type="radio" name="mode__{{ field.name }}" value="manual" {% if field.resolution_mode == 'manual' %}checked{% endif %}> Исправить вручную</label>
+                    </div>
+
+                    <div style="margin-top: 10px;">
+                        {% if field.field_type == 'textarea' %}
+                        <textarea name="manual__{{ field.name }}" rows="4" style="width: 100%;">{{ field.manual_value }}</textarea>
+                        {% elif field.field_type == 'choice' or field.field_type == 'fk' or field.field_type == 'bool' %}
+                        <select name="manual__{{ field.name }}" style="min-width: 260px;">
+                            {% for option in field.options %}
+                            <option value="{{ option.value }}" {% if option.value|stringformat:'s' == field.manual_value|stringformat:'s' %}selected{% endif %}>{{ option.label }}</option>
+                            {% endfor %}
+                        </select>
+                        {% elif field.field_type == 'multiselect' %}
+                        <select name="manual__{{ field.name }}" multiple size="6" style="min-width: 320px;">
+                            {% for option in field.options %}
+                            <option value="{{ option.value }}" {% if option.value|stringformat:'s' in field.manual_value %}selected{% endif %}>{{ option.label }}</option>
+                            {% endfor %}
+                        </select>
+                        {% else %}
+                        <input
+                            type="{% if field.field_type == 'int' or field.field_type == 'decimal' %}number{% else %}text{% endif %}"
+                            {% if field.field_type == 'decimal' %}step="0.01"{% elif field.field_type == 'int' %}step="1"{% endif %}
+                            name="manual__{{ field.name }}"
+                            value="{{ field.manual_value }}"
+                            style="width: 100%; max-width: 420px;"
+                        >
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+
+                <div class="submit-row" style="margin-top: 20px;">
+                    <button type="submit" class="default">Сохранить решение и перепроверить</button>
+                </div>
+            </form>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if resolved_conflicts %}
+    <div class="module" style="padding: 20px; border-radius: 8px; margin-bottom: 24px;">
+        <h2 style="margin-top: 0;">Разрешённые конфликты</h2>
+        <ul style="margin: 0; padding-left: 20px;">
+            {% for conflict in resolved_conflicts %}
+            <li>
+                <strong>{{ conflict.item_label }}</strong> — {{ conflict.collection_label }}
+                {% if conflict.admin_change_url %}
+                (<a href="{{ conflict.admin_change_url }}" target="_blank" rel="noreferrer">текущая запись</a>)
+                {% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    {% if ready_items %}
+    <div class="module" style="padding: 20px; border-radius: 8px; margin-bottom: 24px;">
+        <h2 style="margin-top: 0;">Готовые записи</h2>
+        <ul style="margin: 0; padding-left: 20px;">
+            {% for item in ready_items %}
+            <li>{{ item.item_label }} — {{ item.collection_name }} — {{ item.operation }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    {% if noop_items %}
+    <div class="module" style="padding: 20px; border-radius: 8px; margin-bottom: 24px;">
+        <h2 style="margin-top: 0;">Без изменений</h2>
+        <ul style="margin: 0; padding-left: 20px;">
+            {% for item in noop_items %}
+            <li>{{ item.item_label }} — {{ item.collection_name }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    {% if blocking_items %}
+    <div class="module" style="padding: 20px; border-radius: 8px; margin-bottom: 24px; background: #fff5f5;">
+        <h2 style="margin-top: 0;">Блокирующие проблемы</h2>
+        <ul style="margin: 0; padding-left: 20px;">
+            {% for item in blocking_items %}
+            <li>{{ item.item_label }} — {{ item.collection_name }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    {% if applied_conflicts %}
+    <div class="module" style="padding: 20px; border-radius: 8px;">
+        <h2 style="margin-top: 0;">Уже применено</h2>
+        <ul style="margin: 0; padding-left: 20px;">
+            {% for conflict in applied_conflicts %}
+            <li>{{ conflict.item_label }} — {{ conflict.collection_label }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

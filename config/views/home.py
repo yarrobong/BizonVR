@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.db.models import Q
 from django.shortcuts import render
+from django.templatetags.static import static
 from django.urls import reverse
 
 from catalog.cache_utils import get_catalog_product_tags, get_home_category_backgrounds
@@ -49,8 +50,6 @@ def _home_view_impl(request):
 
     hero_dir = settings.BASE_DIR / 'static' / 'images' / 'hero'
     if (hero_dir / 'hero_1.jpg').exists():
-        from django.templatetags.static import static
-
         base_bg = [request.build_absolute_uri(static(f'images/hero/hero_{i}.jpg')) for i in range(1, 5)]
     else:
         base_bg = _HERO_DEFAULT_BG.copy()
@@ -116,7 +115,7 @@ def _home_view_impl(request):
             'description': 'Компактный формат запуска VR-локации под ключ: от 62 м², лизинг или покупка, гарантия 36 месяцев.',
             'url': '/compact-vr/',
             'btn': 'Подробнее',
-            'bg_url': request.build_absolute_uri('/compact-vr/img/katvrplayer.png'),
+            'bg_url': request.build_absolute_uri(static('images/compact-vr-v3/katvrplayer.png')),
             'bg_position': 'center center',
         },
         {

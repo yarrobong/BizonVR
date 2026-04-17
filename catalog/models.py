@@ -295,6 +295,7 @@ class Product(models.Model):
         ordering = ('-created_at',)
         permissions = (
             ('can_restore_backup', 'Can restore catalog backup'),
+            ('can_import_catalog_json', 'Can import catalog from JSON'),
         )
 
     def __str__(self):
@@ -1026,6 +1027,86 @@ class ProductStock(models.Model):
         if self.variant:
             return f'{self.product.name} ({self.variant.name}) @ {self.pickup_point}: {self.quantity}'
         return f'{self.product.name} @ {self.pickup_point}: {self.quantity}'
+
+
+class CatalogImportBatch(models.Model):
+    class Status(models.TextChoices):
+        REVIEW = 'review', 'На проверке'
+        PARTIAL = 'partial', 'Частично применён'
+        COMPLETED = 'completed', 'Завершён'
+        FAILED = 'failed', 'Ошибка'
+
+    source_filename = models.CharField('Имя исходного файла', max_length=255)
+    raw_payload = models.JSONField('Исходный payload', default=dict, blank=True)
+    editable_payload = models.JSONField('Редактируемый payload', default=dict, blank=True)
+    summary = models.JSONField('Сводка анализа', default=dict, blank=True)
+    status = models.CharField(
+        'Статус',
+        max_length=20,
+        choices=Status.choices,
+        default=Status.REVIEW,
+        db_index=True,
+    )
+    error_text = models.TextField('Текст ошибки', blank=True)
+    created_at = models.DateTimeField('Создан', auto_now_add=True)
+    updated_at = models.DateTimeField('Обновлён', auto_now=True)
+
+    class Meta:
+        verbose_name = 'Пакет импорта каталога'
+        verbose_name_plural = 'Пакеты импорта каталога'
+        ordering = ('-created_at',)
+
+    def __str__(self):
+        return f'Импорт каталога #{self.pk} ({self.source_filename})'
+
+
+class CatalogImportConflict(models.Model):
+    class Status(models.TextChoices):
+        PENDING = 'pending', 'Ожидает решения'
+        RESOLVED = 'resolved', 'Разрешён'
+        APPLIED = 'applied', 'Применён'
+        CLEARED = 'cleared', 'Устарел'
+
+    batch = models.ForeignKey(
+        CatalogImportBatch,
+        on_delete=models.CASCADE,
+        related_name='conflicts',
+        verbose_name='Пакет импорта',
+    )
+    collection_name = models.CharField('Коллекция', max_length=80, db_index=True)
+    source_index = models.PositiveIntegerField('Индекс в payload')
+    source_id = models.CharField('Source ID', max_length=80, blank=True)
+    item_label = models.CharField('Подпись элемента', max_length=255, blank=True)
+    target_model = models.CharField('Модель цели', max_length=120, blank=True)
+    target_pk = models.PositiveBigIntegerField('ID цели', null=True, blank=True)
+    conflict_kind = models.CharField('Тип конфликта', max_length=80, db_index=True)
+    source_snapshot = models.JSONField('Снимок источника', default=dict, blank=True)
+    target_snapshot = models.JSONField('Снимок цели', default=dict, blank=True)
+    field_conflicts = models.JSONField('Конфликтующие поля', default=dict, blank=True)
+    resolutions = models.JSONField('Решения пользователя', default=dict, blank=True)
+    status = models.CharField(
+        'Статус',
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+        db_index=True,
+    )
+    created_at = models.DateTimeField('Создан', auto_now_add=True)
+    updated_at = models.DateTimeField('Обновлён', auto_now=True)
+
+    class Meta:
+        verbose_name = 'Конфликт импорта каталога'
+        verbose_name_plural = 'Конфликты импорта каталога'
+        ordering = ('collection_name', 'source_index', 'id')
+        constraints = [
+            models.UniqueConstraint(
+                fields=['batch', 'collection_name', 'source_index'],
+                name='catalog_import_conflict_batch_collection_index_unique',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.collection_name}[{self.source_index}] ({self.get_status_display()})'
 
 
 class CartItem(models.Model):

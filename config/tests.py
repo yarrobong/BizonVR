@@ -3,6 +3,7 @@ from django.urls import reverse
 from django.conf import settings
 from django.contrib.auth.models import AnonymousUser
 from django.test import RequestFactory, SimpleTestCase, TestCase
+from django.test.utils import override_settings
 
 from config.views.static_pages import not_found_view
 from manager_portal.single_db_contract import collect_single_db_contract_violations
@@ -74,6 +75,32 @@ class ConferenceAttractionsLandingTests(SimpleTestCase):
         self.assertNotIn('href="#">WhatsApp</a>', html)
         self.assertNotIn('href="#">Telegram</a>', html)
         self.assertNotIn('tel:+70000000000', html)
+
+
+@override_settings(
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    }
+)
+class CompactVRLandingTests(TestCase):
+    def test_compact_vr_page_returns_200(self):
+        response = self.client.get(reverse('compact_vr'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Компактная VR-арена')
+
+    def test_legacy_compact_vr_asset_path_returns_404(self):
+        response = self.client.get('/compact-vr/img/katvrplayer.png')
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_home_page_compact_vr_slide_uses_static_asset_url(self):
+        response = self.client.get(reverse('home'))
+        html = response.content.decode('utf-8')
+
+        self.assertIn('/static/images/compact-vr-v3/katvrplayer.png', html)
+        self.assertNotIn('/compact-vr/img/katvrplayer.png', html)
 
 
 class PublicSiteMetrikaTemplateTests(TestCase):

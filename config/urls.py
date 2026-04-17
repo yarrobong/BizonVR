@@ -53,7 +53,6 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('arenda/', arenda_view, name='arenda'),
     path('compact-vr/', compact_vr_view, name='compact_vr'),
-    re_path(r'^compact-vr/(?P<path>.+)$', compact_vr_view),
     path('conference-attractions/', conference_attractions_view, name='conference_attractions'),
     re_path(r'^conference-attractions/(?P<path>.+)$', conference_attractions_view),
     path('uslugi/', uslugi_view, name='uslugi'),
