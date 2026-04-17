@@ -21,6 +21,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.http import Http404
+from django.http import QueryDict
 from django.template import Context, Template
 from django.test import Client, TestCase, override_settings
 from django.test.client import RequestFactory
@@ -46,10 +47,14 @@ from .filter_bootstrap import build_alias_suggestions
 from .filter_bootstrap import SAFE_AUTO_APPLICABLE
 from .filter_presets import get_typed_value_sort_key
 from .filter_setup_wizard import CatalogFilterSetupWizard
+from .import_workflow import CatalogImportWorkflowService, make_direct_target_reference
+from .importers import CatalogDataImporter
 from .models import (
     CartItem,
     CartShare,
     CallbackRequest,
+    CatalogImportBatch,
+    CatalogImportConflict,
     CatalogSection,
     Category,
     CharacteristicDefinition,
@@ -3691,7 +3696,12 @@ class CompareRemovalTest(TestCase):
         self.assertEqual(self.client.session.get('favorite_product_ids', []), [])
         self.assertEqual(self.client.session.get('cart_items', []), [])
 
-
+@override_settings(
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    }
+)
 class AdminRestoreSecurityTest(TestCase):
     def setUp(self):
         self.client = Client()
@@ -3823,3 +3833,637 @@ class AdminRestoreSecurityTest(TestCase):
         temp_file.close()
         self.addCleanup(lambda: os.path.exists(temp_file.name) and os.remove(temp_file.name))
         return temp_file.name
+
+
+class CatalogJsonImportServiceTest(TestCase):
+    def _payload(self, *, product_name='Импортируемый товар', price='199.00', stock_qty=4, include_media=False):
+        product_item = {
+            'id': 1,
+            'name': product_name,
+            'slug': 'json-product',
+            'sku': 'SKU-001',
+            'description': 'Описание JSON товара',
+            'price': price,
+            'price_on_request': '149.00',
+            'is_active': True,
+            'allow_order_on_request': True,
+            'avito_url': 'https://example.com/avito',
+            'ozon_url': 'https://example.com/ozon',
+            'wildberries_url': 'https://example.com/wb',
+            'option_label': 'Комплектация',
+            'category_id': 1,
+            'tag_ids': [1],
+        }
+        variant_item = {
+            'id': 1,
+            'product_id': 1,
+            'name': '64 GB',
+            'sku': 'VAR-64',
+            'price_override': '209.00',
+            'price_on_request_override': '159.00',
+            'order': 10,
+        }
+        payload = {
+            'version': '1.1',
+            'models': {
+                'catalog_sections': [
+                    {'id': 1, 'name': 'VR', 'slug': 'vr', 'order': 1},
+                ],
+                'categories': [
+                    {'id': 1, 'name': 'Шлемы', 'slug': 'headsets', 'section_id': 1},
+                ],
+                'product_tags': [
+                    {'id': 1, 'name': 'Новинка', 'slug': 'new', 'order': 1},
+                ],
+                'products': [product_item],
+                'product_variants': [variant_item],
+                'product_characteristics': [
+                    {'id': 1, 'product_id': 1, 'name': 'Память', 'value': '64 ГБ'},
+                ],
+                'product_variant_characteristics': [
+                    {'id': 1, 'variant_id': 1, 'name': 'Цвет', 'value': 'Черный'},
+                ],
+                'product_images': [],
+                'product_videos': [
+                    {
+                        'id': 1,
+                        'product_id': 1,
+                        'rutube_url': 'https://rutube.ru/video/1234567890abcdef1234567890abcdef/',
+                        'title': 'Обзор',
+                        'thumbnail_url': 'https://cdn.example.com/thumb.jpg',
+                        'order': 1,
+                    },
+                ],
+                'product_content_blocks': [
+                    {
+                        'id': 1,
+                        'product_id': 1,
+                        'block_type': ProductContentBlock.BlockType.TEXT,
+                        'title': 'Почему стоит купить',
+                        'text': 'Подробный текст для карточки.',
+                        'sort_order': 1,
+                        'is_active': True,
+                    },
+                ],
+                'product_bundles': [
+                    {'id': 1, 'name': 'Комплект VR', 'slug': 'vr-kit', 'description': 'Комплект'},
+                ],
+                'product_bundle_items': [
+                    {'id': 1, 'bundle_id': 1, 'product_id': 1, 'quantity': 2},
+                ],
+                'cities': [
+                    {'id': 1, 'name': 'Екатеринбург', 'slug': 'ekb', 'order': 1},
+                ],
+                'pickup_points': [
+                    {'id': 1, 'city_id': 1, 'name': 'Склад', 'address': 'ул. Тестовая, 1', 'order': 1},
+                ],
+                'product_stocks': [
+                    {'id': 1, 'product_id': 1, 'pickup_point_id': 1, 'variant_id': 1, 'quantity': stock_qty},
+                ],
+            },
+        }
+        if include_media:
+            payload['models']['products'][0]['image'] = 'products/main.png'
+            payload['models']['product_variants'][0]['image'] = 'products/variant.png'
+            payload['models']['product_images'].append(
+                {'id': 1, 'product_id': 1, 'image': 'products/extra.png', 'order': 1}
+            )
+        return payload
+
+    def test_import_upserts_without_duplicates_and_preserves_omitted_data(self):
+        unrelated_category = Category.objects.create(name='Другое', slug='other')
+        unrelated_product = Product.objects.create(category=unrelated_category, name='Лишний', slug='extra')
+
+        report_first = CatalogDataImporter(self._payload()).import_data()
+        self.assertEqual(report_first.created['products'], 1)
+        self.assertEqual(Product.objects.filter(slug='json-product').count(), 1)
+
+        product = Product.objects.get(slug='json-product')
+        extra_variant = ProductVariant.objects.create(product=product, name='128 GB', sku='VAR-128', order=20)
+        city = City.objects.get(slug='ekb')
+        pickup_point = PickupPoint.objects.get(city=city, name='Склад')
+        ProductStock.objects.create(product=product, pickup_point=pickup_point, variant=extra_variant, quantity=9)
+
+        report_second = CatalogDataImporter(
+            self._payload(product_name='Обновлённый товар', price='299.00', stock_qty=7)
+        ).import_data()
+
+        product.refresh_from_db()
+        variant = ProductVariant.objects.get(product=product, sku='VAR-64')
+        stock = ProductStock.objects.get(product=product, pickup_point=pickup_point, variant=variant)
+
+        self.assertEqual(report_second.updated['products'], 1)
+        self.assertEqual(Product.objects.filter(slug='json-product').count(), 1)
+        self.assertEqual(ProductVariant.objects.filter(product=product, sku='VAR-64').count(), 1)
+        self.assertEqual(product.name, 'Обновлённый товар')
+        self.assertEqual(product.price, Decimal('299.00'))
+        self.assertEqual(stock.quantity, 7)
+        self.assertTrue(ProductVariant.objects.filter(product=product, sku='VAR-128').exists())
+        self.assertTrue(ProductStock.objects.filter(product=product, variant=extra_variant, quantity=9).exists())
+        self.assertTrue(Product.objects.filter(pk=unrelated_product.pk).exists())
+        self.assertEqual(ProductVideo.objects.filter(product=product).count(), 1)
+        self.assertEqual(ProductContentBlock.objects.filter(product=product).count(), 1)
+
+    def test_import_supports_old_backup_schema_without_new_fields(self):
+        payload = {
+            'version': '1.0',
+            'models': {
+                'catalog_sections': [],
+                'categories': [
+                    {'id': 1, 'name': 'Тест', 'slug': 'legacy-category', 'section_id': None},
+                ],
+                'product_tags': [],
+                'products': [
+                    {
+                        'id': 1,
+                        'name': 'Legacy товар',
+                        'slug': 'legacy-product',
+                        'description': '',
+                        'price': '10.00',
+                        'is_active': True,
+                        'allow_order_on_request': True,
+                        'option_label': '',
+                        'category_id': 1,
+                        'tag_ids': [],
+                    },
+                ],
+                'product_variants': [],
+                'product_characteristics': [],
+                'product_variant_characteristics': [],
+                'product_images': [],
+                'product_bundles': [],
+                'product_bundle_items': [],
+                'cities': [],
+                'pickup_points': [],
+                'product_stocks': [],
+            },
+        }
+
+        CatalogDataImporter(payload).import_data()
+
+        product = Product.objects.get(slug='legacy-product')
+        self.assertEqual(product.name, 'Legacy товар')
+        self.assertEqual(product.price, Decimal('10.00'))
+        self.assertEqual(product.sku, '')
+
+    def test_import_ignores_media_fields_and_reports_warnings(self):
+        report = CatalogDataImporter(self._payload(include_media=True)).import_data()
+
+        product = Product.objects.get(slug='json-product')
+        variant = ProductVariant.objects.get(product=product, sku='VAR-64')
+
+        self.assertFalse(product.image)
+        self.assertFalse(variant.image)
+        self.assertEqual(ProductImage.objects.count(), 0)
+        self.assertTrue(report.warnings)
+        self.assertTrue(any('products.image' in warning for warning in report.warnings))
+
+    def test_import_dry_run_rolls_back_changes(self):
+        report = CatalogDataImporter(self._payload()).import_data(dry_run=True)
+
+        self.assertEqual(report.created['products'], 1)
+        self.assertFalse(Product.objects.filter(slug='json-product').exists())
+
+    def test_backup_catalog_includes_extended_schema_fields(self):
+        category = Category.objects.create(name='Экспорт', slug='export-category')
+        product = Product.objects.create(
+            category=category,
+            name='Экспортируемый товар',
+            slug='export-product',
+            sku='SKU-EXP',
+            price=Decimal('300.00'),
+            price_on_request=Decimal('250.00'),
+            avito_url='https://example.com/avito',
+            ozon_url='https://example.com/ozon',
+            wildberries_url='https://example.com/wb',
+            option_label='Модификация',
+        )
+        ProductVariant.objects.create(
+            product=product,
+            name='128 GB',
+            sku='VAR-128',
+            price_override=Decimal('320.00'),
+            price_on_request_override=Decimal('270.00'),
+        )
+        with patch('catalog.models._fetch_rutube_video_metadata', return_value={}):
+            ProductVideo.objects.create(
+                product=product,
+                rutube_url='https://rutube.ru/video/1234567890abcdef1234567890abcdef/',
+                order=1,
+            )
+        ProductContentBlock.objects.create(
+            product=product,
+            block_type=ProductContentBlock.BlockType.TEXT,
+            title='Детали',
+            text='Подробности',
+            sort_order=1,
+        )
+
+        with tempfile.NamedTemporaryFile(suffix='.zip', delete=False) as temp_file:
+            output_path = temp_file.name
+        self.addCleanup(lambda: os.path.exists(output_path) and os.remove(output_path))
+
+        call_command('backup_catalog', output=output_path)
+
+        with zipfile.ZipFile(output_path, 'r') as archive:
+            backup_data = json.loads(archive.read('backup.json').decode('utf-8'))
+
+        product_item = backup_data['models']['products'][0]
+        variant_item = backup_data['models']['product_variants'][0]
+
+        self.assertIn('product_videos', backup_data['models'])
+        self.assertIn('product_content_blocks', backup_data['models'])
+        self.assertEqual(product_item['sku'], 'SKU-EXP')
+        self.assertEqual(product_item['price_on_request'], '250.00')
+        self.assertEqual(product_item['avito_url'], 'https://example.com/avito')
+        self.assertEqual(variant_item['sku'], 'VAR-128')
+        self.assertEqual(variant_item['price_on_request_override'], '270.00')
+
+
+class CatalogJsonImportWorkflowTest(TestCase):
+    def setUp(self):
+        self.category = Category.objects.create(name='Workflow', slug='workflow-category')
+        self.alt_category = Category.objects.create(name='Alt Workflow', slug='workflow-category-alt')
+        self.tag = ProductTag.objects.create(name='Рекомендуем', slug='recommended')
+        self.existing_product = Product.objects.create(
+            category=self.category,
+            name='Старый товар',
+            slug='occupied-slug',
+            description='Старое описание',
+            price=Decimal('100.00'),
+            is_active=True,
+            allow_order_on_request=True,
+        )
+
+    def _payload(self, *, slug='occupied-slug', name='Новый товар', description='Новое описание', price='150.00', category_ref=None, tag_refs=None):
+        return {
+            'version': '1.1',
+            'models': {
+                'catalog_sections': [],
+                'categories': [],
+                'product_tags': [],
+                'products': [
+                    {
+                        'id': 1,
+                        'name': name,
+                        'slug': slug,
+                        'description': description,
+                        'price': price,
+                        'is_active': True,
+                        'allow_order_on_request': True,
+                        'option_label': '',
+                        'category_id': category_ref if category_ref is not None else make_direct_target_reference(self.category.pk),
+                        'tag_ids': tag_refs if tag_refs is not None else [],
+                    },
+                ],
+                'product_variants': [],
+                'product_characteristics': [],
+                'product_variant_characteristics': [],
+                'product_images': [],
+                'product_videos': [],
+                'product_content_blocks': [],
+                'product_bundles': [],
+                'product_bundle_items': [],
+                'cities': [],
+                'pickup_points': [],
+                'product_stocks': [],
+            },
+        }
+
+    def _create_batch(self, payload):
+        return CatalogImportWorkflowService.create_batch(payload=payload, source_filename='catalog.json')
+
+    def _resolution_post(self, conflict, overrides=None):
+        overrides = overrides or {}
+        post_data = QueryDict('', mutable=True)
+        for field_name, meta in (conflict.field_conflicts or {}).items():
+            if field_name.startswith('__'):
+                continue
+            config = overrides.get(field_name, {'mode': 'take_incoming'})
+            post_data[f'mode__{field_name}'] = config['mode']
+            if config['mode'] != 'manual':
+                continue
+            value = config.get('value')
+            if meta.get('field_type') == 'multiselect':
+                post_data.setlist(f'manual__{field_name}', [str(item) for item in (value or [])])
+            else:
+                post_data[f'manual__{field_name}'] = '' if value is None else str(value)
+        return post_data
+
+    def test_existing_slug_creates_review_conflict(self):
+        batch = self._create_batch(self._payload())
+
+        conflict = batch.conflicts.get(collection_name='products')
+
+        self.assertEqual(conflict.status, CatalogImportConflict.Status.PENDING)
+        self.assertIn('name', conflict.field_conflicts)
+        self.assertIn('description', conflict.field_conflicts)
+        self.assertIn('price', conflict.field_conflicts)
+        self.assertIn('slug', conflict.field_conflicts)
+        self.assertEqual(Product.objects.filter(slug='occupied-slug').count(), 1)
+
+    def test_manual_slug_change_revalidates_and_creates_new_product(self):
+        batch = self._create_batch(self._payload())
+        conflict = batch.conflicts.get(collection_name='products')
+
+        CatalogImportWorkflowService(batch).save_conflict_resolution(
+            conflict,
+            self._resolution_post(
+                conflict,
+                overrides={'slug': {'mode': 'manual', 'value': 'fresh-slug'}},
+            ),
+        )
+
+        batch.refresh_from_db()
+        conflict.refresh_from_db()
+
+        self.assertEqual(conflict.status, CatalogImportConflict.Status.RESOLVED)
+        self.assertEqual(batch.editable_payload['models']['products'][0]['slug'], 'fresh-slug')
+
+        CatalogImportWorkflowService(batch).apply_resolved_rows()
+
+        self.assertTrue(Product.objects.filter(slug='fresh-slug').exists())
+        self.assertTrue(Product.objects.filter(pk=self.existing_product.pk, slug='occupied-slug').exists())
+
+    def test_keep_current_take_incoming_and_manual_values_apply_exactly(self):
+        batch = self._create_batch(self._payload())
+        conflict = batch.conflicts.get(collection_name='products')
+
+        CatalogImportWorkflowService(batch).save_conflict_resolution(
+            conflict,
+            self._resolution_post(
+                conflict,
+                overrides={
+                    'name': {'mode': 'keep_current'},
+                    'description': {'mode': 'take_incoming'},
+                    'price': {'mode': 'manual', 'value': '199.00'},
+                },
+            ),
+        )
+        CatalogImportWorkflowService(batch).apply_resolved_rows()
+
+        self.existing_product.refresh_from_db()
+        self.assertEqual(self.existing_product.name, 'Старый товар')
+        self.assertEqual(self.existing_product.description, 'Новое описание')
+        self.assertEqual(self.existing_product.price, Decimal('199.00'))
+
+    def test_manual_fk_and_tag_resolution_persist_and_apply(self):
+        payload = self._payload(
+            slug='new-with-manual-links',
+            name='Товар с ручными связями',
+            category_ref=999,
+            tag_refs=[888],
+        )
+        batch = self._create_batch(payload)
+        conflict = batch.conflicts.get(collection_name='products')
+
+        CatalogImportWorkflowService(batch).save_conflict_resolution(
+            conflict,
+            self._resolution_post(
+                conflict,
+                overrides={
+                    'category': {'mode': 'manual', 'value': self.alt_category.pk},
+                    'tag_ids': {'mode': 'manual', 'value': [self.tag.pk]},
+                },
+            ),
+        )
+
+        batch.refresh_from_db()
+        editable_item = batch.editable_payload['models']['products'][0]
+        self.assertEqual(editable_item['category_id'], make_direct_target_reference(self.alt_category.pk))
+        self.assertEqual(editable_item['tag_ids'], [make_direct_target_reference(self.tag.pk)])
+
+        CatalogImportWorkflowService(batch).apply_resolved_rows()
+
+        product = Product.objects.get(slug='new-with-manual-links')
+        self.assertEqual(product.category, self.alt_category)
+        self.assertEqual(list(product.tags.values_list('id', flat=True)), [self.tag.pk])
+
+    def test_apply_clean_rows_imports_only_ready_rows_and_is_idempotent(self):
+        payload = self._payload(slug='occupied-slug', name='Конфликтный товар')
+        payload['models']['products'].append(
+            {
+                'id': 2,
+                'name': 'Чистый товар',
+                'slug': 'clean-product',
+                'description': '',
+                'price': '77.00',
+                'is_active': True,
+                'allow_order_on_request': True,
+                'option_label': '',
+                'category_id': make_direct_target_reference(self.category.pk),
+                'tag_ids': [],
+            }
+        )
+
+        batch = self._create_batch(payload)
+        workflow = CatalogImportWorkflowService(batch)
+        workflow.apply_clean_rows()
+        workflow.apply_clean_rows()
+
+        self.assertTrue(Product.objects.filter(slug='clean-product').exists())
+        self.assertEqual(Product.objects.filter(slug='clean-product').count(), 1)
+        self.assertGreaterEqual(
+            batch.conflicts.filter(collection_name='products', status=CatalogImportConflict.Status.PENDING).count(),
+            1,
+        )
+        self.existing_product.refresh_from_db()
+        self.assertEqual(self.existing_product.name, 'Старый товар')
+
+
+@override_settings(
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    }
+)
+class AdminImportJsonSecurityTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.staff_user = User.objects.create_user(
+            username='json-manager',
+            password='testpass',
+            is_staff=True,
+        )
+        self.import_permission = Permission.objects.get(codename='can_import_catalog_json')
+        self.view_permission = Permission.objects.get(codename='view_product')
+
+    def _login_staff(self, *, with_import_permission=False, with_view_permission=False):
+        if with_import_permission:
+            self.staff_user.user_permissions.add(self.import_permission)
+        if with_view_permission:
+            self.staff_user.user_permissions.add(self.view_permission)
+        self.client.force_login(self.staff_user)
+
+    def _payload_upload(self):
+        payload = {
+            'version': '1.0',
+            'models': {
+                'catalog_sections': [],
+                'categories': [
+                    {'id': 1, 'name': 'Шлемы', 'slug': 'admin-category', 'section_id': None},
+                ],
+                'product_tags': [],
+                'products': [
+                    {
+                        'id': 1,
+                        'name': 'Admin JSON товар',
+                        'slug': 'admin-json-product',
+                        'description': '',
+                        'price': '42.00',
+                        'is_active': True,
+                        'allow_order_on_request': True,
+                        'option_label': '',
+                        'category_id': 1,
+                        'tag_ids': [],
+                    },
+                ],
+                'product_variants': [],
+                'product_characteristics': [],
+                'product_variant_characteristics': [],
+                'product_images': [],
+                'product_bundles': [],
+                'product_bundle_items': [],
+                'cities': [],
+                'pickup_points': [],
+                'product_stocks': [],
+            },
+        }
+        return SimpleUploadedFile(
+            'catalog.json',
+            json.dumps(payload).encode('utf-8'),
+            content_type='application/json',
+        )
+
+    def _conflicting_payload_upload(self):
+        category = Category.objects.create(name='Существующая', slug='existing-admin-category')
+        Product.objects.create(
+            category=category,
+            name='Старый admin товар',
+            slug='admin-json-product',
+            description='Старое описание',
+            price=Decimal('12.00'),
+            is_active=True,
+            allow_order_on_request=True,
+        )
+        payload = {
+            'version': '1.0',
+            'models': {
+                'catalog_sections': [],
+                'categories': [],
+                'product_tags': [],
+                'products': [
+                    {
+                        'id': 1,
+                        'name': 'Admin JSON товар',
+                        'slug': 'admin-json-product',
+                        'description': 'Новое описание',
+                        'price': '42.00',
+                        'is_active': True,
+                        'allow_order_on_request': True,
+                        'option_label': '',
+                        'category_id': make_direct_target_reference(category.pk),
+                        'tag_ids': [],
+                    },
+                ],
+                'product_variants': [],
+                'product_characteristics': [],
+                'product_variant_characteristics': [],
+                'product_images': [],
+                'product_videos': [],
+                'product_content_blocks': [],
+                'product_bundles': [],
+                'product_bundle_items': [],
+                'cities': [],
+                'pickup_points': [],
+                'product_stocks': [],
+            },
+        }
+        return SimpleUploadedFile(
+            'catalog-conflict.json',
+            json.dumps(payload).encode('utf-8'),
+            content_type='application/json',
+        )
+
+    def test_import_endpoint_requires_custom_permission(self):
+        self._login_staff()
+        response = self.client.get(reverse('admin:catalog_product_import_json'))
+        self.assertEqual(response.status_code, 403)
+
+    def test_import_button_hidden_without_custom_permission(self):
+        self._login_staff(with_view_permission=True)
+        response = self.client.get(reverse('admin:catalog_product_changelist'))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, reverse('admin:catalog_product_import_json'))
+
+    def test_import_button_visible_with_custom_permission(self):
+        self._login_staff(with_import_permission=True, with_view_permission=True)
+        response = self.client.get(reverse('admin:catalog_product_changelist'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, reverse('admin:catalog_product_import_json'))
+
+    def test_import_json_dry_run_does_not_persist_changes(self):
+        self._login_staff(with_import_permission=True)
+        response = self.client.post(
+            reverse('admin:catalog_product_import_json'),
+            {'json_file': self._payload_upload(), 'dry_run': 'on'},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Проверка пакета')
+        self.assertEqual(CatalogImportBatch.objects.count(), 1)
+        self.assertFalse(Product.objects.filter(slug='admin-json-product').exists())
+
+    def test_import_json_redirects_to_review_and_apply_clean_persists(self):
+        self._login_staff(with_import_permission=True)
+        response = self.client.post(
+            reverse('admin:catalog_product_import_json'),
+            {'json_file': self._payload_upload()},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        batch = CatalogImportBatch.objects.get()
+        self.assertEqual(
+            response.url,
+            reverse('admin:catalog_product_import_json_review', args=[batch.pk]),
+        )
+        self.assertFalse(Product.objects.filter(slug='admin-json-product').exists())
+
+        apply_response = self.client.post(
+            reverse('admin:catalog_product_import_json_apply_clean', args=[batch.pk]),
+            follow=True,
+        )
+
+        self.assertEqual(apply_response.status_code, 200)
+        self.assertContains(apply_response, 'Проверка пакета')
+        self.assertTrue(Product.objects.filter(slug='admin-json-product').exists())
+
+    def test_review_page_renders_conflict_and_save_resolution(self):
+        self._login_staff(with_import_permission=True)
+        response = self.client.post(
+            reverse('admin:catalog_product_import_json'),
+            {'json_file': self._conflicting_payload_upload()},
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Конфликты, требующие решения')
+        self.assertContains(response, 'Открыть текущую запись')
+
+        batch = CatalogImportBatch.objects.get()
+        conflict = batch.conflicts.get(collection_name='products')
+        resolution_response = self.client.post(
+            reverse('admin:catalog_product_import_json_conflict', args=[batch.pk, conflict.pk]),
+            {
+                'mode__name': 'take_incoming',
+                'mode__description': 'take_incoming',
+                'mode__price': 'take_incoming',
+                'mode__slug': 'manual',
+                'manual__slug': 'admin-json-product-new',
+            },
+            follow=True,
+        )
+
+        self.assertEqual(resolution_response.status_code, 200)
+        self.assertContains(resolution_response, 'Разрешённые конфликты')

@@ -8,14 +8,13 @@ import shutil
 import tempfile
 import uuid
 import zipfile
-from decimal import Decimal
 from io import BytesIO
 
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
-from django.db import transaction
 from PIL import Image, UnidentifiedImageError
 
+from catalog.importers import CatalogDataImporter, CatalogImportError
 from catalog.models import (
     CatalogSection,
     Category,
@@ -25,11 +24,13 @@ from catalog.models import (
     ProductBundle,
     ProductBundleItem,
     ProductCharacteristic,
+    ProductContentBlock,
     ProductImage,
     ProductStock,
     ProductTag,
     ProductVariant,
     ProductVariantCharacteristic,
+    ProductVideo,
 )
 
 
@@ -130,263 +131,123 @@ class Command(BaseCommand):
         shutil.copy2(local_image_path, media_path)
         return relative_path.replace(os.sep, '/')
 
+    def _build_media_resolver(self, images_map):
+        def resolve(collection_name, item, field_name, payload_value):
+            extension = os.path.splitext(payload_value)[1]
+            archive_candidates = []
+
+            if collection_name == 'products':
+                archive_candidates.append(f'images/products/{item["slug"]}_main{extension}')
+            elif collection_name == 'product_variants':
+                image_name = os.path.basename(payload_value)
+                archive_candidates.extend(
+                    [
+                        f'images/variants/{item.get("id")}_{image_name}',
+                        f'images/variants/{image_name}',
+                    ]
+                )
+            elif collection_name == 'product_images':
+                image_name = os.path.basename(payload_value)
+                archive_candidates.extend(
+                    [
+                        f'images/product_images/{item.get("id")}_{image_name}',
+                        f'images/product_images/{image_name}',
+                    ]
+                )
+            elif collection_name == 'product_content_blocks':
+                image_name = os.path.basename(payload_value)
+                archive_candidates.extend(
+                    [
+                        f'images/content_blocks/{item.get("id")}_{image_name}',
+                        f'images/content_blocks/{image_name}',
+                    ]
+                )
+            elif collection_name == 'product_bundles':
+                image_name = os.path.basename(payload_value)
+                archive_candidates.extend(
+                    [
+                        f'images/bundles/{item.get("slug") or item.get("id")}_{image_name}',
+                        f'images/bundles/{image_name}',
+                    ]
+                )
+
+            local_image_path = None
+            for archive_path in archive_candidates:
+                if archive_path in images_map:
+                    local_image_path = images_map[archive_path]
+                    break
+
+            if local_image_path is None:
+                file_name = os.path.basename(payload_value)
+                for archive_path, candidate_path in images_map.items():
+                    if os.path.basename(archive_path) == file_name:
+                        local_image_path = candidate_path
+                        break
+
+            if local_image_path is None:
+                return None
+
+            return self._store_restored_image(local_image_path)
+
+        return resolve
+
     def handle(self, *args, **options):
         backup_file = options['backup_file']
         clear = options['clear']
-        
+
         if not os.path.exists(backup_file):
             raise CommandError(f'Файл бэкапа не найден: {backup_file}')
-        
+
         self.stdout.write(f'Чтение бэкапа: {backup_file}...')
-        
-        # Открываем ZIP архив
-        with zipfile.ZipFile(backup_file, 'r') as zip_file:
-            # Читаем JSON
-            if 'backup.json' not in zip_file.namelist():
-                raise CommandError('В архиве не найден файл backup.json')
-            
-            json_content = zip_file.read('backup.json').decode('utf-8')
-            backup_data = json.loads(json_content)
-            
-            # Проверяем версию
-            version = backup_data.get('version', '1.0')
-            self.stdout.write(f'Версия бэкапа: {version}')
-            
-            # Очистка данных при необходимости
-            if clear:
-                self.stdout.write(self.style.WARNING('Очистка существующих данных...'))
-                ProductStock.objects.all().delete()
-                ProductVariantCharacteristic.objects.all().delete()
-                ProductCharacteristic.objects.all().delete()
-                ProductImage.objects.all().delete()
-                ProductVariant.objects.all().delete()
-                ProductBundleItem.objects.all().delete()
-                ProductBundle.objects.all().delete()
-                Product.objects.all().delete()
-                PickupPoint.objects.all().delete()
-                City.objects.all().delete()
-                Category.objects.all().delete()
-                CatalogSection.objects.all().delete()
-                ProductTag.objects.all().delete()
-                self.stdout.write('  Данные очищены.')
-            
-            # Создаём временную директорию для изображений
-            temp_dir = tempfile.mkdtemp()
-            try:
-                images_map = self.extract_images_from_zip(zip_file, temp_dir)
-                self.stdout.write(f'  Извлечено изображений: {len(images_map)}')
-                
-                # Восстанавливаем данные в транзакции
-                with transaction.atomic():
-                    # 1. Разделы каталога
-                    self.stdout.write('Восстановление разделов каталога...')
-                    sections_map = {}  # {old_id: new_obj}
-                    for item in backup_data['models'].get('catalog_sections', []):
-                        section, _ = CatalogSection.objects.get_or_create(
-                            slug=item['slug'],
-                            defaults={
-                                'name': item['name'],
-                                'order': item.get('order', 0),
-                            }
-                        )
-                        sections_map[item['id']] = section
-                    
-                    # 2. Категории
-                    self.stdout.write('Восстановление категорий...')
-                    categories_map = {}
-                    for item in backup_data['models'].get('categories', []):
-                        section = sections_map.get(item.get('section_id')) if item.get('section_id') else None
-                        category, _ = Category.objects.get_or_create(
-                            slug=item['slug'],
-                            defaults={
-                                'name': item['name'],
-                                'section': section,
-                            }
-                        )
-                        if section and not category.section_id:
-                            category.section = section
-                            category.save()
-                        categories_map[item['id']] = category
-                    
-                    # 3. Теги
-                    self.stdout.write('Восстановление тегов...')
-                    tags_map = {}
-                    for item in backup_data['models'].get('product_tags', []):
-                        tag, _ = ProductTag.objects.get_or_create(
-                            slug=item['slug'],
-                            defaults={
-                                'name': item['name'],
-                                'order': item.get('order', 0),
-                            }
-                        )
-                        tags_map[item['id']] = tag
-                    
-                    # 4. Товары
-                    self.stdout.write('Восстановление товаров...')
-                    products_map = {}
-                    for item in backup_data['models'].get('products', []):
-                        category = categories_map.get(item['category_id'])
-                        if not category:
-                            self.stdout.write(self.style.WARNING(f'  Пропущен товар {item["name"]}: категория не найдена'))
-                            continue
-                        
-                        product, created = Product.objects.update_or_create(
-                            slug=item['slug'],
-                            defaults={
-                                'name': item['name'],
-                                'description': item.get('description', ''),
-                                'price': Decimal(item['price']),
-                                'is_active': item.get('is_active', True),
-                                'allow_order_on_request': item.get('allow_order_on_request', True),
-                                'option_label': item.get('option_label', ''),
-                                'category': category,
-                            }
-                        )
-                        
-                        # Восстанавливаем изображение товара
-                        if item.get('image'):
-                            image_archive_path = f"images/products/{item['slug']}_main{os.path.splitext(item['image'])[1]}"
-                            if image_archive_path in images_map:
-                                local_image_path = images_map[image_archive_path]
-                                product.image = self._store_restored_image(local_image_path)
-                                product.save()
-                        
-                        # Восстанавливаем теги
-                        tag_ids = item.get('tag_ids', [])
-                        product.tags.set([tags_map[tid] for tid in tag_ids if tid in tags_map])
-                        
-                        products_map[item['id']] = product
-                    
-                    # 5. Варианты товаров
-                    self.stdout.write('Восстановление вариантов товаров...')
-                    variants_map = {}
-                    for item in backup_data['models'].get('product_variants', []):
-                        product = products_map.get(item['product_id'])
-                        if not product:
-                            continue
-                        
-                        variant = ProductVariant.objects.create(
-                            product=product,
-                            name=item['name'],
-                            price_override=Decimal(item['price_override']) if item.get('price_override') else None,
-                            order=item.get('order', 0),
-                        )
-                        
-                        # Восстанавливаем изображение варианта
-                        if item.get('image'):
-                            variant_image_name = os.path.basename(item['image'])
-                            for archive_path, local_path in images_map.items():
-                                if variant_image_name in archive_path and 'variants' in archive_path:
-                                    variant.image = self._store_restored_image(local_path)
-                                    variant.save()
-                                    break
-                        
-                        variants_map[item['id']] = variant
-                    
-                    # 6. Характеристики товаров
-                    self.stdout.write('Восстановление характеристик товаров...')
-                    for item in backup_data['models'].get('product_characteristics', []):
-                        product = products_map.get(item['product_id'])
-                        if product:
-                            ProductCharacteristic.objects.create(
-                                product=product,
-                                name=item['name'],
-                                value=item['value'],
-                            )
-                    
-                    # 7. Характеристики вариантов
-                    self.stdout.write('Восстановление характеристик вариантов...')
-                    for item in backup_data['models'].get('product_variant_characteristics', []):
-                        variant = variants_map.get(item['variant_id'])
-                        if variant:
-                            ProductVariantCharacteristic.objects.create(
-                                variant=variant,
-                                name=item['name'],
-                                value=item['value'],
-                            )
-                    
-                    # 8. Изображения товаров
-                    self.stdout.write('Восстановление изображений товаров...')
-                    for item in backup_data['models'].get('product_images', []):
-                        product = products_map.get(item['product_id'])
-                        if product and item.get('image'):
-                            image_name = os.path.basename(item['image'])
-                            for archive_path, local_path in images_map.items():
-                                if image_name in archive_path and 'product_images' in archive_path:
-                                    ProductImage.objects.create(
-                                        product=product,
-                                        image=self._store_restored_image(local_path),
-                                        order=item.get('order', 0),
-                                    )
-                                    break
-                    
-                    # 9. Наборы товаров
-                    self.stdout.write('Восстановление наборов товаров...')
-                    bundles_map = {}
-                    for item in backup_data['models'].get('product_bundles', []):
-                        bundle = ProductBundle.objects.create(
-                            name=item.get('name', ''),
-                        )
-                        bundles_map[item['id']] = bundle
-                    
-                    # 10. Позиции наборов
-                    self.stdout.write('Восстановление позиций наборов...')
-                    for item in backup_data['models'].get('product_bundle_items', []):
-                        bundle = bundles_map.get(item['bundle_id'])
-                        product = products_map.get(item['product_id'])
-                        if bundle and product:
-                            ProductBundleItem.objects.create(
-                                bundle=bundle,
-                                product=product,
-                                quantity=item['quantity'],
-                            )
-                    
-                    # 11. Города
-                    self.stdout.write('Восстановление городов...')
-                    cities_map = {}
-                    for item in backup_data['models'].get('cities', []):
-                        city, _ = City.objects.get_or_create(
-                            slug=item['slug'],
-                            defaults={
-                                'name': item['name'],
-                                'order': item.get('order', 0),
-                            }
-                        )
-                        cities_map[item['id']] = city
-                    
-                    # 12. Точки выдачи
-                    self.stdout.write('Восстановление точек выдачи...')
-                    pickup_points_map = {}
-                    for item in backup_data['models'].get('pickup_points', []):
-                        city = cities_map.get(item['city_id'])
-                        if city:
-                            pickup_point, _ = PickupPoint.objects.get_or_create(
-                                city=city,
-                                name=item['name'],
-                                defaults={
-                                    'address': item.get('address', ''),
-                                    'order': item.get('order', 0),
-                                }
-                            )
-                            pickup_points_map[item['id']] = pickup_point
-                    
-                    # 13. Остатки товаров
-                    self.stdout.write('Восстановление остатков товаров...')
-                    for item in backup_data['models'].get('product_stocks', []):
-                        product = products_map.get(item['product_id'])
-                        pickup_point = pickup_points_map.get(item['pickup_point_id'])
-                        variant = variants_map.get(item['variant_id']) if item.get('variant_id') else None
-                        
-                        if product and pickup_point:
-                            ProductStock.objects.update_or_create(
-                                product=product,
-                                pickup_point=pickup_point,
-                                variant=variant,
-                                defaults={'quantity': item['quantity']},
-                            )
-                
-            finally:
-                # Удаляем временную директорию
-                shutil.rmtree(temp_dir, ignore_errors=True)
-        
+
+        try:
+            with zipfile.ZipFile(backup_file, 'r') as zip_file:
+                if 'backup.json' not in zip_file.namelist():
+                    raise CommandError('В архиве не найден файл backup.json')
+
+                json_content = zip_file.read('backup.json').decode('utf-8')
+                backup_data = json.loads(json_content)
+
+                version = backup_data.get('version', '1.0')
+                self.stdout.write(f'Версия бэкапа: {version}')
+
+                if clear:
+                    self.stdout.write(self.style.WARNING('Очистка существующих данных...'))
+                    ProductStock.objects.all().delete()
+                    ProductContentBlock.objects.all().delete()
+                    ProductVideo.objects.all().delete()
+                    ProductVariantCharacteristic.objects.all().delete()
+                    ProductCharacteristic.objects.all().delete()
+                    ProductImage.objects.all().delete()
+                    ProductVariant.objects.all().delete()
+                    ProductBundleItem.objects.all().delete()
+                    ProductBundle.objects.all().delete()
+                    Product.objects.all().delete()
+                    PickupPoint.objects.all().delete()
+                    City.objects.all().delete()
+                    Category.objects.all().delete()
+                    CatalogSection.objects.all().delete()
+                    ProductTag.objects.all().delete()
+                    self.stdout.write('  Данные очищены.')
+
+                temp_dir = tempfile.mkdtemp()
+                try:
+                    images_map = self.extract_images_from_zip(zip_file, temp_dir)
+                    self.stdout.write(f'  Извлечено изображений: {len(images_map)}')
+                    importer = CatalogDataImporter(
+                        backup_data,
+                        media_resolver=self._build_media_resolver(images_map),
+                    )
+                    report = importer.import_data()
+                finally:
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+        except CatalogImportError as exc:
+            raise CommandError(str(exc)) from exc
+
+        for label, bucket in report.sections():
+            if bucket:
+                self.stdout.write(f'{label}: {bucket}')
+        for warning in report.warnings:
+            self.stdout.write(self.style.WARNING(f'Предупреждение: {warning}'))
+
         self.stdout.write(self.style.SUCCESS('\nВосстановление завершено успешно!'))

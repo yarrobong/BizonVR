@@ -22,11 +22,13 @@ from catalog.models import (
     ProductBundle,
     ProductBundleItem,
     ProductCharacteristic,
+    ProductContentBlock,
     ProductImage,
     ProductStock,
     ProductTag,
     ProductVariant,
     ProductVariantCharacteristic,
+    ProductVideo,
 )
 
 
@@ -117,13 +119,19 @@ class Command(BaseCommand):
             products_data.append({
                 'id': product.id,
                 'name': product.name,
+                'sku': product.sku,
                 'slug': product.slug,
                 'description': product.description,
                 'price': '' if product.price is None else str(product.price),
+                'price_on_request': '' if product.price_on_request is None else str(product.price_on_request),
                 'image': product.image.name if product.image else None,
                 'is_active': product.is_active,
                 'allow_order_on_request': product.allow_order_on_request,
+                'avito_url': product.avito_url,
+                'ozon_url': product.ozon_url,
+                'wildberries_url': product.wildberries_url,
                 'option_label': product.option_label,
+                'views_count': product.views_count,
                 'category_id': product.category_id,
                 'tag_ids': list(product.tags.values_list('id', flat=True)),
                 'created_at': product.created_at.isoformat() if product.created_at else None,
@@ -140,8 +148,12 @@ class Command(BaseCommand):
                 'id': variant.id,
                 'product_id': variant.product_id,
                 'name': variant.name,
+                'sku': variant.sku,
                 'image': variant.image.name if variant.image else None,
                 'price_override': str(variant.price_override) if variant.price_override else None,
+                'price_on_request_override': (
+                    str(variant.price_on_request_override) if variant.price_on_request_override else None
+                ),
                 'order': variant.order,
             })
         backup_data['models']['product_variants'] = variants_data
@@ -168,13 +180,55 @@ class Command(BaseCommand):
                 'order': img.order,
             })
         backup_data['models']['product_images'] = images_data
-        
-        # 9. Наборы товаров
+
+        # 9. Видео товаров
+        self.stdout.write('  Экспорт видео товаров...')
+        videos = ProductVideo.objects.select_related('product').all()
+        videos_data = []
+        for video in videos:
+            videos_data.append({
+                'id': video.id,
+                'product_id': video.product_id,
+                'rutube_url': video.rutube_url,
+                'rutube_video_id': video.rutube_video_id,
+                'embed_url': video.embed_url,
+                'thumbnail_url': video.thumbnail_url,
+                'title': video.title,
+                'order': video.order,
+            })
+        backup_data['models']['product_videos'] = videos_data
+
+        # 10. Блоки контента товаров
+        self.stdout.write('  Экспорт блоков контента товаров...')
+        content_blocks = ProductContentBlock.objects.select_related('product').all()
+        content_blocks_data = []
+        for block in content_blocks:
+            content_blocks_data.append({
+                'id': block.id,
+                'product_id': block.product_id,
+                'block_type': block.block_type,
+                'title': block.title,
+                'text': block.text,
+                'image': block.image.name if block.image else None,
+                'image_position': block.image_position,
+                'caption': block.caption,
+                'rutube_url': block.rutube_url,
+                'rutube_video_id': block.rutube_video_id,
+                'embed_url': block.embed_url,
+                'sort_order': block.sort_order,
+                'is_active': block.is_active,
+            })
+        backup_data['models']['product_content_blocks'] = content_blocks_data
+
+        # 11. Наборы товаров
         self.stdout.write('  Экспорт наборов товаров...')
         bundles = ProductBundle.objects.all()
-        backup_data['models']['product_bundles'] = self.serialize_model(bundles, ['id', 'name'])
-        
-        # 10. Позиции наборов
+        backup_data['models']['product_bundles'] = self.serialize_model(
+            bundles,
+            ['id', 'name', 'slug', 'description', 'image'],
+        )
+
+        # 12. Позиции наборов
         self.stdout.write('  Экспорт позиций наборов...')
         bundle_items = ProductBundleItem.objects.select_related('bundle', 'product').all()
         bundle_items_data = []
@@ -188,17 +242,17 @@ class Command(BaseCommand):
             })
         backup_data['models']['product_bundle_items'] = bundle_items_data
         
-        # 11. Города
+        # 13. Города
         self.stdout.write('  Экспорт городов...')
         cities = City.objects.all()
         backup_data['models']['cities'] = self.serialize_model(cities)
         
-        # 12. Точки выдачи
+        # 14. Точки выдачи
         self.stdout.write('  Экспорт точек выдачи...')
         pickup_points = PickupPoint.objects.select_related('city').all()
         backup_data['models']['pickup_points'] = self.serialize_model(pickup_points, ['id', 'city_id', 'name', 'address', 'order'])
         
-        # 13. Остатки товаров
+        # 15. Остатки товаров
         self.stdout.write('  Экспорт остатков товаров...')
         stocks = ProductStock.objects.select_related('product', 'pickup_point', 'variant').all()
         stocks_data = []
@@ -250,6 +304,25 @@ class Command(BaseCommand):
                         archive_name = f'images/product_images/{img.id}_{os.path.basename(extra_image_path)}'
                         zip_file.write(extra_image_path, archive_name)
                         images_added.add(extra_image_path)
+
+            # Изображения блоков контента
+            for block in content_blocks:
+                if block.image:
+                    block_image_path = block.image.path
+                    if os.path.exists(block_image_path) and block_image_path not in images_added:
+                        archive_name = f'images/content_blocks/{block.id}_{os.path.basename(block_image_path)}'
+                        zip_file.write(block_image_path, archive_name)
+                        images_added.add(block_image_path)
+
+            # Изображения наборов
+            for bundle in bundles:
+                if bundle.image:
+                    bundle_image_path = bundle.image.path
+                    if os.path.exists(bundle_image_path) and bundle_image_path not in images_added:
+                        bundle_key = bundle.slug or str(bundle.id)
+                        archive_name = f'images/bundles/{bundle_key}_{os.path.basename(bundle_image_path)}'
+                        zip_file.write(bundle_image_path, archive_name)
+                        images_added.add(bundle_image_path)
         
         # Сохраняем файл
         zip_buffer.seek(0)
@@ -263,6 +336,8 @@ class Command(BaseCommand):
             'tags': len(backup_data['models']['product_tags']),
             'products': len(backup_data['models']['products']),
             'variants': len(backup_data['models']['product_variants']),
+            'videos': len(backup_data['models']['product_videos']),
+            'content_blocks': len(backup_data['models']['product_content_blocks']),
             'images': len(images_added),
         }
         
@@ -274,5 +349,7 @@ class Command(BaseCommand):
             f'  - Тегов: {stats["tags"]}\n'
             f'  - Товаров: {stats["products"]}\n'
             f'  - Вариантов: {stats["variants"]}\n'
+            f'  - Видео: {stats["videos"]}\n'
+            f'  - Блоков контента: {stats["content_blocks"]}\n'
             f'  - Изображений: {stats["images"]}'
         ))

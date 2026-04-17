@@ -1,0 +1,64 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls static admin_modify %}
+
+{% block title %}Импорт каталога из JSON | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+<a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+&rsaquo; <a href="{% url 'admin:catalog_product_changelist' %}">Товары</a>
+&rsaquo; Импорт из JSON
+</div>
+{% endblock %}
+
+{% block content %}
+<h1>Импорт каталога из JSON</h1>
+
+<div style="max-width: 900px; margin: 20px 0;">
+    <div class="module" style="padding: 20px; background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px;">
+        <h2 style="margin-top: 0;">Что поддерживается</h2>
+        <ol>
+            <li>Файл должен быть обычным JSON в UTF-8 со структурой `{"models": {...}}`, совместимой с `backup.json`.</li>
+            <li>После загрузки откроется экран проверки: там будут видны готовые записи, конфликты и предупреждения.</li>
+            <li>Импорт работает по upsert-логике: обновляет совпавшие записи и создаёт недостающие, не удаляя лишние данные в БД.</li>
+            <li>Опция «Проверить без записи» не пишет в PostgreSQL и сразу открывает review-экран.</li>
+        </ol>
+
+        <div style="margin-top: 20px; padding: 15px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px;">
+            <strong>Важно:</strong> поля с изображениями в JSON сейчас не импортируются. Они будут пропущены и попадут в предупреждения отчёта.
+        </div>
+    </div>
+
+    <form method="post" enctype="multipart/form-data" style="margin-top: 30px;">
+        {% csrf_token %}
+
+        <div class="form-row" style="margin-bottom: 20px;">
+            <div>
+                <label for="id_json_file" style="display: block; margin-bottom: 5px; font-weight: bold;">
+                    JSON-файл:
+                </label>
+                <input type="file" name="json_file" id="id_json_file" accept=".json,application/json" required
+                       style="padding: 8px; border: 1px solid #ccc; border-radius: 4px; width: 100%; max-width: 500px;">
+            </div>
+        </div>
+
+        <div class="form-row" style="margin-bottom: 20px;">
+            <div>
+                <label style="display: flex; align-items: center; cursor: pointer;">
+                    <input type="checkbox" name="dry_run" id="id_dry_run" style="margin-right: 8px;" {% if dry_run %}checked{% endif %}>
+                    <span style="font-weight: bold;">Проверить без записи в базу данных</span>
+                </label>
+            </div>
+        </div>
+
+        <div class="submit-row" style="margin-top: 30px;">
+            <input type="submit" value="Загрузить и проверить" class="default"
+                   style="padding: 10px 20px; background: #2f6f4f; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">
+            <a href="{% url 'admin:catalog_product_changelist' %}"
+               style="margin-left: 10px; padding: 10px 20px; background: #ba2121; color: white; text-decoration: none; border-radius: 4px; display: inline-block;">
+                Отмена
+            </a>
+        </div>
+    </form>
+</div>
+{% endblock %}

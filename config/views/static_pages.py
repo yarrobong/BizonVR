@@ -85,12 +85,8 @@ def conference_attractions_view(request, path=''):
     return _serve_public_directory_file(landing_root, path, default_file='index.html')
 
 
-def compact_vr_view(request, path=''):
+def compact_vr_view(request):
     """Лендинг компактной VR-арены под ключ и его локальные ассеты."""
-    landing_root = settings.BASE_DIR / 'v2-vremenno'
-    if path:
-        return _serve_public_directory_file(landing_root, path, default_file='index.html')
-
     lead_form = CompactVRForm()
     if request.method == 'POST' and request.POST.get('form_type') == 'compact_vr':
         lead_form = CompactVRForm(request.POST)
@@ -111,7 +107,14 @@ def compact_vr_view(request, path=''):
             messages.success(request, 'Заявка отправлена! Мы свяжемся с вами в ближайшее время.')
             return redirect(reverse('compact_vr') + '#contact')
 
-    return render(request, 'compact_vr.html', {'lead_form': lead_form})
+    return render(
+        request,
+        'compact_vr.html',
+        {
+            'lead_form': lead_form,
+            'hide_footer_products': True,
+        },
+    )
 
 
 def not_found_view(request, exception=None, unmatched_path=''):

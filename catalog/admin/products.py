@@ -12,14 +12,19 @@ from django.conf import settings
 from django.contrib import admin, messages
 from django import forms
 from django.core.exceptions import PermissionDenied
-from django.http import HttpResponse, HttpResponseForbidden, HttpResponseRedirect
+from django.http import Http404, HttpResponse, HttpResponseForbidden, HttpResponseRedirect
+from django.shortcuts import get_object_or_404
 from django.template.response import TemplateResponse
-from django.urls import path
+from django.urls import path, reverse
 from django.utils.html import format_html
 from django.utils import timezone
 
 from ..cache_utils import invalidate_catalog_cache
+from ..importers import CatalogImportError
+from ..import_workflow import CatalogImportWorkflowService, admin_change_url
 from ..models import (
+    CatalogImportBatch,
+    CatalogImportConflict,
     Product,
     ProductCharacteristic,
     ProductContentBlock,
@@ -51,6 +56,68 @@ def _parse_decimal_or_fallback(raw_value, fallback):
         except Exception:
             pass
     return fallback
+
+
+def _load_uploaded_json(uploaded_file):
+    try:
+        raw_bytes = uploaded_file.read()
+        if not raw_bytes:
+            raise ValueError('Файл пустой.')
+        return json.loads(raw_bytes.decode('utf-8'))
+    except UnicodeDecodeError as exc:
+        raise ValueError('JSON-файл должен быть в UTF-8.') from exc
+    except json.JSONDecodeError as exc:
+        raise ValueError(f'Некорректный JSON: {exc.msg}.') from exc
+
+
+COLLECTION_LABELS = {
+    'catalog_sections': 'Разделы каталога',
+    'categories': 'Категории',
+    'product_tags': 'Теги',
+    'products': 'Товары',
+    'product_variants': 'Варианты',
+    'product_characteristics': 'Характеристики товаров',
+    'product_variant_characteristics': 'Характеристики вариантов',
+    'product_images': 'Изображения',
+    'product_videos': 'Видео',
+    'product_content_blocks': 'Контентные блоки',
+    'product_bundles': 'Наборы',
+    'product_bundle_items': 'Позиции наборов',
+    'cities': 'Города',
+    'pickup_points': 'Точки выдачи',
+    'product_stocks': 'Остатки',
+}
+
+
+def _collection_label(name):
+    return COLLECTION_LABELS.get(name, name.replace('_', ' ').title())
+
+
+def _status_badge(status):
+    labels = {
+        'ready_create': 'Готово к созданию',
+        'ready_update': 'Готово к обновлению',
+        'noop': 'Без изменений',
+        'pending_conflict': 'Нужна проверка',
+        'blocking': 'Блокирующая ошибка',
+        'pending': 'Ожидает решения',
+        'resolved': 'Разрешён',
+        'applied': 'Применён',
+        'cleared': 'Устарел',
+    }
+    return labels.get(status, status)
+
+
+def _display_import_value(value):
+    if value in (None, '', []):
+        return '—'
+    if value is True:
+        return 'Да'
+    if value is False:
+        return 'Нет'
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False)
+    return str(value)
 
 
 class ProductCharacteristicInline(admin.TabularInline):
@@ -363,13 +430,18 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
     def changelist_view(self, request, extra_context=None):
         extra_context = extra_context or {}
         extra_context['restore_backup_url'] = 'admin:catalog_product_restore_backup'
+        extra_context['import_catalog_json_url'] = 'admin:catalog_product_import_json'
         extra_context['commercial_proposal_url'] = 'admin:catalog_product_commercial_proposal'
         extra_context['can_export_commercial_proposal'] = request.user.has_perm('catalog.view_product')
         extra_context['can_restore_backup'] = self.has_restore_backup_permission(request)
+        extra_context['can_import_catalog_json'] = self.has_import_catalog_json_permission(request)
         return super().changelist_view(request, extra_context=extra_context)
 
     def has_restore_backup_permission(self, request):
         return request.user.has_perm('catalog.can_restore_backup')
+
+    def has_import_catalog_json_permission(self, request):
+        return request.user.has_perm('catalog.can_import_catalog_json')
 
     @admin.action(description='Скачать каталог с картинками (ZIP)')
     def export_catalog_with_images(self, request, queryset):
@@ -531,6 +603,28 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
         urls = super().get_urls()
         custom_urls = [
             path('restore-backup/', self.admin_site.admin_view(self.restore_backup_view), name='catalog_product_restore_backup'),
+            path('import-json/', self.admin_site.admin_view(self.import_json_view), name='catalog_product_import_json'),
+            path('import-json/<int:batch_id>/', self.admin_site.admin_view(self.import_json_review_view), name='catalog_product_import_json_review'),
+            path(
+                'import-json/<int:batch_id>/revalidate/',
+                self.admin_site.admin_view(self.import_json_revalidate_view),
+                name='catalog_product_import_json_revalidate',
+            ),
+            path(
+                'import-json/<int:batch_id>/apply-clean/',
+                self.admin_site.admin_view(self.import_json_apply_clean_view),
+                name='catalog_product_import_json_apply_clean',
+            ),
+            path(
+                'import-json/<int:batch_id>/apply-resolved/',
+                self.admin_site.admin_view(self.import_json_apply_resolved_view),
+                name='catalog_product_import_json_apply_resolved',
+            ),
+            path(
+                'import-json/<int:batch_id>/conflicts/<int:conflict_id>/',
+                self.admin_site.admin_view(self.import_json_save_conflict_view),
+                name='catalog_product_import_json_conflict',
+            ),
             path('commercial-proposal/', self.admin_site.admin_view(self.commercial_proposal_export_view), name='catalog_product_commercial_proposal'),
             path('product-search/', self.admin_site.admin_view(self.product_search_api_view), name='catalog_product_product_search'),
             path('product-content-blocks/<int:product_id>/', self.admin_site.admin_view(self.product_content_blocks_api_view), name='catalog_product_content_blocks'),
@@ -768,6 +862,196 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
             'has_view_permission': True,
         }
         return TemplateResponse(request, 'admin/catalog/restore_backup.html', context)
+
+    def import_json_view(self, request):
+        if not self.has_import_catalog_json_permission(request):
+            raise PermissionDenied
+
+        context = self._import_json_upload_context(request)
+
+        if request.method != 'POST':
+            return TemplateResponse(request, 'admin/catalog/import_json.html', context)
+
+        json_file = request.FILES.get('json_file')
+        dry_run = request.POST.get('dry_run') == 'on'
+        context['dry_run'] = dry_run
+
+        if not json_file:
+            messages.error(request, 'Не выбран JSON-файл.')
+            return TemplateResponse(request, 'admin/catalog/import_json.html', context)
+
+        try:
+            payload = _load_uploaded_json(json_file)
+            batch = CatalogImportWorkflowService.create_batch(
+                payload=payload,
+                source_filename=json_file.name or 'catalog.json',
+            )
+        except (ValueError, CatalogImportError) as exc:
+            messages.error(request, f'Ошибка импорта: {exc}')
+            return TemplateResponse(request, 'admin/catalog/import_json.html', context)
+
+        if dry_run:
+            messages.success(request, 'Проверка JSON завершена. Изменения в БД не применялись, пакет открыт в режиме review.')
+        else:
+            messages.success(request, 'Файл загружен. Проверьте конфликтующие записи и примените готовые изменения.')
+
+        return HttpResponseRedirect(reverse('admin:catalog_product_import_json_review', args=[batch.pk]))
+
+    def import_json_review_view(self, request, batch_id):
+        batch = self._get_import_batch(request, batch_id)
+        context = self._import_json_review_context(request, batch)
+        return TemplateResponse(request, 'admin/catalog/import_json_review.html', context)
+
+    def import_json_revalidate_view(self, request, batch_id):
+        batch = self._get_import_batch(request, batch_id)
+        if request.method != 'POST':
+            raise Http404
+        CatalogImportWorkflowService(batch).analyze_and_persist()
+        messages.success(request, 'Пакет перепроверен с учётом текущих правок и состояния БД.')
+        return HttpResponseRedirect(reverse('admin:catalog_product_import_json_review', args=[batch.pk]))
+
+    def import_json_apply_clean_view(self, request, batch_id):
+        batch = self._get_import_batch(request, batch_id)
+        if request.method != 'POST':
+            raise Http404
+        workflow = CatalogImportWorkflowService(batch)
+        error = workflow.apply_clean_rows()
+        if error:
+            messages.error(request, f'Не удалось применить готовые записи: {error}')
+        else:
+            invalidate_catalog_cache()
+            messages.success(request, 'Готовые записи применены.')
+        return HttpResponseRedirect(reverse('admin:catalog_product_import_json_review', args=[batch.pk]))
+
+    def import_json_apply_resolved_view(self, request, batch_id):
+        batch = self._get_import_batch(request, batch_id)
+        if request.method != 'POST':
+            raise Http404
+        workflow = CatalogImportWorkflowService(batch)
+        error = workflow.apply_resolved_rows()
+        if error:
+            messages.error(request, f'Не удалось применить разрешённые конфликты: {error}')
+        else:
+            invalidate_catalog_cache()
+            messages.success(request, 'Разрешённые конфликты применены.')
+        return HttpResponseRedirect(reverse('admin:catalog_product_import_json_review', args=[batch.pk]))
+
+    def import_json_save_conflict_view(self, request, batch_id, conflict_id):
+        batch = self._get_import_batch(request, batch_id)
+        if request.method != 'POST':
+            raise Http404
+        conflict = get_object_or_404(CatalogImportConflict, batch=batch, pk=conflict_id)
+        CatalogImportWorkflowService(batch).save_conflict_resolution(conflict, request.POST)
+        messages.success(request, f'Конфликт для "{conflict.item_label or conflict.collection_name}" обновлён и перепроверен.')
+        return HttpResponseRedirect(reverse('admin:catalog_product_import_json_review', args=[batch.pk]))
+
+    def _get_import_batch(self, request, batch_id):
+        if not self.has_import_catalog_json_permission(request):
+            raise PermissionDenied
+        return get_object_or_404(CatalogImportBatch, pk=batch_id)
+
+    def _import_json_upload_context(self, request):
+        return {
+            **self.admin_site.each_context(request),
+            'title': 'Импорт каталога из JSON',
+            'opts': self.model._meta,
+            'has_view_permission': True,
+            'dry_run': False,
+        }
+
+    def _import_json_review_context(self, request, batch):
+        summary = batch.summary or {}
+        active_conflicts = batch.conflicts.exclude(status=CatalogImportConflict.Status.CLEARED).order_by(
+            'status',
+            'collection_name',
+            'source_index',
+        )
+        pending_conflicts = []
+        resolved_conflicts = []
+        applied_conflicts = []
+        for conflict in active_conflicts:
+            card = self._build_import_conflict_card(conflict)
+            if conflict.status == CatalogImportConflict.Status.PENDING:
+                pending_conflicts.append(card)
+            elif conflict.status == CatalogImportConflict.Status.RESOLVED:
+                resolved_conflicts.append(card)
+            elif conflict.status == CatalogImportConflict.Status.APPLIED:
+                applied_conflicts.append(card)
+
+        return {
+            **self.admin_site.each_context(request),
+            'title': f'Проверка импорта JSON #{batch.pk}',
+            'opts': self.model._meta,
+            'has_view_permission': True,
+            'batch': batch,
+            'summary_counts': summary.get('counts', {}),
+            'ready_items': summary.get('ready', []),
+            'noop_items': summary.get('noop', []),
+            'blocking_items': summary.get('blocking_issues', []),
+            'warnings': summary.get('warnings', []),
+            'pending_conflicts': pending_conflicts,
+            'resolved_conflicts': resolved_conflicts,
+            'applied_conflicts': applied_conflicts,
+            'review_url': reverse('admin:catalog_product_import_json_review', args=[batch.pk]),
+            'upload_url': reverse('admin:catalog_product_import_json'),
+            'revalidate_url': reverse('admin:catalog_product_import_json_revalidate', args=[batch.pk]),
+            'apply_clean_url': reverse('admin:catalog_product_import_json_apply_clean', args=[batch.pk]),
+            'apply_resolved_url': reverse('admin:catalog_product_import_json_apply_resolved', args=[batch.pk]),
+        }
+
+    def _build_import_conflict_card(self, conflict):
+        fields = []
+        for field_name, meta in (conflict.field_conflicts or {}).items():
+            resolution = (conflict.resolutions or {}).get(field_name, {})
+            field_type = meta.get('field_type') or 'text'
+            manual_value = resolution.get('value')
+            if field_type == 'fk' and isinstance(manual_value, dict):
+                manual_value = manual_value.get('target_pk', '')
+            elif field_type == 'multiselect':
+                manual_value = [
+                    str(item.get('target_pk') if isinstance(item, dict) else item)
+                    for item in (manual_value or [])
+                ]
+            elif field_type == 'bool':
+                manual_value = '1' if manual_value in (True, '1', 1, 'true', 'True') else '0'
+            elif manual_value is None:
+                manual_value = ''
+            else:
+                manual_value = str(manual_value)
+
+            options = meta.get('options') or []
+            if field_type == 'bool' and not options:
+                options = [
+                    {'value': '1', 'label': 'Да'},
+                    {'value': '0', 'label': 'Нет'},
+                ]
+
+            fields.append(
+                {
+                    'name': field_name,
+                    'label': meta.get('label') or field_name,
+                    'field_type': field_type,
+                    'options': options,
+                    'current_display': _display_import_value(meta.get('current_value')),
+                    'incoming_display': _display_import_value(meta.get('incoming_value')),
+                    'chosen_display': _display_import_value(meta.get('chosen_value')),
+                    'resolution_mode': resolution.get('mode', ''),
+                    'manual_value': manual_value,
+                    'resolution_error': meta.get('resolution_error', ''),
+                }
+            )
+
+        return {
+            'id': conflict.pk,
+            'item_label': conflict.item_label or f'{_collection_label(conflict.collection_name)} #{conflict.source_index}',
+            'collection_label': _collection_label(conflict.collection_name),
+            'status_label': _status_badge(conflict.status),
+            'conflict_kind': conflict.conflict_kind,
+            'source_id': conflict.source_id,
+            'admin_change_url': admin_change_url(conflict.target_model, conflict.target_pk),
+            'save_url': reverse('admin:catalog_product_import_json_conflict', args=[conflict.batch_id, conflict.pk]),
+            'fields': fields,
+        }
 
 
 @admin.register(ProductContentBlock)
