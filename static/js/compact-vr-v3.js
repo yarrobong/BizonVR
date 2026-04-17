@@ -1243,6 +1243,9 @@ function setupRevenueModelSwitcher() {
   const prevButton = document.getElementById("revenueModelPrev");
   const nextButton = document.getElementById("revenueModelNext");
   const caption = document.getElementById("revenueModelCaption");
+  const profitDelta = document.getElementById("monthlyProfitDelta");
+  const ownProfitRub = document.getElementById("monthlyOwnProfitRub");
+  const competitorProfitRub = document.getElementById("monthlyCompetitorProfitRub");
   const ownCenterCaption = document.getElementById("monthlyOwnCenterCaption");
   const competitorCenterCaption = document.getElementById("monthlyCompetitorCenterCaption");
   const ownLegend = document.getElementById("monthlyOwnLegend");
@@ -1250,7 +1253,7 @@ function setupRevenueModelSwitcher() {
   const ownRing = rootQuery(".monthly-ring-own");
   const competitorRing = rootQuery(".monthly-ring-competitor");
 
-  if (!prevButton || !nextButton || !caption || !ownCenterCaption || !competitorCenterCaption || !ownLegend || !competitorLegend || !ownRing || !competitorRing) {
+  if (!prevButton || !nextButton || !caption || !profitDelta || !ownProfitRub || !competitorProfitRub || !ownCenterCaption || !competitorCenterCaption || !ownLegend || !competitorLegend || !ownRing || !competitorRing) {
     return;
   }
 
@@ -1273,6 +1276,11 @@ function setupRevenueModelSwitcher() {
 
   function percent(value, revenue) {
     return Number(((value / revenue) * 100).toFixed(1));
+  }
+
+  function formatSignedPercent(value) {
+    const sign = value > 0 ? "+" : value < 0 ? "-" : "";
+    return `${sign}${percentFormatter.format(Math.abs(value))}%`;
   }
 
   function getTeamFixed(costs, revenue) {
@@ -1312,6 +1320,7 @@ function setupRevenueModelSwitcher() {
         <li><i class="ring-swatch ring-tax"></i><span class="monthly-ring-label">Налоги<small class="monthly-ring-sub">${currencyFormatter.format(Math.round(taxRub))} ₽</small></span><strong>≈ ${percentFormatter.format(tax)}%</strong></li>
         <li class="monthly-ring-growth"><i class="ring-swatch ring-growth"></i><span class="monthly-ring-label">Чистая прибыль<small class="monthly-ring-sub">${currencyFormatter.format(Math.round(profitRub))} ₽</small></span><strong>≈ ${percentFormatter.format(profit)}%</strong></li>
       `,
+      profitRub,
       segments: { rent, salary, marketing, royalty, ops, tax, profit }
     };
   }
@@ -1346,6 +1355,11 @@ function setupRevenueModelSwitcher() {
     competitorCenterCaption.textContent = `Оборот — ${revenueLabel} ₽`;
     ownLegend.innerHTML = own.html;
     competitorLegend.innerHTML = competitor.html;
+    ownProfitRub.textContent = `${currencyFormatter.format(Math.round(own.profitRub))} ₽`;
+    competitorProfitRub.textContent = `${currencyFormatter.format(Math.round(competitor.profitRub))} ₽`;
+    const competitorBaseProfit = competitor.profitRub > 0 ? competitor.profitRub : 0;
+    const efficiencyDelta = competitorBaseProfit ? ((own.profitRub - competitor.profitRub) / competitor.profitRub) * 100 : 0;
+    profitDelta.textContent = formatSignedPercent(efficiencyDelta);
     applyRing(ownRing, own.segments);
     applyRing(competitorRing, competitor.segments);
     updateMarketingRateButtons();
