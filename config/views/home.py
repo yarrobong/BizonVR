@@ -61,6 +61,7 @@ def _home_view_impl(request):
         relative_path = str(relative_path).lstrip('/')
         return request.build_absolute_uri(media_url + relative_path)
 
+    compact_vr_bg = request.build_absolute_uri(media_url + 'hero/compact-vr.webp')
     mart_bg = request.build_absolute_uri(media_url + 'hero/mart.webp')
     tradein_bg = request.build_absolute_uri(media_url + 'hero/tradein.webp')
     attractions_bg = request.build_absolute_uri(media_url + 'hero/attractions.webp')
@@ -115,7 +116,7 @@ def _home_view_impl(request):
             'description': 'Компактный формат запуска VR-локации под ключ: от 62 м², лизинг или покупка, гарантия 36 месяцев.',
             'url': '/compact-vr/',
             'btn': 'Подробнее',
-            'bg_url': request.build_absolute_uri(static('images/compact-vr-v3/katvrplayer.png')),
+            'bg_url': compact_vr_bg,
             'bg_position': 'center center',
         },
         {
