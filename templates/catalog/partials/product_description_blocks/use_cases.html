@@ -1,0 +1,13 @@
+<article class="content-block content-block--use-cases">
+  {% if item.data.title %}
+    <h3 class="content-block__title">{{ item.data.title }}</h3>
+  {% endif %}
+  <div class="content-block__cards">
+    {% for case in item.data.items %}
+      <div class="content-block__card">
+        {% if case.title %}<strong>{{ case.title }}</strong>{% endif %}
+        {% if case.text %}<p>{{ case.text }}</p>{% endif %}
+      </div>
+    {% endfor %}
+  </div>
+</article>

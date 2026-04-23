@@ -1,0 +1,13 @@
+<article class="content-block content-block--video">
+  {% if item.data.title %}
+    <h3 class="content-block__title">{{ item.data.title }}</h3>
+  {% endif %}
+  {% if item.data.embed_url %}
+    <div class="content-block__video-shell">
+      <iframe src="{{ item.data.embed_url }}" title="{{ item.data.title|default:product.name }}" class="content-block__video" frameborder="0" allow="clipboard-write; autoplay; encrypted-media; picture-in-picture; web-share" allowfullscreen></iframe>
+    </div>
+  {% endif %}
+  {% if item.data.caption %}
+    <p class="content-block__caption">{{ item.data.caption }}</p>
+  {% endif %}
+</article>

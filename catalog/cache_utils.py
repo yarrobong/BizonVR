@@ -63,7 +63,11 @@ def get_active_category_ids():
     category_ids = cache.get(CACHE_KEY_ACTIVE_CATEGORY_IDS)
     if category_ids is None:
         category_ids = list(
-            Product.objects.filter(is_active=True).values_list('category_id', flat=True).distinct()
+            Product.objects
+            .filter(is_active=True)
+            .order_by()
+            .values_list('category_id', flat=True)
+            .distinct()
         )
         cache.set(CACHE_KEY_ACTIVE_CATEGORY_IDS, category_ids, _CACHE_TTL)
     return category_ids

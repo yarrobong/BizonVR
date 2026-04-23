@@ -13,11 +13,13 @@ from ..cart_services import get_cart_items
 from ..filtering import CatalogFilterService
 from ..models import (
     Category,
+    ProductDescriptionBlock,
     Product,
     ProductBundle,
     ProductContentBlock,
     ProductStock,
 )
+from ..product_descriptions import resolve_product_description
 from ..pricing import (
     PURCHASE_MODE_REQUEST_ONLY,
     PURCHASE_MODE_ON_REQUEST,
@@ -355,7 +357,16 @@ class ProductDetailView(DetailView):
                 queryset=ProductContentBlock.objects.filter(is_active=True).order_by('sort_order', 'id'),
                 to_attr='active_content_blocks',
             ),
-        ).select_related('category')
+            Prefetch(
+                'product_description__blocks',
+                queryset=(
+                    ProductDescriptionBlock.objects
+                    .select_related('block_type')
+                    .prefetch_related('assets')
+                    .order_by('sort_order', 'id')
+                ),
+            ),
+        ).select_related('category', 'product_description', 'product_description__template')
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -368,18 +379,16 @@ class ProductDetailView(DetailView):
         context['is_favorite'] = is_favorite(self.request, self.object.pk)
         context['favorite_product_ids'] = get_favorite_product_ids(self.request)
 
-        if self.object.variants.exists():
-            context['stock_by_variant'] = {
-                v.pk: _get_stock_total(self.object.pk, v.pk)
-                for v in self.object.variants.all()
-            }
+        variants = list(self.object.variants.all())
+        if variants:
+            context['stock_by_variant'] = _variant_stock_totals([self.object.pk])
             context['stock_total'] = None
         else:
             context['stock_total'] = _get_stock_total(self.object.pk)
             context['stock_by_variant'] = {}
         context['stock_status_by_variant'] = {
-            variant_id: public_stock_status(quantity)['code']
-            for variant_id, quantity in context['stock_by_variant'].items()
+            variant.pk: public_stock_status(context['stock_by_variant'].get(variant.pk, 0))['code']
+            for variant in variants
         }
         context['stock_status'] = public_stock_status(context['stock_total'])['code']
 
@@ -409,7 +418,7 @@ class ProductDetailView(DetailView):
 
         context['variant_characteristics'] = {
             v.pk: [(c.name, c.value) for c in v.characteristics.all()]
-            for v in self.object.variants.all()
+            for v in variants
         }
 
         try:
@@ -472,9 +481,10 @@ class ProductDetailView(DetailView):
         context['product_gallery'] = gallery
         context['product_media'] = product_media
         context['active_content_blocks'] = list(getattr(self.object, 'active_content_blocks', []))
+        context['description_view'] = resolve_product_description(self.object)['new']
 
         variants_data = []
-        for variant in self.object.variants.all():
+        for variant in variants:
             variant_stock_total = context['stock_by_variant'].get(variant.pk, 0)
             variant_in_stock_price = resolve_in_stock_price(self.object, variant)
             variant_on_request_price = resolve_on_request_price(self.object, variant)
@@ -508,7 +518,7 @@ class ProductDetailView(DetailView):
                 requested_variant_id = int(raw_variant_id)
             except (TypeError, ValueError):
                 requested_variant_id = None
-            if requested_variant_id and self.object.variants.filter(pk=requested_variant_id).exists():
+            if requested_variant_id and any(variant.pk == requested_variant_id for variant in variants):
                 initial_variant_id = requested_variant_id
         purchase_request_source_path = self.object.get_absolute_url()
         if initial_variant_id:

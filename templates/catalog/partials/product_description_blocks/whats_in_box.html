@@ -1,0 +1,10 @@
+<article class="content-block content-block--whats-in-box">
+  {% if item.data.title %}
+    <h3 class="content-block__title">{{ item.data.title }}</h3>
+  {% endif %}
+  <ul class="content-block__list content-block__list--columns">
+    {% for box_item in item.data.items %}
+      <li>{{ box_item }}</li>
+    {% endfor %}
+  </ul>
+</article>

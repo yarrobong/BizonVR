@@ -12,7 +12,7 @@ from django.conf import settings
 from django.contrib import admin, messages
 from django import forms
 from django.core.exceptions import PermissionDenied
-from django.http import Http404, HttpResponse, HttpResponseForbidden, HttpResponseRedirect
+from django.http import Http404, HttpResponse, HttpResponseForbidden, HttpResponseRedirect, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
@@ -25,13 +25,26 @@ from ..import_workflow import CatalogImportWorkflowService, admin_change_url
 from ..models import (
     CatalogImportBatch,
     CatalogImportConflict,
+    DescriptionBlockType,
+    DescriptionTemplate,
+    DescriptionTemplateSlot,
     Product,
     ProductCharacteristic,
     ProductContentBlock,
+    ProductDescription,
+    ProductDescriptionAsset,
+    ProductDescriptionBlock,
     ProductImage,
     ProductVideo,
     ProductVariant,
     ProductVariantCharacteristic,
+)
+from ..product_descriptions import (
+    build_admin_constructor_state,
+    render_description_preview,
+    save_product_description_from_payload,
+    serialize_template,
+    template_to_constructor_payload,
 )
 from .bundles import ProductBundleItemInlineForProduct
 from .location import ProductStockInlineForProduct
@@ -220,6 +233,98 @@ class ProductContentBlockInline(SortableInlineAdminMixin, admin.StackedInline):
     rutube_preview.short_description = 'Видео'
 
 
+class DescriptionTemplateSlotInline(SortableInlineAdminMixin, admin.StackedInline):
+    model = DescriptionTemplateSlot
+    extra = 0
+    sortable_field_name = 'sort_order'
+    fields = ('slot_key', 'block_type', 'label', 'help_text', 'default_data', 'settings', 'sort_order', 'is_required')
+    autocomplete_fields = ('block_type',)
+    verbose_name = 'Блок шаблона'
+    verbose_name_plural = 'Блоки шаблона'
+
+
+@admin.register(DescriptionBlockType)
+class DescriptionBlockTypeAdmin(admin.ModelAdmin):
+    list_display = ('name', 'slug', 'category', 'sort_order', 'is_active')
+    list_filter = ('category', 'is_active')
+    search_fields = ('name', 'slug', 'description')
+    ordering = ('sort_order', 'name')
+    prepopulated_fields = {'slug': ('name',)}
+
+
+@admin.register(DescriptionTemplate)
+class DescriptionTemplateAdmin(SortableAdminBase, admin.ModelAdmin):
+    list_display = ('name', 'slug', 'category', 'version', 'is_active', 'updated_at')
+    list_filter = ('category', 'is_active')
+    search_fields = ('name', 'slug', 'description')
+    prepopulated_fields = {'slug': ('name',)}
+    inlines = (DescriptionTemplateSlotInline,)
+    ordering = ('category', 'name')
+
+
+class ProductDescriptionBlockInline(SortableInlineAdminMixin, admin.StackedInline):
+    model = ProductDescriptionBlock
+    extra = 0
+    sortable_field_name = 'sort_order'
+    fields = ('slot_key', 'block_type', 'data', 'sort_order', 'is_active')
+    autocomplete_fields = ('block_type',)
+    verbose_name = 'Блок описания'
+    verbose_name_plural = 'Блоки описания'
+
+
+class ProductDescriptionAssetInline(SortableInlineAdminMixin, admin.TabularInline):
+    model = ProductDescriptionAsset
+    extra = 0
+    sortable_field_name = 'sort_order'
+    fields = ('image_preview', 'image', 'block', 'alt', 'caption', 'role', 'sort_order')
+    readonly_fields = ('image_preview',)
+    verbose_name = 'Медиа описания'
+    verbose_name_plural = 'Медиа описания'
+
+    def image_preview(self, obj):
+        return _admin_image_preview(obj, width=120, height=80)
+
+    image_preview.short_description = 'Превью'
+
+
+@admin.register(ProductDescription)
+class ProductDescriptionAdmin(SortableAdminBase, admin.ModelAdmin):
+    list_display = ('product', 'template', 'status', 'is_active', 'source', 'updated_at')
+    list_filter = ('status', 'is_active', 'source', 'template')
+    search_fields = ('product__name', 'title', 'intro')
+    autocomplete_fields = ('product', 'template')
+    inlines = (ProductDescriptionBlockInline, ProductDescriptionAssetInline)
+    readonly_fields = ('published_at',)
+    fieldsets = (
+        ('Товар и шаблон', {
+            'fields': ('product', 'template', 'source'),
+        }),
+        ('Публикация', {
+            'fields': ('title', 'intro', 'status', 'is_active', 'published_at'),
+        }),
+    )
+
+    def get_model_perms(self, request):
+        if request.user.is_superuser:
+            return super().get_model_perms(request)
+        return {}
+
+    def has_module_permission(self, request):
+        return request.user.is_superuser
+
+    def has_view_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+    def has_add_permission(self, request):
+        return request.user.is_superuser
+
+    def has_change_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+    def has_delete_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+
 @admin.register(ProductVariant)
 class ProductVariantAdmin(admin.ModelAdmin):
     list_display = ('name', 'sku', 'product', 'price_override', 'price_on_request_override', 'order')
@@ -247,8 +352,21 @@ class ProductVariantAdmin(admin.ModelAdmin):
         else:
             self.message_user(request, 'Нечего копировать (у вариантов уже есть хар-ки или у товара их нет)', messages.WARNING)
 
+
+class ProductAdminForm(forms.ModelForm):
+    description_constructor_payload = forms.CharField(
+        required=False,
+        widget=forms.HiddenInput,
+    )
+
+    class Meta:
+        model = Product
+        fields = '__all__'
+
+
 @admin.register(Product)
 class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
+    form = ProductAdminForm
     list_display = (
         'name',
         'sku',
@@ -273,7 +391,7 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
         ProductStockInlineForProduct,
         ProductBundleItemInlineForProduct,
     )
-    readonly_fields = ('created_at', 'updated_at')
+    readonly_fields = ('created_at', 'updated_at', 'description_constructor')
     actions = ('export_catalog_with_images', 'backup_full_catalog',)
     change_form_template = 'admin/catalog/product/change_form.html'
     save_on_top = False
@@ -304,8 +422,8 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
             'classes': ('product-fieldset', 'product-fieldset--meta', 'collapse'),
         }),
         ('Описание', {
-            'fields': ('description',),
-            'description': 'Краткое описание для карточки товара в каталоге. Рекомендуем 300–1200 символов.',
+            'fields': ('description', 'description_constructor'),
+            'description': 'Краткое описание для карточки товара и конструктор подробного описания для витрины.',
             'classes': ('product-fieldset', 'product-fieldset--description'),
         }),
     )
@@ -330,8 +448,8 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
                     'classes': ('product-fieldset', 'product-fieldset--primary'),
                 }),
                 ('Описание', {
-                    'fields': ('description',),
-                    'description': 'Краткое описание для карточки товара в каталоге. Рекомендуем 300–1200 символов.',
+                    'fields': ('description', 'description_constructor'),
+                    'description': 'Краткое описание для карточки товара и конструктор подробного описания для витрины.',
                     'classes': ('product-fieldset', 'product-fieldset--description'),
                 }),
                 ('Дополнительно', {
@@ -409,8 +527,73 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
         return super().render_change_form(request, context, add=add, change=change, form_url=form_url, obj=obj)
 
     class Media:
-        js = ('admin/js/product_image_paste.js', 'admin/js/product_admin.js')
+        js = ('admin/js/product_image_paste.js', 'admin/js/product_admin.js', 'admin/js/product_description_constructor.js')
         css = {'all': ('admin/css/product_admin.css',)}
+
+    def description_constructor(self, obj):
+        state = build_admin_constructor_state(obj if obj and obj.pk else None)
+        state_json = json.dumps(state, ensure_ascii=False)
+        product_id = obj.pk if obj and obj.pk else 0
+
+        return format_html(
+            '''
+            <div class="product-description-constructor"
+                 data-product-description-constructor
+                 data-templates-url="{}"
+                 data-apply-url="{}"
+                 data-preview-url="{}">
+              <textarea name="description_constructor_payload" data-pdc-payload hidden>{}</textarea>
+              <div class="product-description-constructor__header">
+                <div>
+                  <strong>Подробное описание</strong>
+                  <p>Все изменения сохраняются вместе с карточкой товара. Для показа на витрине включите публикацию и активность.</p>
+                </div>
+              </div>
+              <section class="product-description-constructor__templates" aria-label="Шаблоны подробного описания">
+                <div class="product-description-constructor__templates-head">
+                  <div>
+                    <strong>Выбор шаблона</strong>
+                    <p>Шаблон только загружает заготовку в редактор ниже. В базу изменения попадут после сохранения товара.</p>
+                  </div>
+                  <button type="button" class="button" data-pdc-start-empty>Начать с пустого</button>
+                </div>
+                <div class="product-description-constructor__template-list" data-pdc-template-list></div>
+              </section>
+              <div class="product-description-constructor__controls">
+                <label>Добавить блок <select data-pdc-block-type-select></select></label>
+                <button type="button" class="button" data-pdc-add-block>Добавить блок</button>
+                <button type="button" class="button" data-pdc-preview>Предпросмотр текущего</button>
+              </div>
+              <div class="product-description-constructor__meta">
+                <label>Заголовок <input type="text" data-pdc-title></label>
+                <label>Статус
+                  <select data-pdc-status>
+                    <option value="draft">Черновик</option>
+                    <option value="published">Опубликовано</option>
+                  </select>
+                </label>
+                <label class="product-description-constructor__checkbox"><input type="checkbox" data-pdc-active> Показывать на витрине</label>
+                <label>Вступление <textarea data-pdc-intro rows="4"></textarea></label>
+              </div>
+              <div class="product-description-constructor__message" data-pdc-message></div>
+              <div class="product-description-constructor__editor">
+                <div class="product-description-constructor__blocks" data-pdc-block-list></div>
+                <div class="product-description-constructor__block-editor" data-pdc-block-editor>
+                  <p>Выберите блок слева или добавьте новый.</p>
+                </div>
+              </div>
+              <div class="product-description-constructor__preview" data-pdc-preview-target>
+                <p>Нажмите «Предпросмотр», чтобы увидеть текущий результат.</p>
+              </div>
+            </div>
+            ''',
+            reverse('admin:catalog_product_description_templates'),
+            reverse('admin:catalog_product_description_apply_template', args=[product_id]),
+            reverse('admin:catalog_product_description_preview', args=[product_id]),
+            state_json,
+        )
+
+    description_constructor.short_description = 'Конструктор'
 
     def image_preview(self, obj):
         return _admin_image_preview(obj, width=80, height=80)
@@ -418,14 +601,22 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
     image_preview.short_description = 'Превью'
 
     def get_queryset(self, request):
-        return super().get_queryset(request).select_related('category').prefetch_related(
+        return super().get_queryset(request).select_related('category', 'product_description').prefetch_related(
             'tags',
             'variants',
             'characteristics',
             'content_blocks',
+            'product_description__blocks__block_type',
             'images',
             'videos',
         )
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        payload = request.POST.get('description_constructor_payload')
+        if payload is not None:
+            save_product_description_from_payload(obj, payload, user=request.user)
+            invalidate_catalog_cache()
 
     def changelist_view(self, request, extra_context=None):
         extra_context = extra_context or {}
@@ -628,8 +819,84 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
             path('commercial-proposal/', self.admin_site.admin_view(self.commercial_proposal_export_view), name='catalog_product_commercial_proposal'),
             path('product-search/', self.admin_site.admin_view(self.product_search_api_view), name='catalog_product_product_search'),
             path('product-content-blocks/<int:product_id>/', self.admin_site.admin_view(self.product_content_blocks_api_view), name='catalog_product_content_blocks'),
+            path('description-templates/', self.admin_site.admin_view(self.description_templates_api_view), name='catalog_product_description_templates'),
+            path('description-templates/<int:template_id>/', self.admin_site.admin_view(self.description_template_detail_api_view), name='catalog_product_description_template_detail'),
+            path('<int:product_id>/description/preview/', self.admin_site.admin_view(self.product_description_preview_api_view), name='catalog_product_description_preview'),
+            path('<int:product_id>/description/apply-template/', self.admin_site.admin_view(self.product_description_apply_template_api_view), name='catalog_product_description_apply_template'),
         ]
         return custom_urls + urls
+
+    def _description_template_payload(self, template, *, include_slots=False):
+        payload = serialize_template(template)
+        if not include_slots:
+            payload.pop('slots', None)
+        return payload
+
+    def description_templates_api_view(self, request):
+        if not (
+            request.user.has_perm('catalog.view_product')
+            or request.user.has_perm('catalog.add_product')
+            or request.user.has_perm('catalog.change_product')
+        ):
+            return HttpResponseForbidden('Недостаточно прав.')
+        templates = DescriptionTemplate.objects.filter(is_active=True).prefetch_related('slots__block_type').order_by('category', 'name')
+        return JsonResponse({
+            'templates': [self._description_template_payload(template, include_slots=True) for template in templates],
+        })
+
+    def description_template_detail_api_view(self, request, template_id):
+        if not (
+            request.user.has_perm('catalog.view_product')
+            or request.user.has_perm('catalog.add_product')
+            or request.user.has_perm('catalog.change_product')
+        ):
+            return HttpResponseForbidden('Недостаточно прав.')
+        template = get_object_or_404(
+            DescriptionTemplate.objects.prefetch_related('slots__block_type'),
+            pk=template_id,
+            is_active=True,
+        )
+        return JsonResponse(self._description_template_payload(template, include_slots=True))
+
+    def product_description_preview_api_view(self, request, product_id):
+        if not (
+            request.user.has_perm('catalog.view_product')
+            or request.user.has_perm('catalog.add_product')
+            or request.user.has_perm('catalog.change_product')
+        ):
+            return HttpResponseForbidden('Недостаточно прав.')
+        if request.method != 'POST':
+            return JsonResponse({'error': 'Метод не поддерживается.'}, status=405)
+        product = get_object_or_404(Product, pk=product_id) if product_id else None
+        try:
+            payload = json.loads(request.body.decode('utf-8') or '{}')
+        except json.JSONDecodeError:
+            return JsonResponse({'error': 'Некорректный JSON.'}, status=400)
+        html = render_description_preview(payload, product=product)
+        return JsonResponse({'html': html})
+
+    def product_description_apply_template_api_view(self, request, product_id):
+        required_perm = 'catalog.change_product' if product_id else 'catalog.add_product'
+        if not request.user.has_perm(required_perm):
+            return HttpResponseForbidden('Недостаточно прав.')
+        if request.method != 'POST':
+            return JsonResponse({'error': 'Метод не поддерживается.'}, status=405)
+        product = get_object_or_404(Product, pk=product_id) if product_id else None
+        template_id = request.POST.get('template_id')
+        if not template_id and request.body:
+            try:
+                template_id = (json.loads(request.body.decode('utf-8') or '{}') or {}).get('template_id')
+            except json.JSONDecodeError:
+                return JsonResponse({'error': 'Некорректный JSON.'}, status=400)
+        template = get_object_or_404(
+            DescriptionTemplate.objects.prefetch_related('slots__block_type'),
+            pk=template_id,
+            is_active=True,
+        )
+        return JsonResponse({
+            'ok': True,
+            'payload': template_to_constructor_payload(template, product=product),
+        })
 
     def product_search_api_view(self, request):
         """JSON API для поиска товаров по названию (автодополнение). Доступ при catalog.view_product."""

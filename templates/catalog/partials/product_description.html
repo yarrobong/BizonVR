@@ -1,0 +1,19 @@
+{% if description_view and description_view.has_content %}
+  <div class="details-rich-description">
+    {% if description_view.title %}
+      <h3 class="content-block__title">{{ description_view.title }}</h3>
+    {% endif %}
+    {% if description_view.intro %}
+      <div class="content-block__body product-description__intro">
+        {{ description_view.intro|linebreaks }}
+      </div>
+    {% endif %}
+    {% if description_view.blocks %}
+      <div class="details-rich-blocks details-rich-blocks--constructor">
+        {% for item in description_view.blocks %}
+          {% include item.template_name with item=item product=product %}
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+{% endif %}

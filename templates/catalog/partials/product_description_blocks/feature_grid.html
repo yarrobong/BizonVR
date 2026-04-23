@@ -1,0 +1,14 @@
+<article class="content-block content-block--feature-grid">
+  {% if item.data.title %}
+    <h3 class="content-block__title">{{ item.data.title }}</h3>
+  {% endif %}
+  <div class="content-block__cards">
+    {% for feature in item.data.items %}
+      <div class="content-block__card">
+        <span class="content-block__card-icon">{{ feature.icon|default:"check" }}</span>
+        {% if feature.title %}<strong>{{ feature.title }}</strong>{% endif %}
+        {% if feature.text %}<p>{{ feature.text }}</p>{% endif %}
+      </div>
+    {% endfor %}
+  </div>
+</article>

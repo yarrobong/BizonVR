@@ -14,7 +14,7 @@ from django.db.models import Count, Sum
 from orders.models import Order, OrderItem
 
 from .cart_services import get_cart_items
-from .models import Product, ProductBundleItem, ProductStock, ProductVariant
+from .models import Product, ProductBundleItem, ProductStock
 
 
 COMPATIBILITY_KEYS = {
@@ -258,15 +258,12 @@ def _co_purchase_scores(product: Product) -> Dict[int, float]:
     return {row['product_id']: row['cnt'] / max_cnt for row in rows}
 
 
-def _build_first_variant_map(product_ids: Iterable[int]) -> Dict[int, int]:
-    ids = list(product_ids)
-    if not ids:
-        return {}
-    variants = ProductVariant.objects.filter(product_id__in=ids).order_by('product_id', 'order', 'id')
+def _build_first_variant_map_from_products(products: Iterable[Product]) -> Dict[int, int]:
     first: Dict[int, int] = {}
-    for v in variants:
-        if v.product_id not in first:
-            first[v.product_id] = v.pk
+    for product in products:
+        variants = list(product.variants.all())
+        if variants:
+            first[product.pk] = variants[0].pk
     return first
 
 
@@ -286,7 +283,7 @@ def build_pdp_recommendations(request, product: Product) -> dict:
         Product.objects.filter(is_active=True)
         .exclude(pk__in=excluded_ids)
         .select_related('category')
-        .prefetch_related('characteristics', 'variants')
+        .prefetch_related('characteristics', 'variants', 'tags')
     )
 
     if not candidates:
@@ -400,8 +397,9 @@ def build_pdp_recommendations(request, product: Product) -> dict:
             if p.pk not in final_ids:
                 final_ids.append(p.pk)
 
-    final_total_map = _stock_maps(final_ids)
-    variant_ids = _build_first_variant_map(final_ids)
+    final_total_map = {product_id: total_map.get(product_id, 0) for product_id in final_ids}
+    final_products = [p for sec in sections for p in sec['products']]
+    variant_ids = _build_first_variant_map_from_products(final_products)
 
     return {
         'sections': sections,

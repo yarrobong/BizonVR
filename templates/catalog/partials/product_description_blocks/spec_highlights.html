@@ -1,0 +1,13 @@
+<article class="content-block content-block--spec-highlights">
+  {% if item.data.title %}
+    <h3 class="content-block__title">{{ item.data.title }}</h3>
+  {% endif %}
+  <div class="content-block__cards content-block__cards--specs">
+    {% for spec in item.data.items %}
+      <div class="content-block__card">
+        {% if spec.label %}<span>{{ spec.label }}</span>{% endif %}
+        {% if spec.value %}<strong>{{ spec.value }}</strong>{% endif %}
+      </div>
+    {% endfor %}
+  </div>
+</article>

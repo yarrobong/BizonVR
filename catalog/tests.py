@@ -12,6 +12,7 @@ from decimal import Decimal
 from io import BytesIO, StringIO
 from unittest.mock import Mock, patch
 
+from django.contrib import admin
 from django.contrib.auth.models import AnonymousUser
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
@@ -49,6 +50,7 @@ from .filter_presets import get_typed_value_sort_key
 from .filter_setup_wizard import CatalogFilterSetupWizard
 from .import_workflow import CatalogImportWorkflowService, make_direct_target_reference
 from .importers import CatalogDataImporter
+from .product_descriptions import migrate_legacy_blocks
 from .models import (
     CartItem,
     CartShare,
@@ -62,6 +64,9 @@ from .models import (
     CharacteristicValueAlias,
     City,
     ContactRequest,
+    DescriptionBlockType,
+    DescriptionTemplate,
+    DescriptionTemplateSlot,
     Favorite,
     FilterConfig,
     PickupPoint,
@@ -70,6 +75,8 @@ from .models import (
     ProductBundleItem,
     ProductCharacteristic,
     ProductContentBlock,
+    ProductDescription,
+    ProductDescriptionBlock,
     ProductImage,
     ProductStock,
     ProductTag,
@@ -80,6 +87,7 @@ from .models import (
 from .views import feeds as feed_views
 from .views.feeds import vr_attractions_yml_feed_view
 from .admin.filters import CharacteristicDefinitionAdminForm
+from .admin.products import ProductAdmin, ProductAdminForm
 
 User = get_user_model()
 
@@ -826,6 +834,305 @@ class ProductContentBlocksTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Описание пока не добавлено.')
         self.assertNotContains(response, 'Подробнее')
+
+    def test_product_detail_renders_new_description_before_legacy_blocks(self):
+        text_type, _ = DescriptionBlockType.objects.get_or_create(slug='text', defaults={'name': 'Текст'})
+        feature_type, _ = DescriptionBlockType.objects.get_or_create(slug='feature_grid', defaults={'name': 'Преимущества'})
+        ProductContentBlock.objects.create(
+            product=self.product,
+            block_type=ProductContentBlock.BlockType.TEXT,
+            title='Legacy блок',
+            text='Legacy текст',
+            sort_order=10,
+            is_active=True,
+        )
+        description = ProductDescription.objects.create(
+            product=self.product,
+            title='Новое подробное описание',
+            intro='Вступление нового конструктора',
+            status=ProductDescription.Status.PUBLISHED,
+            is_active=True,
+            source=ProductDescription.Source.CUSTOM,
+        )
+        ProductDescriptionBlock.objects.create(
+            description=description,
+            slot_key='second',
+            block_type=text_type,
+            sort_order=20,
+            data={'title': 'Второй новый блок', 'text': 'Текст второго блока'},
+        )
+        ProductDescriptionBlock.objects.create(
+            description=description,
+            slot_key='first',
+            block_type=feature_type,
+            sort_order=10,
+            data={
+                'title': 'Первый новый блок',
+                'items': [{'icon': 'zap', 'title': 'Быстро', 'text': 'Заполняется по шаблону'}],
+            },
+        )
+
+        response = self.client.get(reverse('catalog:product_detail', kwargs={'slug': self.product.slug}))
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+
+        self.assertIn('Новое подробное описание', html)
+        self.assertIn('Первый новый блок', html)
+        self.assertIn('Второй новый блок', html)
+        self.assertNotIn('Legacy блок', html)
+        self.assertLess(html.index('Первый новый блок'), html.index('Второй новый блок'))
+        self.assertLess(html.index('Второй новый блок'), html.index('Характеристики'))
+
+    def test_product_detail_falls_back_to_legacy_when_new_description_is_inactive(self):
+        text_type, _ = DescriptionBlockType.objects.get_or_create(slug='text', defaults={'name': 'Текст'})
+        ProductDescription.objects.create(
+            product=self.product,
+            status=ProductDescription.Status.PUBLISHED,
+            is_active=False,
+            source=ProductDescription.Source.CUSTOM,
+        )
+        ProductDescriptionBlock.objects.create(
+            description=self.product.product_description,
+            slot_key='hidden',
+            block_type=text_type,
+            data={'title': 'Скрытый новый блок', 'text': 'Не должен отображаться'},
+        )
+        ProductContentBlock.objects.create(
+            product=self.product,
+            block_type=ProductContentBlock.BlockType.TEXT,
+            title='Legacy работает',
+            text='Fallback текст',
+            sort_order=10,
+            is_active=True,
+        )
+
+        response = self.client.get(reverse('catalog:product_detail', kwargs={'slug': self.product.slug}))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Legacy работает')
+        self.assertNotContains(response, 'Скрытый новый блок')
+
+    def test_migrate_legacy_blocks_creates_inactive_new_description(self):
+        ProductContentBlock.objects.create(
+            product=self.product,
+            block_type=ProductContentBlock.BlockType.TEXT,
+            title='Legacy для миграции',
+            text='Текст legacy',
+            sort_order=10,
+            is_active=True,
+        )
+        DescriptionBlockType.objects.get_or_create(slug='text', defaults={'name': 'Текст'})
+
+        description, created = migrate_legacy_blocks(self.product)
+
+        self.assertTrue(created)
+        self.assertFalse(description.is_active)
+        self.assertEqual(description.source, ProductDescription.Source.LEGACY)
+        self.assertEqual(description.intro, 'Базовое описание товара')
+        self.assertEqual(description.blocks.count(), 1)
+        migrated_block = description.blocks.get()
+        self.assertEqual(migrated_block.data['title'], 'Legacy для миграции')
+
+    def test_admin_apply_template_endpoint_returns_payload_without_saving_description(self):
+        admin_user = User.objects.create_superuser(
+            username='description-admin',
+            email='description-admin@example.com',
+            password='password',
+        )
+        self.client.force_login(admin_user)
+        block_type, _ = DescriptionBlockType.objects.get_or_create(slug='text', defaults={'name': 'Текст'})
+        template = DescriptionTemplate.objects.create(
+            name='Быстрый шаблон',
+            slug='quick-description-template',
+            is_active=True,
+        )
+        DescriptionTemplateSlot.objects.create(
+            template=template,
+            slot_key='summary',
+            block_type=block_type,
+            label='Описание',
+            sort_order=10,
+            default_data={'title': 'Готовый заголовок', 'text': 'Готовый текст'},
+        )
+
+        response = self.client.post(
+            reverse('admin:catalog_product_description_apply_template', args=[self.product.pk]),
+            data=json.dumps({'template_id': template.pk}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['ok'])
+        self.assertEqual(payload['payload']['template_id'], template.pk)
+        self.assertEqual(payload['payload']['blocks'][0]['data']['title'], 'Готовый заголовок')
+        self.assertFalse(hasattr(self.product, 'product_description'))
+
+    def test_product_admin_description_constructor_uses_visible_template_cards(self):
+        html = str(ProductAdmin(Product, admin.site).description_constructor(self.product))
+
+        self.assertIn('data-pdc-template-list', html)
+        self.assertIn('Выбор шаблона', html)
+        self.assertIn('Начать с пустого', html)
+        self.assertNotIn('data-pdc-template-select', html)
+
+    def test_product_admin_save_model_creates_description_from_embedded_payload_on_add(self):
+        admin_user = User.objects.create_superuser(
+            username='product-add-description-admin',
+            email='product-add-description-admin@example.com',
+            password='password',
+        )
+        text_type, _ = DescriptionBlockType.objects.get_or_create(slug='text', defaults={'name': 'Текст'})
+        payload = {
+            'title': 'Подробное из формы товара',
+            'intro': 'Вступление',
+            'status': ProductDescription.Status.PUBLISHED,
+            'is_active': True,
+            'source': ProductDescription.Source.CUSTOM,
+            'blocks': [
+                {
+                    'client_id': 'new-1',
+                    'slot_key': 'summary',
+                    'block_type': text_type.slug,
+                    'sort_order': 10,
+                    'is_active': True,
+                    'data': {'title': 'Блок из add-form', 'text': 'Текст блока'},
+                }
+            ],
+        }
+        form = ProductAdminForm(data={
+            'name': 'Новый товар с описанием',
+            'slug': 'new-product-description',
+            'category': self.category.pk,
+            'description': 'Краткое описание',
+            'price': '1000',
+            'price_on_request': '',
+            'is_active': 'on',
+            'allow_order_on_request': 'on',
+            'avito_url': '',
+            'ozon_url': '',
+            'wildberries_url': '',
+            'option_label': '',
+            'views_count': 0,
+            'tags': [],
+            'description_constructor_payload': json.dumps(payload),
+        })
+        self.assertTrue(form.is_valid(), form.errors)
+        request = RequestFactory().post('/admin/catalog/product/add/', data={
+            'description_constructor_payload': json.dumps(payload),
+        })
+        request.user = admin_user
+        product = form.save(commit=False)
+
+        ProductAdmin(Product, admin.site).save_model(request, product, form, change=False)
+
+        description = product.product_description
+        self.assertTrue(description.is_active)
+        self.assertEqual(description.status, ProductDescription.Status.PUBLISHED)
+        self.assertEqual(description.blocks.count(), 1)
+        self.assertEqual(description.blocks.get().data['title'], 'Блок из add-form')
+
+    def test_product_admin_save_model_updates_reorders_and_deletes_embedded_blocks(self):
+        admin_user = User.objects.create_superuser(
+            username='product-change-description-admin',
+            email='product-change-description-admin@example.com',
+            password='password',
+        )
+        text_type, _ = DescriptionBlockType.objects.get_or_create(slug='text', defaults={'name': 'Текст'})
+        feature_type, _ = DescriptionBlockType.objects.get_or_create(slug='feature_grid', defaults={'name': 'Преимущества'})
+        description = ProductDescription.objects.create(
+            product=self.product,
+            title='Старое подробное',
+            status=ProductDescription.Status.PUBLISHED,
+            is_active=True,
+        )
+        kept_block = ProductDescriptionBlock.objects.create(
+            description=description,
+            slot_key='old',
+            block_type=text_type,
+            sort_order=10,
+            data={'title': 'Старый блок', 'text': 'Старый текст'},
+        )
+        deleted_block = ProductDescriptionBlock.objects.create(
+            description=description,
+            slot_key='delete-me',
+            block_type=text_type,
+            sort_order=20,
+            data={'title': 'Удалить'},
+        )
+        payload = {
+            'title': 'Обновлённое подробное',
+            'intro': 'Новое вступление',
+            'status': ProductDescription.Status.DRAFT,
+            'is_active': False,
+            'source': ProductDescription.Source.CUSTOM,
+            'blocks': [
+                {
+                    'id': kept_block.pk,
+                    'client_id': f'block-{kept_block.pk}',
+                    'slot_key': 'second',
+                    'block_type': text_type.slug,
+                    'sort_order': 20,
+                    'is_active': False,
+                    'data': {'title': 'Обновлённый блок', 'text': 'Новый текст'},
+                },
+                {
+                    'client_id': 'new-feature',
+                    'slot_key': 'first',
+                    'block_type': feature_type.slug,
+                    'sort_order': 10,
+                    'is_active': True,
+                    'data': {'title': 'Новый первый', 'items': [{'title': 'Плюс', 'text': 'Описание'}]},
+                },
+                {
+                    'id': deleted_block.pk,
+                    'client_id': f'block-{deleted_block.pk}',
+                    'slot_key': 'delete-me',
+                    'block_type': text_type.slug,
+                    'deleted': True,
+                    'data': {'title': 'Удалить'},
+                },
+            ],
+        }
+        form = ProductAdminForm(instance=self.product, data={
+            'name': self.product.name,
+            'slug': self.product.slug,
+            'category': self.category.pk,
+            'description': self.product.description,
+            'price': str(self.product.price),
+            'price_on_request': '',
+            'is_active': 'on',
+            'allow_order_on_request': 'on',
+            'avito_url': '',
+            'ozon_url': '',
+            'wildberries_url': '',
+            'option_label': '',
+            'views_count': self.product.views_count,
+            'tags': [],
+            'description_constructor_payload': json.dumps(payload),
+        })
+        self.assertTrue(form.is_valid(), form.errors)
+        request = RequestFactory().post('/admin/catalog/product/change/', data={
+            'description_constructor_payload': json.dumps(payload),
+        })
+        request.user = admin_user
+        product = form.save(commit=False)
+
+        ProductAdmin(Product, admin.site).save_model(request, product, form, change=True)
+
+        description.refresh_from_db()
+        self.assertFalse(description.is_active)
+        self.assertEqual(description.status, ProductDescription.Status.DRAFT)
+        self.assertEqual(description.title, 'Обновлённое подробное')
+        self.assertEqual(description.blocks.count(), 2)
+        self.assertFalse(ProductDescriptionBlock.objects.filter(pk=deleted_block.pk).exists())
+        kept_block.refresh_from_db()
+        self.assertFalse(kept_block.is_active)
+        self.assertEqual(kept_block.slot_key, 'second')
+        self.assertEqual(kept_block.data['title'], 'Обновлённый блок')
+        self.assertEqual(
+            list(description.blocks.order_by('sort_order').values_list('slot_key', flat=True)),
+            ['first', 'second'],
+        )
 
 
 class PublicLocationCleanupTest(TestCase):

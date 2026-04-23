@@ -1448,6 +1448,333 @@ summary.product-admin-bottom-bar__util:hover {
     color: var(--product-admin-primary);
 }
 
+.product-description-constructor {
+    display: grid;
+    gap: 16px;
+    max-width: 980px;
+}
+
+.product-description-constructor__header {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: flex-start;
+}
+
+.product-description-constructor__header p {
+    margin: 6px 0 0;
+    color: var(--product-admin-text-muted);
+}
+
+.product-description-constructor__controls {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.product-description-constructor__controls label,
+.product-description-constructor__meta label,
+.product-description-constructor__block-editor label {
+    display: grid;
+    gap: 6px;
+    color: var(--product-admin-text-muted);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.product-description-constructor__controls select,
+.product-description-constructor__meta input,
+.product-description-constructor__meta select,
+.product-description-constructor__meta textarea,
+.product-description-constructor__block-editor input,
+.product-description-constructor__block-editor textarea {
+    width: 100%;
+}
+
+.product-description-constructor__controls select {
+    min-width: min(360px, 100%);
+}
+
+.product-description-constructor__templates {
+    display: grid;
+    gap: 14px;
+    padding: 16px;
+    border: 1px solid var(--product-admin-border);
+    border-radius: 12px;
+    background: var(--product-admin-surface-soft);
+}
+
+.product-description-constructor__templates-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 14px;
+    align-items: flex-start;
+}
+
+.product-description-constructor__templates-head strong {
+    display: block;
+    color: var(--product-admin-text-strong);
+    font-size: 15px;
+}
+
+.product-description-constructor__templates-head p {
+    margin: 6px 0 0;
+    color: var(--product-admin-text-muted);
+}
+
+.product-description-constructor__template-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 12px;
+}
+
+.product-description-constructor__template-card {
+    display: grid;
+    gap: 12px;
+    align-content: start;
+    padding: 14px;
+    border: 1px solid var(--product-admin-border);
+    border-radius: 8px;
+    background: var(--product-admin-surface);
+}
+
+.product-description-constructor__template-card.is-current {
+    border-color: var(--product-admin-primary);
+    box-shadow: 0 0 0 1px var(--product-admin-primary-soft);
+}
+
+.product-description-constructor__template-card-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: flex-start;
+}
+
+.product-description-constructor__template-card-head div {
+    display: grid;
+    gap: 4px;
+}
+
+.product-description-constructor__template-card-head strong {
+    color: var(--product-admin-text-strong);
+    font-size: 14px;
+    line-height: 1.3;
+}
+
+.product-description-constructor__template-card-head span,
+.product-description-constructor__template-card-head small {
+    color: var(--product-admin-text-muted);
+    font-size: 12px;
+}
+
+.product-description-constructor__template-card p {
+    margin: 0;
+    color: var(--product-admin-text-muted);
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.product-description-constructor__template-card ol {
+    display: grid;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.product-description-constructor__template-card li {
+    display: grid;
+    gap: 2px;
+    padding: 8px 10px;
+    border: 1px solid var(--product-admin-border);
+    border-radius: 8px;
+    background: var(--product-admin-surface-soft);
+}
+
+.product-description-constructor__template-card li span {
+    color: var(--product-admin-text-strong);
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.product-description-constructor__template-card li small,
+.product-description-constructor__template-card li em {
+    color: var(--product-admin-text-muted);
+    font-size: 12px;
+    font-style: normal;
+    line-height: 1.35;
+}
+
+.product-description-constructor__template-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-self: end;
+}
+
+.product-description-constructor__meta {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) minmax(160px, 220px) minmax(180px, 220px);
+    gap: 14px;
+    align-items: end;
+}
+
+.product-description-constructor__meta label:last-child {
+    grid-column: 1 / -1;
+}
+
+.product-description-constructor__checkbox {
+    display: flex !important;
+    grid-template-columns: none !important;
+    flex-direction: row;
+    gap: 8px;
+    align-items: center;
+}
+
+.product-description-constructor__checkbox input {
+    width: auto;
+}
+
+.product-description-constructor__message {
+    min-height: 18px;
+    font-size: 13px;
+}
+
+.product-description-constructor__message.is-success {
+    color: #15803d;
+}
+
+.product-description-constructor__message.is-error {
+    color: #b91c1c;
+}
+
+.product-description-constructor__message.is-info {
+    color: var(--product-admin-text-muted);
+}
+
+.product-description-constructor__preview {
+    padding: 16px;
+    border: 1px solid var(--product-admin-border);
+    border-radius: 12px;
+    background: var(--product-admin-surface-soft);
+}
+
+.product-description-constructor__preview > strong {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 15px;
+}
+
+.product-description-constructor__preview p {
+    margin: 0 0 12px;
+    color: var(--product-admin-text-muted);
+}
+
+.product-description-constructor__preview ol {
+    display: grid;
+    gap: 8px;
+    margin: 0;
+    padding-left: 20px;
+}
+
+.product-description-constructor__preview li span {
+    font-weight: 600;
+}
+
+.product-description-constructor__preview li em {
+    margin-left: 8px;
+    color: var(--product-admin-text-muted);
+    font-style: normal;
+}
+
+.product-description-constructor__editor {
+    display: grid;
+    grid-template-columns: minmax(260px, 0.9fr) minmax(360px, 1.4fr);
+    gap: 16px;
+}
+
+.product-description-constructor__blocks,
+.product-description-constructor__block-editor {
+    min-height: 180px;
+    padding: 14px;
+    border: 1px solid var(--product-admin-border);
+    border-radius: 12px;
+    background: var(--product-admin-surface-soft);
+}
+
+.product-description-constructor__blocks {
+    display: grid;
+    gap: 10px;
+    align-content: start;
+}
+
+.product-description-constructor__block {
+    display: grid;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid var(--product-admin-border);
+    border-radius: 10px;
+    background: var(--product-admin-surface);
+}
+
+.product-description-constructor__block.is-selected {
+    border-color: var(--product-admin-primary);
+    box-shadow: 0 0 0 1px var(--product-admin-primary-soft);
+}
+
+.product-description-constructor__block > button {
+    display: grid;
+    gap: 4px;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.product-description-constructor__block > button span {
+    color: var(--product-admin-text-muted);
+    font-size: 12px;
+}
+
+.product-description-constructor__block-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.product-description-constructor__block-editor {
+    display: grid;
+    gap: 12px;
+}
+
+.product-description-constructor__block-editor-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+}
+
+.product-description-constructor__empty {
+    margin: 0;
+    color: var(--product-admin-text-muted);
+}
+
+@media (max-width: 960px) {
+    .product-description-constructor__meta,
+    .product-description-constructor__editor {
+        grid-template-columns: 1fr;
+    }
+
+    .product-description-constructor__templates-head {
+        align-items: stretch;
+        flex-direction: column;
+    }
+}
+
 /* ── FK related-widget icons ── */
 /* Subdue the brightly-colored emoji icons; they clash on dark backgrounds */
 .change-form .related-widget-wrapper-link,

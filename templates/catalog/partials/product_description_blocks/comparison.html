@@ -1,0 +1,27 @@
+<article class="content-block content-block--comparison">
+  {% if item.data.title %}
+    <h3 class="content-block__title">{{ item.data.title }}</h3>
+  {% endif %}
+  <div class="content-block__table-shell">
+    <table class="content-block__table">
+      <thead>
+        <tr>
+          <th></th>
+          {% for column in item.data.columns %}
+            <th>{{ column }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in item.data.rows %}
+          <tr>
+            <th>{{ row.label }}</th>
+            {% for value in row.values %}
+              <td>{{ value }}</td>
+            {% endfor %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</article>
