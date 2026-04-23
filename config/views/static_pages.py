@@ -15,6 +15,7 @@ from ..forms import CallbackForm, CompactVRForm
 from ..legal_consent import build_legal_acceptance_payload
 
 CONFERENCE_ATTRACTIONS_DIRNAME = 'Конференция (Аттракционы)'
+INVEST_DIRNAME = 'invest_2'
 
 
 def _serve_public_directory_file(base_dir, requested_path='', *, default_file=None):
@@ -82,6 +83,12 @@ def serve_media(request, path):
 def conference_attractions_view(request, path=''):
     """Standalone-лендинг VR-аттракционов и его локальные ассеты."""
     landing_root = settings.BASE_DIR / CONFERENCE_ATTRACTIONS_DIRNAME
+    return _serve_public_directory_file(landing_root, path, default_file='index.html')
+
+
+def invest_view(request, path=''):
+    """Standalone-инвестиционный лендинг и его локальные ассеты."""
+    landing_root = settings.BASE_DIR / INVEST_DIRNAME
     return _serve_public_directory_file(landing_root, path, default_file='index.html')
 
 

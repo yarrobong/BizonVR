@@ -77,6 +77,48 @@ class ConferenceAttractionsLandingTests(SimpleTestCase):
         self.assertNotIn('tel:+70000000000', html)
 
 
+class InvestLandingTests(SimpleTestCase):
+    databases = {'default'}
+
+    def _streaming_content(self, response):
+        return b''.join(response.streaming_content)
+
+    def test_landing_root_returns_html(self):
+        response = self.client.get(reverse('invest'))
+        html = self._streaming_content(response).decode('utf-8')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'text/html')
+        self.assertIn('Компактная VR-арена Bizon', html)
+        self.assertIn('https://bizonvr.ru', html)
+        self.assertIn('noindex, nofollow', html)
+        self.assertNotIn('../img/', html)
+        self.assertNotIn('../invest/index.html', html)
+
+    def test_landing_css_asset_is_served(self):
+        response = self.client.get('/invest/styles.css')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'text/css')
+
+    def test_landing_script_asset_is_served(self):
+        response = self.client.get('/invest/script.js')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('javascript', response['Content-Type'])
+
+    def test_landing_image_asset_is_served(self):
+        response = self.client.get('/invest/1.jpg')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'image/jpeg')
+
+    def test_landing_rejects_path_traversal(self):
+        response = self.client.get('/invest/%2E%2E/README.md')
+
+        self.assertEqual(response.status_code, 404)
+
+
 @override_settings(
     STORAGES={
         'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
