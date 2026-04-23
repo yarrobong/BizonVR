@@ -793,6 +793,7 @@
                 hx-swap="innerHTML">
             {% csrf_token %}
             <input type="hidden" name="quantity" value="1" />
+            <input type="hidden" name="next" value="{{ request.get_full_path }}" />
             <input type="hidden" name="purchase_mode" :value="selectedPurchaseMode" />
             {% if product.variants.all %}
             <input type="hidden" name="variant_id" :value="selectedVariant ? selectedVariant.id : ''" />
@@ -886,6 +887,7 @@
                 class="floating-action__controls">
             {% csrf_token %}
             <input type="hidden" name="quantity" value="1" />
+            <input type="hidden" name="next" value="{{ request.get_full_path }}" />
             <input type="hidden" name="purchase_mode" :value="selectedPurchaseMode" />
             {% if product.variants.all %}
             <input type="hidden" name="variant_id" :value="selectedVariant ? selectedVariant.id : ''" />
@@ -927,7 +929,7 @@
     <div class="product-details-block">
       <h2 class="section-title">Описание</h2>
       <div class="details-section" id="desc">
-        {% if product.description or active_content_blocks %}
+        {% if product.description or description_view or active_content_blocks %}
           <div class="details-collapsible">
             <div class="details-collapsible-content">
               {% if product.description %}
@@ -936,7 +938,9 @@
                 </div>
               {% endif %}
 
-              {% if active_content_blocks %}
+              {% if description_view %}
+                {% include "catalog/partials/product_description.html" with description_view=description_view product=product %}
+              {% elif active_content_blocks %}
                 {% include "catalog/partials/product_content_blocks.html" with content_blocks=active_content_blocks product=product %}
               {% endif %}
             </div>

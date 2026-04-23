@@ -1,0 +1,8 @@
+<article class="content-block content-block--cta-note">
+  {% if item.data.title %}
+    <h3 class="content-block__title">{{ item.data.title }}</h3>
+  {% endif %}
+  {% if item.data.text %}
+    <div class="content-block__body">{{ item.data.text|linebreaks }}</div>
+  {% endif %}
+</article>

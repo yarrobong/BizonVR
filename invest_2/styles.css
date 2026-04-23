@@ -356,6 +356,30 @@ p {
   margin-top: 10px;
 }
 
+.summary-breakdown {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.summary-breakdown p {
+  margin-top: 0;
+}
+
+.summary-breakdown-title {
+  margin-top: 8px;
+  color: var(--text);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.summary-breakdown-title:first-child {
+  margin-top: 0;
+}
+
 .hero-metrics-invest {
   grid-column: 1 / -1;
   width: 100%;
@@ -879,6 +903,64 @@ p {
 
 .marketing-ad-card {
   grid-column: 1 / -1;
+}
+
+.games-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 18px;
+}
+
+.game-shot-card {
+  display: grid;
+  gap: 14px;
+  padding: 14px;
+  overflow: hidden;
+}
+
+.game-shot-media {
+  position: relative;
+  overflow: hidden;
+  border-radius: 20px;
+  border: 1px solid var(--line-soft);
+  background: rgba(255, 255, 255, 0.03);
+  aspect-ratio: 4 / 3;
+}
+
+.game-shot-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.35s ease;
+}
+
+.game-shot-card:hover .game-shot-media img {
+  transform: scale(1.04);
+}
+
+.game-shot-copy {
+  display: grid;
+  gap: 8px;
+  padding: 2px 4px 4px;
+}
+
+.game-shot-copy h3 {
+  font-size: 1.05rem;
+}
+
+.game-shot-tag {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-warm);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .marketing-grid {

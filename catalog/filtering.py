@@ -342,7 +342,7 @@ class CatalogFilterService:
         include_char_filters=False,
         exclude_char_key=None,
     ):
-        qs = Product.objects.filter(is_active=True)
+        qs = Product.objects.filter(is_active=True).order_by()
         search_query = (self.request.GET.get('q') or '').strip()
         if search_query:
             qs = qs.filter(Q(name__icontains=search_query) | Q(description__icontains=search_query))
@@ -604,7 +604,60 @@ class CatalogFilterService:
             'is_expanded_by_default': False,
         }
 
+    def _build_legacy_filter_group_from_rows(self, char_name: str, value_rows: list[dict]):
+        if len(value_rows) <= 1:
+            return None
+
+        selected_filter = self.active_characteristic_filter_map.get(char_name)
+        selected_value = selected_filter.selected_value if selected_filter else ''
+        options = []
+        for row in value_rows:
+            options.append(
+                {
+                    'value': row['value'],
+                    'label': row['value'],
+                    'count': row['total'],
+                    'selected': selected_value == row['value'],
+                    'url': self.build_char_set_url(char_name, row['value'], remove_keys=(f'char_{char_name}',)),
+                }
+            )
+
+        initial_visible_count = 5 if len(options) > 5 else len(options)
+        return {
+            'key': char_name,
+            'legacy_key': char_name,
+            'remove_keys_csv': f'char_{char_name}',
+            'label': char_name,
+            'selected_value': selected_value,
+            'all_url': self.build_char_unset_url(char_name, remove_keys=(f'char_{char_name}',)),
+            'options': options,
+            'show_as_list': len(options) > 6,
+            'initial_visible_count': initial_visible_count,
+            'has_more_values': len(options) > initial_visible_count,
+            'is_quick_filter': False,
+            'is_expanded_by_default': False,
+        }
+
     def _build_legacy_characteristics(self):
+        if not self.active_characteristic_filter_map:
+            rows = (
+                ProductCharacteristic.objects
+                .filter(product__in=self.get_filter_base_queryset())
+                .values('name', 'value')
+                .annotate(total=Count('product', distinct=True))
+                .order_by('name', 'value')
+            )
+            rows_by_name = OrderedDict()
+            for row in rows:
+                rows_by_name.setdefault(row['name'], []).append(row)
+
+            groups = []
+            for char_name, value_rows in rows_by_name.items():
+                group = self._build_legacy_filter_group_from_rows(char_name, value_rows)
+                if group is not None:
+                    groups.append(group)
+            return groups
+
         char_names = (
             ProductCharacteristic.objects
             .filter(product__in=self.get_filter_base_queryset())

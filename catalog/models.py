@@ -626,6 +626,242 @@ class ProductContentBlock(models.Model):
         super().save(*args, **kwargs)
 
 
+class DescriptionBlockType(models.Model):
+    """Справочник типов блоков нового конструктора подробного описания."""
+
+    slug = models.SlugField('Slug', max_length=80, unique=True)
+    name = models.CharField('Название', max_length=160)
+    description = models.TextField('Описание', blank=True)
+    category = models.CharField('Категория', max_length=80, blank=True)
+    icon = models.CharField('Иконка', max_length=80, blank=True)
+    schema = models.JSONField('Схема данных', default=dict, blank=True)
+    default_data = models.JSONField('Данные по умолчанию', default=dict, blank=True)
+    preview_data = models.JSONField('Данные для предпросмотра', default=dict, blank=True)
+    is_active = models.BooleanField('Активен', default=True)
+    sort_order = models.IntegerField('Порядок', default=0, db_index=True)
+
+    class Meta:
+        verbose_name = 'Тип блока описания'
+        verbose_name_plural = 'Типы блоков описания'
+        ordering = ('sort_order', 'name')
+
+    def __str__(self):
+        return self.name
+
+
+class DescriptionTemplate(models.Model):
+    """Готовый шаблон подробного описания товара."""
+
+    name = models.CharField('Название', max_length=180)
+    slug = models.SlugField('Slug', max_length=120, unique=True)
+    description = models.TextField('Описание', blank=True)
+    preview_image = models.ImageField(
+        'Изображение предпросмотра',
+        upload_to='products/description_templates/',
+        blank=True,
+        null=True,
+    )
+    preview_data = models.JSONField('Данные предпросмотра', default=dict, blank=True)
+    category = models.CharField('Категория', max_length=120, blank=True)
+    is_active = models.BooleanField('Активен', default=True)
+    version = models.PositiveIntegerField('Версия', default=1)
+    created_at = models.DateTimeField('Создан', auto_now_add=True)
+    updated_at = models.DateTimeField('Обновлён', auto_now=True)
+
+    class Meta:
+        verbose_name = 'Шаблон подробного описания'
+        verbose_name_plural = 'Шаблоны подробного описания'
+        ordering = ('category', 'name')
+
+    def __str__(self):
+        return self.name
+
+
+class DescriptionTemplateSlot(models.Model):
+    """Слот блока внутри шаблона подробного описания."""
+
+    template = models.ForeignKey(
+        DescriptionTemplate,
+        on_delete=models.CASCADE,
+        related_name='slots',
+        verbose_name='Шаблон',
+    )
+    slot_key = models.SlugField('Ключ слота', max_length=80)
+    block_type = models.ForeignKey(
+        DescriptionBlockType,
+        on_delete=models.PROTECT,
+        related_name='template_slots',
+        verbose_name='Тип блока',
+    )
+    label = models.CharField('Название блока', max_length=160)
+    help_text = models.TextField('Подсказка', blank=True)
+    sort_order = models.IntegerField('Порядок', default=0, db_index=True)
+    is_required = models.BooleanField('Обязательный', default=False)
+    default_data = models.JSONField('Данные по умолчанию', default=dict, blank=True)
+    settings = models.JSONField('Настройки редактора', default=dict, blank=True)
+
+    class Meta:
+        verbose_name = 'Блок шаблона описания'
+        verbose_name_plural = 'Блоки шаблонов описания'
+        ordering = ('sort_order', 'id')
+        constraints = [
+            models.UniqueConstraint(fields=('template', 'slot_key'), name='description_template_slot_key_unique'),
+        ]
+        indexes = [
+            models.Index(fields=('template', 'sort_order'), name='desc_tpl_slot_order_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.template.name} — {self.label}'
+
+
+class ProductDescription(models.Model):
+    """Экземпляр нового подробного описания конкретного товара."""
+
+    class Status(models.TextChoices):
+        DRAFT = 'draft', 'Черновик'
+        PUBLISHED = 'published', 'Опубликовано'
+
+    class Source(models.TextChoices):
+        LEGACY = 'legacy', 'Legacy-блоки'
+        TEMPLATE = 'template', 'Шаблон'
+        CUSTOM = 'custom', 'Произвольное'
+
+    product = models.OneToOneField(
+        Product,
+        on_delete=models.CASCADE,
+        related_name='product_description',
+        verbose_name='Товар',
+    )
+    template = models.ForeignKey(
+        DescriptionTemplate,
+        on_delete=models.SET_NULL,
+        related_name='product_descriptions',
+        verbose_name='Шаблон',
+        blank=True,
+        null=True,
+    )
+    title = models.CharField('Заголовок описания', max_length=255, blank=True)
+    intro = models.TextField('Вступление', blank=True)
+    status = models.CharField('Статус', max_length=20, choices=Status.choices, default=Status.DRAFT, db_index=True)
+    is_active = models.BooleanField('Показывать на витрине', default=False)
+    source = models.CharField('Источник', max_length=20, choices=Source.choices, default=Source.CUSTOM, db_index=True)
+    published_at = models.DateTimeField('Опубликовано', blank=True, null=True)
+    created_at = models.DateTimeField('Создано', auto_now_add=True)
+    updated_at = models.DateTimeField('Обновлено', auto_now=True)
+
+    class Meta:
+        verbose_name = 'Подробное описание товара'
+        verbose_name_plural = 'Подробные описания товаров'
+        ordering = ('product__name',)
+        indexes = [
+            models.Index(fields=('status', 'is_active'), name='product_desc_status_active_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.product.name} — подробное описание'
+
+    def save(self, *args, **kwargs):
+        if self.status == self.Status.PUBLISHED and self.published_at is None:
+            from django.utils import timezone
+
+            self.published_at = timezone.now()
+        super().save(*args, **kwargs)
+
+
+class ProductDescriptionBlock(models.Model):
+    """Заполненный блок нового подробного описания."""
+
+    description = models.ForeignKey(
+        ProductDescription,
+        on_delete=models.CASCADE,
+        related_name='blocks',
+        verbose_name='Описание',
+    )
+    slot_key = models.SlugField('Ключ слота', max_length=80)
+    block_type = models.ForeignKey(
+        DescriptionBlockType,
+        on_delete=models.PROTECT,
+        related_name='product_blocks',
+        verbose_name='Тип блока',
+    )
+    sort_order = models.IntegerField('Порядок', default=0, db_index=True)
+    is_active = models.BooleanField('Активен', default=True)
+    data = models.JSONField('Данные блока', default=dict, blank=True)
+    created_at = models.DateTimeField('Создан', auto_now_add=True)
+    updated_at = models.DateTimeField('Обновлён', auto_now=True)
+
+    class Meta:
+        verbose_name = 'Блок подробного описания товара'
+        verbose_name_plural = 'Блоки подробных описаний товаров'
+        ordering = ('sort_order', 'id')
+        constraints = [
+            models.UniqueConstraint(fields=('description', 'slot_key'), name='product_description_slot_key_unique'),
+        ]
+        indexes = [
+            models.Index(fields=('description', 'sort_order'), name='prod_desc_block_order_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.description.product.name} — {self.slot_key}'
+
+    def clean(self):
+        super().clean()
+        if not isinstance(self.data, dict):
+            raise ValidationError({'data': 'Данные блока должны быть JSON-объектом.'})
+
+        if self.block_type_id and self.block_type.slug == 'video':
+            rutube_url = (self.data.get('rutube_url') or '').strip()
+            if not rutube_url:
+                return
+            try:
+                normalized_url, video_id, embed_url = _parse_rutube_video_url(rutube_url)
+            except ValidationError as exc:
+                raise ValidationError({'data': '; '.join(sum(exc.message_dict.values(), []))}) from exc
+            self.data = {
+                **self.data,
+                'rutube_url': normalized_url,
+                'rutube_video_id': video_id,
+                'embed_url': embed_url,
+            }
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+
+class ProductDescriptionAsset(models.Model):
+    """Медиа-файл, используемый в новом подробном описании."""
+
+    description = models.ForeignKey(
+        ProductDescription,
+        on_delete=models.CASCADE,
+        related_name='assets',
+        verbose_name='Описание',
+    )
+    block = models.ForeignKey(
+        ProductDescriptionBlock,
+        on_delete=models.CASCADE,
+        related_name='assets',
+        verbose_name='Блок',
+        blank=True,
+        null=True,
+    )
+    image = models.ImageField('Изображение', upload_to='products/description_assets/')
+    alt = models.CharField('Alt-текст', max_length=255, blank=True)
+    caption = models.CharField('Подпись', max_length=255, blank=True)
+    role = models.CharField('Роль', max_length=80, blank=True)
+    sort_order = models.IntegerField('Порядок', default=0, db_index=True)
+
+    class Meta:
+        verbose_name = 'Медиа подробного описания'
+        verbose_name_plural = 'Медиа подробных описаний'
+        ordering = ('sort_order', 'id')
+
+    def __str__(self):
+        return self.alt or self.caption or f'Медиа #{self.pk}'
+
+
 class ProductCharacteristic(models.Model):
     """Характеристика товара (название — значение)."""
     product = models.ForeignKey(

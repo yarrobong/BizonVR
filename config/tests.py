@@ -89,11 +89,20 @@ class InvestLandingTests(SimpleTestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response['Content-Type'], 'text/html')
-        self.assertIn('Компактная VR-арена Bizon', html)
-        self.assertIn('https://bizonvr.ru', html)
-        self.assertIn('noindex, nofollow', html)
+        self.assertIn('Компактная VR-арена', html)
+        self.assertIn('Получить модель', html)
+        self.assertIn('/invest-2/', html)
         self.assertNotIn('../img/', html)
-        self.assertNotIn('../invest/index.html', html)
+
+    def test_new_landing_alias_returns_same_html(self):
+        response = self.client.get(reverse('invest_2'))
+        html = self._streaming_content(response).decode('utf-8')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'text/html')
+        self.assertIn('Компактная VR-арена', html)
+        self.assertIn('Получить модель', html)
+        self.assertIn('/invest-2/', html)
 
     def test_landing_css_asset_is_served(self):
         response = self.client.get('/invest/styles.css')
@@ -101,17 +110,29 @@ class InvestLandingTests(SimpleTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response['Content-Type'], 'text/css')
 
+    def test_new_landing_alias_serves_assets(self):
+        response = self.client.get('/invest-2/styles.css')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'text/css')
+
+    def test_new_landing_alias_video_asset_is_served(self):
+        response = self.client.get('/invest-2/HOW%20TO%20WALK%20ON%20KAT%20Walk%20C2%20%5Bget.gt%5D.mp4')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'video/mp4')
+
     def test_landing_script_asset_is_served(self):
         response = self.client.get('/invest/script.js')
 
         self.assertEqual(response.status_code, 200)
         self.assertIn('javascript', response['Content-Type'])
 
-    def test_landing_image_asset_is_served(self):
-        response = self.client.get('/invest/1.jpg')
+    def test_landing_video_asset_is_served(self):
+        response = self.client.get('/invest/HOW%20TO%20WALK%20ON%20KAT%20Walk%20C2%20%5Bget.gt%5D.mp4')
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response['Content-Type'], 'image/jpeg')
+        self.assertEqual(response['Content-Type'], 'video/mp4')
 
     def test_landing_rejects_path_traversal(self):
         response = self.client.get('/invest/%2E%2E/README.md')
