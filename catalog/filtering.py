@@ -350,8 +350,9 @@ class CatalogFilterService:
         if self.current_category_slug and not ignore_category:
             selected_category = self.selected_category
             if selected_category and getattr(selected_category, 'is_bundles_category', False):
-                return Product.objects.none()
-            qs = qs.filter(category__slug=self.current_category_slug)
+                qs = qs.none()
+            else:
+                qs = qs.filter(category__slug=self.current_category_slug)
 
         if self.current_section_slug and not ignore_section:
             qs = qs.filter(category__section__slug=self.current_section_slug)

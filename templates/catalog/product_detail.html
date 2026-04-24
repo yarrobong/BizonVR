@@ -608,7 +608,7 @@
           <h1 class="mobile-product-title">{{ product.name }}</h1>
         </div>
 
-        <div class="mobile-hero-purchase">
+        <div class="mobile-hero-purchase" x-show="!isRequestOnlySelection" x-cloak>
           <template x-if="currentPublicPurchaseMode === 'stock'">
             <div class="offer-stack">
               <button type="button"
@@ -652,16 +652,6 @@
                   <span class="main-price" x-text="window.formatRub(currentOnRequestPrice)">4 490 ₽</span>
                 </div>
                 <p class="offer-meta-text" x-text="onRequestDeliveryText">Срок поставки: до 35 дней</p>
-              </div>
-            </div>
-          </template>
-          <template x-if="currentPublicPurchaseMode === 'request_only'">
-            <div class="offer-stack">
-              <div class="offer-panel offer-panel--primary offer-panel--solo">
-                <div class="offer-secondary-row offer-secondary-row--solo">
-                  <span class="offer-secondary-label">Цена не указана</span>
-                </div>
-                <p class="offer-meta-text">Оставьте заявку ниже, и менеджер уточнит поставку, срок доставки и стоимость.</p>
               </div>
             </div>
           </template>
@@ -726,7 +716,7 @@
       </div>
 
       <div class="right-col">
-      <div class="buy-box desktop-only">
+      <div class="buy-box desktop-only" x-show="!isRequestOnlySelection" x-cloak>
         <div class="price-block">
           <template x-if="currentPublicPurchaseMode === 'stock'">
             <div class="offer-stack">
@@ -774,19 +764,9 @@
               </div>
             </div>
           </template>
-          <template x-if="currentPublicPurchaseMode === 'request_only'">
-            <div class="offer-stack">
-              <div class="offer-panel offer-panel--primary offer-panel--solo">
-                <div class="offer-secondary-row offer-secondary-row--solo">
-                  <span class="offer-secondary-label">Цена не указана</span>
-                </div>
-                <p class="offer-meta-text">Оставьте заявку, и менеджер уточнит поставку, срок доставки и стоимость.</p>
-              </div>
-            </div>
-          </template>
         </div>
 
-        <div x-show="!isRequestOnlySelection" x-cloak>
+        <div>
           <form action="{% url 'catalog:add_to_cart' product.pk %}" method="post"
                 hx-post="{% url 'catalog:add_to_cart' product.pk %}"
                 hx-target="#cart-modal-content"
@@ -821,51 +801,51 @@
         <div id="purchase-request" class="purchase-request-anchor" aria-hidden="true"></div>
         <section x-show="isRequestOnlySelection"
                  x-cloak
-                 class="purchase-request-panel mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-left">
-          <div class="flex items-start justify-between gap-3">
-            <div>
-              <p class="text-sm font-semibold text-white">Оставить заявку</p>
-              <p class="mt-1 text-sm leading-5 text-gray-300">Менеджер уточнит поставку, срок доставки и итоговую цену для выбранной позиции.</p>
+                 class="purchase-request-panel">
+          <div class="purchase-request-panel__header">
+            <div class="purchase-request-panel__intro">
+              <p class="purchase-request-panel__title">Оставить заявку</p>
+              <p class="purchase-request-panel__text">Менеджер уточнит поставку, срок доставки и итоговую цену для выбранной позиции.</p>
             </div>
-            <span class="rounded-full border border-amber-300/20 bg-amber-400/10 px-3 py-1 text-xs font-medium text-amber-200">Нет в наличии</span>
+            <span class="purchase-request-panel__badge">Нет в наличии</span>
           </div>
 
           {% if purchase_request_form.non_field_errors %}
-            <div class="mt-3 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-sm text-red-200">
+            <div class="purchase-request-alert">
               {% for error in purchase_request_form.non_field_errors %}
                 <p>{{ error }}</p>
               {% endfor %}
             </div>
           {% endif %}
 
-          <form action="{% url 'orders:purchase_request_create' %}" method="post" class="mt-4 space-y-3">
+          <form action="{% url 'orders:purchase_request_create' %}" method="post" class="purchase-request-form">
             {% csrf_token %}
             {{ purchase_request_form.product_id }}
             {{ purchase_request_form.source_path }}
             <input type="hidden" name="variant_id" :value="selectedVariant ? selectedVariant.id : '{{ purchase_request_variant_id|default_if_none:''|escapejs }}'" />
-            <div>
-              <label for="{{ purchase_request_form.phone.id_for_label }}" class="mb-1 block text-sm font-medium text-white">Телефон</label>
+            <div class="purchase-request-field">
+              <label for="{{ purchase_request_form.phone.id_for_label }}" class="purchase-request-label">Телефон</label>
               {{ purchase_request_form.phone }}
               {% if purchase_request_form.phone.errors %}
-                <p class="mt-1 text-sm text-red-300">{{ purchase_request_form.phone.errors|join:", " }}</p>
+                <p class="purchase-request-error">{{ purchase_request_form.phone.errors|join:", " }}</p>
               {% endif %}
             </div>
-            <div>
-              <label for="{{ purchase_request_form.telegram.id_for_label }}" class="mb-1 block text-sm font-medium text-white">Telegram</label>
+            <div class="purchase-request-field">
+              <label for="{{ purchase_request_form.telegram.id_for_label }}" class="purchase-request-label">Telegram</label>
               {{ purchase_request_form.telegram }}
-              <p class="mt-1 text-xs text-gray-400">Необязательно, но так менеджеру будет проще ответить быстрее.</p>
+              <p class="purchase-request-help">Необязательно, но так менеджеру будет проще ответить быстрее.</p>
               {% if purchase_request_form.telegram.errors %}
-                <p class="mt-1 text-sm text-red-300">{{ purchase_request_form.telegram.errors|join:", " }}</p>
+                <p class="purchase-request-error">{{ purchase_request_form.telegram.errors|join:", " }}</p>
               {% endif %}
             </div>
-            <label class="flex items-start gap-3 text-sm text-gray-300">
+            <label class="purchase-request-consent">
               {{ purchase_request_form.agree_personal_data }}
-              <span>Соглашаюсь на обработку персональных данных.</span>
+              <span class="purchase-request-consent__text">Соглашаюсь на обработку персональных данных.</span>
             </label>
             {% if purchase_request_form.agree_personal_data.errors %}
-              <p class="text-sm text-red-300">{{ purchase_request_form.agree_personal_data.errors|join:", " }}</p>
+              <p class="purchase-request-error">{{ purchase_request_form.agree_personal_data.errors|join:", " }}</p>
             {% endif %}
-            <button type="submit" class="add-cart-btn mb-0">Оставить заявку</button>
+            <button type="submit" class="add-cart-btn purchase-request-submit">Оставить заявку</button>
           </form>
         </section>
         {% include "catalog/partials/product_marketplace_links.html" with product=product only %}
@@ -929,7 +909,7 @@
     <div class="product-details-block">
       <h2 class="section-title">Описание</h2>
       <div class="details-section" id="desc">
-        {% if product.description or description_view or active_content_blocks %}
+        {% if product.description or description_view or legacy_description_blocks %}
           <div class="details-collapsible">
             <div class="details-collapsible-content">
               {% if product.description %}
@@ -938,10 +918,10 @@
                 </div>
               {% endif %}
 
-              {% if description_view %}
+              {% if description_source == 'new' and description_view %}
                 {% include "catalog/partials/product_description.html" with description_view=description_view product=product %}
-              {% elif active_content_blocks %}
-                {% include "catalog/partials/product_content_blocks.html" with content_blocks=active_content_blocks product=product %}
+              {% elif description_source == 'legacy' and legacy_description_blocks %}
+                {% include "catalog/partials/product_content_blocks.html" with content_blocks=legacy_description_blocks product=product %}
               {% endif %}
             </div>
           </div>

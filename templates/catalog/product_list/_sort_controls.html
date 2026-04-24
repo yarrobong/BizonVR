@@ -82,18 +82,20 @@
     {% endif %}
   </div>
 
-  <label class="catalog-control-bar-sort">
-    <span class="catalog-sort-label">Сортировка</span>
-    <select id="catalog-sort-select"
-            name="sort"
-            onchange="var u=new URL(location.href); u.searchParams.set('sort', this.value); u.searchParams.delete('page'); location.href=u.toString();"
-            class="catalog-sort-select">
-      <option value="relevance" {% if current_sort == 'relevance' %}selected{% endif %}>По релевантности</option>
-      <option value="popularity" {% if current_sort == 'popularity' %}selected{% endif %}>По популярности</option>
-      <option value="newest" {% if current_sort == 'newest' %}selected{% endif %}>Сначала новые</option>
-      <option value="price_asc" {% if current_sort == 'price_asc' %}selected{% endif %}>Цена: по возрастанию</option>
-      <option value="price_desc" {% if current_sort == 'price_desc' %}selected{% endif %}>Цена: по убыванию</option>
-      <option value="name" {% if current_sort == 'name' %}selected{% endif %}>По названию</option>
-    </select>
-  </label>
+  <div class="catalog-control-bar-sort">
+    <label for="catalog-sort-select" class="catalog-sort-label">Сортировка</label>
+    <div class="catalog-sort-select-wrap">
+      <select id="catalog-sort-select"
+              name="sort"
+              onchange="var u=new URL(location.href); u.searchParams.set('sort', this.value); u.searchParams.delete('page'); location.href=u.toString();"
+              class="catalog-sort-select">
+        <option value="relevance" {% if current_sort == 'relevance' %}selected{% endif %}>По релевантности</option>
+        <option value="popularity" {% if current_sort == 'popularity' %}selected{% endif %}>По популярности</option>
+        <option value="newest" {% if current_sort == 'newest' %}selected{% endif %}>Сначала новые</option>
+        <option value="price_asc" {% if current_sort == 'price_asc' %}selected{% endif %}>Цена: по возрастанию</option>
+        <option value="price_desc" {% if current_sort == 'price_desc' %}selected{% endif %}>Цена: по убыванию</option>
+        <option value="name" {% if current_sort == 'name' %}selected{% endif %}>По названию</option>
+      </select>
+    </div>
+  </div>
 </div>

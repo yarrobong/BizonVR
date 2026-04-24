@@ -17,6 +17,7 @@ from django.shortcuts import get_object_or_404
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
 from django.utils.html import format_html
+from django.utils.text import slugify
 from django.utils import timezone
 
 from ..cache_utils import invalidate_catalog_cache
@@ -243,6 +244,51 @@ class DescriptionTemplateSlotInline(SortableInlineAdminMixin, admin.StackedInlin
     verbose_name_plural = 'Блоки шаблона'
 
 
+def _next_copy_identity(*, base_name, base_slug):
+    counter = 1
+    while True:
+        suffix = '' if counter == 1 else f'-{counter}'
+        name_suffix = '' if counter == 1 else f' {counter}'
+        candidate_slug = f'{base_slug}{suffix}'
+        if not DescriptionTemplate.objects.filter(slug=candidate_slug).exists():
+            return f'{base_name}{name_suffix}', candidate_slug
+        counter += 1
+
+
+def _duplicate_description_template(template, *, name=None, slug=None):
+    source_name = (name or '').strip() or f'{template.name} копия'
+    source_slug = (slug or '').strip() or f'{template.slug}-copy'
+    normalized_slug = slugify(source_slug) or f'template-{template.pk}-copy'
+    duplicate_name, duplicate_slug = _next_copy_identity(base_name=source_name, base_slug=normalized_slug)
+
+    duplicated = DescriptionTemplate.objects.create(
+        name=duplicate_name,
+        slug=duplicate_slug,
+        description=template.description,
+        preview_image=template.preview_image,
+        preview_data=template.preview_data,
+        category=template.category,
+        is_active=template.is_active,
+        version=template.version,
+    )
+    slot_copies = [
+        DescriptionTemplateSlot(
+            template=duplicated,
+            slot_key=slot.slot_key,
+            block_type=slot.block_type,
+            label=slot.label,
+            help_text=slot.help_text,
+            sort_order=slot.sort_order,
+            is_required=slot.is_required,
+            default_data=slot.default_data,
+            settings=slot.settings,
+        )
+        for slot in template.slots.select_related('block_type').order_by('sort_order', 'id')
+    ]
+    DescriptionTemplateSlot.objects.bulk_create(slot_copies)
+    return duplicated
+
+
 @admin.register(DescriptionBlockType)
 class DescriptionBlockTypeAdmin(admin.ModelAdmin):
     list_display = ('name', 'slug', 'category', 'sort_order', 'is_active')
@@ -254,12 +300,90 @@ class DescriptionBlockTypeAdmin(admin.ModelAdmin):
 
 @admin.register(DescriptionTemplate)
 class DescriptionTemplateAdmin(SortableAdminBase, admin.ModelAdmin):
-    list_display = ('name', 'slug', 'category', 'version', 'is_active', 'updated_at')
+    list_display = ('name', 'slug', 'category', 'slots_count', 'version', 'is_active', 'updated_at', 'duplicate_link')
     list_filter = ('category', 'is_active')
     search_fields = ('name', 'slug', 'description')
     prepopulated_fields = {'slug': ('name',)}
     inlines = (DescriptionTemplateSlotInline,)
     ordering = ('category', 'name')
+    readonly_fields = ('template_actions',)
+    actions = ('duplicate_templates',)
+    save_as = True
+    save_as_continue = False
+    fieldsets = (
+        ('Шаблон', {
+            'fields': ('name', 'slug', 'category', 'description', 'preview_image', 'preview_data', 'version', 'is_active'),
+            'description': 'Шаблон — это только заготовка. При применении в товар структура копируется, а не связывается с товаром “вживую”.',
+        }),
+        ('Действия', {
+            'fields': ('template_actions',),
+            'description': 'Можно редактировать текущий шаблон, дублировать его или сохранить как новый через стандартную кнопку Django admin.',
+        }),
+    )
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                '<int:template_id>/duplicate/',
+                self.admin_site.admin_view(self.duplicate_template_view),
+                name='catalog_descriptiontemplate_duplicate',
+            ),
+        ]
+        return custom_urls + urls
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).prefetch_related('slots')
+
+    @admin.display(description='Блоки')
+    def slots_count(self, obj):
+        return obj.slots.count()
+
+    @admin.display(description='Дублировать')
+    def duplicate_link(self, obj):
+        url = reverse('admin:catalog_descriptiontemplate_duplicate', args=[obj.pk])
+        return format_html('<a class="button" href="{}">Дублировать</a>', url)
+
+    def template_actions(self, obj):
+        if not obj or not obj.pk:
+            return 'После первого сохранения станут доступны действия для дублирования.'
+        duplicate_url = reverse('admin:catalog_descriptiontemplate_duplicate', args=[obj.pk])
+        return format_html(
+            '<div style="display:grid; gap:8px;">'
+            '<p style="margin:0;">Изменения шаблона не меняют уже созданные описания товаров: в товар копируется структура блоков.</p>'
+            '<a class="button" href="{}">Дублировать шаблон</a>'
+            '</div>',
+            duplicate_url,
+        )
+
+    template_actions.short_description = 'Действия'
+
+    def duplicate_template_view(self, request, template_id):
+        template = get_object_or_404(
+            DescriptionTemplate.objects.prefetch_related('slots__block_type'),
+            pk=template_id,
+        )
+        duplicated = _duplicate_description_template(template)
+        self.message_user(
+            request,
+            f'Шаблон «{template.name}» продублирован как «{duplicated.name}».',
+            messages.SUCCESS,
+        )
+        return HttpResponseRedirect(reverse('admin:catalog_descriptiontemplate_change', args=[duplicated.pk]))
+
+    @admin.action(description='Дублировать выбранные шаблоны')
+    def duplicate_templates(self, request, queryset):
+        duplicated = []
+        for template in queryset.prefetch_related('slots__block_type'):
+            duplicated.append(_duplicate_description_template(template))
+        if duplicated:
+            self.message_user(
+                request,
+                f'Продублировано шаблонов: {len(duplicated)}.',
+                messages.SUCCESS,
+            )
+        else:
+            self.message_user(request, 'Нет шаблонов для дублирования.', messages.WARNING)
 
 
 class ProductDescriptionBlockInline(SortableInlineAdminMixin, admin.StackedInline):
@@ -466,6 +590,11 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
 
     def get_inline_instances(self, request, obj=None):
         inline_instances = super().get_inline_instances(request, obj)
+        if not request.user.is_superuser:
+            inline_instances = [
+                inline for inline in inline_instances
+                if not isinstance(inline, ProductContentBlockInline)
+            ]
         for inline in inline_instances:
             if isinstance(inline, (ProductStockInlineForProduct, ProductBundleItemInlineForProduct)):
                 inline.classes = ('collapse',) if obj is None else ()
@@ -540,7 +669,6 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
             <div class="product-description-constructor"
                  data-product-description-constructor
                  data-templates-url="{}"
-                 data-apply-url="{}"
                  data-preview-url="{}">
               <textarea name="description_constructor_payload" data-pdc-payload hidden>{}</textarea>
               <div class="product-description-constructor__header">
@@ -553,42 +681,77 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
                 <div class="product-description-constructor__templates-head">
                   <div>
                     <strong>Выбор шаблона</strong>
-                    <p>Шаблон только загружает заготовку в редактор ниже. В базу изменения попадут после сохранения товара.</p>
+                    <p>Выберите готовую структуру по карточкам ниже: у каждого шаблона сразу видно название, краткое описание и состав блоков. Применение только загружает заготовку в редактор ниже.</p>
                   </div>
-                  <button type="button" class="button" data-pdc-start-empty>Начать с пустого</button>
+                  <div class="product-description-constructor__template-selection" data-pdc-template-selection>
+                    <strong>Сейчас в редакторе</strong>
+                    <p>Загрузка...</p>
+                  </div>
                 </div>
                 <div class="product-description-constructor__template-list" data-pdc-template-list></div>
               </section>
-              <div class="product-description-constructor__controls">
-                <label>Добавить блок <select data-pdc-block-type-select></select></label>
-                <button type="button" class="button" data-pdc-add-block>Добавить блок</button>
-                <button type="button" class="button" data-pdc-preview>Предпросмотр текущего</button>
-              </div>
-              <div class="product-description-constructor__meta">
-                <label>Заголовок <input type="text" data-pdc-title></label>
-                <label>Статус
-                  <select data-pdc-status>
-                    <option value="draft">Черновик</option>
-                    <option value="published">Опубликовано</option>
-                  </select>
-                </label>
-                <label class="product-description-constructor__checkbox"><input type="checkbox" data-pdc-active> Показывать на витрине</label>
-                <label>Вступление <textarea data-pdc-intro rows="4"></textarea></label>
-              </div>
-              <div class="product-description-constructor__message" data-pdc-message></div>
-              <div class="product-description-constructor__editor">
-                <div class="product-description-constructor__blocks" data-pdc-block-list></div>
-                <div class="product-description-constructor__block-editor" data-pdc-block-editor>
-                  <p>Выберите блок слева или добавьте новый.</p>
+              <section class="product-description-constructor__settings" aria-label="Общие настройки подробного описания">
+                <div class="product-description-constructor__panel-head">
+                  <div>
+                    <strong>1. Общие настройки</strong>
+                    <p>Сначала задайте заголовок, вступление и статус публикации для всего подробного описания.</p>
+                  </div>
                 </div>
-              </div>
-              <div class="product-description-constructor__preview" data-pdc-preview-target>
-                <p>Нажмите «Предпросмотр», чтобы увидеть текущий результат.</p>
-              </div>
+                <div class="product-description-constructor__meta">
+                  <label>Заголовок <input type="text" data-pdc-title></label>
+                  <label>Статус
+                    <select data-pdc-status>
+                      <option value="draft">Черновик</option>
+                      <option value="published">Опубликовано</option>
+                    </select>
+                  </label>
+                  <label class="product-description-constructor__checkbox"><input type="checkbox" data-pdc-active> Показывать на витрине</label>
+                  <label>Вступление <textarea data-pdc-intro rows="4"></textarea></label>
+                </div>
+              </section>
+              <div class="product-description-constructor__message" data-pdc-message></div>
+              <section class="product-description-constructor__workspace" aria-label="Редактор блоков подробного описания">
+                <div class="product-description-constructor__sidebar">
+                  <div class="product-description-constructor__panel-head">
+                    <div>
+                      <strong>2. Блоки</strong>
+                      <p>Добавляйте блоки, меняйте порядок, включайте и отключайте их прямо в списке.</p>
+                    </div>
+                  </div>
+                  <div class="product-description-constructor__controls">
+                    <label>Добавить блок <select data-pdc-block-type-select></select></label>
+                    <button type="button" class="button" data-pdc-add-block>Добавить блок</button>
+                  </div>
+                  <div class="product-description-constructor__blocks" data-pdc-block-list></div>
+                </div>
+                <div class="product-description-constructor__main">
+                  <div class="product-description-constructor__editor-panel">
+                    <div class="product-description-constructor__panel-head">
+                      <div>
+                        <strong>3. Выбранный блок</strong>
+                        <p>Сначала редактируйте быстрые поля. JSON нужен только для точечной ручной настройки.</p>
+                      </div>
+                    </div>
+                    <div class="product-description-constructor__block-editor" data-pdc-block-editor>
+                      <p>Выберите блок слева или добавьте новый.</p>
+                    </div>
+                  </div>
+                  <div class="product-description-constructor__preview-panel">
+                    <div class="product-description-constructor__panel-head">
+                      <div>
+                        <strong>4. Предпросмотр</strong>
+                        <p data-pdc-preview-status>Обновляется автоматически при изменениях в настройках и блоках.</p>
+                      </div>
+                    </div>
+                    <div class="product-description-constructor__preview" data-pdc-preview-target>
+                      <p>Предпросмотр появится автоматически после первой синхронизации.</p>
+                    </div>
+                  </div>
+                </div>
+              </section>
             </div>
             ''',
             reverse('admin:catalog_product_description_templates'),
-            reverse('admin:catalog_product_description_apply_template', args=[product_id]),
             reverse('admin:catalog_product_description_preview', args=[product_id]),
             state_json,
         )
@@ -1328,3 +1491,23 @@ class ProductContentBlockAdmin(admin.ModelAdmin):
     search_fields = ('product__name', 'title', 'text', 'caption')
     autocomplete_fields = ('product',)
     ordering = ('product', 'sort_order', 'id')
+
+    def get_model_perms(self, request):
+        if request.user.is_superuser:
+            return super().get_model_perms(request)
+        return {}
+
+    def has_module_permission(self, request):
+        return request.user.is_superuser
+
+    def has_view_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+    def has_add_permission(self, request):
+        return request.user.is_superuser
+
+    def has_change_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+    def has_delete_permission(self, request, obj=None):
+        return request.user.is_superuser

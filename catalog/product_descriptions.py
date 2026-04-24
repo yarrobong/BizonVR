@@ -226,9 +226,12 @@ def get_product_description(product):
 
 
 def resolve_product_description(product):
+    new_description = get_product_description(product)
+    legacy_blocks = list(getattr(product, 'active_content_blocks', []))
     return {
-        'new': get_product_description(product),
-        'legacy_blocks': list(getattr(product, 'active_content_blocks', [])),
+        'new': new_description,
+        'legacy_blocks': legacy_blocks,
+        'source': 'new' if new_description else ('legacy' if legacy_blocks else None),
     }
 
 
@@ -270,6 +273,27 @@ def render_description_preview(payload, product=None):
 
 
 def serialize_template(template):
+    return serialize_template_with_start_payload(template)
+
+
+def _base_constructor_payload(*, template=None, title='', intro='', status=None, is_active=False, source=None, blocks=None):
+    return {
+        'id': None,
+        'template_id': getattr(template, 'pk', None),
+        'title': title or '',
+        'intro': intro or '',
+        'status': status or ProductDescription.Status.DRAFT,
+        'is_active': bool(is_active),
+        'source': source or (ProductDescription.Source.TEMPLATE if template else ProductDescription.Source.CUSTOM),
+        'blocks': blocks or [],
+    }
+
+
+def empty_constructor_payload():
+    return _base_constructor_payload()
+
+
+def serialize_template_with_start_payload(template, product=None):
     preview_image_url = ''
     if template.preview_image:
         try:
@@ -299,6 +323,7 @@ def serialize_template(template):
             }
             for slot in template.slots.select_related('block_type').order_by('sort_order', 'id')
         ],
+        'start_payload': template_to_constructor_payload(template, product=product),
     }
 
 
@@ -319,16 +344,7 @@ def serialize_block_type(block_type):
 
 def serialize_product_description(description):
     if not description:
-        return {
-            'id': None,
-            'template_id': None,
-            'title': '',
-            'intro': '',
-            'status': ProductDescription.Status.DRAFT,
-            'is_active': False,
-            'source': ProductDescription.Source.CUSTOM,
-            'blocks': [],
-        }
+        return empty_constructor_payload()
     return {
         'id': description.pk,
         'template_id': description.template_id,
@@ -355,15 +371,12 @@ def serialize_product_description(description):
 
 
 def template_to_constructor_payload(template, product=None):
-    return {
-        'id': None,
-        'template_id': template.pk,
-        'title': template.name,
-        'intro': getattr(product, 'description', '') or template.description or '',
-        'status': ProductDescription.Status.DRAFT,
-        'is_active': False,
-        'source': ProductDescription.Source.TEMPLATE,
-        'blocks': [
+    return _base_constructor_payload(
+        template=template,
+        title=template.name,
+        intro=getattr(product, 'description', '') or template.description or '',
+        source=ProductDescription.Source.TEMPLATE,
+        blocks=[
             {
                 'id': None,
                 'client_id': f'template-{template.pk}-{slot.slot_key}',
@@ -377,7 +390,7 @@ def template_to_constructor_payload(template, product=None):
             }
             for slot in template.slots.select_related('block_type').order_by('sort_order', 'id')
         ],
-    }
+    )
 
 
 def _serialize_legacy_block(block):
@@ -396,7 +409,7 @@ def _serialize_legacy_block(block):
 
 def build_admin_constructor_state(product=None):
     templates = [
-        serialize_template(template)
+        serialize_template_with_start_payload(template, product=product)
         for template in DescriptionTemplate.objects.filter(is_active=True).prefetch_related('slots__block_type').order_by('category', 'name')
     ]
     block_types = [
@@ -414,6 +427,7 @@ def build_admin_constructor_state(product=None):
     return {
         'templates': templates,
         'blockTypes': block_types,
+        'emptyDescription': empty_constructor_payload(),
         'description': serialize_product_description(description),
         'legacyBlocks': legacy_blocks,
     }

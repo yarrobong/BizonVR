@@ -101,6 +101,11 @@ def invest_2_view(request, path=''):
 
 def compact_vr_view(request):
     """Лендинг компактной VR-арены под ключ и его локальные ассеты."""
+    if request.method == 'GET' and request.headers.get('HX-Boosted') == 'true':
+        response = HttpResponse(status=204)
+        response['HX-Redirect'] = request.get_full_path()
+        return response
+
     lead_form = CompactVRForm()
     if request.method == 'POST' and request.POST.get('form_type') == 'compact_vr':
         lead_form = CompactVRForm(request.POST)

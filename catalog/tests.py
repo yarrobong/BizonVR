@@ -50,7 +50,7 @@ from .filter_presets import get_typed_value_sort_key
 from .filter_setup_wizard import CatalogFilterSetupWizard
 from .import_workflow import CatalogImportWorkflowService, make_direct_target_reference
 from .importers import CatalogDataImporter
-from .product_descriptions import migrate_legacy_blocks
+from .product_descriptions import build_admin_constructor_state, migrate_legacy_blocks
 from .models import (
     CartItem,
     CartShare,
@@ -87,7 +87,7 @@ from .models import (
 from .views import feeds as feed_views
 from .views.feeds import vr_attractions_yml_feed_view
 from .admin.filters import CharacteristicDefinitionAdminForm
-from .admin.products import ProductAdmin, ProductAdminForm
+from .admin.products import ProductAdmin, ProductAdminForm, ProductContentBlockAdmin, ProductContentBlockInline, ProductImageInline
 
 User = get_user_model()
 
@@ -600,10 +600,10 @@ class VariantGalleryAndCatalogCardsTest(TestCase):
         variant_payload = next(item for item in data['variants'] if item['id'] == self.variant_one.pk)
         self.assertEqual(variant_payload['publicPurchaseMode'], 'request_only')
         self.assertIsNone(variant_payload['effectivePrice'])
-        self.assertContains(resp, 'Цена не указана')
         self.assertContains(resp, 'Оставить заявку')
         self.assertContains(resp, 'class="purchase-request-panel', html=False)
         self.assertContains(resp, 'id="purchase-request"', html=False)
+        self.assertNotContains(resp, 'Цена не указана')
 
     def test_product_detail_data_uses_total_stock_only(self):
         ProductStock.objects.create(
@@ -971,9 +971,157 @@ class ProductContentBlocksTest(TestCase):
         html = str(ProductAdmin(Product, admin.site).description_constructor(self.product))
 
         self.assertIn('data-pdc-template-list', html)
+        self.assertIn('data-pdc-template-selection', html)
         self.assertIn('Выбор шаблона', html)
-        self.assertIn('Начать с пустого', html)
-        self.assertNotIn('data-pdc-template-select', html)
+        self.assertIn('Применение только загружает заготовку в редактор ниже', html)
+        self.assertIn('1. Общие настройки', html)
+        self.assertIn('data-pdc-preview-status', html)
+        self.assertNotIn('Предпросмотр текущего', html)
+        self.assertNotIn('data-pdc-template-select=', html)
+
+    def test_admin_constructor_state_uses_shared_start_payloads_for_template_and_manual_modes(self):
+        block_type, _ = DescriptionBlockType.objects.get_or_create(slug='text', defaults={'name': 'Текст'})
+        template = DescriptionTemplate.objects.create(
+            name='Общий старт',
+            slug='shared-start-template',
+            is_active=True,
+        )
+        DescriptionTemplateSlot.objects.create(
+            template=template,
+            slot_key='summary',
+            block_type=block_type,
+            label='Описание',
+            sort_order=10,
+            default_data={'title': 'Стартовый заголовок', 'text': 'Стартовый текст'},
+        )
+
+        state = build_admin_constructor_state(self.product)
+
+        self.assertIn('emptyDescription', state)
+        self.assertEqual(state['emptyDescription']['template_id'], None)
+        self.assertEqual(state['emptyDescription']['blocks'], [])
+        template_state = next(item for item in state['templates'] if item['id'] == template.pk)
+        self.assertIn('start_payload', template_state)
+        self.assertEqual(template_state['start_payload']['template_id'], template.pk)
+        self.assertEqual(template_state['start_payload']['blocks'][0]['block_type'], 'text')
+        self.assertEqual(template_state['start_payload']['blocks'][0]['data']['title'], 'Стартовый заголовок')
+
+    def test_description_template_admin_duplicate_view_clones_template_and_slots(self):
+        admin_user = User.objects.create_superuser(
+            username='template-admin',
+            email='template-admin@example.com',
+            password='password',
+        )
+        self.client.force_login(admin_user)
+        block_type, _ = DescriptionBlockType.objects.get_or_create(slug='text', defaults={'name': 'Текст'})
+        template = DescriptionTemplate.objects.create(
+            name='Базовый шаблон',
+            slug='base-description-template',
+            description='Исходный шаблон',
+            category='VR',
+            is_active=True,
+        )
+        DescriptionTemplateSlot.objects.create(
+            template=template,
+            slot_key='summary',
+            block_type=block_type,
+            label='Описание',
+            sort_order=10,
+            default_data={'title': 'Оригинал', 'text': 'Текст'},
+        )
+
+        response = self.client.get(reverse('admin:catalog_descriptiontemplate_duplicate', args=[template.pk]))
+
+        self.assertEqual(response.status_code, 302)
+        duplicated = DescriptionTemplate.objects.exclude(pk=template.pk).order_by('-pk').first()
+        self.assertIsNotNone(duplicated)
+        self.assertEqual(duplicated.description, template.description)
+        self.assertTrue(duplicated.slug.startswith('base-description-template-copy'))
+        self.assertEqual(duplicated.slots.count(), 1)
+        self.assertEqual(duplicated.slots.get().label, 'Описание')
+        self.assertEqual(duplicated.slots.get().default_data['title'], 'Оригинал')
+
+    def test_editing_template_does_not_change_existing_product_description_blocks(self):
+        block_type, _ = DescriptionBlockType.objects.get_or_create(slug='text', defaults={'name': 'Текст'})
+        template = DescriptionTemplate.objects.create(
+            name='Независимый шаблон',
+            slug='independent-description-template',
+            is_active=True,
+        )
+        slot = DescriptionTemplateSlot.objects.create(
+            template=template,
+            slot_key='summary',
+            block_type=block_type,
+            label='Описание',
+            sort_order=10,
+            default_data={'title': 'Старый шаблонный заголовок', 'text': 'Старый текст'},
+        )
+        description = ProductDescription.objects.create(
+            product=self.product,
+            template=template,
+            title='Описание товара',
+            status=ProductDescription.Status.DRAFT,
+            is_active=False,
+            source=ProductDescription.Source.TEMPLATE,
+        )
+        ProductDescriptionBlock.objects.create(
+            description=description,
+            slot_key='summary',
+            block_type=block_type,
+            sort_order=10,
+            is_active=True,
+            data={'title': 'Скопированный заголовок', 'text': 'Текст в товаре'},
+        )
+
+        slot.default_data = {'title': 'Новый заголовок шаблона', 'text': 'Новый текст шаблона'}
+        slot.save(update_fields=['default_data'])
+
+        description_block = description.blocks.get()
+        self.assertEqual(description_block.data['title'], 'Скопированный заголовок')
+        self.assertEqual(description_block.data['text'], 'Текст в товаре')
+
+    def test_product_admin_hides_legacy_content_blocks_inline_for_non_superuser(self):
+        manager_user = User.objects.create_user(
+            username='manager-inline-user',
+            email='manager-inline@example.com',
+            password='password',
+            is_staff=True,
+        )
+        request = RequestFactory().get('/admin/catalog/product/1/change/')
+        request.user = manager_user
+        product_admin = ProductAdmin(Product, admin.site)
+        inline_instances = [
+            ProductContentBlockInline(Product, admin.site),
+            ProductImageInline(Product, admin.site),
+        ]
+
+        with patch('django.contrib.admin.options.ModelAdmin.get_inline_instances', return_value=inline_instances):
+            result = product_admin.get_inline_instances(request, obj=self.product)
+
+        self.assertFalse(any(isinstance(item, ProductContentBlockInline) for item in result))
+        self.assertTrue(any(isinstance(item, ProductImageInline) for item in result))
+
+    def test_product_content_block_admin_is_superuser_only(self):
+        manager_user = User.objects.create_user(
+            username='manager-content-block-user',
+            email='manager-content-block@example.com',
+            password='password',
+            is_staff=True,
+        )
+        superuser = User.objects.create_superuser(
+            username='super-content-block-user',
+            email='super-content-block@example.com',
+            password='password',
+        )
+        block_admin = ProductContentBlockAdmin(ProductContentBlock, admin.site)
+        request_manager = RequestFactory().get('/admin/catalog/productcontentblock/')
+        request_manager.user = manager_user
+        request_super = RequestFactory().get('/admin/catalog/productcontentblock/')
+        request_super.user = superuser
+
+        self.assertFalse(block_admin.has_module_permission(request_manager))
+        self.assertEqual(block_admin.get_model_perms(request_manager), {})
+        self.assertTrue(block_admin.has_module_permission(request_super))
 
     def test_product_admin_save_model_creates_description_from_embedded_payload_on_add(self):
         admin_user = User.objects.create_superuser(
@@ -1181,17 +1329,23 @@ class CatalogSectionFilterTest(TestCase):
             slug='stationary-attractions-filter',
             section=self.section_attractions,
         )
+        self.bundle_category = Category.objects.create(
+            name='Комплекты для VR АРЕН',
+            slug='komplekty-dlya-vr-aren',
+            section=self.section_attractions,
+            is_bundles_category=True,
+        )
         self.tag_vr = ProductTag.objects.create(name='VR тег', slug='vr-tag', order=1)
         self.tag_pc = ProductTag.objects.create(name='PC тег', slug='pc-tag', order=2)
 
-        vr_product = Product.objects.create(
+        self.vr_product = Product.objects.create(
             category=self.cat_vr,
             name='Quest 3',
             slug='quest-3',
             price=100,
             is_active=True,
         )
-        pc_product = Product.objects.create(
+        self.pc_product = Product.objects.create(
             category=self.cat_pc,
             name='Laptop',
             slug='laptop',
@@ -1205,8 +1359,15 @@ class CatalogSectionFilterTest(TestCase):
             price=300,
             is_active=True,
         )
-        vr_product.tags.add(self.tag_vr)
-        pc_product.tags.add(self.tag_pc)
+        self.bundle = ProductBundle.objects.create(
+            name='Arena комплект',
+            slug='arena-bundle',
+        )
+        ProductBundleItem.objects.create(bundle=self.bundle, product=self.attractions_product, quantity=1)
+        ProductBundleItem.objects.create(bundle=self.bundle, product=self.vr_product, quantity=1)
+
+        self.vr_product.tags.add(self.tag_vr)
+        self.pc_product.tags.add(self.tag_pc)
 
     def test_tags_in_filters_are_limited_by_selected_section(self):
         resp = self.client.get(reverse('catalog:product_list'), {'section': self.section_vr.slug})
@@ -1289,6 +1450,18 @@ class CatalogSectionFilterTest(TestCase):
         self.assertNotIn(urlencode({'category': malformed_category}), built_url)
         self.assertIn(f'category={self.cat_attractions.slug}', pagination_url)
         self.assertNotIn(urlencode({'category': malformed_category}), pagination_url)
+
+    def test_bundles_category_page_renders_without_catalog_price_annotation_errors(self):
+        response = self.client.get(
+            reverse('catalog:product_list'),
+            {'category': self.bundle_category.slug},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context['is_bundles_category'])
+        self.assertEqual(response.context['results_count'], 1)
+        self.assertEqual(list(response.context['products']), [])
+        self.assertEqual([bundle.slug for bundle in response.context['bundles']], [self.bundle.slug])
 
     def test_tags_in_filters_are_limited_by_selected_category(self):
         """При выбранной категории показываются только теги, у которых есть товары в этой категории (чтобы не вести в пустой каталог)."""
