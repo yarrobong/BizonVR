@@ -153,6 +153,16 @@ class CompactVRLandingTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Компактная VR-арена')
 
+    def test_compact_vr_boosted_request_forces_full_redirect(self):
+        response = self.client.get(
+            reverse('compact_vr'),
+            HTTP_HX_REQUEST='true',
+            HTTP_HX_BOOSTED='true',
+        )
+
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response['HX-Redirect'], reverse('compact_vr'))
+
     def test_legacy_compact_vr_asset_path_returns_404(self):
         response = self.client.get('/compact-vr/img/katvrplayer.png')
 

@@ -20,7 +20,7 @@ class PurchaseRequestForm(forms.Form):
         max_length=20,
         required=True,
         widget=forms.TextInput(attrs={
-            'class': 'js-phone-mask w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
+            'class': 'purchase-request-input js-phone-mask',
             'placeholder': '+7 (999) 999-99-99',
             'inputmode': 'tel',
             'autocomplete': 'tel',
@@ -31,15 +31,16 @@ class PurchaseRequestForm(forms.Form):
         max_length=100,
         required=False,
         widget=forms.TextInput(attrs={
-            'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent',
+            'class': 'purchase-request-input',
             'placeholder': '@username или ссылка t.me/username',
+            'autocomplete': 'off',
         }),
     )
     agree_personal_data = forms.BooleanField(
         label='Согласие на обработку персональных данных',
         required=True,
         error_messages={'required': 'Необходимо согласие на обработку персональных данных.'},
-        widget=forms.CheckboxInput(),
+        widget=forms.CheckboxInput(attrs={'class': 'purchase-request-checkbox'}),
     )
 
     def clean_phone(self):

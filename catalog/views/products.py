@@ -480,8 +480,11 @@ class ProductDetailView(DetailView):
 
         context['product_gallery'] = gallery
         context['product_media'] = product_media
+        description_resolution = resolve_product_description(self.object)
         context['active_content_blocks'] = list(getattr(self.object, 'active_content_blocks', []))
-        context['description_view'] = resolve_product_description(self.object)['new']
+        context['description_view'] = description_resolution['new']
+        context['legacy_description_blocks'] = description_resolution['legacy_blocks']
+        context['description_source'] = description_resolution['source']
 
         variants_data = []
         for variant in variants:

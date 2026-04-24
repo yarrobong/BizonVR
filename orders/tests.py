@@ -600,8 +600,9 @@ class CheckoutTest(TestCase):
         response = self.client.get(self.product.get_absolute_url())
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Цена не указана')
         self.assertContains(response, 'Оставить заявку')
+        self.assertContains(response, 'class="purchase-request-panel', html=False)
+        self.assertNotContains(response, 'Цена не указана')
 
     def test_purchase_request_create_saves_request_only_snapshot(self):
         ProductStock.objects.filter(product=self.product).delete()
