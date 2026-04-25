@@ -3,21 +3,15 @@
 <article id="bundle-{{ bundle.pk }}" class="group bg-dark-800/80 md:bg-dark-800/60 md:hover:bg-dark-800 border border-dark-700 rounded-xl transition-all duration-300 relative flex flex-col h-full overflow-hidden hover:-translate-y-0.5 hover:border-accent/60 shadow-[0_10px_28px_rgba(0,0,0,0.28)]">
   <a href="{{ bundle.get_absolute_url }}" class="relative w-full aspect-square flex-shrink-0 overflow-hidden block">
   <div class="absolute inset-0 flex items-center justify-center rounded-t-xl bg-dark-700 border-b border-dark-600">
-      {% for item in bundle.items.all %}
-        {% if forloop.first %}
-          {% if item.product.image %}
-            <img src="{{ item.product.image.url|absolute_uri:request }}" alt="{{ bundle.name|default:'Комплект' }}" class="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300" loading="lazy" />
-          {% else %}
-            <div class="w-full h-full flex items-center justify-center text-gray-500">
-              <i data-lucide="package" class="w-12 h-12 inline-block"></i>
-            </div>
-          {% endif %}
+      {% with display_image=bundle.get_display_image %}
+        {% if display_image %}
+          <img src="{{ display_image.url|absolute_uri:request }}" alt="{{ bundle.name|default:'Комплект' }}" class="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300" loading="lazy" />
+        {% else %}
+          <div class="w-full h-full flex items-center justify-center text-gray-500">
+            <i data-lucide="package" class="w-12 h-12 inline-block"></i>
+          </div>
         {% endif %}
-      {% empty %}
-        <div class="w-full h-full flex items-center justify-center text-gray-500">
-          <i data-lucide="package" class="w-12 h-12 inline-block"></i>
-        </div>
-      {% endfor %}
+      {% endwith %}
   </div>
   <div class="absolute top-2 left-2 z-10">
     <span class="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-accent/15 text-accent border-accent/30">Комплект</span>

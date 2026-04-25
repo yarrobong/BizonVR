@@ -2,6 +2,7 @@ import csv
 import io
 import json
 import os
+import re
 import tempfile
 import zipfile
 from datetime import datetime
@@ -132,6 +133,54 @@ def _display_import_value(value):
     if isinstance(value, (dict, list)):
         return json.dumps(value, ensure_ascii=False)
     return str(value)
+
+
+_UNSAFE_ARCHIVE_PATH_CHARS_RE = re.compile(r'[\\/\x00-\x1f\x7f]+')
+
+
+def _sanitize_archive_component(value, fallback):
+    normalized = _UNSAFE_ARCHIVE_PATH_CHARS_RE.sub('_', (value or '').strip()).strip()
+    return normalized or fallback
+
+
+def _build_product_archive_directories(products):
+    used_directories = set()
+    directories = {}
+    for product in products:
+        base_directory = _sanitize_archive_component(product.name, product.slug or f'product-{product.pk}')
+        directory_name = base_directory
+        if directory_name in used_directories:
+            directory_name = _sanitize_archive_component(
+                f'{base_directory} ({product.slug or product.pk})',
+                f'product-{product.pk}',
+            )
+
+        suffix = 2
+        while directory_name in used_directories:
+            directory_name = f'{base_directory} ({suffix})'
+            suffix += 1
+
+        used_directories.add(directory_name)
+        directories[product.pk] = directory_name
+    return directories
+
+
+def _build_unique_archive_path(directory, base_name, extension, used_paths):
+    safe_directory = _sanitize_archive_component(directory, 'product')
+    safe_base_name = _sanitize_archive_component(base_name, 'image')
+    extension = extension or ''
+    archive_path = f'images/{safe_directory}/{safe_base_name}{extension}'
+    if archive_path not in used_paths:
+        used_paths.add(archive_path)
+        return archive_path
+
+    suffix = 2
+    while True:
+        archive_path = f'images/{safe_directory}/{safe_base_name}_{suffix}{extension}'
+        if archive_path not in used_paths:
+            used_paths.add(archive_path)
+            return archive_path
+        suffix += 1
 
 
 class ProductCharacteristicInline(admin.TabularInline):
@@ -503,7 +552,7 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
         'allow_order_on_request',
         'created_at',
     )
-    list_filter = ('category', 'is_active', 'tags')
+    list_filter = ('category__section', 'category', 'is_active', 'tags')
     search_fields = ('name', 'sku', 'description')
     prepopulated_fields = {'slug': ('name',)}
     inlines = (
@@ -764,7 +813,7 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
     image_preview.short_description = 'Превью'
 
     def get_queryset(self, request):
-        return super().get_queryset(request).select_related('category', 'product_description').prefetch_related(
+        return super().get_queryset(request).select_related('category', 'category__section', 'product_description').prefetch_related(
             'tags',
             'variants',
             'characteristics',
@@ -802,17 +851,20 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
         """
         Экспортирует выбранные товары (или все, если ничего не выбрано) в ZIP архив:
         - CSV файл с данными товаров
-        - Папка images/ со всеми изображениями
+        - Папка images/ с отдельной папкой на каждый товар
         """
         # Если ничего не выбрано, экспортируем все активные товары
         if not queryset.exists():
-            products = Product.objects.filter(is_active=True).select_related('category').prefetch_related(
+            products = Product.objects.filter(is_active=True).select_related('category', 'category__section').prefetch_related(
                 'characteristics', 'variants', 'images', 'tags'
             )
         else:
-            products = queryset.select_related('category').prefetch_related(
+            products = queryset.select_related('category', 'category__section').prefetch_related(
                 'characteristics', 'variants', 'images', 'tags'
             )
+
+        ordered_products = list(products.order_by('category__section__name', 'category__name', 'name', 'pk'))
+        product_directories = _build_product_archive_directories(ordered_products)
 
         # Создаём ZIP архив в памяти
         zip_buffer = io.BytesIO()
@@ -831,11 +883,10 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
                 'Характеристики',
             ])
 
-            # Собираем изображения
-            media_root = settings.MEDIA_ROOT
-            images_added = set()  # Чтобы не дублировать одинаковые файлы
+            used_archive_paths = set()
+            images_count = 0
 
-            for product in products.order_by('category__name', 'name'):
+            for product in ordered_products:
                 # Собираем характеристики в строку
                 characteristics = []
                 for char in product.characteristics.all().order_by('name'):
@@ -852,35 +903,53 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
                     characteristics_str,
                 ])
 
+                product_directory = product_directories[product.pk]
+
                 # Добавляем основное изображение товара
                 if product.image:
                     image_path = product.image.path
-                    if os.path.exists(image_path) and image_path not in images_added:
-                        # Имя файла в архиве: images/product_slug_main.jpg
-                        archive_name = f'images/{product.slug}_main{os.path.splitext(image_path)[1]}'
+                    if os.path.exists(image_path):
+                        archive_name = _build_unique_archive_path(
+                            product_directory,
+                            'main',
+                            os.path.splitext(image_path)[1],
+                            used_archive_paths,
+                        )
                         zip_file.write(image_path, archive_name)
-                        images_added.add(image_path)
+                        images_count += 1
 
                 # Добавляем изображения вариантов
                 for variant in product.variants.all():
                     if variant.image:
                         variant_image_path = variant.image.path
-                        if os.path.exists(variant_image_path) and variant_image_path not in images_added:
-                            # Имя файла: images/product_slug_variant_variantname.jpg
-                            safe_variant_name = variant.name.replace('/', '_').replace('\\', '_')
-                            archive_name = f'images/{product.slug}_variant_{safe_variant_name}{os.path.splitext(variant_image_path)[1]}'
+                        if os.path.exists(variant_image_path):
+                            safe_variant_name = _sanitize_archive_component(
+                                variant.name,
+                                variant.sku or f'variant-{variant.pk}',
+                            )
+                            archive_name = _build_unique_archive_path(
+                                product_directory,
+                                f'variant_{safe_variant_name}',
+                                os.path.splitext(variant_image_path)[1],
+                                used_archive_paths,
+                            )
                             zip_file.write(variant_image_path, archive_name)
-                            images_added.add(variant_image_path)
+                            images_count += 1
 
                 # Добавляем дополнительные изображения товара
-                for product_image in product.images.all().order_by('order', 'id'):
+                for index, product_image in enumerate(product.images.all().order_by('order', 'id'), start=1):
                     if product_image.image:
                         extra_image_path = product_image.image.path
-                        if os.path.exists(extra_image_path) and extra_image_path not in images_added:
-                            # Имя файла: images/product_slug_extra_N.jpg
-                            archive_name = f'images/{product.slug}_extra_{product_image.order}{os.path.splitext(extra_image_path)[1]}'
+                        if os.path.exists(extra_image_path):
+                            extra_suffix = product_image.order or index
+                            archive_name = _build_unique_archive_path(
+                                product_directory,
+                                f'extra_{extra_suffix}',
+                                os.path.splitext(extra_image_path)[1],
+                                used_archive_paths,
+                            )
                             zip_file.write(extra_image_path, archive_name)
-                            images_added.add(extra_image_path)
+                            images_count += 1
 
             # Добавляем CSV файл в архив
             csv_content = csv_buffer.getvalue().encode('utf-8-sig')  # UTF-8 BOM для Excel
@@ -895,8 +964,7 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         response['Content-Length'] = len(zip_buffer.getvalue())
 
-        products_count = products.count()
-        images_count = len(images_added)
+        products_count = len(ordered_products)
         self.message_user(
             request,
             f'Экспорт завершён: {products_count} товаров, {images_count} изображений. Файл скачивается...',

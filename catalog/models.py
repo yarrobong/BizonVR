@@ -1111,6 +1111,15 @@ class ProductBundle(models.Model):
     def get_absolute_url(self):
         return reverse('catalog:bundle_detail', kwargs={'slug': self.slug})
 
+    def get_display_image(self):
+        """Главное фото набора, а если его нет — фото первого товара из состава."""
+        if self.image:
+            return self.image
+        for item in self.items.all():
+            if item.product.image:
+                return item.product.image
+        return None
+
     @property
     def total_price(self):
         """Сумма цен всех позиций набора (со скидкой −5%)."""
