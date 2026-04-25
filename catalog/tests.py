@@ -1463,6 +1463,39 @@ class CatalogSectionFilterTest(TestCase):
         self.assertEqual(list(response.context['products']), [])
         self.assertEqual([bundle.slug for bundle in response.context['bundles']], [self.bundle.slug])
 
+    def test_bundles_category_card_uses_bundle_image_before_first_product_image(self):
+        media_root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, media_root, True)
+        png_bytes = (
+            b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01'
+            b'\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDAT\x08\xd7c\xf8\xff\xff?'
+            b'\x00\x05\xfe\x02\xfeA\xd9\x89\xc9\x00\x00\x00\x00IEND\xaeB`\x82'
+        )
+
+        with override_settings(
+            MEDIA_ROOT=media_root,
+            STORAGES={
+                'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+                'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+            },
+        ):
+            self.attractions_product.image = SimpleUploadedFile('product-card.png', png_bytes, content_type='image/png')
+            self.attractions_product.save(update_fields=['image'])
+            self.bundle.image = SimpleUploadedFile('bundle-card.png', png_bytes, content_type='image/png')
+            self.bundle.save(update_fields=['image'])
+
+            response = self.client.get(
+                reverse('catalog:product_list'),
+                {'category': self.bundle_category.slug},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode('utf-8')
+        card_start = html.index(f'id="bundle-{self.bundle.pk}"')
+        card_html = html[card_start:html.index('</article>', card_start)]
+        self.assertIn('/media/bundles/bundle-card', card_html)
+        self.assertNotIn('/media/products/product-card', card_html)
+
     def test_tags_in_filters_are_limited_by_selected_category(self):
         """При выбранной категории показываются только теги, у которых есть товары в этой категории (чтобы не вести в пустой каталог)."""
         # Только в VR-категории есть товар с tag_vr; в PC-категории — с tag_pc
@@ -4313,6 +4346,180 @@ class AdminRestoreSecurityTest(TestCase):
         temp_file.close()
         self.addCleanup(lambda: os.path.exists(temp_file.name) and os.remove(temp_file.name))
         return temp_file.name
+
+
+@override_settings(
+    STORAGES={
+        'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+        'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+    }
+)
+class AdminProductExportTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.media_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.media_dir.cleanup)
+        self.media_override = override_settings(MEDIA_ROOT=self.media_dir.name)
+        self.media_override.enable()
+        self.addCleanup(self.media_override.disable)
+
+        self.admin_user = User.objects.create_superuser(
+            username='catalog-export-admin',
+            email='catalog-export-admin@example.com',
+            password='secret123',
+        )
+        self.client.force_login(self.admin_user)
+
+        self.section_vr = CatalogSection.objects.create(name='VR решения', slug='vr-solutions-admin')
+        self.section_attr = CatalogSection.objects.create(name='VR аттракционы', slug='vr-attractions-admin')
+        self.category_vr = Category.objects.create(
+            name='Шлемы',
+            slug='helmets-admin',
+            section=self.section_vr,
+        )
+        self.category_attr = Category.objects.create(
+            name='Аттракционы',
+            slug='attractions-admin',
+            section=self.section_attr,
+        )
+
+    def _png_file(self, name='image.png'):
+        return SimpleUploadedFile(
+            name,
+            (
+                b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01'
+                b'\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDAT\x08\xd7c\xf8\xff\xff?'
+                b'\x00\x05\xfe\x02\xfeA\xd9\x89\xc9\x00\x00\x00\x00IEND\xaeB`\x82'
+            ),
+            content_type='image/png',
+        )
+
+    def _post_export_action(self, *products):
+        return self.client.post(
+            reverse('admin:catalog_product_changelist'),
+            {
+                'action': 'export_catalog_with_images',
+                '_selected_action': [str(product.pk) for product in products],
+                'index': 0,
+                'select_across': 0,
+            },
+        )
+
+    def test_product_admin_changelist_filters_by_catalog_section(self):
+        vr_product = Product.objects.create(
+            category=self.category_vr,
+            name='Quest 3',
+            slug='quest-3-admin-filter',
+            price=Decimal('100.00'),
+            is_active=True,
+        )
+        attr_product = Product.objects.create(
+            category=self.category_attr,
+            name='VR Арена',
+            slug='vr-arena-admin-filter',
+            price=Decimal('200.00'),
+            is_active=True,
+        )
+
+        response = self.client.get(
+            reverse('admin:catalog_product_changelist'),
+            {'category__section__id__exact': str(self.section_vr.pk)},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        result_slugs = list(response.context['cl'].queryset.values_list('slug', flat=True))
+        self.assertEqual(result_slugs, [vr_product.slug])
+        self.assertNotIn(attr_product.slug, result_slugs)
+
+    def test_export_catalog_with_images_groups_images_inside_product_folder(self):
+        product = Product.objects.create(
+            category=self.category_vr,
+            name='Quest 3 Комплект',
+            slug='quest-3-export',
+            price=Decimal('123.00'),
+            is_active=True,
+            image=self._png_file('main.png'),
+        )
+        ProductVariant.objects.create(
+            product=product,
+            name='128 GB / White',
+            sku='VAR-128',
+            image=self._png_file('variant.png'),
+            order=10,
+        )
+        ProductImage.objects.create(
+            product=product,
+            image=self._png_file('gallery.png'),
+            order=5,
+        )
+
+        response = self._post_export_action(product)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/zip')
+
+        with zipfile.ZipFile(BytesIO(response.content), 'r') as archive:
+            names = set(archive.namelist())
+
+        self.assertIn('catalog_export.csv', names)
+        self.assertIn('images/Quest 3 Комплект/main.png', names)
+        self.assertIn('images/Quest 3 Комплект/variant_128 GB _ White.png', names)
+        self.assertIn('images/Quest 3 Комплект/extra_5.png', names)
+
+    def test_export_catalog_with_images_keeps_separate_product_folders_for_shared_source_file(self):
+        first_product = Product.objects.create(
+            category=self.category_vr,
+            name='Shared Image One',
+            slug='shared-image-one',
+            price=Decimal('100.00'),
+            is_active=True,
+            image=self._png_file('shared-source.png'),
+        )
+        second_product = Product.objects.create(
+            category=self.category_vr,
+            name='Shared Image Two',
+            slug='shared-image-two',
+            price=Decimal('100.00'),
+            is_active=True,
+        )
+        second_product.image = first_product.image.name
+        second_product.save(update_fields=['image'])
+
+        response = self._post_export_action(first_product, second_product)
+
+        self.assertEqual(response.status_code, 200)
+        with zipfile.ZipFile(BytesIO(response.content), 'r') as archive:
+            names = set(archive.namelist())
+
+        self.assertIn('images/Shared Image One/main.png', names)
+        self.assertIn('images/Shared Image Two/main.png', names)
+
+    def test_export_catalog_with_images_adds_slug_suffix_for_duplicate_product_names(self):
+        first_product = Product.objects.create(
+            category=self.category_vr,
+            name='Одинаковое имя',
+            slug='duplicate-name-one',
+            price=Decimal('100.00'),
+            is_active=True,
+            image=self._png_file('duplicate-one.png'),
+        )
+        second_product = Product.objects.create(
+            category=self.category_vr,
+            name='Одинаковое имя',
+            slug='duplicate-name-two',
+            price=Decimal('100.00'),
+            is_active=True,
+            image=self._png_file('duplicate-two.png'),
+        )
+
+        response = self._post_export_action(first_product, second_product)
+
+        self.assertEqual(response.status_code, 200)
+        with zipfile.ZipFile(BytesIO(response.content), 'r') as archive:
+            names = set(archive.namelist())
+
+        self.assertIn('images/Одинаковое имя/main.png', names)
+        self.assertIn('images/Одинаковое имя (duplicate-name-two)/main.png', names)
 
 
 class CatalogJsonImportServiceTest(TestCase):
