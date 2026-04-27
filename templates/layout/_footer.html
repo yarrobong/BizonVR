@@ -17,7 +17,7 @@
           <h4>Каталог</h4>
           <ul>
             {% for section in catalog_sections|slice:":3" %}
-              <li><a href="{% url 'catalog:product_list' %}?section={{ section.slug }}">{{ section.name }}</a></li>
+              <li><a href="{% url 'catalog:product_list' %}{% filter_url_section section %}">{{ section.name }}</a></li>
             {% empty %}
               <li><a href="{% url 'catalog:product_list' %}">Все товары</a></li>
             {% endfor %}

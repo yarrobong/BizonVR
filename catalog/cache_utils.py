@@ -4,7 +4,7 @@ from django.conf import settings
 from django.core.cache import cache
 from django.db.models import Min
 
-from .models import CatalogSection, Product, ProductTag
+from .models import CatalogSection, Product, ProductBundle, ProductTag
 
 _CACHE_TTL = 300
 
@@ -13,7 +13,9 @@ CACHE_KEY_CITIES = 'catalog:menu:cities'
 CACHE_KEY_CATEGORY_PREVIEWS = 'catalog:menu:category_previews'
 CACHE_KEY_PRODUCT_TAGS = 'catalog:product_tags'
 CACHE_KEY_ACTIVE_CATEGORY_IDS = 'catalog:active_category_ids'
+CACHE_KEY_ACTIVE_BUNDLE_CATEGORY_IDS = 'catalog:active_bundle_category_ids'
 CACHE_KEY_HOME_CATEGORY_BG_MAP = 'catalog:home:category_bg_map'
+CACHE_KEY_SECTION_LANDING_CATEGORIES = 'catalog:menu:section_landing_categories'
 
 
 def get_catalog_sections():
@@ -94,6 +96,39 @@ def get_home_category_backgrounds():
     return category_bg_map
 
 
+def get_active_bundle_category_ids():
+    """Bundle-категории, в которых есть опубликованные наборы."""
+    category_ids = cache.get(CACHE_KEY_ACTIVE_BUNDLE_CATEGORY_IDS)
+    if category_ids is None:
+        category_ids = list(
+            ProductBundle.objects
+            .filter(category__isnull=False)
+            .values_list('category_id', flat=True)
+            .distinct()
+        )
+        cache.set(CACHE_KEY_ACTIVE_BUNDLE_CATEGORY_IDS, category_ids, _CACHE_TTL)
+    return category_ids
+
+
+def get_catalog_section_landing_categories():
+    """Для bundle-only разделов возвращает slug единственной bundle-категории."""
+    section_map = cache.get(CACHE_KEY_SECTION_LANDING_CATEGORIES)
+    if section_map is None:
+        active_product_ids = set(get_active_category_ids())
+        active_bundle_ids = set(get_active_bundle_category_ids())
+        section_map = {}
+        for section in get_catalog_sections():
+            visible_categories = [
+                category
+                for category in section.categories.all()
+                if category.pk in active_product_ids or category.pk in active_bundle_ids
+            ]
+            if len(visible_categories) == 1 and visible_categories[0].is_bundles_category:
+                section_map[section.slug] = visible_categories[0].slug
+        cache.set(CACHE_KEY_SECTION_LANDING_CATEGORIES, section_map, _CACHE_TTL)
+    return section_map
+
+
 def invalidate_catalog_cache():
     """Сброс кэша каталога при изменении в админке."""
     cache.delete_many([
@@ -102,5 +137,7 @@ def invalidate_catalog_cache():
         CACHE_KEY_CATEGORY_PREVIEWS,
         CACHE_KEY_PRODUCT_TAGS,
         CACHE_KEY_ACTIVE_CATEGORY_IDS,
+        CACHE_KEY_ACTIVE_BUNDLE_CATEGORY_IDS,
         CACHE_KEY_HOME_CATEGORY_BG_MAP,
+        CACHE_KEY_SECTION_LANDING_CATEGORIES,
     ])

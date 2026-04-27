@@ -4,7 +4,11 @@ from datetime import date
 
 from django.conf import settings
 
-from .cache_utils import get_catalog_category_previews, get_catalog_sections
+from .cache_utils import (
+    get_catalog_category_previews,
+    get_catalog_section_landing_categories,
+    get_catalog_sections,
+)
 from .cart_services import get_cart_items, get_favorite_product_ids
 
 
@@ -37,6 +41,7 @@ def catalog_menu(request):
     sections = get_catalog_sections()
     result = {'catalog_sections': sections}
     result['catalog_category_previews'] = get_catalog_category_previews()
+    result['catalog_section_landing_categories'] = get_catalog_section_landing_categories()
 
     favorite_product_ids = get_favorite_product_ids(request)
     items = get_cart_items(request)

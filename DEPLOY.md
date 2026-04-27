@@ -198,15 +198,20 @@ sudo certbot --nginx -d bizon-business.ru -d www.bizon-business.ru
 
 ```bash
 cd /opt/BizonVR
-sudo git pull
+git restore --source=HEAD --worktree --staged static/css/tailwind.css
+sudo git pull --ff-only
 .venv/bin/pip install -r requirements.txt
-npm install
-npm run build:css
 .venv/bin/python scripts/check_single_db_contract.py
 .venv/bin/python manage.py migrate
 .venv/bin/python manage.py collectstatic --noinput
 sudo systemctl restart bizonvr
 sudo systemctl reload nginx
+```
+
+При повторном деплое не нужно пересобирать `static/css/tailwind.css` на сервере: этот файл уже хранится в репозитории и должен приезжать через `git pull`. Если вы всё же вручную запускали `npm run build:css` на сервере, перед следующим `git pull` верните файл к состоянию коммита:
+
+```bash
+git restore --source=HEAD --worktree --staged static/css/tailwind.css
 ```
 
 Если вместе с обновлением вы включали редирект со старого домена, после `nginx reload` проверьте:

@@ -25,10 +25,9 @@
 
 ```bash
 cd /opt/BizonVR
-sudo git pull
+git restore --source=HEAD --worktree --staged static/css/tailwind.css
+sudo git pull --ff-only
 .venv/bin/pip install -r requirements.txt
-npm install
-npm run build:css
 .venv/bin/python scripts/check_single_db_contract.py
 .venv/bin/python manage.py migrate
 .venv/bin/python manage.py collectstatic --noinput
@@ -38,15 +37,16 @@ sudo systemctl reload nginx
 
 ## Что делает каждая команда
 
-- `sudo git pull` — подтягивает последние изменения из репозитория.
+- `git restore --source=HEAD --worktree --staged static/css/tailwind.css` — убирает локальный diff у скомпилированного Tailwind-файла, чтобы `git pull` не упёрся в конфликт.
+- `sudo git pull --ff-only` — подтягивает последние изменения из репозитория без merge-коммита.
 - `.venv/bin/pip install -r requirements.txt` — обновляет Python-зависимости, если они поменялись.
-- `npm install` — подтягивает frontend-зависимости, если они изменились.
-- `npm run build:css` — пересобирает Tailwind/CSS.
 - `.venv/bin/python scripts/check_single_db_contract.py` — проверяет, что проект всё ещё работает только с одной PostgreSQL БД.
 - `.venv/bin/python manage.py migrate` — применяет новые миграции.
-- `.venv/bin/python manage.py collectstatic --noinput` — собирает статику в `staticfiles/`.
+- `.venv/bin/python manage.py collectstatic --noinput` — собирает статику в `staticfiles/` из уже закоммиченных файлов репозитория.
 - `sudo systemctl restart bizonvr` — перезапускает Gunicorn/Django.
 - `sudo systemctl reload nginx` — перечитывает конфигурацию Nginx без полного рестарта.
+
+`static/css/tailwind.css` хранится в репозитории и участвует в `collectstatic`, поэтому при обычном повторном деплое не нужно пересобирать Tailwind на сервере. Если CSS менялся, его нужно собрать локально перед коммитом и закоммитить вместе с остальными изменениями.
 
 ## Если менялся только Python-код
 
@@ -54,11 +54,45 @@ sudo systemctl reload nginx
 
 ```bash
 cd /opt/BizonVR
-sudo git pull
+git restore --source=HEAD --worktree --staged static/css/tailwind.css
+sudo git pull --ff-only
 .venv/bin/python manage.py migrate
 .venv/bin/python manage.py collectstatic --noinput
 sudo systemctl restart bizonvr
 ```
+
+## Если всё же нужно пересобрать Tailwind на сервере
+
+Это редкий сценарий. Используйте его только если вы осознанно проверяете локально незафиксированный CSS-артефакт или временно чините окружение.
+
+```bash
+cd /opt/BizonVR
+npm install
+npm run build:css
+.venv/bin/python manage.py collectstatic --noinput
+git restore --source=HEAD --worktree --staged static/css/tailwind.css
+```
+
+Последний `git restore` возвращает рабочее дерево к состоянию коммита, чтобы следующий `git pull` не падал на `static/css/tailwind.css`.
+
+## Если `git pull` уже упёрся в `static/css/tailwind.css`
+
+Если сервер уже успел собрать CSS и теперь `git pull` пишет `Your local changes to the following files would be overwritten by checkout: static/css/tailwind.css`, выполните:
+
+```bash
+cd /opt/BizonVR
+git restore --source=HEAD --worktree --staged static/css/tailwind.css
+sudo git pull --ff-only
+```
+
+Если хотите сначала сохранить текущую серверную версию файла как подстраховку, вместо `git restore` можно сделать:
+
+```bash
+git stash push -m "server tailwind before pull" -- static/css/tailwind.css
+sudo git pull --ff-only
+```
+
+Не делайте потом `git stash pop` для этого файла, если ваша цель была просто подтянуть свежий код: вы вернёте старый сгенерированный CSS поверх новой версии из репозитория.
 
 ## Если менялся `.env`
 
