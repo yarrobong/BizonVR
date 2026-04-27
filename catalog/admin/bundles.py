@@ -60,14 +60,15 @@ class ProductBundleItemInlineForProduct(admin.TabularInline):
 
 @admin.register(ProductBundle)
 class ProductBundleAdmin(admin.ModelAdmin):
-    list_display = ('name', 'slug', 'items_count', 'bundle_total')
+    list_display = ('name', 'category', 'slug', 'items_count', 'bundle_total')
     inlines = (ProductBundleItemInline,)
     search_fields = ('name',)
+    list_filter = ('category',)
     prepopulated_fields = {'slug': ('name',)}
     readonly_fields = ('image_preview',)
     fieldsets = (
         (None, {
-            'fields': ('name', 'slug', 'description', 'image_preview', 'image'),
+            'fields': ('category', 'name', 'slug', 'description', 'image_preview', 'image'),
         }),
     )
 

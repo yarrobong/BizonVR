@@ -1518,17 +1518,27 @@ class CatalogImportAnalyzer:
                 existing_obj = ProductBundle.objects.filter(slug=slug).first()
             else:
                 existing_obj = ProductBundle.objects.filter(name=source_snapshot.get('name', '')).first() if source_snapshot.get('name') else None
+            category_obj, category_dependency = self._direct_or_bound_object(
+                raw_value=source_snapshot.get('category_id'),
+                source_map=self.bindings['categories'],
+                model_class=Category,
+                field_name='category_id',
+                conflict_meta={},
+            )
             incoming_values = {
+                'category': category_obj,
                 'name': source_snapshot.get('name', ''),
                 'slug': slug,
                 'description': source_snapshot.get('description', ''),
             }
             current_values = {
+                'category': make_direct_target_reference(existing_obj.category_id) if existing_obj and existing_obj.category_id else None,
                 'name': existing_obj.name,
                 'slug': existing_obj.slug,
                 'description': existing_obj.description,
             } if existing_obj else {}
             field_meta = {
+                'category': self._metadata('Категория набора', 'relation'),
                 'name': self._metadata('Название', 'text'),
                 'slug': self._metadata('Slug', 'slug'),
                 'description': self._metadata('Описание', 'textarea'),
@@ -1571,7 +1581,8 @@ class CatalogImportAnalyzer:
                 resolutions=resolutions,
                 target_obj=existing_obj,
                 update_values=effective_updates,
-                create_kwargs={'slug': slug} if slug else {'name': source_snapshot.get('name', '')},
+                create_kwargs={'category': category_obj, 'slug': slug} if slug else {'category': category_obj, 'name': source_snapshot.get('name', '')},
+                dependency_fields={'category': category_dependency} if category_dependency else {},
                 conflict_kind='field_mismatch' if field_conflicts else '',
             )
             self._sync_binding(
