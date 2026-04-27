@@ -108,6 +108,27 @@ def filter_url_pagination(context, page):
     return '?' + qs
 
 
+@register.simple_tag(takes_context=True)
+def filter_url_section(context, section):
+    """Query string для перехода в раздел с учётом bundle-only landing категории."""
+    request = context.get('request')
+    section_slug = getattr(section, 'slug', str(section))
+    landing_categories = context.get('catalog_section_landing_categories') or {}
+    category_slug = landing_categories.get(section_slug, '')
+    if not request:
+        if category_slug:
+            return f'?section={section_slug}&category={category_slug}'
+        return f'?section={section_slug}'
+    return _apply_query_updates(
+        request,
+        updates={
+            'section': section_slug,
+            'category': category_slug,
+        },
+        empty_result='',
+    )
+
+
 @register.filter
 def price_format(value):
     """Форматирует число как цену: 100000 -> 100 000, 100000.5 -> 100 000,50."""

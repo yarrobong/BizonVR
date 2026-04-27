@@ -1321,6 +1321,7 @@ class CatalogSectionFilterTest(TestCase):
     """Фильтры каталога должны быть ограничены выбранным разделом."""
 
     def setUp(self):
+        cache.clear()
         self.client = Client()
         self.section_vr = CatalogSection.objects.create(name='VR', slug='vr-filter')
         self.section_pc = CatalogSection.objects.create(name='PC', slug='pc-filter')
@@ -1423,7 +1424,7 @@ class CatalogSectionFilterTest(TestCase):
         self.assertEqual(response.context['current_section_effective'], self.section_attractions.slug)
         self.assertEqual(
             {product.slug for product in response.context['products']},
-            {self.attractions_product.slug},
+            {self.attractions_product.slug, self.bundle_helper_product.slug},
         )
 
         request = RequestFactory().get(
@@ -1450,7 +1451,7 @@ class CatalogSectionFilterTest(TestCase):
         self.assertEqual(response.context['current_section_effective'], '')
         self.assertEqual(
             {product.slug for product in response.context['products']},
-            {self.attractions_product.slug, 'quest-3', 'laptop'},
+            {self.attractions_product.slug, self.bundle_helper_product.slug, 'quest-3', 'laptop'},
         )
 
     def test_malformed_category_slug_recovers_valid_prefix_and_sanitizes_links(self):
@@ -1467,7 +1468,7 @@ class CatalogSectionFilterTest(TestCase):
         self.assertEqual(response.context['current_section_effective'], self.section_attractions.slug)
         self.assertEqual(
             {product.slug for product in response.context['products']},
-            {self.attractions_product.slug},
+            {self.attractions_product.slug, self.bundle_helper_product.slug},
         )
 
         request = RequestFactory().get(
@@ -1497,6 +1498,35 @@ class CatalogSectionFilterTest(TestCase):
         self.assertEqual([bundle.slug for bundle in response.context['bundles']], [self.bundle.slug])
         self.assertEqual(response.context['category_result_counts'][self.bundle_category.pk], 1)
         self.assertEqual(response.context['category_result_counts'][self.bundle_category_secondary.pk], 1)
+
+    def test_bundle_only_section_links_resolve_to_bundle_category(self):
+        bundle_only_section = CatalogSection.objects.create(name='Bundle only', slug='bundle-only')
+        bundle_only_category = Category.objects.create(
+            name='Bundle only category',
+            slug='bundle-only-category',
+            section=bundle_only_section,
+            is_bundles_category=True,
+        )
+        bundle_only = ProductBundle.objects.create(
+            category=bundle_only_category,
+            name='Bundle only set',
+            slug='bundle-only-set',
+        )
+        ProductBundleItem.objects.create(bundle=bundle_only, product=self.vr_product, quantity=1)
+        ProductBundleItem.objects.create(bundle=bundle_only, product=self.attractions_product, quantity=1)
+        request = RequestFactory().get(
+            reverse('catalog:product_list'),
+            {'section': bundle_only_section.slug},
+        )
+        request.user = AnonymousUser()
+        request.session = {}
+        context = catalog_menu(request)
+        built_url = Template('{% load catalog_tags %}{% url "catalog:product_list" %}{% filter_url_section section %}').render(
+            Context({'request': request, 'section': bundle_only_section, **context})
+        )
+
+        self.assertIn(f'section={bundle_only_section.slug}', built_url)
+        self.assertIn(f'category={bundle_only_category.slug}', built_url)
 
     def test_bundles_category_card_uses_bundle_image_before_first_product_image(self):
         media_root = tempfile.mkdtemp()
@@ -2941,6 +2971,38 @@ class CatalogMenuCacheTest(TestCase):
         self.assertEqual(
             context['catalog_category_previews'][self.category.pk],
             '/media/products/quest-3.webp',
+        )
+
+    def test_catalog_menu_exposes_bundle_only_section_landing_category(self):
+        bundle_section = CatalogSection.objects.create(name='Bundle only', slug='bundle-only')
+        bundle_category = Category.objects.create(
+            name='Комплекты',
+            slug='bundle-only-category',
+            section=bundle_section,
+            is_bundles_category=True,
+        )
+        bundle = ProductBundle.objects.create(
+            category=bundle_category,
+            name='Bundle landing',
+            slug='bundle-landing',
+        )
+        ProductBundleItem.objects.create(bundle=bundle, product=Product.objects.get(slug='quest-3-cache'), quantity=1)
+        ProductBundleItem.objects.create(
+            bundle=bundle,
+            product=Product.objects.create(
+                category=self.category,
+                name='Quest 3 Extra',
+                slug='quest-3-cache-extra',
+                price=120,
+                is_active=True,
+            ),
+            quantity=1,
+        )
+
+        context = catalog_menu(self._build_request('/catalog/'))
+        self.assertEqual(
+            context['catalog_section_landing_categories'][bundle_section.slug],
+            bundle_category.slug,
         )
 
 

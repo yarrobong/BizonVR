@@ -24,7 +24,7 @@
       {% for section in catalog_sections %}
       {% if section.slug in section_slugs_to_show %}
       <button type="button"
-              @click="pendingSection = '{{ section.slug|escapejs }}'; pendingCategory = ''; showAllSectionCategories = false; $dispatch('filters-dirty')"
+              @click="pendingSection = '{{ section.slug|escapejs }}'; pendingCategory = '{{ catalog_section_landing_categories|get_item:section.slug|default:''|escapejs }}'; showAllSectionCategories = false; $dispatch('filters-dirty')"
               class="filter-option w-full text-left">
         <span class="filter-option-main">{{ section.name }}</span>
         {% if section_result_counts|get_item:section.slug %}
@@ -41,7 +41,7 @@
       <template x-if="pendingSection === '{{ section.slug|escapejs }}'">
         <div class="space-y-2">
           <button type="button"
-                  @click="pendingCategory = ''; showAllSectionCategories = false; $dispatch('filters-dirty')"
+                  @click="pendingCategory = '{{ catalog_section_landing_categories|get_item:section.slug|default:''|escapejs }}'; showAllSectionCategories = false; $dispatch('filters-dirty')"
                   class="filter-option filter-selected w-full text-left">
             <span class="filter-option-main">{{ section.name }}</span>
             {% if section_result_counts|get_item:section.slug %}
@@ -151,7 +151,7 @@
     <div class="space-y-1">
       {% for section in catalog_sections %}
       {% if section.slug in section_slugs_to_show %}
-      <a href="{% url 'catalog:product_list' %}{% filter_url section=section.slug category=filter_clear %}"
+      <a href="{% url 'catalog:product_list' %}{% filter_url_section section %}"
          class="filter-option w-full text-left">
         <span class="filter-option-main">{{ section.name }}</span>
         {% if section_result_counts|get_item:section.slug %}
@@ -168,7 +168,7 @@
       {% if section.slug in section_slugs_to_show %}
       {% if section.slug == current_section_effective %}
       <div class="space-y-2">
-        <a href="{% url 'catalog:product_list' %}{% filter_url section=section.slug category=filter_clear %}"
+        <a href="{% url 'catalog:product_list' %}{% filter_url_section section %}"
            class="filter-option filter-selected w-full text-left">
           <span class="filter-option-main">{{ section.name }}</span>
           {% if section_result_counts|get_item:section.slug %}

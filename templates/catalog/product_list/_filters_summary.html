@@ -21,7 +21,7 @@
       <div class="space-y-1">
         {% for section in catalog_sections %}
         {% if section.slug in section_slugs_to_show %}
-        <a href="{% url 'catalog:product_list' %}{% filter_url section=section.slug category=filter_clear %}"
+        <a href="{% url 'catalog:product_list' %}{% filter_url_section section %}"
            class="filter-option filter-option--compact w-full text-left">
           <span class="filter-option-main">{{ section.name }}</span>
           {% if section_result_counts|get_item:section.slug %}
@@ -35,7 +35,7 @@
       {% for section in catalog_sections %}
       {% if section.slug in section_slugs_to_show and section.slug == current_section_effective %}
       <div class="space-y-1.5">
-        <a href="{% url 'catalog:product_list' %}{% filter_url section=section.slug category=filter_clear %}"
+        <a href="{% url 'catalog:product_list' %}{% filter_url_section section %}"
            class="filter-option filter-option--compact filter-selected w-full text-left">
           <span class="filter-option-main">{{ section.name }}</span>
           {% if section_result_counts|get_item:section.slug %}
