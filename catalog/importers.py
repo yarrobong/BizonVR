@@ -710,16 +710,17 @@ class CatalogDataImporter:
 
     def _import_bundles(self) -> None:
         for item in self._collection('product_bundles'):
+            category = self._resolve_bundle_category(item)
             slug = (item.get('slug') or '').strip()
             if slug:
                 queryset = ProductBundle.objects.filter(slug=slug)
-                create_kwargs = {'slug': slug}
+                create_kwargs = {'slug': slug, 'category': category}
             else:
                 name = self._require_key(item, 'name', 'product_bundles')
                 queryset = ProductBundle.objects.filter(name=name)
-                create_kwargs = {'name': name}
+                create_kwargs = {'name': name, 'category': category}
 
-            update_values = {}
+            update_values = {'category': category}
             for field_name in ('name', 'description'):
                 if field_name in item:
                     update_values[field_name] = item.get(field_name) or ''
@@ -737,6 +738,28 @@ class CatalogDataImporter:
                 update_values=update_values,
             )
             self._remember(self.bundles_by_source_id, item, obj)
+
+    def _resolve_bundle_category(self, item: dict[str, Any]) -> Category:
+        raw_category_id = item.get('category_id')
+        if raw_category_id not in (None, ''):
+            category = self._resolve_reference(
+                self.categories_by_source_id,
+                raw_category_id,
+                model_class=Category,
+                field_name='product_bundles.category_id',
+            )
+            if not category:
+                raise CatalogImportError('Набор товаров ссылается на неизвестную bundle-категорию.')
+            if not category.is_bundles_category:
+                raise CatalogImportError('Для набора можно использовать только категорию с is_bundles_category=True.')
+            return category
+
+        bundle_categories = list(Category.objects.filter(is_bundles_category=True).order_by('id')[:2])
+        if len(bundle_categories) == 1:
+            return bundle_categories[0]
+        raise CatalogImportError(
+            'Для импорта наборов нужно передать category_id или иметь ровно одну bundle-категорию в каталоге.'
+        )
 
     def _import_bundle_items(self) -> None:
         for item in self._collection('product_bundle_items'):

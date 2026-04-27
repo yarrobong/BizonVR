@@ -225,7 +225,7 @@ class Command(BaseCommand):
         bundles = ProductBundle.objects.all()
         backup_data['models']['product_bundles'] = self.serialize_model(
             bundles,
-            ['id', 'name', 'slug', 'description', 'image'],
+            ['id', 'category_id', 'name', 'slug', 'description', 'image'],
         )
 
         # 12. Позиции наборов

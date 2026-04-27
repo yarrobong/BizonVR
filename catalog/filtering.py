@@ -2,10 +2,27 @@ from __future__ import annotations
 
 from collections import OrderedDict, defaultdict
 from dataclasses import dataclass
+from decimal import Decimal
 import re
 from typing import Iterable
 
-from django.db.models import Count, Max, Min, Prefetch, Q, Sum, Value
+from django.db.models import (
+    Case,
+    Count,
+    DecimalField,
+    ExpressionWrapper,
+    F,
+    IntegerField,
+    Max,
+    Min,
+    OuterRef,
+    Prefetch,
+    Q,
+    Subquery,
+    Sum,
+    Value,
+    When,
+)
 from django.db.models.functions import Coalesce
 from django.utils.functional import cached_property
 
@@ -23,6 +40,8 @@ from .models import (
     CharacteristicValueAlias,
     FilterConfig,
     Product,
+    ProductBundleItem,
+    ProductBundle,
     ProductCharacteristic,
     ProductTag,
 )
@@ -126,6 +145,9 @@ def sanitize_catalog_query_params(request, params=None):
 class CatalogFilterService:
     """Сборка каталоговых фильтров с поддержкой managed-конфига и legacy fallback."""
 
+    BUNDLE_DISCOUNT_FACTOR = Decimal('0.95')
+    MONEY_FIELD = DecimalField(max_digits=14, decimal_places=2)
+
     def __init__(self, request):
         self.request = request
 
@@ -135,6 +157,32 @@ class CatalogFilterService:
         ).annotate(
             catalog_effective_price=build_catalog_effective_price_expression(
                 stock_total_field='catalog_stock_total',
+            ),
+        )
+
+    def annotate_bundle_pricing(self, qs):
+        bundle_item_total = ExpressionWrapper(
+            Coalesce(F('product__price'), Value(0, output_field=self.MONEY_FIELD))
+            * Value(self.BUNDLE_DISCOUNT_FACTOR)
+            * Coalesce(F('quantity'), Value(0)),
+            output_field=self.MONEY_FIELD,
+        )
+        bundle_total_subquery = (
+            ProductBundleItem.objects
+            .filter(bundle=OuterRef('pk'))
+            .values('bundle')
+            .annotate(
+                total=Coalesce(
+                    Sum(bundle_item_total, output_field=self.MONEY_FIELD),
+                    Value(0, output_field=self.MONEY_FIELD),
+                )
+            )
+            .values('total')[:1]
+        )
+        return qs.annotate(
+            bundle_total_price=Coalesce(
+                Subquery(bundle_total_subquery, output_field=self.MONEY_FIELD),
+                Value(0, output_field=self.MONEY_FIELD),
             ),
         )
 
@@ -180,6 +228,10 @@ class CatalogFilterService:
         if not self.current_section_slug:
             return None
         return getattr(self.request, '_catalog_resolved_query_section', None)
+
+    @cached_property
+    def is_bundle_mode(self) -> bool:
+        return bool(self.selected_category and getattr(self.selected_category, 'is_bundles_category', False))
 
     @cached_property
     def effective_section_slug(self) -> str:
@@ -332,7 +384,7 @@ class CatalogFilterService:
     def active_characteristic_filter_map(self):
         return OrderedDict((item.canonical_key, item) for item in self.active_characteristic_filters)
 
-    def build_filter_queryset(
+    def build_product_filter_queryset(
         self,
         *,
         ignore_category=False,
@@ -401,12 +453,112 @@ class CatalogFilterService:
 
         return qs.distinct()
 
+    def build_bundle_filter_queryset(
+        self,
+        *,
+        ignore_category=False,
+        ignore_section=False,
+        ignore_tag=False,
+        ignore_price=False,
+        include_char_filters=False,
+        exclude_char_key=None,
+    ):
+        qs = (
+            ProductBundle.objects
+            .select_related('category')
+            .annotate(items_count=Count('items', distinct=True))
+            .filter(items_count__gte=2)
+            .order_by()
+        )
+        search_query = (self.request.GET.get('q') or '').strip()
+        if search_query:
+            qs = qs.filter(
+                Q(name__icontains=search_query)
+                | Q(description__icontains=search_query)
+                | Q(items__product__name__icontains=search_query)
+                | Q(items__product__description__icontains=search_query)
+            )
+
+        if self.current_category_slug and not ignore_category:
+            if self.is_bundle_mode:
+                qs = qs.filter(category__slug=self.current_category_slug)
+            else:
+                qs = qs.none()
+
+        if self.current_section_slug and not ignore_section:
+            qs = qs.filter(category__section__slug=self.current_section_slug)
+
+        tag_slug = (self.request.GET.get('tag') or '').strip()
+        if tag_slug and not ignore_tag:
+            qs = qs.filter(items__product__tags__slug=tag_slug)
+
+        qs = self.annotate_bundle_pricing(qs)
+
+        if not ignore_price:
+            price_min = self.request.GET.get('price_min')
+            if price_min:
+                try:
+                    qs = qs.filter(bundle_total_price__gte=float(price_min))
+                except (TypeError, ValueError):
+                    pass
+            price_max = self.request.GET.get('price_max')
+            if price_max:
+                try:
+                    qs = qs.filter(bundle_total_price__lte=float(price_max))
+                except (TypeError, ValueError):
+                    pass
+
+        if include_char_filters:
+            for active_filter in self.active_characteristic_filters:
+                if exclude_char_key and active_filter.canonical_key == exclude_char_key:
+                    continue
+                if active_filter.definition is not None:
+                    allowed_values = set(
+                        self._get_alias_bundle(active_filter.definition)['normalized_to_raws'].get(
+                            active_filter.selected_value,
+                            set(),
+                        )
+                    )
+                    allowed_values.add(active_filter.selected_value)
+                    qs = qs.filter(
+                        items__product__characteristics__name__in=get_definition_source_names(active_filter.definition),
+                        items__product__characteristics__value__in=allowed_values,
+                    )
+                else:
+                    qs = qs.filter(
+                        items__product__characteristics__name=active_filter.canonical_key,
+                        items__product__characteristics__value=active_filter.selected_value,
+                    )
+
+        return qs.distinct()
+
+    def build_filter_queryset(
+        self,
+        *,
+        ignore_category=False,
+        ignore_section=False,
+        ignore_tag=False,
+        ignore_price=False,
+        include_char_filters=False,
+        exclude_char_key=None,
+    ):
+        builder = self.build_bundle_filter_queryset if self.is_bundle_mode else self.build_product_filter_queryset
+        return builder(
+            ignore_category=ignore_category,
+            ignore_section=ignore_section,
+            ignore_tag=ignore_tag,
+            ignore_price=ignore_price,
+            include_char_filters=include_char_filters,
+            exclude_char_key=exclude_char_key,
+        )
+
     def get_filter_base_queryset(self):
         return self.build_filter_queryset()
 
     def get_price_bounds(self):
         price_bounds_qs = self.build_filter_queryset(include_char_filters=True, ignore_price=True)
-        price_agg = price_bounds_qs.aggregate(min_p=Min('catalog_effective_price'), max_p=Max('catalog_effective_price'))
+        price_field = 'bundle_total_price' if self.is_bundle_mode else 'catalog_effective_price'
+        price_agg = price_bounds_qs.aggregate(min_p=Min(price_field), max_p=Max(price_field))
         return {
             'filter_price_min': int(price_agg['min_p']) if price_agg['min_p'] is not None else 0,
             'filter_price_max': int(price_agg['max_p']) if price_agg['max_p'] is not None else 0,
@@ -414,14 +566,57 @@ class CatalogFilterService:
 
     def get_product_tags(self):
         tags_base_qs = self.build_filter_queryset(ignore_tag=True, include_char_filters=True)
-        tags_qs = (
-            ProductTag.objects
-            .filter(products__in=tags_base_qs)
-            .annotate(result_count=Count('products', filter=Q(products__in=tags_base_qs), distinct=True))
-            .order_by('order', 'name')
-            .distinct()
-        )
+        if self.is_bundle_mode:
+            tags_qs = (
+                ProductTag.objects
+                .filter(products__bundle_items__bundle__in=tags_base_qs)
+                .annotate(
+                    result_count=Count(
+                        'products__bundle_items__bundle',
+                        filter=Q(products__bundle_items__bundle__in=tags_base_qs),
+                        distinct=True,
+                    )
+                )
+                .order_by('order', 'name')
+                .distinct()
+            )
+        else:
+            tags_qs = (
+                ProductTag.objects
+                .filter(products__in=tags_base_qs)
+                .annotate(result_count=Count('products', filter=Q(products__in=tags_base_qs), distinct=True))
+                .order_by('order', 'name')
+                .distinct()
+            )
         return list(tags_qs)
+
+    def get_category_and_section_counts(self):
+        category_result_counts = {}
+        section_result_counts = {}
+
+        product_counts_qs = (
+            self.build_product_filter_queryset(ignore_category=True, ignore_section=True, include_char_filters=True)
+            .values('category_id', 'category__section__slug')
+            .annotate(total=Count('id', distinct=True))
+        )
+        bundle_counts_qs = (
+            self.build_bundle_filter_queryset(ignore_category=True, ignore_section=True, include_char_filters=True)
+            .values('category_id', 'category__section__slug')
+            .annotate(total=Count('id', distinct=True))
+        )
+
+        for counts_qs in (product_counts_qs, bundle_counts_qs):
+            for row in counts_qs:
+                category_id = row['category_id']
+                section_slug = row['category__section__slug']
+                category_result_counts[category_id] = category_result_counts.get(category_id, 0) + row['total']
+                if section_slug:
+                    section_result_counts[section_slug] = section_result_counts.get(section_slug, 0) + row['total']
+
+        return {
+            'category_result_counts': category_result_counts,
+            'section_result_counts': section_result_counts,
+        }
 
     @cached_property
     def scope_filter_config(self):
@@ -480,19 +675,30 @@ class CatalogFilterService:
     def _build_managed_filter_group(self, config):
         definition = config.characteristic_definition
         scoped_qs = self.build_filter_queryset(include_char_filters=True, exclude_char_key=definition.code)
-        rows = (
-            ProductCharacteristic.objects
-            .filter(product__in=scoped_qs, name__in=get_definition_source_names(definition))
-            .values_list('product_id', 'value')
-            .distinct()
-        )
+        if self.is_bundle_mode:
+            rows = (
+                ProductCharacteristic.objects
+                .filter(
+                    product__bundle_items__bundle__in=scoped_qs,
+                    name__in=get_definition_source_names(definition),
+                )
+                .values_list('product__bundle_items__bundle_id', 'value')
+                .distinct()
+            )
+        else:
+            rows = (
+                ProductCharacteristic.objects
+                .filter(product__in=scoped_qs, name__in=get_definition_source_names(definition))
+                .values_list('product_id', 'value')
+                .distinct()
+            )
 
         alias_bundle = self._get_alias_bundle(definition)
         buckets = {}
         selected_filter = self.active_characteristic_filter_map.get(definition.code)
         selected_value = selected_filter.selected_value if selected_filter else ''
 
-        for product_id, raw_value in rows:
+        for entity_id, raw_value in rows:
             raw_value = (raw_value or '').strip()
             if not raw_value:
                 continue
@@ -503,11 +709,11 @@ class CatalogFilterService:
                 {
                     'value': normalized_value,
                     'label': display_value,
-                    'count_product_ids': set(),
+                    'count_ids': set(),
                     'sort_order': alias_bundle['normalized_to_sort'].get(normalized_value),
                 },
             )
-            bucket['count_product_ids'].add(product_id)
+            bucket['count_ids'].add(entity_id)
             alias_sort = alias_bundle['normalized_to_sort'].get(normalized_value)
             if alias_sort is not None:
                 bucket['sort_order'] = alias_sort if bucket['sort_order'] is None else min(bucket['sort_order'], alias_sort)
@@ -518,7 +724,7 @@ class CatalogFilterService:
                 {
                     'value': bucket['value'],
                     'label': bucket['label'],
-                    'count': len(bucket['count_product_ids']),
+                    'count': len(bucket['count_ids']),
                     'selected': selected_value == bucket['value'],
                     'sort_order': bucket['sort_order'],
                     'typed_sort_key': get_typed_value_sort_key(bucket['label'], sorting_mode=definition.sorting_mode),
@@ -565,13 +771,22 @@ class CatalogFilterService:
 
     def _build_legacy_filter_group(self, char_name: str):
         scoped_qs = self.build_filter_queryset(include_char_filters=True, exclude_char_key=char_name)
-        value_rows = list(
-            ProductCharacteristic.objects
-            .filter(product__in=scoped_qs, name=char_name)
-            .values('value')
-            .annotate(total=Count('product', distinct=True))
-            .order_by('value')
-        )
+        if self.is_bundle_mode:
+            value_rows = list(
+                ProductCharacteristic.objects
+                .filter(product__bundle_items__bundle__in=scoped_qs, name=char_name)
+                .values('value')
+                .annotate(total=Count('product__bundle_items__bundle', distinct=True))
+                .order_by('value')
+            )
+        else:
+            value_rows = list(
+                ProductCharacteristic.objects
+                .filter(product__in=scoped_qs, name=char_name)
+                .values('value')
+                .annotate(total=Count('product', distinct=True))
+                .order_by('value')
+            )
         if len(value_rows) <= 1:
             return None
 
@@ -641,13 +856,22 @@ class CatalogFilterService:
 
     def _build_legacy_characteristics(self):
         if not self.active_characteristic_filter_map:
-            rows = (
-                ProductCharacteristic.objects
-                .filter(product__in=self.get_filter_base_queryset())
-                .values('name', 'value')
-                .annotate(total=Count('product', distinct=True))
-                .order_by('name', 'value')
-            )
+            if self.is_bundle_mode:
+                rows = (
+                    ProductCharacteristic.objects
+                    .filter(product__bundle_items__bundle__in=self.get_filter_base_queryset())
+                    .values('name', 'value')
+                    .annotate(total=Count('product__bundle_items__bundle', distinct=True))
+                    .order_by('name', 'value')
+                )
+            else:
+                rows = (
+                    ProductCharacteristic.objects
+                    .filter(product__in=self.get_filter_base_queryset())
+                    .values('name', 'value')
+                    .annotate(total=Count('product', distinct=True))
+                    .order_by('name', 'value')
+                )
             rows_by_name = OrderedDict()
             for row in rows:
                 rows_by_name.setdefault(row['name'], []).append(row)
@@ -659,19 +883,44 @@ class CatalogFilterService:
                     groups.append(group)
             return groups
 
-        char_names = (
-            ProductCharacteristic.objects
-            .filter(product__in=self.get_filter_base_queryset())
-            .values_list('name', flat=True)
-            .distinct()
-            .order_by('name')
-        )
+        if self.is_bundle_mode:
+            char_names = (
+                ProductCharacteristic.objects
+                .filter(product__bundle_items__bundle__in=self.get_filter_base_queryset())
+                .values_list('name', flat=True)
+                .distinct()
+                .order_by('name')
+            )
+        else:
+            char_names = (
+                ProductCharacteristic.objects
+                .filter(product__in=self.get_filter_base_queryset())
+                .values_list('name', flat=True)
+                .distinct()
+                .order_by('name')
+            )
         groups = []
         for char_name in char_names:
             group = self._build_legacy_filter_group(char_name)
             if group is not None:
                 groups.append(group)
         return groups
+
+    def annotate_bundle_relevance(self, qs, search_query: str):
+        return qs.annotate(
+            relevance=Max(
+                Case(
+                    When(name__istartswith=search_query, then=Value(4)),
+                    When(name__icontains=search_query, then=Value(3)),
+                    When(description__icontains=search_query, then=Value(2)),
+                    When(items__product__name__istartswith=search_query, then=Value(2)),
+                    When(items__product__name__icontains=search_query, then=Value(1)),
+                    When(items__product__description__icontains=search_query, then=Value(1)),
+                    default=Value(0),
+                    output_field=IntegerField(),
+                )
+            )
+        )
 
     def _build_managed_characteristics(self, configs):
         groups = []

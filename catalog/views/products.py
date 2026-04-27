@@ -43,8 +43,14 @@ class BundleDetailView(DetailView):
     slug_url_kwarg = 'slug'
     template_name = 'catalog/bundle_detail.html'
 
+    def get(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        ProductBundle.objects.filter(pk=self.object.pk).update(views_count=F('views_count') + 1)
+        context = self.get_context_data(object=self.object)
+        return self.render_to_response(context)
+
     def get_queryset(self):
-        return ProductBundle.objects.prefetch_related(
+        return ProductBundle.objects.select_related('category').prefetch_related(
             'items__product', 'items__product__images'
         ).annotate(items_count=Count('items')).filter(items_count__gte=2)
 
@@ -58,7 +64,7 @@ class BundleDetailView(DetailView):
         context['total_without_discount'] = float(bundle.total_price_without_discount)
         context['total_with_discount'] = float(bundle.total_price)
         context['discount_total'] = context['total_without_discount'] - context['total_with_discount']
-        context['bundles_category'] = Category.objects.filter(is_bundles_category=True).first()
+        context['bundles_category'] = bundle.category
         return context
 
 
@@ -135,7 +141,7 @@ class ProductListView(ListView):
         ignore_price=False,
         include_char_filters=False,
         exclude_char_key=None,
-    ):
+        ):
         return self.filter_service.build_filter_queryset(
             ignore_category=ignore_category,
             ignore_section=ignore_section,
@@ -145,20 +151,17 @@ class ProductListView(ListView):
             exclude_char_key=exclude_char_key,
         )
 
-    def get_queryset(self):
-        qs = (
-            self._build_filter_queryset(include_char_filters=True)
-            .select_related('category')
-            .prefetch_related('tags', 'variants')
-            .order_by('-created_at')
-        )
+    def _get_resolved_sort(self):
         sort = self.request.GET.get('sort', 'newest')
         search_query = (self.request.GET.get('q') or '').strip()
         if search_query and sort == 'newest':
             sort = 'relevance'
+        return sort, search_query
 
+    def _sort_product_queryset(self, qs):
+        sort, search_query = self._get_resolved_sort()
         if sort == 'relevance' and search_query:
-            qs = qs.annotate(
+            return qs.annotate(
                 relevance=Case(
                     When(name__istartswith=search_query, then=Value(3)),
                     When(name__icontains=search_query, then=Value(2)),
@@ -167,24 +170,45 @@ class ProductListView(ListView):
                     output_field=IntegerField(),
                 )
             ).order_by('-relevance', '-created_at')
-        elif sort == 'price_asc':
-            qs = qs.order_by(F('catalog_effective_price').asc(nulls_last=True), '-created_at')
-        elif sort == 'price_desc':
-            qs = qs.order_by(F('catalog_effective_price').desc(nulls_last=True), '-created_at')
-        elif sort == 'name':
-            qs = qs.order_by('name')
-        elif sort == 'popularity':
-            qs = qs.annotate(
+        if sort == 'price_asc':
+            return qs.order_by(F('catalog_effective_price').asc(nulls_last=True), '-created_at')
+        if sort == 'price_desc':
+            return qs.order_by(F('catalog_effective_price').desc(nulls_last=True), '-created_at')
+        if sort == 'name':
+            return qs.order_by('name')
+        if sort == 'popularity':
+            return qs.annotate(
                 favorited_count=Count('favorited_by', distinct=True),
                 cart_count=Count('cart_items', distinct=True),
             ).annotate(
                 popularity=F('views_count') + F('favorited_count') * 5 + F('cart_count') * 3
             ).order_by('-popularity', '-created_at')
-        elif sort == 'relevance' and not search_query:
-            qs = qs.order_by('-created_at')
-        else:
-            qs = qs.order_by('-created_at')
-        return qs
+        return qs.order_by('-created_at')
+
+    def _sort_bundle_queryset(self, qs):
+        sort, search_query = self._get_resolved_sort()
+        if sort == 'relevance' and search_query:
+            return self.filter_service.annotate_bundle_relevance(qs, search_query).order_by('-relevance', '-created_at')
+        if sort == 'price_asc':
+            return qs.order_by(F('bundle_total_price').asc(), '-created_at')
+        if sort == 'price_desc':
+            return qs.order_by(F('bundle_total_price').desc(), '-created_at')
+        if sort == 'name':
+            return qs.order_by('name', '-created_at')
+        if sort == 'popularity':
+            return qs.order_by('-views_count', '-created_at')
+        return qs.order_by('-created_at')
+
+    def get_queryset(self):
+        if self.filter_service.is_bundle_mode:
+            return Product.objects.none()
+
+        qs = (
+            self._build_filter_queryset(include_char_filters=True)
+            .select_related('category')
+            .prefetch_related('tags', 'variants')
+        )
+        return self._sort_product_queryset(qs)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -197,7 +221,7 @@ class ProductListView(ListView):
         context['catalog_sections'] = get_catalog_sections()
         category_ids_with_products = set(get_active_category_ids())
         bundle_category_ids = set(
-            Category.objects.filter(is_bundles_category=True).values_list('pk', flat=True)
+            ProductBundle.objects.filter(category__isnull=False).values_list('category_id', flat=True).distinct()
         )
         context['category_ids_to_show'] = list(category_ids_with_products | bundle_category_ids)
         section_slugs_to_show = set()
@@ -208,10 +232,7 @@ class ProductListView(ListView):
                     break
         context['section_slugs_to_show'] = list(section_slugs_to_show)
         context['current_tag'] = (self.request.GET.get('tag') or '').strip()
-        sort = self.request.GET.get('sort', 'newest')
-        search_query = (self.request.GET.get('q') or '').strip()
-        if search_query and sort == 'newest':
-            sort = 'relevance'
+        sort, search_query = self._get_resolved_sort()
         context['current_sort'] = sort
         context['search_query'] = (self.request.GET.get('q') or '').strip()
         context['price_min_filter'] = self.request.GET.get('price_min', '')
@@ -222,17 +243,16 @@ class ProductListView(ListView):
         effective_section_slug = self.filter_service.effective_section_slug
         context['current_section_effective'] = effective_section_slug
         context['current_category_obj'] = selected_category
-        context['is_bundles_category'] = bool(
-            selected_category and getattr(selected_category, 'is_bundles_category', False)
-        )
+        context['is_bundles_category'] = self.filter_service.is_bundle_mode
 
         if context['is_bundles_category']:
             bundles_qs = (
-                ProductBundle.objects
-                .prefetch_related('items__product', 'items__product__images')
-                .annotate(items_count=Count('items'))
-                .filter(items_count__gte=2)
-                .order_by('name')
+                self._sort_bundle_queryset(
+                    self._build_filter_queryset(include_char_filters=True)
+                )
+                .prefetch_related(
+                    'items__product', 'items__product__images'
+                )
             )
             paginator = Paginator(bundles_qs, self.paginate_by)
             page_number = self.request.GET.get('page', 1)
@@ -252,21 +272,7 @@ class ProductListView(ListView):
         context['product_tags'] = self.filter_service.get_product_tags()
         characteristics_context = self.filter_service.get_characteristics_context()
         context.update(characteristics_context)
-
-        category_counts_qs = (
-            self._build_filter_queryset(ignore_category=True, ignore_section=True, include_char_filters=True)
-            .values('category_id', 'category__section__slug')
-            .annotate(total=Count('id', distinct=True))
-        )
-        category_result_counts = {}
-        section_result_counts = {}
-        for row in category_counts_qs:
-            category_result_counts[row['category_id']] = row['total']
-            section_slug = row['category__section__slug']
-            if section_slug:
-                section_result_counts[section_slug] = section_result_counts.get(section_slug, 0) + row['total']
-        context['category_result_counts'] = category_result_counts
-        context['section_result_counts'] = section_result_counts
+        context.update(self.filter_service.get_category_and_section_counts())
 
         section_name_map = {s.slug: s.name for s in context['catalog_sections']}
         category_name_map = {}

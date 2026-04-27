@@ -301,7 +301,13 @@ class VariantGalleryAndCatalogCardsTest(TestCase):
         )
 
     def test_bundle_detail_mobile_search_uses_full_navigation(self):
+        bundle_category = Category.objects.create(
+            name='Комплекты',
+            slug='variant-bundles',
+            is_bundles_category=True,
+        )
         bundle = ProductBundle.objects.create(
+            category=bundle_category,
             name='Quest Pro Pack',
             slug='quest-pro-pack',
         )
@@ -1335,6 +1341,12 @@ class CatalogSectionFilterTest(TestCase):
             section=self.section_attractions,
             is_bundles_category=True,
         )
+        self.bundle_category_secondary = Category.objects.create(
+            name='Комплекты для VR клубов',
+            slug='komplekty-dlya-vr-clubs',
+            section=self.section_attractions,
+            is_bundles_category=True,
+        )
         self.tag_vr = ProductTag.objects.create(name='VR тег', slug='vr-tag', order=1)
         self.tag_pc = ProductTag.objects.create(name='PC тег', slug='pc-tag', order=2)
 
@@ -1359,12 +1371,33 @@ class CatalogSectionFilterTest(TestCase):
             price=300,
             is_active=True,
         )
+        self.bundle_helper_product = Product.objects.create(
+            category=self.cat_attractions,
+            name='Arena Sensors',
+            slug='arena-sensors',
+            price=600,
+            is_active=True,
+        )
         self.bundle = ProductBundle.objects.create(
+            category=self.bundle_category,
             name='Arena комплект',
             slug='arena-bundle',
         )
         ProductBundleItem.objects.create(bundle=self.bundle, product=self.attractions_product, quantity=1)
         ProductBundleItem.objects.create(bundle=self.bundle, product=self.vr_product, quantity=1)
+        self.secondary_bundle = ProductBundle.objects.create(
+            category=self.bundle_category_secondary,
+            name='Club комплект',
+            slug='club-bundle',
+        )
+        ProductBundleItem.objects.create(bundle=self.secondary_bundle, product=self.bundle_helper_product, quantity=1)
+        ProductBundleItem.objects.create(bundle=self.secondary_bundle, product=self.pc_product, quantity=1)
+
+        ProductCharacteristic.objects.create(product=self.vr_product, name='Память', value='128 GB')
+        ProductCharacteristic.objects.create(product=self.vr_product, name='Совместимость', value='Quest 3')
+        ProductCharacteristic.objects.create(product=self.attractions_product, name='Тип', value='Арена')
+        ProductCharacteristic.objects.create(product=self.bundle_helper_product, name='Память', value='256 ГБ')
+        ProductCharacteristic.objects.create(product=self.bundle_helper_product, name='Совместимость', value='Pico 4')
 
         self.vr_product.tags.add(self.tag_vr)
         self.pc_product.tags.add(self.tag_pc)
@@ -1462,6 +1495,8 @@ class CatalogSectionFilterTest(TestCase):
         self.assertEqual(response.context['results_count'], 1)
         self.assertEqual(list(response.context['products']), [])
         self.assertEqual([bundle.slug for bundle in response.context['bundles']], [self.bundle.slug])
+        self.assertEqual(response.context['category_result_counts'][self.bundle_category.pk], 1)
+        self.assertEqual(response.context['category_result_counts'][self.bundle_category_secondary.pk], 1)
 
     def test_bundles_category_card_uses_bundle_image_before_first_product_image(self):
         media_root = tempfile.mkdtemp()
@@ -1504,6 +1539,99 @@ class CatalogSectionFilterTest(TestCase):
         tag_slugs = {tag.slug for tag in resp.context['product_tags']}
         self.assertIn(self.tag_vr.slug, tag_slugs)
         self.assertNotIn(self.tag_pc.slug, tag_slugs)
+
+    def test_bundle_category_page_shows_only_bundles_from_selected_category(self):
+        response = self.client.get(
+            reverse('catalog:product_list'),
+            {'category': self.bundle_category.slug},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([bundle.slug for bundle in response.context['bundles']], [self.bundle.slug])
+
+    def test_bundle_price_bounds_and_price_filter_use_bundle_totals(self):
+        bundle_same_category = ProductBundle.objects.create(
+            category=self.bundle_category,
+            name='Arena комплект Plus',
+            slug='arena-bundle-plus',
+        )
+        ProductBundleItem.objects.create(bundle=bundle_same_category, product=self.bundle_helper_product, quantity=1)
+        ProductBundleItem.objects.create(bundle=bundle_same_category, product=self.attractions_product, quantity=1)
+
+        response = self.client.get(
+            reverse('catalog:product_list'),
+            {'category': self.bundle_category.slug, 'price_min': '700', 'price_max': '900'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['filter_price_min'], 380)
+        self.assertEqual(response.context['filter_price_max'], 855)
+        self.assertEqual([bundle.slug for bundle in response.context['bundles']], [bundle_same_category.slug])
+
+    def test_bundle_tag_filter_matches_any_bundle_item(self):
+        response = self.client.get(
+            reverse('catalog:product_list'),
+            {'category': self.bundle_category.slug, 'tag': self.tag_vr.slug},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([bundle.slug for bundle in response.context['bundles']], [self.bundle.slug])
+        tag_slugs = {tag.slug for tag in response.context['product_tags']}
+        self.assertIn(self.tag_vr.slug, tag_slugs)
+        self.assertNotIn(self.tag_pc.slug, tag_slugs)
+
+    def test_bundle_search_matches_included_product_name(self):
+        response = self.client.get(
+            reverse('catalog:product_list'),
+            {'category': self.bundle_category.slug, 'q': 'Quest 3'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([bundle.slug for bundle in response.context['bundles']], [self.bundle.slug])
+
+    def test_bundle_legacy_characteristic_counts_are_distinct_by_bundle(self):
+        bundle_same_category = ProductBundle.objects.create(
+            category=self.bundle_category,
+            name='Arena комплект Memory',
+            slug='arena-bundle-memory',
+        )
+        ProductBundleItem.objects.create(bundle=bundle_same_category, product=self.vr_product, quantity=1)
+        ProductBundleItem.objects.create(bundle=bundle_same_category, product=self.bundle_helper_product, quantity=1)
+
+        response = self.client.get(
+            reverse('catalog:product_list'),
+            {'category': self.bundle_category.slug},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        memory_group = next(
+            group for group in response.context['characteristic_filters']
+            if group['label'] == 'Память'
+        )
+        option_counts = {option['label']: option['count'] for option in memory_group['options']}
+        self.assertEqual(option_counts['128 GB'], 2)
+        self.assertEqual(option_counts['256 ГБ'], 1)
+
+    def test_bundle_popularity_sort_uses_bundle_views(self):
+        bundle_same_category = ProductBundle.objects.create(
+            category=self.bundle_category,
+            name='Arena комплект Popular',
+            slug='arena-bundle-popular',
+        )
+        ProductBundleItem.objects.create(bundle=bundle_same_category, product=self.bundle_helper_product, quantity=1)
+        ProductBundleItem.objects.create(bundle=bundle_same_category, product=self.attractions_product, quantity=1)
+
+        self.client.get(reverse('catalog:bundle_detail', kwargs={'slug': bundle_same_category.slug}))
+        response = self.client.get(
+            reverse('catalog:product_list'),
+            {'category': self.bundle_category.slug, 'sort': 'popularity'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [bundle.slug for bundle in response.context['bundles']],
+            [bundle_same_category.slug, self.bundle.slug],
+        )
 
 
 class CatalogPriceBoundsTest(TestCase):
@@ -1739,6 +1867,57 @@ class CatalogManagedFiltersTest(TestCase):
         self.assertEqual(legacy_resp.status_code, 200)
         legacy_slugs = {product.slug for product in legacy_resp.context['products']}
         self.assertEqual(legacy_slugs, {self.white_128.slug, self.black_128.slug})
+
+    def test_managed_bundle_filters_normalize_values_and_count_distinct_bundles(self):
+        memory, _, _ = self._create_managed_definitions()
+        bundle_category = Category.objects.create(
+            name='Комплекты VR',
+            slug='managed-vr-bundles',
+            section=self.section,
+            is_bundles_category=True,
+        )
+        FilterConfig.objects.create(
+            category=bundle_category,
+            characteristic_definition=memory,
+            is_visible=True,
+            is_quick_filter=True,
+            sort_order=10,
+            hide_single_value=False,
+        )
+
+        bundle_one = ProductBundle.objects.create(
+            category=bundle_category,
+            name='Bundle One',
+            slug='bundle-one',
+        )
+        ProductBundleItem.objects.create(bundle=bundle_one, product=self.white_128, quantity=1)
+        ProductBundleItem.objects.create(bundle=bundle_one, product=self.accessory, quantity=1)
+
+        bundle_two = ProductBundle.objects.create(
+            category=bundle_category,
+            name='Bundle Two',
+            slug='bundle-two',
+        )
+        ProductBundleItem.objects.create(bundle=bundle_two, product=self.black_128, quantity=1)
+        ProductBundleItem.objects.create(bundle=bundle_two, product=self.black_256, quantity=1)
+
+        resp = self.client.get(reverse('catalog:product_list'), {'category': bundle_category.slug})
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.context['is_bundles_category'])
+        memory_group = resp.context['characteristic_filters'][0]
+        option_counts = {option['label']: option['count'] for option in memory_group['options']}
+        self.assertEqual(option_counts['128 ГБ'], 2)
+        self.assertEqual(option_counts['256 ГБ'], 1)
+
+        filtered_resp = self.client.get(
+            reverse('catalog:product_list'),
+            {'category': bundle_category.slug, 'char_memory': '128-memory'},
+        )
+        self.assertEqual(filtered_resp.status_code, 200)
+        self.assertEqual(
+            {bundle.slug for bundle in filtered_resp.context['bundles']},
+            {bundle_one.slug, bundle_two.slug},
+        )
 
     def test_legacy_fallback_keeps_auto_filters_and_raw_char_filter(self):
         resp = self.client.get(
@@ -3053,6 +3232,11 @@ class CartTest(TestCase):
             is_active=True,
         )
         self.bundle = ProductBundle.objects.create(
+            category=Category.objects.create(
+                name='Тестовые комплекты',
+                slug='cart-test-bundles',
+                is_bundles_category=True,
+            ),
             name='Набор для теста',
             slug='test-bundle',
         )
@@ -3428,7 +3612,14 @@ class ProductRecommendationsTest(TestCase):
         ProductCharacteristic.objects.create(product=self.bundle_item, name='Тип', value='Защита')
         ProductCharacteristic.objects.create(product=self.bundle_item, name='Совместимость', value='Quest 3')
 
-        bundle = ProductBundle.objects.create(name='Bundle')
+        bundle = ProductBundle.objects.create(
+            category=Category.objects.create(
+                name='Рекомендованные комплекты',
+                slug='recommendation-bundles',
+                is_bundles_category=True,
+            ),
+            name='Bundle',
+        )
         ProductBundleItem.objects.create(bundle=bundle, product=self.current, quantity=1)
         ProductBundleItem.objects.create(bundle=bundle, product=self.bundle_item, quantity=1)
 
@@ -4110,7 +4301,14 @@ class SeoFilesTest(TestCase):
             price=100,
             is_active=True,
         )
-        bundle = ProductBundle.objects.create(name='SEO Bundle')
+        bundle = ProductBundle.objects.create(
+            category=Category.objects.create(
+                name='SEO Комплекты',
+                slug='seo-bundles',
+                is_bundles_category=True,
+            ),
+            name='SEO Bundle',
+        )
 
         resp = self.client.get('/sitemap.xml')
         self.assertEqual(resp.status_code, 200)
@@ -4558,6 +4756,13 @@ class CatalogJsonImportServiceTest(TestCase):
                 ],
                 'categories': [
                     {'id': 1, 'name': 'Шлемы', 'slug': 'headsets', 'section_id': 1},
+                    {
+                        'id': 2,
+                        'name': 'Комплекты',
+                        'slug': 'bundle-headsets',
+                        'section_id': 1,
+                        'is_bundles_category': True,
+                    },
                 ],
                 'product_tags': [
                     {'id': 1, 'name': 'Новинка', 'slug': 'new', 'order': 1},
@@ -4593,7 +4798,13 @@ class CatalogJsonImportServiceTest(TestCase):
                     },
                 ],
                 'product_bundles': [
-                    {'id': 1, 'name': 'Комплект VR', 'slug': 'vr-kit', 'description': 'Комплект'},
+                    {
+                        'id': 1,
+                        'category_id': 2,
+                        'name': 'Комплект VR',
+                        'slug': 'vr-kit',
+                        'description': 'Комплект',
+                    },
                 ],
                 'product_bundle_items': [
                     {'id': 1, 'bundle_id': 1, 'product_id': 1, 'quantity': 2},

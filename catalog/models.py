@@ -1065,6 +1065,13 @@ class FilterConfig(models.Model):
 
 class ProductBundle(models.Model):
     """Набор товаров со своей страницей (описание, изображение) и составом через ProductBundleItem."""
+    category = models.ForeignKey(
+        Category,
+        on_delete=models.PROTECT,
+        related_name='product_bundles',
+        verbose_name='Категория набора',
+        limit_choices_to={'is_bundles_category': True},
+    )
     name = models.CharField(
         'Название набора',
         max_length=200,
@@ -1090,6 +1097,13 @@ class ProductBundle(models.Model):
         null=True,
         help_text='Главное фото набора (если пусто — используется фото первого товара)',
     )
+    views_count = models.PositiveIntegerField(
+        'Просмотры',
+        default=0,
+        help_text='Счётчик просмотров страницы набора для сортировки по популярности',
+    )
+    created_at = models.DateTimeField('Создан', auto_now_add=True)
+    updated_at = models.DateTimeField('Обновлён', auto_now=True)
 
     class Meta:
         verbose_name = 'Набор товаров'
@@ -1097,6 +1111,12 @@ class ProductBundle(models.Model):
 
     def __str__(self):
         return self.name or f'Набор #{self.pk}'
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+
+        if self.category_id and not getattr(self.category, 'is_bundles_category', False):
+            raise ValidationError({'category': 'Для набора можно выбрать только bundle-категорию.'})
 
     def save(self, *args, **kwargs):
         if not self.slug:
