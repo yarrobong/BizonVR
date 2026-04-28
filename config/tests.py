@@ -140,6 +140,114 @@ class InvestLandingTests(SimpleTestCase):
         self.assertEqual(response.status_code, 404)
 
 
+class SolutionLandingTests(SimpleTestCase):
+    databases = {'default'}
+
+    def _streaming_content(self, response):
+        return b''.join(response.streaming_content)
+
+    def test_solutions_index_returns_only_published_landings(self):
+        response = self.client.get(reverse('solutions_index'))
+        html = response.content.decode('utf-8')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('VR для клуба', html)
+
+    def test_vr_club_solution_landing_root_returns_html(self):
+        response = self.client.get(reverse('solution_landing', kwargs={'slug': 'vr-dlya-kluba'}))
+        html = self._streaming_content(response).decode('utf-8')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'text/html')
+        self.assertIn('VR для клуба: оборудование, аксессуары и контент под коммерческую зону', html)
+        self.assertIn('action="/contacts/"', html)
+        self.assertIn('name="site_context"', html)
+        self.assertIn('name="site_comment"', html)
+        self.assertIn('info@bizon-business.ru', html)
+        self.assertIn('https://bizonvr.ru/solutions/vr-dlya-kluba/', html)
+        self.assertIn('img/games/Lasertag/Lasertag for Meta Quest - v2 update trailer [get.gt].mp4', html)
+        self.assertIn(
+            'data-trailer="img/trailers/Online/Pavlov Shack/Pavlov_Shack_｜_Launch_Trailer_｜_Meta_Quest_Platform_Meta_Quest_1080p.mp4"',
+            html,
+        )
+        self.assertIn(
+            'data-trailer="img/trailers/Online/Zero Caliber 2/Zero_Caliber_2_｜_Gameplay_Trailer_｜_Meta_Quest_2_+_Meta_Quest_3.mp4"',
+            html,
+        )
+        self.assertIn(
+            'data-trailer="img/trailers/Online/Warhammer 40,000 Battle Sister/Warhammer_40,000：_Battle_Sister_Official_Steam_Release_Trailer_IGN.mp4"',
+            html,
+        )
+
+    def test_vr_club_solution_landing_css_asset_is_served(self):
+        response = self.client.get('/solutions/vr-dlya-kluba/styles.css')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'text/css')
+
+    def test_vr_club_solution_landing_image_asset_is_served(self):
+        response = self.client.get('/solutions/vr-dlya-kluba/img/pico-4-ultra.webp')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'image/webp')
+
+    def test_vr_club_solution_landing_online_trailer_assets_are_served(self):
+        simple_response = self.client.get(
+            '/solutions/vr-dlya-kluba/img/trailers/Online/Pavlov%20Shack/'
+            'Pavlov_Shack_%EF%BD%9C_Launch_Trailer_%EF%BD%9C_Meta_Quest_Platform_Meta_Quest_1080p.mp4'
+        )
+        unicode_response = self.client.get(
+            '/solutions/vr-dlya-kluba/img/trailers/Online/Warhammer%2040%2C000%20Battle%20Sister/'
+            'Warhammer_40%2C000%EF%BC%9A_Battle_Sister_Official_Steam_Release_Trailer_IGN.mp4'
+        )
+        zero_caliber_response = self.client.get(
+            '/solutions/vr-dlya-kluba/img/trailers/Online/Zero%20Caliber%202/'
+            'Zero_Caliber_2_%EF%BD%9C_Gameplay_Trailer_%EF%BD%9C_Meta_Quest_2_%2B_Meta_Quest_3.mp4'
+        )
+
+        self.assertEqual(simple_response.status_code, 200)
+        self.assertEqual(simple_response['Content-Type'], 'video/mp4')
+        self.assertEqual(unicode_response.status_code, 200)
+        self.assertEqual(unicode_response['Content-Type'], 'video/mp4')
+        self.assertEqual(zero_caliber_response.status_code, 200)
+        self.assertEqual(zero_caliber_response['Content-Type'], 'video/mp4')
+
+    def test_vr_club_solution_landing_boosted_request_forces_full_redirect(self):
+        response = self.client.get(
+            reverse('solution_landing', kwargs={'slug': 'vr-dlya-kluba'}),
+            HTTP_HX_REQUEST='true',
+            HTTP_HX_BOOSTED='true',
+        )
+
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response['HX-Redirect'], reverse('solution_landing', kwargs={'slug': 'vr-dlya-kluba'}))
+
+    def test_vr_club_solution_landing_js_asset_is_served(self):
+        response = self.client.get('/solutions/vr-dlya-kluba/script.js')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('javascript', response['Content-Type'])
+
+    def test_solution_landing_unknown_slug_returns_404(self):
+        response = self.client.get('/solutions/missing-solution/')
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_vr_club_solution_landing_rejects_path_traversal(self):
+        response = self.client.get('/solutions/vr-dlya-kluba/%2E%2E/README.md')
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_sitemap_contains_solutions_hub_and_published_landing(self):
+        response = self.client.get('/sitemap.xml')
+        body = response.content.decode('utf-8')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('/solutions/', body)
+        self.assertIn('/solutions/vr-dlya-kluba/', body)
+        self.assertNotIn('/solutions/vr-dlya-kluba-draft/', body)
+
+
 @override_settings(
     STORAGES={
         'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},

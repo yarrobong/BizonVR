@@ -21,6 +21,8 @@ from .static_pages import (
     permission_denied_view,
     robots_txt_view,
     serve_media,
+    solution_landing_view,
+    solutions_index_view,
     uslugi_view,
 )
 
@@ -44,6 +46,8 @@ __all__ = [
     'sales_terms_view',
     'service_request_terms_view',
     'serve_media',
+    'solution_landing_view',
+    'solutions_index_view',
     'user_agreement_view',
     'uslugi_view',
 ]

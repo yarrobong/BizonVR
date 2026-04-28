@@ -10,6 +10,8 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 
 from catalog.models import CallbackRequest, ContactRequest, Service
+from config.solution_landings import get_solution_landing
+from config.views.solutions import build_solution_hub_cards
 
 from ..forms import CallbackForm, CompactVRForm
 from ..legal_consent import build_legal_acceptance_payload
@@ -97,6 +99,31 @@ def invest_2_view(request, path=''):
     """Альтернативный URL для standalone-инвестиционного лендинга."""
     landing_root = settings.BASE_DIR / INVEST_DIRNAME
     return _serve_public_directory_file(landing_root, path, default_file='index.html')
+
+
+def solutions_index_view(request):
+    """Индекс standalone-лендингов под /solutions/."""
+    return render(
+        request,
+        'solutions/index.html',
+        {
+            'solution_landings': build_solution_hub_cards(),
+            'hide_footer_products': True,
+        },
+    )
+
+
+def solution_landing_view(request, slug, path=''):
+    """Generic standalone-лендинг из реестра solution_landings."""
+    if request.method == 'GET' and request.headers.get('HX-Boosted') == 'true':
+        response = HttpResponse(status=204)
+        response['HX-Redirect'] = request.get_full_path()
+        return response
+
+    landing = get_solution_landing(slug)
+    if landing is None:
+        raise Http404()
+    return _serve_public_directory_file(landing.root_dir, path, default_file='index.html')
 
 
 def compact_vr_view(request):
