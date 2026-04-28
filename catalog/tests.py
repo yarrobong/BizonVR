@@ -134,6 +134,50 @@ class CatalogSearchTest(TestCase):
         self.assertEqual(len(resp.context['products']), 2)
 
 
+class CatalogSortLinksEscapingTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.section = CatalogSection.objects.create(name='VR оборудование', slug='sort-escape-vr-oborudovanie')
+        self.category = Category.objects.create(
+            name='Шлемы',
+            slug='sort-escape-vr-headsets',
+            section=self.section,
+        )
+        self.tag = ProductTag.objects.create(name='Хит', slug='sort-escape-bestseller')
+        self.product = Product.objects.create(
+            category=self.category,
+            name='Quest 3',
+            slug='sort-escape-quest-3',
+            description='VR headset',
+            price=100,
+            is_active=True,
+        )
+        self.product.tags.add(self.tag)
+
+    def test_mobile_sort_links_escape_query_ampersands(self):
+        response = self.client.get(
+            reverse('catalog:product_list'),
+            {
+                'sort': 'newest',
+                'section': self.section.slug,
+                'category': self.category.slug,
+                'tag': self.tag.slug,
+                'q': 'Quest',
+                'price_min': '50',
+                'price_max': '150',
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode('utf-8')
+        self.assertIn(
+            'href="?sort=name&amp;section=sort-escape-vr-oborudovanie&amp;category=sort-escape-vr-headsets'
+            '&amp;tag=sort-escape-bestseller&amp;q=Quest&amp;price_min=50&amp;price_max=150"',
+            html,
+        )
+        self.assertNotIn('href="?sort=name&category=sort-escape-vr-headsets&section=sort-escape-vr-oborudovanie&tag=sort-escape-bestseller&q=Quest&price_min=50&price_max=150"', html)
+
+
 @override_settings(
     STORAGES={
         'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
