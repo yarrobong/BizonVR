@@ -39,10 +39,12 @@ from config.views import (
     service_request_terms_view,
     serve_media,
     not_found_view,
+    solution_landing_view,
+    solutions_index_view,
     user_agreement_view,
     uslugi_view,
 )
-from config.sitemaps import BundleSitemap, ProductSitemap, StaticViewSitemap
+from config.sitemaps import BundleSitemap, ProductSitemap, SolutionLandingSitemap, SolutionsHubSitemap, StaticViewSitemap
 from catalog.views import vr_attractions_yml_feed_view
 
 handler403 = 'config.views.permission_denied_view'
@@ -61,6 +63,9 @@ urlpatterns = [
     re_path(r'^invest/(?P<path>.+)$', invest_view),
     path('invest-2/', invest_2_view, name='invest_2'),
     re_path(r'^invest-2/(?P<path>.+)$', invest_2_view),
+    path('solutions/', solutions_index_view, name='solutions_index'),
+    path('solutions/<slug:slug>/', solution_landing_view, name='solution_landing'),
+    path('solutions/<slug:slug>/<path:path>', solution_landing_view, name='solution_landing_asset'),
     path('uslugi/', uslugi_view, name='uslugi'),
     path('contacts/', contacts_view, name='contacts'),
     path('privacy/', privacy_view, name='privacy'),
@@ -79,7 +84,15 @@ urlpatterns = [
     path(
         'sitemap.xml',
         sitemap,
-        {'sitemaps': {'static': StaticViewSitemap, 'products': ProductSitemap, 'bundles': BundleSitemap}},
+        {
+            'sitemaps': {
+                'static': StaticViewSitemap,
+                'solutions_hub': SolutionsHubSitemap,
+                'solutions': SolutionLandingSitemap,
+                'products': ProductSitemap,
+                'bundles': BundleSitemap,
+            }
+        },
         name='django_sitemap',
     ),
 ]

@@ -2,6 +2,7 @@ from django.contrib.sitemaps import Sitemap
 from django.urls import reverse
 
 from catalog.models import Product, ProductBundle
+from config.solution_landings import get_solution_landings
 
 
 class StaticViewSitemap(Sitemap):
@@ -46,3 +47,25 @@ class BundleSitemap(Sitemap):
 
     def items(self):
         return ProductBundle.objects.all().order_by('id')
+
+
+class SolutionsHubSitemap(Sitemap):
+    changefreq = 'weekly'
+    priority = 0.75
+
+    def items(self):
+        return ['solutions_index']
+
+    def location(self, item):
+        return reverse(item)
+
+
+class SolutionLandingSitemap(Sitemap):
+    changefreq = 'weekly'
+    priority = 0.8
+
+    def items(self):
+        return get_solution_landings(include_in_sitemap=True)
+
+    def location(self, item):
+        return reverse('solution_landing', kwargs={'slug': item.slug})

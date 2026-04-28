@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}Готовые VR-решения — BizonVR{% endblock %}
+{% block description %}Подборка SEO-лендингов BizonVR по домашнему VR, клубам, аттракционам и готовым решениям под задачу.{% endblock %}
+
+{% block content %}
+<section class="mx-auto max-w-6xl px-4 py-10 md:px-6 md:py-14">
+  <div class="mx-auto max-w-3xl text-center">
+    <span class="inline-flex items-center rounded-full border border-cyan-400/30 bg-cyan-400/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em] text-cyan-200">
+      Solutions
+    </span>
+    <h1 class="mt-5 text-4xl font-black tracking-tight text-white md:text-5xl">
+      Готовые VR-страницы под реальные сценарии выбора
+    </h1>
+    <p class="mt-4 text-lg text-slate-300">
+      От домашних VR-шлемов до решений для клубов и мероприятий. Каждая страница объясняет сценарий, показывает популярные модели и ведёт в каталог или на консультацию.
+    </p>
+  </div>
+
+  <div class="mt-10 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+    {% for landing in solution_landings %}
+      <article class="overflow-hidden rounded-[2rem] border border-white/10 bg-white/5 shadow-[0_30px_80px_rgba(4,10,24,0.35)] transition-transform duration-300 hover:-translate-y-1 hover:border-cyan-300/30">
+        {% if landing.preview_url %}
+          <img src="{{ landing.preview_url }}" alt="{{ landing.title }}" class="h-52 w-full object-cover">
+        {% else %}
+          <div class="h-52 w-full bg-[radial-gradient(circle_at_top_left,_rgba(34,211,238,0.35),_transparent_55%),linear-gradient(135deg,_rgba(15,23,42,0.95),_rgba(30,41,59,0.92))]"></div>
+        {% endif %}
+        <div class="space-y-4 p-6">
+          <h2 class="text-2xl font-bold text-white">{{ landing.title }}</h2>
+          <p class="text-sm leading-6 text-slate-300">{{ landing.description }}</p>
+          <a href="{{ landing.url }}" hx-boost="false" class="inline-flex items-center gap-2 rounded-full bg-cyan-300 px-5 py-3 text-sm font-bold uppercase tracking-[0.2em] text-slate-950 transition hover:bg-cyan-200">
+            Открыть решение
+          </a>
+        </div>
+      </article>
+    {% empty %}
+      <div class="rounded-[2rem] border border-dashed border-white/15 bg-white/5 p-8 text-center text-slate-300 md:col-span-2 xl:col-span-3">
+        Витрина решений скоро появится.
+      </div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}
