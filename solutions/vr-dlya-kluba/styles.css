@@ -877,6 +877,31 @@ img {
   color: #e4efff;
 }
 
+.mr-pack-addon {
+  margin-top: 18px;
+  padding: 14px 16px;
+  border: 1px solid rgba(89, 208, 255, 0.18);
+  background: linear-gradient(135deg, rgba(89, 208, 255, 0.1), rgba(255, 255, 255, 0.03));
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
+}
+
+.mr-pack-addon span {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.mr-pack-addon strong {
+  display: block;
+  color: #eaf5ff;
+  font-size: 0.96rem;
+  line-height: 1.5;
+}
+
 .games-block + .games-block {
   margin-top: 22px;
 }
