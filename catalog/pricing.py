@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from django.db.models import Case, DecimalField, F, Q, Value, When
+from django.db.models import Case, DecimalField, ExpressionWrapper, F, Q, Value, When
 
 
 PURCHASE_MODE_STOCK = 'stock'
@@ -26,10 +26,36 @@ def get_purchase_mode_label(value):
     return PURCHASE_MODE_LABELS.get(normalize_purchase_mode(value), PURCHASE_MODE_LABELS[PURCHASE_MODE_STOCK])
 
 
-def resolve_in_stock_price(product, variant=None):
+def normalize_discount_percent(value):
+    try:
+        discount_percent = Decimal(str(value or 0))
+    except Exception:
+        return Decimal('0')
+    if discount_percent <= 0:
+        return Decimal('0')
+    if discount_percent >= 100:
+        return Decimal('100')
+    return discount_percent
+
+
+def apply_product_discount(price, product):
+    if price is None:
+        return None
+    discount_percent = normalize_discount_percent(getattr(product, 'discount_percent', 0))
+    if discount_percent <= 0:
+        return price
+    factor = (Decimal('100') - discount_percent) / Decimal('100')
+    return (Decimal(str(price)) * factor).quantize(Decimal('0.01'))
+
+
+def resolve_in_stock_base_price(product, variant=None):
     if variant is not None and getattr(variant, 'price_override', None) is not None:
         return variant.price_override
     return product.price
+
+
+def resolve_in_stock_price(product, variant=None):
+    return apply_product_discount(resolve_in_stock_base_price(product, variant), product)
 
 
 def resolve_on_request_price(product, variant=None):
@@ -39,7 +65,7 @@ def resolve_on_request_price(product, variant=None):
 
 
 def has_explicit_in_stock_price(product, variant=None):
-    return resolve_in_stock_price(product, variant) is not None
+    return resolve_in_stock_base_price(product, variant) is not None
 
 
 def has_explicit_on_request_price(product, variant=None):
@@ -78,18 +104,26 @@ def build_catalog_effective_price_expression(
     in_stock_price_field='price',
     on_request_price_field='price_on_request',
     allow_on_request_field='allow_order_on_request',
+    discount_percent_field='discount_percent',
 ):
+    money_field = DecimalField(max_digits=12, decimal_places=2)
+    discounted_in_stock_price = ExpressionWrapper(
+        F(in_stock_price_field)
+        * (Value(Decimal('100.00'), output_field=money_field) - F(discount_percent_field))
+        / Value(Decimal('100.00'), output_field=money_field),
+        output_field=money_field,
+    )
     return Case(
         When(
             Q(**{f'{stock_total_field}__gt': 0}) & Q(**{f'{in_stock_price_field}__isnull': False}),
-            then=F(in_stock_price_field),
+            then=discounted_in_stock_price,
         ),
         When(
             Q(**{allow_on_request_field: True}) & Q(**{f'{on_request_price_field}__isnull': False}),
             then=F(on_request_price_field),
         ),
         default=Value(None),
-        output_field=DecimalField(max_digits=12, decimal_places=2),
+        output_field=money_field,
     )
 
 

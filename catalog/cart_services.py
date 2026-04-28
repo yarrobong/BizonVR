@@ -12,6 +12,7 @@ from .pricing import (
     has_explicit_on_request_price,
     normalize_purchase_mode,
     resolve_catalog_effective_price,
+    resolve_in_stock_base_price,
     resolve_in_stock_price,
     resolve_on_request_price,
     resolve_public_purchase_mode,
@@ -53,16 +54,19 @@ def _float_or_none(value):
 
 
 def _cart_item_to_dict(item, product=None, variant=None):
-    """Преобразовать CartItem в dict формата сессии (включая bundle и скидку)."""
+    """Преобразовать CartItem в dict формата сессии."""
     if not hasattr(item, 'product_id'):
         return item
     p = item.product if product is None else product
     v = item.variant if variant is None else variant
     purchase_mode = normalize_purchase_mode(getattr(item, 'purchase_mode', PURCHASE_MODE_STOCK))
     display_name = f'{p.name} ({v.name})' if v else p.name
-    original_price = _float_or_none(resolve_in_stock_price(p, v))
-    price = float(item.price_override) if getattr(item, 'price_override', None) is not None else original_price
+    original_price = _float_or_none(resolve_in_stock_base_price(p, v))
     bundle = getattr(item, 'bundle', None)
+    if bundle:
+        price = original_price
+    else:
+        price = float(item.price_override) if getattr(item, 'price_override', None) is not None else original_price
     bundle_id = bundle.pk if bundle else None
     bundle_name = bundle.name if bundle else None
     image_url = (v.image.url if v and v.image else p.image.url) if p.image else ''
@@ -94,6 +98,52 @@ def _ensure_subtotal(item_dict):
     return item_dict
 
 
+def _normalize_session_bundle_prices(session_items):
+    normalized_items = []
+    changed = False
+
+    product_ids = [item.get('product_id') for item in session_items if item.get('product_id')]
+    variant_ids = [item.get('variant_id') for item in session_items if item.get('variant_id')]
+    products = Product.objects.filter(pk__in=product_ids, is_active=True).in_bulk() if product_ids else {}
+    variants = (
+        ProductVariant.objects.filter(pk__in=variant_ids, product_id__in=product_ids).select_related('product').in_bulk()
+        if variant_ids else {}
+    )
+
+    for raw_item in session_items:
+        item = dict(raw_item)
+        normalized_mode = normalize_purchase_mode(item.get('purchase_mode'))
+        if item.get('purchase_mode') != normalized_mode:
+            item['purchase_mode'] = normalized_mode
+            changed = True
+
+        if item.get('bundle_id'):
+            product = products.get(item.get('product_id'))
+            variant_id = item.get('variant_id')
+            variant = variants.get(variant_id) if variant_id else None
+            current_price = _float_or_none(resolve_in_stock_price(product, variant)) if product else None
+            regular_price = _float_or_none(resolve_in_stock_base_price(product, variant)) if product else None
+            if current_price is not None:
+                try:
+                    quantity = max(0, int(item.get('quantity') or 0))
+                except (TypeError, ValueError):
+                    quantity = 0
+                expected_subtotal = current_price * quantity
+                if item.get('price') != current_price:
+                    item['price'] = current_price
+                    changed = True
+                if item.get('original_price') != regular_price:
+                    item['original_price'] = regular_price
+                    changed = True
+                if item.get('subtotal') != expected_subtotal:
+                    item['subtotal'] = expected_subtotal
+                    changed = True
+
+        normalized_items.append(item)
+
+    return normalized_items, changed
+
+
 def get_cart_items(request):
     """
     Корзина: для авторизованного — из БД, для анонима — из сессии.
@@ -120,9 +170,11 @@ def get_cart_items(request):
             result.append(d)
         return _set_request_cached_value(request, _REQUEST_CART_ITEMS_ATTR, result)
     session_items = request.session.get('cart_items', []) or []
-    for item in session_items:
-        item['purchase_mode'] = normalize_purchase_mode(item.get('purchase_mode'))
-    return _set_request_cached_value(request, _REQUEST_CART_ITEMS_ATTR, session_items)
+    normalized_items, changed = _normalize_session_bundle_prices(session_items)
+    if changed:
+        request.session['cart_items'] = normalized_items
+        request.session.modified = True
+    return _set_request_cached_value(request, _REQUEST_CART_ITEMS_ATTR, normalized_items)
 
 
 def get_cart_count(request):
@@ -156,7 +208,15 @@ def get_buy_now_checkout_items(request):
     """Получить одноразовый состав заказа для сценария `Купить сейчас`."""
     payload = request.session.get(BUY_NOW_CHECKOUT_SESSION_KEY) or {}
     items = payload.get('items')
-    return items if isinstance(items, list) else []
+    if not isinstance(items, list):
+        return []
+    normalized_items, changed = _normalize_session_bundle_prices(items)
+    if changed:
+        request.session[BUY_NOW_CHECKOUT_SESSION_KEY] = {
+            'items': normalized_items,
+        }
+        request.session.modified = True
+    return normalized_items
 
 
 def save_buy_now_checkout_items(request, cart_items):
@@ -333,9 +393,8 @@ def save_cart_to_db(request, cart_items):
         if bundle_id:
             from .models import ProductBundle
             bundle = ProductBundle.objects.filter(pk=bundle_id).first()
-        # Сохраняем выбранную цену, если она отличается от обычной цены из наличия.
         override = None
-        if item.get('price') is not None:
+        if not bundle and item.get('price') is not None:
             from decimal import Decimal
             selected_price = Decimal(str(item['price']))
             base_price = resolve_in_stock_price(product, variant)
@@ -381,7 +440,7 @@ def merge_session_cart_into_user(request):
         bundle = None
         if bundle_id:
             bundle = ProductBundle.objects.filter(pk=bundle_id).first()
-        if item.get('price') is not None:
+        if not bundle and item.get('price') is not None:
             selected_price = Decimal(str(item['price']))
             base_price = resolve_in_stock_price(product, variant)
             if selected_price != base_price:

@@ -21,6 +21,7 @@ from ..pricing import (
     has_explicit_in_stock_price,
     has_explicit_on_request_price,
     normalize_purchase_mode,
+    resolve_in_stock_base_price,
     resolve_in_stock_price,
     resolve_price_for_mode,
 )
@@ -317,7 +318,7 @@ def cart_update_view(request):
                     'quantity': quantity,
                     'image_url': image_url,
                     'subtotal': price * quantity,
-                    'original_price': _float_or_none(resolve_in_stock_price(product, variant)),
+                    'original_price': _float_or_none(resolve_in_stock_base_price(product, variant)),
                     'purchase_mode': purchase_mode,
                 }
                 if existing_index is not None and existing_index <= len(cart_items):
@@ -370,7 +371,7 @@ def _add_product_to_cart_items(
     """Добавить или обновить позицию товара в cart_items. Возвращает (cart_items, added_item_dict)."""
     display_name = f'{product.name} ({variant.name})' if variant else product.name
     purchase_mode = normalize_purchase_mode(purchase_mode)
-    original_price = _float_or_none(resolve_in_stock_price(product, variant))
+    original_price = _float_or_none(resolve_in_stock_base_price(product, variant))
     resolved_price = price_override if price_override is not None else resolve_price_for_mode(product, variant, purchase_mode)
     price = _float_or_none(resolved_price)
     image_url = (variant.image.url if variant and variant.image else product.image.url) if product.image else ''
@@ -439,7 +440,6 @@ def _build_bundle_cart_items(bundle, items, *, base_cart_items=None):
             variant_id,
             variant,
             item.quantity,
-            price_override=float(item.effective_price),
             bundle_id=bundle.pk,
             bundle_name=bundle.name or f'Набор #{bundle.pk}',
         )
