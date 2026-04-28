@@ -40,17 +40,17 @@
        x-transition:leave="transition ease-in duration-100"
        @click.outside="sortDropdownOpen = false"
        class="filters-sort-dropdown absolute left-0 right-0 top-full mt-2 z-50 py-2">
-    <a href="?sort=relevance{% if current_category %}&category={{ current_category }}{% endif %}{% if current_section %}&section={{ current_section }}{% endif %}{% if current_tag %}&tag={{ current_tag }}{% endif %}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if price_min_filter %}&price_min={{ price_min_filter }}{% endif %}{% if price_max_filter %}&price_max={{ price_max_filter }}{% endif %}"
+    <a href="{% filter_url sort='relevance' page='' %}"
        class="block px-4 py-2 text-sm {% if current_sort == 'relevance' %}text-accent font-medium{% else %}text-gray-300 hover:text-white{% endif %}">По релевантности</a>
-    <a href="?sort=popularity{% if current_category %}&category={{ current_category }}{% endif %}{% if current_section %}&section={{ current_section }}{% endif %}{% if current_tag %}&tag={{ current_tag }}{% endif %}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if price_min_filter %}&price_min={{ price_min_filter }}{% endif %}{% if price_max_filter %}&price_max={{ price_max_filter }}{% endif %}"
+    <a href="{% filter_url sort='popularity' page='' %}"
        class="block px-4 py-2 text-sm {% if current_sort == 'popularity' %}text-accent font-medium{% else %}text-gray-300 hover:text-white{% endif %}">По популярности</a>
-    <a href="?sort=newest{% if current_category %}&category={{ current_category }}{% endif %}{% if current_section %}&section={{ current_section }}{% endif %}{% if current_tag %}&tag={{ current_tag }}{% endif %}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if price_min_filter %}&price_min={{ price_min_filter }}{% endif %}{% if price_max_filter %}&price_max={{ price_max_filter }}{% endif %}"
+    <a href="{% filter_url sort='newest' page='' %}"
        class="block px-4 py-2 text-sm {% if current_sort == 'newest' %}text-accent font-medium{% else %}text-gray-300 hover:text-white{% endif %}">Сначала новые</a>
-    <a href="?sort=price_asc{% if current_category %}&category={{ current_category }}{% endif %}{% if current_section %}&section={{ current_section }}{% endif %}{% if current_tag %}&tag={{ current_tag }}{% endif %}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if price_min_filter %}&price_min={{ price_min_filter }}{% endif %}{% if price_max_filter %}&price_max={{ price_max_filter }}{% endif %}"
+    <a href="{% filter_url sort='price_asc' page='' %}"
        class="block px-4 py-2 text-sm {% if current_sort == 'price_asc' %}text-accent font-medium{% else %}text-gray-300 hover:text-white{% endif %}">Цена: по возрастанию</a>
-    <a href="?sort=price_desc{% if current_category %}&category={{ current_category }}{% endif %}{% if current_section %}&section={{ current_section }}{% endif %}{% if current_tag %}&tag={{ current_tag }}{% endif %}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if price_min_filter %}&price_min={{ price_min_filter }}{% endif %}{% if price_max_filter %}&price_max={{ price_max_filter }}{% endif %}"
+    <a href="{% filter_url sort='price_desc' page='' %}"
        class="block px-4 py-2 text-sm {% if current_sort == 'price_desc' %}text-accent font-medium{% else %}text-gray-300 hover:text-white{% endif %}">Цена: по убыванию</a>
-    <a href="?sort=name{% if current_category %}&category={{ current_category }}{% endif %}{% if current_section %}&section={{ current_section }}{% endif %}{% if current_tag %}&tag={{ current_tag }}{% endif %}{% if search_query %}&q={{ search_query|urlencode }}{% endif %}{% if price_min_filter %}&price_min={{ price_min_filter }}{% endif %}{% if price_max_filter %}&price_max={{ price_max_filter }}{% endif %}"
+    <a href="{% filter_url sort='name' page='' %}"
        class="block px-4 py-2 text-sm {% if current_sort == 'name' %}text-accent font-medium{% else %}text-gray-300 hover:text-white{% endif %}">По названию</a>
   </div>
 </div>
