@@ -34,7 +34,7 @@ class ProductBundleItemInline(admin.TabularInline):
 
     def price_preview(self, obj):
         if obj and obj.product_id:
-            return f'{format_currency_amount(obj.effective_price)} (−5%)'
+            return format_currency_amount(obj.effective_price)
         return '—'
     price_preview.short_description = 'Цена в комплекте'
 
@@ -53,7 +53,7 @@ class ProductBundleItemInlineForProduct(admin.TabularInline):
 
     def price_preview(self, obj):
         if obj and obj.bundle_id and obj.product_id:
-            return f'{format_currency_amount(obj.effective_price)} для «{obj.bundle}» (−5%)'
+            return f'{format_currency_amount(obj.effective_price)} для «{obj.bundle}»'
         return 'Выберите комплект, чтобы увидеть цену'
     price_preview.short_description = 'Цена в комплекте'
 

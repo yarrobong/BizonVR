@@ -54,6 +54,9 @@
       <div class="mt-2">
         {% if stock > 0 and card_variant.in_stock_price is not None %}
           <div class="text-[1.35rem] font-bold leading-none text-accent">{{ card_variant.in_stock_price|price_format }} ₽</div>
+          {% if product.discount_percent > 0 and card_variant.price > card_variant.in_stock_price %}
+          <div class="mt-1 text-xs text-gray-500"><span class="line-through">{{ card_variant.price|price_format }} ₽</span> <span class="text-green-400">−{{ product.discount_percent|floatformat:"-2" }}%</span></div>
+          {% endif %}
           <div class="mt-2 flex items-center gap-2 text-xs text-white/92">
             <span class="inline-block h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(74,222,128,0.45)]"></span>
             <span class="font-medium">В наличии</span>
@@ -84,6 +87,9 @@
       <div class="mt-2">
         {% if stock > 0 and product.in_stock_price is not None %}
           <div class="text-[1.35rem] font-bold leading-none text-accent">{{ product.in_stock_price|price_format }} ₽</div>
+          {% if product.discount_percent > 0 and product.price > product.in_stock_price %}
+          <div class="mt-1 text-xs text-gray-500"><span class="line-through">{{ product.price|price_format }} ₽</span> <span class="text-green-400">−{{ product.discount_percent|floatformat:"-2" }}%</span></div>
+          {% endif %}
           <div class="mt-2 flex items-center gap-2 text-xs text-white/92">
             <span class="inline-block h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(74,222,128,0.45)]"></span>
             <span class="font-medium">В наличии</span>

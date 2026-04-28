@@ -150,7 +150,10 @@
       </div>
 
       <div class="mobile-card mobile-only">
-        <div class="mobile-price">{{ total_with_discount|rub }}</div>
+        <div class="mobile-price">{{ total_price|rub }}</div>
+        {% if total_without_discount > total_price %}
+        <div style="margin-top: 6px; color: var(--pd-muted); font-size: 14px; text-decoration: line-through;">{{ total_without_discount|rub }}</div>
+        {% endif %}
         <h1 class="mobile-product-title">{{ bundle.name|default:"Набор" }}</h1>
       </div>
 
@@ -196,10 +199,9 @@
         <div class="buy-box">
           <div class="price-block">
             <div class="price-row">
-              <span class="main-price">{{ total_with_discount|rub }}</span>
-              {% if total_without_discount != total_with_discount %}
+              <span class="main-price">{{ total_price|rub }}</span>
+              {% if total_without_discount > total_price %}
               <span style="font-size: 18px; color: var(--pd-muted); text-decoration: line-through;">{{ total_without_discount|rub }}</span>
-              <span style="font-size: 13px; font-weight: 700; color: var(--pd-success);">−5%</span>
               {% endif %}
             </div>
           </div>
@@ -298,15 +300,22 @@
             </td>
             <td>{{ item.quantity }}</td>
             <td>
-              <span class="bundle-old-price">{{ item.product.price|rub }}</span>
+              {% if item.regular_price > item.effective_price %}
+              <span class="bundle-old-price">{{ item.regular_price|rub }}</span>
+              {% endif %}
               <span class="bundle-new-price">{{ item.effective_price|rub }}</span>
             </td>
             <td>{{ item.line_total|rub }}</td>
           </tr>
           {% endfor %}
           <tr class="bundle-total-row">
-            <td colspan="4">Итого со скидкой −5%:</td>
-            <td>{{ total_with_discount|rub }}</td>
+            <td colspan="4">Итого:</td>
+            <td>
+              {% if total_without_discount > total_price %}
+              <span class="bundle-old-price">{{ total_without_discount|rub }}</span>
+              {% endif %}
+              <span>{{ total_price|rub }}</span>
+            </td>
           </tr>
         </tbody>
       </table>

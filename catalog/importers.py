@@ -292,6 +292,14 @@ class CatalogDataImporter:
         except (InvalidOperation, ValueError, TypeError) as exc:
             raise CatalogImportError(f'Некорректное число в поле "{field_name}": {value!r}') from exc
 
+    def _discount_percent_or_default(self, value: Any, default: Decimal = Decimal('0')) -> Decimal:
+        discount_percent = self._decimal_or_none(value, field_name='products.discount_percent')
+        if discount_percent is None:
+            return default
+        if discount_percent < 0 or discount_percent > 100:
+            raise CatalogImportError(f'Скидка товара должна быть от 0 до 100: {value!r}')
+        return discount_percent
+
     def _bool_or_default(self, item: dict[str, Any], key: str, default: bool) -> bool:
         return bool(item[key]) if key in item else default
 
@@ -462,6 +470,8 @@ class CatalogDataImporter:
             }
             if 'price' in item:
                 update_values['price'] = self._decimal_or_none(item.get('price'), field_name='products.price')
+            if 'discount_percent' in item:
+                update_values['discount_percent'] = self._discount_percent_or_default(item.get('discount_percent'))
             if 'sku' in item:
                 update_values['sku'] = item.get('sku') or ''
             if 'price_on_request' in item:

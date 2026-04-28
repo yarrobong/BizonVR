@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections import OrderedDict, defaultdict
 from dataclasses import dataclass
-from decimal import Decimal
 import re
 from typing import Iterable
 
@@ -145,7 +144,6 @@ def sanitize_catalog_query_params(request, params=None):
 class CatalogFilterService:
     """Сборка каталоговых фильтров с поддержкой managed-конфига и legacy fallback."""
 
-    BUNDLE_DISCOUNT_FACTOR = Decimal('0.95')
     MONEY_FIELD = DecimalField(max_digits=14, decimal_places=2)
 
     def __init__(self, request):
@@ -163,7 +161,8 @@ class CatalogFilterService:
     def annotate_bundle_pricing(self, qs):
         bundle_item_total = ExpressionWrapper(
             Coalesce(F('product__price'), Value(0, output_field=self.MONEY_FIELD))
-            * Value(self.BUNDLE_DISCOUNT_FACTOR)
+            * (Value(100, output_field=self.MONEY_FIELD) - Coalesce(F('product__discount_percent'), Value(0, output_field=self.MONEY_FIELD)))
+            / Value(100, output_field=self.MONEY_FIELD)
             * Coalesce(F('quantity'), Value(0)),
             output_field=self.MONEY_FIELD,
         )

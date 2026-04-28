@@ -51,6 +51,7 @@ from .filter_setup_wizard import CatalogFilterSetupWizard
 from .import_workflow import CatalogImportWorkflowService, make_direct_target_reference
 from .importers import CatalogDataImporter
 from .product_descriptions import build_admin_constructor_state, migrate_legacy_blocks
+from .pricing import resolve_in_stock_price
 from .models import (
     CartItem,
     CartShare,
@@ -363,6 +364,55 @@ class VariantGalleryAndCatalogCardsTest(TestCase):
         html = resp.content.decode()
 
         self.assertIn('method="get" hx-boost="false" class="pd-mobile-search-form"', html)
+
+    def test_bundle_detail_no_longer_shows_bundle_discount_copy(self):
+        bundle_category = Category.objects.create(
+            name='Комплекты без скидки',
+            slug='bundle-no-discount',
+            is_bundles_category=True,
+        )
+        bundle = ProductBundle.objects.create(
+            category=bundle_category,
+            name='Quest Full Pack',
+            slug='quest-full-pack',
+        )
+        ProductBundleItem.objects.create(bundle=bundle, product=self.product, quantity=1)
+        ProductBundleItem.objects.create(bundle=bundle, product=self.foreign_product, quantity=1)
+
+        resp = self.client.get(reverse('catalog:bundle_detail', kwargs={'slug': bundle.slug}))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Итого:')
+        self.assertNotContains(resp, '−5%')
+        self.assertNotContains(resp, 'Итого со скидкой')
+
+    def test_bundle_detail_shows_old_total_when_item_has_product_discount(self):
+        self.product.discount_percent = Decimal('10.00')
+        self.product.save(update_fields=['discount_percent'])
+        bundle_category = Category.objects.create(
+            name='Комплекты со скидкой товара',
+            slug='bundle-product-discount',
+            is_bundles_category=True,
+        )
+        bundle = ProductBundle.objects.create(
+            category=bundle_category,
+            name='Quest Discount Pack',
+            slug='quest-discount-pack',
+        )
+        ProductBundleItem.objects.create(bundle=bundle, product=self.product, quantity=1)
+        ProductBundleItem.objects.create(bundle=bundle, product=self.foreign_product, quantity=1)
+
+        resp = self.client.get(reverse('catalog:bundle_detail', kwargs={'slug': bundle.slug}))
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, '1 800 ₽')
+        self.assertContains(resp, '1 900 ₽')
+
+    def test_product_discount_applies_to_product_and_variant_in_stock_price(self):
+        self.product.discount_percent = Decimal('10.00')
+        self.product.save(update_fields=['discount_percent'])
+
+        self.assertEqual(resolve_in_stock_price(self.product), Decimal('900.00'))
+        self.assertEqual(resolve_in_stock_price(self.product, self.variant_one), Decimal('1080.00'))
 
     def test_catalog_filters_and_sort_controls_render_identifiers_for_form_fields(self):
         project_root = os.path.dirname(os.path.dirname(__file__))
@@ -1622,6 +1672,7 @@ class CatalogSectionFilterTest(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual([bundle.slug for bundle in response.context['bundles']], [self.bundle.slug])
+        self.assertNotContains(response, '−5%')
 
     def test_bundle_price_bounds_and_price_filter_use_bundle_totals(self):
         bundle_same_category = ProductBundle.objects.create(
@@ -1638,9 +1689,37 @@ class CatalogSectionFilterTest(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context['filter_price_min'], 380)
-        self.assertEqual(response.context['filter_price_max'], 855)
+        self.assertEqual(response.context['filter_price_min'], 400)
+        self.assertEqual(response.context['filter_price_max'], 900)
         self.assertEqual([bundle.slug for bundle in response.context['bundles']], [bundle_same_category.slug])
+
+    def test_bundle_price_bounds_use_discounted_product_prices(self):
+        self.bundle_helper_product.discount_percent = Decimal('50.00')
+        self.bundle_helper_product.save(update_fields=['discount_percent'])
+
+        response = self.client.get(
+            reverse('catalog:product_list'),
+            {'category': self.bundle_category_secondary.slug, 'price_min': '450', 'price_max': '550'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['filter_price_min'], 500)
+        self.assertEqual(response.context['filter_price_max'], 500)
+        self.assertEqual([bundle.slug for bundle in response.context['bundles']], [self.secondary_bundle.slug])
+
+    def test_bundle_card_shows_old_total_when_item_has_product_discount(self):
+        self.attractions_product.discount_percent = Decimal('10.00')
+        self.attractions_product.save(update_fields=['discount_percent'])
+
+        response = self.client.get(
+            reverse('catalog:product_list'),
+            {'category': self.bundle_category.slug},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '370 ₽')
+        self.assertContains(response, '400 ₽')
+        self.assertNotContains(response, '−5%')
 
     def test_bundle_tag_filter_matches_any_bundle_item(self):
         response = self.client.get(
@@ -1780,6 +1859,20 @@ class CatalogPriceBoundsTest(TestCase):
         slugs = [product.slug for product in resp.context['products']]
         self.assertIn(self.on_request_product.slug, slugs)
         self.assertNotIn(self.unpriced_product.slug, slugs)
+
+    def test_price_filter_uses_discounted_in_stock_product_price(self):
+        self.high_product.discount_percent = Decimal('50.00')
+        self.high_product.save(update_fields=['discount_percent'])
+
+        resp = self.client.get(
+            reverse('catalog:product_list'),
+            {'category': self.category.slug, 'price_min': '440', 'price_max': '460'},
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        slugs = [product.slug for product in resp.context['products']]
+        self.assertIn(self.high_product.slug, slugs)
+        self.assertEqual(resp.context['filter_price_max'], 700)
 
     def test_price_sort_puts_unpriced_products_last(self):
         resp = self.client.get(
@@ -3408,6 +3501,104 @@ class CartTest(TestCase):
             {item['product_id'] for item in buy_now_checkout['items']},
             {self.product.pk, self.product_second.pk},
         )
+        self.assertEqual(
+            {item['price'] for item in buy_now_checkout['items']},
+            {float(self.product.price), float(self.product_second.price)},
+        )
+        self.assertTrue(all(item['price'] == item['original_price'] for item in buy_now_checkout['items']))
+
+    def test_add_bundle_to_cart_uses_full_prices_without_discount_override(self):
+        url = reverse('catalog:add_bundle_to_cart')
+
+        resp = self.client.post(url, {'bundle_id': self.bundle.pk, 'next': self.bundle.get_absolute_url()})
+
+        self.assertEqual(resp.status_code, 302)
+        cart_items = self.client.session.get('cart_items', [])
+        self.assertEqual(len(cart_items), 2)
+        self.assertEqual(cart_items[0]['price'], float(self.product.price))
+        self.assertEqual(cart_items[0]['original_price'], float(self.product.price))
+        self.assertEqual(cart_items[0]['subtotal'], float(self.product.price))
+        self.assertEqual(cart_items[1]['price'], float(self.product_second.price))
+        self.assertEqual(cart_items[1]['original_price'], float(self.product_second.price))
+        self.assertEqual(cart_items[1]['subtotal'], float(self.product_second.price) * 2)
+
+    def test_add_bundle_to_cart_uses_product_discount_when_present(self):
+        self.product.discount_percent = Decimal('10.00')
+        self.product.save(update_fields=['discount_percent'])
+
+        resp = self.client.post(
+            reverse('catalog:add_bundle_to_cart'),
+            {'bundle_id': self.bundle.pk, 'next': self.bundle.get_absolute_url()},
+        )
+
+        self.assertEqual(resp.status_code, 302)
+        cart_items = self.client.session.get('cart_items', [])
+        discounted_item = next(item for item in cart_items if item['product_id'] == self.product.pk)
+        self.assertEqual(discounted_item['price'], 90.0)
+        self.assertEqual(discounted_item['original_price'], 100.0)
+        self.assertEqual(discounted_item['subtotal'], 90.0)
+
+    def test_add_bundle_to_cart_htmx_mini_cart_has_no_discount_copy(self):
+        url = reverse('catalog:add_bundle_to_cart')
+
+        resp = self.client.post(
+            url,
+            {'bundle_id': self.bundle.pk, 'next': self.bundle.get_absolute_url()},
+            HTTP_HX_REQUEST='true',
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotContains(resp, '−5%')
+
+    def test_legacy_bundle_session_prices_are_normalized_on_first_read(self):
+        session = self.client.session
+        session['cart_items'] = [{
+            'product_id': self.product.pk,
+            'variant_id': None,
+            'variant_name': None,
+            'name': self.product.name,
+            'price': 95.0,
+            'quantity': 2,
+            'image_url': '',
+            'subtotal': 190.0,
+            'bundle_id': self.bundle.pk,
+            'bundle_name': self.bundle.name,
+            'original_price': 100.0,
+            'purchase_mode': 'stock',
+        }]
+        session.save()
+
+        resp = self.client.get(reverse('catalog:cart'))
+
+        self.assertEqual(resp.status_code, 200)
+        normalized_items = self.client.session.get('cart_items', [])
+        self.assertEqual(normalized_items[0]['price'], float(self.product.price))
+        self.assertEqual(normalized_items[0]['original_price'], float(self.product.price))
+        self.assertEqual(normalized_items[0]['subtotal'], float(self.product.price) * 2)
+        self.assertNotContains(resp, '−5%')
+
+    def test_cart_page_does_not_show_bundle_discount_copy(self):
+        session = self.client.session
+        session['cart_items'] = [{
+            'product_id': self.product.pk,
+            'variant_id': None,
+            'variant_name': None,
+            'name': self.product.name,
+            'price': float(self.product.price),
+            'quantity': 1,
+            'image_url': '',
+            'subtotal': float(self.product.price),
+            'bundle_id': self.bundle.pk,
+            'bundle_name': self.bundle.name,
+            'original_price': float(self.product.price),
+            'purchase_mode': 'stock',
+        }]
+        session.save()
+
+        resp = self.client.get(reverse('catalog:cart'))
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotContains(resp, '−5%')
 
     def test_cart_update_changes_quantity_and_remove_item(self):
         add_url = reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk})
@@ -4513,6 +4704,47 @@ class CompareRemovalTest(TestCase):
         self.assertEqual(self.client.session.get('favorite_product_ids', []), [])
         self.assertEqual(self.client.session.get('cart_items', []), [])
 
+    def test_login_clears_legacy_bundle_price_override_when_merging_cart(self):
+        bundle_category = Category.objects.create(
+            name='Комплекты для входа',
+            slug='login-bundles',
+            is_bundles_category=True,
+        )
+        bundle = ProductBundle.objects.create(
+            category=bundle_category,
+            name='Bundle login',
+            slug='bundle-login',
+        )
+        ProductBundleItem.objects.create(bundle=bundle, product=self.products[0], quantity=1)
+        ProductBundleItem.objects.create(bundle=bundle, product=self.products[1], quantity=1)
+
+        session = self.client.session
+        session['cart_items'] = [{
+            'product_id': self.products[0].pk,
+            'variant_id': None,
+            'variant_name': None,
+            'name': self.products[0].name,
+            'price': float(self.products[0].price * Decimal('0.95')),
+            'quantity': 1,
+            'image_url': '',
+            'subtotal': float(self.products[0].price * Decimal('0.95')),
+            'bundle_id': bundle.pk,
+            'bundle_name': bundle.name,
+            'original_price': float(self.products[0].price),
+            'purchase_mode': 'stock',
+        }]
+        session.save()
+
+        resp = self.client.post(reverse('accounts:password_login'), {
+            'login': self.user.email,
+            'password': 'testpass',
+        })
+
+        self.assertEqual(resp.status_code, 302)
+        cart_item = CartItem.objects.get(user=self.user, product=self.products[0], bundle=bundle)
+        self.assertEqual(cart_item.quantity, 1)
+        self.assertIsNone(cart_item.price_override)
+
 @override_settings(
     STORAGES={
         'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
@@ -4835,6 +5067,7 @@ class CatalogJsonImportServiceTest(TestCase):
             'sku': 'SKU-001',
             'description': 'Описание JSON товара',
             'price': price,
+            'discount_percent': '7.50',
             'price_on_request': '149.00',
             'is_active': True,
             'allow_order_on_request': True,
@@ -4961,6 +5194,7 @@ class CatalogJsonImportServiceTest(TestCase):
         self.assertEqual(ProductVariant.objects.filter(product=product, sku='VAR-64').count(), 1)
         self.assertEqual(product.name, 'Обновлённый товар')
         self.assertEqual(product.price, Decimal('299.00'))
+        self.assertEqual(product.discount_percent, Decimal('7.50'))
         self.assertEqual(stock.quantity, 7)
         self.assertTrue(ProductVariant.objects.filter(product=product, sku='VAR-128').exists())
         self.assertTrue(ProductStock.objects.filter(product=product, variant=extra_variant, quantity=9).exists())
@@ -5008,6 +5242,7 @@ class CatalogJsonImportServiceTest(TestCase):
         product = Product.objects.get(slug='legacy-product')
         self.assertEqual(product.name, 'Legacy товар')
         self.assertEqual(product.price, Decimal('10.00'))
+        self.assertEqual(product.discount_percent, Decimal('0.00'))
         self.assertEqual(product.sku, '')
 
     def test_import_ignores_media_fields_and_reports_warnings(self):
@@ -5036,6 +5271,7 @@ class CatalogJsonImportServiceTest(TestCase):
             slug='export-product',
             sku='SKU-EXP',
             price=Decimal('300.00'),
+            discount_percent=Decimal('15.00'),
             price_on_request=Decimal('250.00'),
             avito_url='https://example.com/avito',
             ozon_url='https://example.com/ozon',
@@ -5078,6 +5314,7 @@ class CatalogJsonImportServiceTest(TestCase):
         self.assertIn('product_videos', backup_data['models'])
         self.assertIn('product_content_blocks', backup_data['models'])
         self.assertEqual(product_item['sku'], 'SKU-EXP')
+        self.assertEqual(product_item['discount_percent'], '15.00')
         self.assertEqual(product_item['price_on_request'], '250.00')
         self.assertEqual(product_item['avito_url'], 'https://example.com/avito')
         self.assertEqual(variant_item['sku'], 'VAR-128')

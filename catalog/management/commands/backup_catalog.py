@@ -123,6 +123,7 @@ class Command(BaseCommand):
                 'slug': product.slug,
                 'description': product.description,
                 'price': '' if product.price is None else str(product.price),
+                'discount_percent': str(product.discount_percent),
                 'price_on_request': '' if product.price_on_request is None else str(product.price_on_request),
                 'image': product.image.name if product.image else None,
                 'is_active': product.is_active,

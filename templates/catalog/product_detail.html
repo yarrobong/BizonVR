@@ -283,6 +283,21 @@
     }
     return this.data.productInStockPrice;
   },
+  get currentRegularInStockPrice() {
+    if (this.selectedVariant) {
+      return this.selectedVariant.regularInStockPrice;
+    }
+    return this.data.productRegularInStockPrice;
+  },
+  get currentDiscountPercent() {
+    return Number(this.data.productDiscountPercent || 0);
+  },
+  get hasCurrentDiscount() {
+    return this.currentDiscountPercent > 0
+      && this.currentRegularInStockPrice !== null
+      && this.currentInStockPrice !== null
+      && Number(this.currentRegularInStockPrice) > Number(this.currentInStockPrice);
+  },
   get currentOnRequestPrice() {
     if (this.selectedVariant) {
       return this.selectedVariant.onRequestPrice;
@@ -617,6 +632,9 @@
                       @click="setPurchaseMode('stock')">
                 <div class="price-row">
                   <span class="main-price" x-text="window.formatRub(currentInStockPrice)"></span>
+                  <template x-if="hasCurrentDiscount">
+                    <span class="card-old-price" x-text="window.formatRub(currentRegularInStockPrice)"></span>
+                  </template>
                 </div>
                 <div class="offer-meta">
                   <div class="offer-status-row">
@@ -726,6 +744,9 @@
                       @click="setPurchaseMode('stock')">
                 <div class="price-row">
                   <span class="main-price" x-text="window.formatRub(currentInStockPrice)"></span>
+                  <template x-if="hasCurrentDiscount">
+                    <span class="card-old-price" x-text="window.formatRub(currentRegularInStockPrice)"></span>
+                  </template>
                 </div>
                 <div class="offer-meta">
                   <div class="offer-status-row">
@@ -970,10 +991,10 @@
             <div class="rec-caption mb-3">
               {% if bundle.name %}
                 <strong>{{ bundle.name }}</strong>
-                <span> — {{ bundle.total_price|rub }}</span>
+                <span> — {{ bundle.total_price|rub }}{% if bundle.total_price_without_discount > bundle.total_price %} <span class="card-old-price">{{ bundle.total_price_without_discount|rub }}</span>{% endif %}</span>
               {% else %}
                 <strong>Состав комплекта</strong>
-                <span> — {{ bundle.total_price|rub }}</span>
+                <span> — {{ bundle.total_price|rub }}{% if bundle.total_price_without_discount > bundle.total_price %} <span class="card-old-price">{{ bundle.total_price_without_discount|rub }}</span>{% endif %}</span>
               {% endif %}
             </div>
             <div class="rec-grid mb-4">

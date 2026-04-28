@@ -7,6 +7,7 @@ import requests
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.urls import reverse
 from django.utils.text import slugify
@@ -15,6 +16,7 @@ from config.formatting import format_currency_amount
 from .pricing import (
     PURCHASE_MODE_CHOICES,
     PURCHASE_MODE_STOCK,
+    resolve_in_stock_base_price,
     resolve_in_stock_price,
     resolve_on_request_price,
 )
@@ -232,6 +234,14 @@ class Product(models.Model):
     slug = models.SlugField('Slug', max_length=300, unique=True, blank=True)
     description = models.TextField('Описание', blank=True)
     price = models.DecimalField('Цена из наличия', max_digits=12, decimal_places=2, null=True, blank=True)
+    discount_percent = models.DecimalField(
+        'Скидка, %',
+        max_digits=5,
+        decimal_places=2,
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+        help_text='Скидка применяется к цене из наличия товара и его вариантов.',
+    )
     price_on_request = models.DecimalField(
         'Цена под заказ',
         max_digits=12,
@@ -1142,14 +1152,14 @@ class ProductBundle(models.Model):
 
     @property
     def total_price(self):
-        """Сумма цен всех позиций набора (со скидкой −5%)."""
+        """Сумма актуальных цен всех позиций набора."""
         total = sum(float(i.effective_price) * i.quantity for i in self.items.all())
         return total
 
     @property
     def total_price_without_discount(self):
-        """Сумма по полным ценам товаров (без скидки)."""
-        total = sum(float(resolve_in_stock_price(i.product) or 0) * i.quantity for i in self.items.all())
+        """Сумма по базовым ценам товаров без товарных скидок."""
+        total = sum(float(resolve_in_stock_base_price(i.product) or 0) * i.quantity for i in self.items.all())
         return total
 
 
@@ -1175,7 +1185,7 @@ class ProductBundleItem(models.Model):
         decimal_places=2,
         null=True,
         blank=True,
-        help_text='Рассчитывается автоматически: −5% от цены товара при покупке полного набора',
+        help_text='Рассчитывается автоматически по актуальной цене товара из наличия.',
     )
 
     class Meta:
@@ -1193,18 +1203,27 @@ class ProductBundleItem(models.Model):
         if self.product_id:
             base_price = resolve_in_stock_price(self.product)
             if base_price is not None:
-                self.price = (Decimal(str(base_price)) * Decimal('0.95')).quantize(Decimal('0.01'))
+                self.price = Decimal(str(base_price)).quantize(Decimal('0.01'))
             else:
                 self.price = None
         super().save(*args, **kwargs)
 
     @property
     def effective_price(self):
-        """Цена за единицу в комплекте (автоматически −5% от цены товара)."""
+        """Актуальная цена за единицу в составе набора."""
         if self.product_id:
             base_price = resolve_in_stock_price(self.product)
             if base_price is not None:
-                return (Decimal(str(base_price)) * Decimal('0.95')).quantize(Decimal('0.01'))
+                return Decimal(str(base_price)).quantize(Decimal('0.01'))
+        return Decimal('0')
+
+    @property
+    def regular_price(self):
+        """Базовая цена за единицу до товарной скидки."""
+        if self.product_id:
+            base_price = resolve_in_stock_base_price(self.product)
+            if base_price is not None:
+                return Decimal(str(base_price)).quantize(Decimal('0.01'))
         return Decimal('0')
 
     def __str__(self):

@@ -895,7 +895,7 @@
                   {% if item.bundle_name %}
                     <div class="cart-variant text-accent">Входит в комплект: {{ item.bundle_name }}</div>
                     {% if item.original_price and item.original_price != item.price %}
-                      <div class="text-xs text-gray-400 mt-0.5">{{ item.quantity }} × <span class="line-through">{{ item.original_price|price_format }} ₽</span> → {{ item.price|price_format }} ₽ <span class="text-green-400">−5%</span></div>
+                      <div class="text-xs text-gray-400 mt-0.5">{{ item.quantity }} × <span class="line-through">{{ item.original_price|price_format }} ₽</span> → {{ item.price|price_format }} ₽</div>
                     {% endif %}
                   {% endif %}
 

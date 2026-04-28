@@ -27,6 +27,7 @@ from ..pricing import (
     has_explicit_in_stock_price,
     has_explicit_on_request_price,
     resolve_catalog_effective_price,
+    resolve_in_stock_base_price,
     resolve_in_stock_price,
     resolve_on_request_price,
     resolve_public_purchase_mode,
@@ -60,10 +61,10 @@ class BundleDetailView(DetailView):
         items = list(bundle.items.select_related('product').all())
         for item in items:
             item.line_total = float(item.effective_price) * item.quantity
+            item.regular_line_total = float(item.regular_price) * item.quantity
         context['bundle_items'] = items
+        context['total_price'] = float(bundle.total_price)
         context['total_without_discount'] = float(bundle.total_price_without_discount)
-        context['total_with_discount'] = float(bundle.total_price)
-        context['discount_total'] = context['total_without_discount'] - context['total_with_discount']
         context['bundles_category'] = bundle.category
         return context
 
@@ -506,6 +507,7 @@ class ProductDetailView(DetailView):
                 'id': variant.pk,
                 'name': variant.name,
                 'price': _float_or_none(variant.price),
+                'regularInStockPrice': _float_or_none(resolve_in_stock_base_price(self.object, variant)),
                 'inStockPrice': _float_or_none(variant_in_stock_price),
                 'onRequestPrice': _float_or_none(variant_on_request_price),
                 'hasInStockPrice': has_explicit_in_stock_price(self.object, variant),
@@ -548,6 +550,8 @@ class ProductDetailView(DetailView):
             'variants': variants_data,
             'productImage': _safe_image_url(self.object.image),
             'productPrice': _float_or_none(self.object.price),
+            'productDiscountPercent': _float_or_none(self.object.discount_percent),
+            'productRegularInStockPrice': _float_or_none(resolve_in_stock_base_price(self.object)),
             'productInStockPrice': _float_or_none(product_in_stock_price),
             'productOnRequestPrice': _float_or_none(product_on_request_price),
             'productHasInStockPrice': has_explicit_in_stock_price(self.object),

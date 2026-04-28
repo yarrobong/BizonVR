@@ -20,7 +20,9 @@
   <div class="flex flex-col flex-grow min-h-0 p-3 bg-dark-700/90" style="padding: 0.75rem;">
     <div class="mb-1" style="margin-bottom: 0.25rem;">
       <span class="text-xl font-bold text-accent">{{ bundle.total_price|rub }}</span>
-      <span class="text-xs text-gray-400 ml-1">−5%</span>
+      {% if bundle.total_price_without_discount > bundle.total_price %}
+      <span class="text-xs text-gray-400 ml-1 line-through">{{ bundle.total_price_without_discount|rub }}</span>
+      {% endif %}
     </div>
     <h3 class="text-white text-sm font-semibold leading-tight line-clamp-2" style="margin-bottom: 0.375rem;">
       <a href="{{ bundle.get_absolute_url }}" class="hover:text-accent transition-colors">{% if bundle.name %}{{ bundle.name }}{% else %}Комплект из {{ bundle.items.count }} товаров{% endif %}</a>
