@@ -76,7 +76,7 @@ class CheckoutTest(TestCase):
             'first_name': 'Иван Иванов',
             'last_name': '',
             'phone': '+7 999 123 45 67',
-            'email': '',
+            'email': 'client@example.com',
             'contact_channel': Order.CONTACT_CHANNEL_CALL,
             'contact_handle': '',
             'delivery_type': Order.DELIVERY_CDEK_PVZ,
@@ -86,7 +86,7 @@ class CheckoutTest(TestCase):
             'cdek_office_snapshot_raw': json.dumps(self._office_snapshot()),
             'cdek_tariff_snapshot_raw': json.dumps(self._tariff_snapshot()),
             'recipient_is_customer': 'on',
-            'payment_method': Order.PAYMENT_METHOD_SBP,
+            'payment_method': Order.PAYMENT_METHOD_MANAGER_CONTACT,
             'comment': '',
             'agree_personal_data': 'on',
             'agree_offer': 'on',
@@ -294,7 +294,7 @@ class CheckoutTest(TestCase):
         self.assertEqual(order.cdek_office_address, 'Москва, ул. Тверская, 10')
         self.assertEqual(order.cdek_office_snapshot['name'], 'ПВЗ СДЭК Тверская')
         self.assertEqual(order.cdek_tariff_snapshot['tariff_code'], 136)
-        self.assertEqual(order.payment_method, Order.PAYMENT_METHOD_SBP)
+        self.assertEqual(order.payment_method, Order.PAYMENT_METHOD_MANAGER_CONTACT)
         self.assertEqual(order.contact_channel, Order.CONTACT_CHANNEL_CALL)
         self.assertEqual(order.contact_handle, '')
         self.assertEqual(order.delivery_type, Order.DELIVERY_CDEK_PVZ)
@@ -521,7 +521,7 @@ class CheckoutTest(TestCase):
         self.assertEqual(order.manager_deal.customer_source, ManagerDeal.SOURCE_WEBSITE)
         self.assertEqual(order.manager_deal.deal_type, ManagerDeal.DEAL_SALE_ON_REQUEST)
 
-    def test_checkout_ignores_public_payment_override(self):
+    def test_checkout_forces_manager_contact_payment_method(self):
         self.client.force_login(self.user)
         self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
 
@@ -534,7 +534,7 @@ class CheckoutTest(TestCase):
 
         self.assertEqual(response.status_code, 302)
         order = Order.objects.get()
-        self.assertEqual(order.payment_method, Order.PAYMENT_METHOD_SBP)
+        self.assertEqual(order.payment_method, Order.PAYMENT_METHOD_MANAGER_CONTACT)
         self.assertEqual(order.manager_deal.buyer_type, ManagerDeal.BUYER_INDIVIDUAL)
 
     def test_checkout_test_mode_creates_paid_order(self):
@@ -545,7 +545,7 @@ class CheckoutTest(TestCase):
         self.assertEqual(resp.status_code, 302)
         self.assertEqual(Order.objects.get().payment_status, Order.PAYMENT_STATUS_PAID)
 
-    def test_checkout_discards_public_email_override(self):
+    def test_checkout_preserves_public_email(self):
         self.product.price_on_request = Decimal('80.00')
         self.product.save(update_fields=['price_on_request'])
         self.client.post(
@@ -556,7 +556,7 @@ class CheckoutTest(TestCase):
         response = self.client.post(reverse('orders:checkout'), self._checkout_payload(email='client@example.com'))
 
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(Order.objects.get().email, '')
+        self.assertEqual(Order.objects.get().email, 'client@example.com')
 
     def test_checkout_infers_telegram_contact_from_username(self):
         self.product.price_on_request = Decimal('80.00')
@@ -747,7 +747,7 @@ class CheckoutFormsLegalValidationTest(TestCase):
             'phone': '+7 999 111 22 33',
             'first_name': 'Иван Иванов',
             'last_name': '',
-            'email': '',
+            'email': 'client@example.com',
             'contact_channel': Order.CONTACT_CHANNEL_CALL,
             'delivery_type': Order.DELIVERY_CDEK_PVZ,
             'city_text': '',
@@ -762,7 +762,7 @@ class CheckoutFormsLegalValidationTest(TestCase):
             'cdek_tariff_snapshot_raw': json.dumps({
                 'tariff_code': 136,
             }),
-            'payment_method': Order.PAYMENT_METHOD_SBP,
+            'payment_method': Order.PAYMENT_METHOD_MANAGER_CONTACT,
             'comment': '',
             'promo_code': '',
         })
@@ -775,10 +775,10 @@ class CheckoutFormsLegalValidationTest(TestCase):
             'phone': '+7 999 111 22 33',
             'first_name': 'Иван Иванов',
             'last_name': '',
-            'email': '',
+            'email': 'client@example.com',
             'contact_channel': Order.CONTACT_CHANNEL_CALL,
             'delivery_type': Order.DELIVERY_CDEK_PVZ,
-            'payment_method': Order.PAYMENT_METHOD_SBP,
+            'payment_method': Order.PAYMENT_METHOD_MANAGER_CONTACT,
             'comment': '',
             'promo_code': '',
             'agree_personal_data': 'on',
@@ -792,7 +792,7 @@ class CheckoutFormsLegalValidationTest(TestCase):
             'phone': '+7 999 111 22 33',
             'first_name': 'Иван Иванов',
             'last_name': '',
-            'email': '',
+            'email': 'client@example.com',
             'contact_channel': Order.CONTACT_CHANNEL_CALL,
             'delivery_type': Order.DELIVERY_CDEK_PVZ,
             'city_text': 'Подмена',
@@ -806,7 +806,7 @@ class CheckoutFormsLegalValidationTest(TestCase):
             }),
             'cdek_tariff_snapshot_raw': json.dumps({'tariff_code': 136}),
             'recipient_is_customer': 'on',
-            'payment_method': Order.PAYMENT_METHOD_SBP,
+            'payment_method': Order.PAYMENT_METHOD_MANAGER_CONTACT,
             'comment': '',
             'promo_code': '',
             'agree_personal_data': 'on',
@@ -1071,8 +1071,7 @@ class OrderNotificationPolicyTest(TestCase):
             phone_verified_at=timezone.now(),
         )
 
-    @patch('orders.services.send_sms_message')
-    def test_registered_user_sms_notifications_respect_preferences(self, mocked_sms):
+    def test_registered_user_order_notifications_are_email_only(self):
         NotificationPreference.objects.create(
             user=self.user,
             sms_order_updates_enabled=False,
@@ -1094,10 +1093,8 @@ class OrderNotificationPolicyTest(TestCase):
         self.assertEqual(OrderNotificationLog.objects.filter(order=order, channel='email').count(), 1)
         self.assertEqual(OrderNotificationLog.objects.filter(order=order, channel='sms').count(), 0)
         self.assertEqual(len(mail.outbox), 1)
-        mocked_sms.assert_not_called()
 
-    @patch('orders.services.send_sms_message')
-    def test_guest_order_sms_notifications_allowed_by_default_and_idempotent(self, mocked_sms):
+    def test_guest_order_notifications_stay_email_only_and_idempotent(self):
         order = Order.objects.create(
             user=None,
             status=Order.STATUS_NEW,
@@ -1112,9 +1109,8 @@ class OrderNotificationPolicyTest(TestCase):
         send_order_event_notifications(order, 'order_created')
 
         self.assertEqual(OrderNotificationLog.objects.filter(order=order, channel='email').count(), 1)
-        self.assertEqual(OrderNotificationLog.objects.filter(order=order, channel='sms').count(), 1)
+        self.assertEqual(OrderNotificationLog.objects.filter(order=order, channel='sms').count(), 0)
         self.assertEqual(len(mail.outbox), 1)
-        mocked_sms.assert_called_once()
 
 
 class OrderPaymentSideEffectsTest(TestCase):

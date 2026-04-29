@@ -76,7 +76,12 @@ class LoginViewsTest(TestCase):
         self.assertContains(resp, 'Создать аккаунт с паролем')
         self.assertContains(resp, 'Этот email станет вашим логином и адресом сервисных писем.')
 
-    def test_register_creates_email_account_and_logs_user_in(self):
+    @override_settings(
+        EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
+        DEFAULT_FROM_EMAIL='BizonVR <no-reply@bizonvr.ru>',
+    )
+    @patch('accounts.services.generate_code', return_value='112233')
+    def test_register_creates_unverified_account_and_redirects_to_email_confirmation(self, mocked_generate_code):
         response = self.client.post(reverse('accounts:register'), {
             'contact_name': 'Иван Иванов',
             'email': 'client@example.com',
@@ -86,18 +91,20 @@ class LoginViewsTest(TestCase):
         })
 
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response.url, reverse('home'))
+        self.assertEqual(response.url, f"{reverse('accounts:register_confirm')}?email=client@example.com")
 
         user = User.objects.get(email='client@example.com')
         profile = Profile.objects.get(user=user)
         self.assertTrue(user.check_password('StrongPass123!'))
         self.assertNotEqual(user.username, 'client@example.com')
         self.assertEqual(profile.contact_name, 'Иван Иванов')
-        self.assertIsNone(profile.phone)
-        self.assertIsNotNone(profile.email_verified_at)
+        self.assertFalse(bool(profile.email_verified_at))
         self.assertIsNotNone(profile.privacy_agreed_at)
         self.assertEqual(profile.privacy_policy_version, LEGAL_BUNDLE_VERSION)
-        self.assertEqual(self.client.session.get('_auth_user_id'), str(user.pk))
+        self.assertIsNone(self.client.session.get('_auth_user_id'))
+        self.assertTrue(EmailVerificationCode.objects.filter(user=user, email='client@example.com', used_at__isnull=True).exists())
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn('112233', mail.outbox[0].body)
 
     def test_register_rejects_duplicate_email(self):
         existing = User.objects.create_user(
@@ -146,7 +153,7 @@ class LoginViewsTest(TestCase):
         self.assertEqual(response.url, reverse('home'))
         self.assertEqual(self.client.session.get('_auth_user_id'), str(user.pk))
 
-    def test_password_login_accepts_unique_unverified_email_account(self):
+    def test_password_login_rejects_unverified_email_account(self):
         user = User.objects.create_user(
             username='user_email_only',
             email='oneboardshol@gmail.com',
@@ -158,9 +165,9 @@ class LoginViewsTest(TestCase):
             'password': 'StrongPass123!',
         })
 
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(response.url, f"{reverse('accounts:profile_settings')}#profile")
-        self.assertEqual(self.client.session.get('_auth_user_id'), str(user.pk))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Подтвердите email')
+        self.assertIsNone(self.client.session.get('_auth_user_id'))
         self.assertTrue(Profile.objects.filter(user=user).exists())
 
     def test_authenticated_login_view_ignores_external_next(self):
@@ -598,8 +605,6 @@ class CompleteRegistrationLegalVersionTest(TestCase):
 
 
 class ProfileDashboardTest(TestCase):
-    PHONE_CHANGE_SESSION_KEY = 'accounts:profile:phone_change_pending'
-
     def setUp(self):
         self.client = Client()
         cache.clear()
@@ -629,7 +634,7 @@ class ProfileDashboardTest(TestCase):
         self.assertContains(resp, 'Профиль без пробелов')
         self.assertContains(resp, 'Возвраты / обращения')
         self.assertContains(resp, 'Нет сохранённого адреса')
-        self.assertContains(resp, '2 из 4 выполнено')
+        self.assertContains(resp, '1 из 4 выполнено')
 
     def test_profile_setup_checklist_prioritizes_incomplete_steps(self):
         preferences = NotificationPreference.objects.create(
@@ -643,12 +648,11 @@ class ProfileDashboardTest(TestCase):
             profile=self.profile,
             saved_addresses=[],
             notification_preferences=preferences,
-            pending_phone_change='',
         )
 
-        self.assertEqual(checklist['progress_label'], '2 из 4 выполнено')
-        self.assertEqual([step['title'] for step in checklist['pending_steps']], ['Сохранить адрес', 'Подтвердить email'])
-        self.assertEqual([step['title'] for step in checklist['completed_steps']], ['Добавить данные', 'Настроить уведомления'])
+        self.assertEqual(checklist['progress_label'], '1 из 4 выполнено')
+        self.assertEqual([step['title'] for step in checklist['pending_steps']], ['Сохранить адрес', 'Подтвердить email', 'Настроить уведомления'])
+        self.assertEqual([step['title'] for step in checklist['completed_steps']], ['Добавить данные'])
         self.assertEqual([step['title'] for step in checklist['steps'][:2]], ['Сохранить адрес', 'Подтвердить email'])
 
     def test_profile_dashboard_empty_order_state_uses_more_direct_copy(self):
@@ -680,7 +684,7 @@ class ProfileDashboardTest(TestCase):
         self.assertContains(resp, 'lg:hidden')
         self.assertContains(resp, 'Основной адрес — не добавлен')
         self.assertContains(resp, 'Email — не подтверждён')
-        self.assertContains(resp, 'Телефон — не подтверждён')
+        self.assertContains(resp, 'Телефон — контактный')
         self.assertContains(resp, 'Пароль — установлен')
         self.assertNotContains(resp, 'Секции настроек')
         self.assertNotContains(resp, 'Доставка и связь')
@@ -706,7 +710,7 @@ class ProfileDashboardTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Инструменты доступа открыты')
         self.assertContains(response, 'Подтверждение email')
-        self.assertContains(response, 'Смена номера входа')
+        self.assertContains(response, 'Телефон в профиле')
 
     def test_profile_settings_opens_notification_form_only_by_explicit_action(self):
         self.client.force_login(self.user)
@@ -783,61 +787,17 @@ class ProfileDashboardTest(TestCase):
         self.assertIsNotNone(self.profile.privacy_agreed_at)
         self.assertEqual(self.profile.privacy_policy_version, LEGAL_BUNDLE_VERSION)
 
-    def test_send_phone_code_action_creates_pending_state_and_sms_code(self):
+    def test_profile_ignores_removed_phone_confirmation_actions(self):
         self.client.force_login(self.user)
-        new_phone = '9221112233'
-        resp = self.client.post(reverse('accounts:profile'), {
+
+        response = self.client.post(reverse('accounts:profile'), {
             'action': 'send_phone_code',
             'new_phone': '+7 (922) 111-22-33',
         })
-        self.assertEqual(resp.status_code, 200)
-        session = self.client.session
-        self.assertEqual(session.get(self.PHONE_CHANGE_SESSION_KEY), new_phone)
-        self.assertTrue(
-            PhoneVerificationCode.objects.filter(phone=new_phone).exists(),
-            msg='Ожидался созданный SMS-код для смены номера',
-        )
 
-    def test_confirm_phone_code_updates_login_phone_and_keeps_session(self):
-        self.client.force_login(self.user)
-        new_phone = '9221112233'
-        session = self.client.session
-        session[self.PHONE_CHANGE_SESSION_KEY] = new_phone
-        session.save()
-        PhoneVerificationCode.objects.create(phone=new_phone, code='123456')
-
-        resp = self.client.post(reverse('accounts:profile'), {
-            'action': 'confirm_phone_code',
-            'new_phone': '+7 (922) 111-22-33',
-            'code': '123456',
-        })
-        self.assertEqual(resp.status_code, 200)
-
-        self.user.refresh_from_db()
-        self.profile.refresh_from_db()
-        self.assertEqual(self.user.username, new_phone)
-        self.assertEqual(self.profile.phone, new_phone)
-        self.assertEqual(self.client.session.get('_auth_user_id'), str(self.user.pk))
-        self.assertNotIn(self.PHONE_CHANGE_SESSION_KEY, self.client.session)
-
-    def test_confirm_phone_code_invalid_code_keeps_old_phone(self):
-        self.client.force_login(self.user)
-        new_phone = '9221112233'
-        session = self.client.session
-        session[self.PHONE_CHANGE_SESSION_KEY] = new_phone
-        session.save()
-        PhoneVerificationCode.objects.create(phone=new_phone, code='654321')
-
-        resp = self.client.post(reverse('accounts:profile'), {
-            'action': 'confirm_phone_code',
-            'new_phone': '+7 (922) 111-22-33',
-            'code': '111111',
-        })
-        self.assertEqual(resp.status_code, 200)
-        self.user.refresh_from_db()
-        self.profile.refresh_from_db()
-        self.assertEqual(self.user.username, '9991234567')
-        self.assertEqual(self.profile.phone, '9991234567')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Неизвестное действие формы.')
+        self.assertFalse(PhoneVerificationCode.objects.filter(phone='9221112233').exists())
 
     @override_settings(
         EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
@@ -857,7 +817,7 @@ class ProfileDashboardTest(TestCase):
             EmailVerificationCode.objects.filter(user=self.user, email='client@example.com', used_at__isnull=True).exists()
         )
         self.assertEqual(len(mail.outbox), 1)
-        self.assertContains(resp, 'Код отправлен на')
+        self.assertContains(resp, 'Письмо с кодом подтверждения отправлено.')
 
     def test_confirm_email_code_updates_user_email_and_profile_status(self):
         self.client.force_login(self.user)
