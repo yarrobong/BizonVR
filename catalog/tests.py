@@ -3110,6 +3110,29 @@ class CatalogMenuCacheTest(TestCase):
             '/media/products/quest-3.webp',
         )
 
+    def test_catalog_menu_prefers_explicit_category_image_over_product_image(self):
+        media_root = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, media_root, True)
+        png_bytes = (
+            b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01'
+            b'\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDAT\x08\xd7c\xf8\xff\xff?'
+            b'\x00\x05\xfe\x02\xfeA\xd9\x89\xc9\x00\x00\x00\x00IEND\xaeB`\x82'
+        )
+
+        with override_settings(
+            MEDIA_ROOT=media_root,
+            STORAGES={
+                'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'},
+                'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+            },
+        ):
+            self.category.image = SimpleUploadedFile('category-card.png', png_bytes, content_type='image/png')
+            self.category.save(update_fields=['image'])
+            context = catalog_menu(self._build_request('/catalog/'))
+
+        self.assertIn(self.category.pk, context['catalog_category_previews'])
+        self.assertIn('/media/categories/category-card', context['catalog_category_previews'][self.category.pk])
+
     def test_catalog_menu_exposes_bundle_only_section_landing_category(self):
         bundle_section = CatalogSection.objects.create(name='Bundle only', slug='bundle-only')
         bundle_category = Category.objects.create(

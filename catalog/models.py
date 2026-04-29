@@ -72,6 +72,13 @@ class Category(models.Model):
         blank=True,
         help_text='SVG код иконки для отображения слева от названия категории',
     )
+    image = models.ImageField(
+        'Изображение категории',
+        upload_to='categories/',
+        blank=True,
+        null=True,
+        help_text='Показывается в плитках категории. Если не заполнено, используется фото набора или товара.',
+    )
     tile_size = models.CharField(
         'Размер плитки в меню',
         max_length=10,
