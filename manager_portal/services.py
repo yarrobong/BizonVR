@@ -4199,9 +4199,6 @@ def ensure_website_order_workflow(order, *, author=None):
     client_resolution = ensure_manager_client_for_order(order)
     client = client_resolution['client']
     deal = ensure_manager_deal_for_order(order)
-    if deal.manager_client_id != client.id:
-        deal.manager_client = client
-        deal.save(update_fields=['manager_client', 'updated_at'])
     ensure_initial_deal_activity(deal, actor=author)
     if not deal.activities.filter(event_type='order.synced').exists():
         record_deal_activity(

@@ -130,6 +130,9 @@ class InvestLandingTests(SimpleTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response['Content-Type'], 'text/html')
         self.assertIn('Инвестиции в компактную VR-арену BIZON', html)
+        self.assertIn('class="topbar-menu-toggle"', html)
+        self.assertIn('aria-controls="topbarMenuPanel"', html)
+        self.assertIn('data-mobile-cards="growth-plan"', html)
         self.assertIn('href="#risks"', html)
         self.assertIn('Риски и защита инвестора', html)
 

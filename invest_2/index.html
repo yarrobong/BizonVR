@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="./styles.css?v=20260417-1">
+  <link rel="stylesheet" href="./styles.css?v=20260429-2">
 </head>
 <body>
   <div class="page-shell">
@@ -23,14 +23,26 @@
           <small>Инвестиционная презентация</small>
         </span>
       </a>
-      <nav class="nav">
-        <a href="#offer">Предложение</a>
-        <a href="#games">Фото игр</a>
-        <a href="#economics">Экономика</a>
-        <a href="#risks">Риски</a>
-      </nav>
-      <div class="topbar-actions">
-        <a class="button button-ghost" href="https://bizonvr.ru">Основной сайт</a>
+      <button
+        class="topbar-menu-toggle"
+        type="button"
+        aria-label="Открыть меню навигации"
+        aria-expanded="false"
+        aria-controls="topbarMenuPanel"
+      >
+        <span class="sr-only">Открыть меню навигации</span>
+        <span class="topbar-menu-icon" aria-hidden="true"></span>
+      </button>
+      <div class="topbar-menu-panel" id="topbarMenuPanel" aria-hidden="true">
+        <nav class="nav">
+          <a href="#offer">Предложение</a>
+          <a href="#games">Фото игр</a>
+          <a href="#economics">Экономика</a>
+          <a href="#risks">Риски</a>
+        </nav>
+        <div class="topbar-actions">
+          <a class="button button-ghost" href="https://bizonvr.ru">Основной сайт</a>
+        </div>
       </div>
     </header>
 
@@ -569,7 +581,7 @@
           <article class="panel reveal network-table-panel">
             <span class="card-kicker">Расчёт по сети</span>
             <h3>Доход инвестора при масштабировании</h3>
-            <table class="data-table">
+            <table class="data-table" data-mobile-cards="investor-upside">
               <thead>
                 <tr>
                   <th>Открыто точек</th>
@@ -659,7 +671,7 @@
           <h2>План развития на 200 франшизных точек</h2>
         </div>
         <div class="panel reveal growth-plan-panel">
-          <table class="data-table growth-plan-table">
+          <table class="data-table growth-plan-table" data-mobile-cards="growth-plan">
             <thead>
               <tr>
                 <th>Период</th>
@@ -723,7 +735,7 @@
           <h2>Сценарии выхода инвестора</h2>
         </div>
         <div class="panel reveal exit-strategy-panel">
-          <table class="data-table exit-strategy-table">
+          <table class="data-table exit-strategy-table" data-mobile-cards="exit-strategy">
             <thead>
               <tr>
                 <th>Когда</th>
@@ -776,6 +788,6 @@
 
     </main>
   </div>
-  <script src="./script.js?v=20260422-1"></script>
+  <script src="./script.js?v=20260429-2"></script>
 </body>
 </html>

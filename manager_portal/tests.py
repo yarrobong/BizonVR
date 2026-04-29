@@ -1406,7 +1406,7 @@ class ManagerPortalServiceTests(ManagerPortalBaseTestCase):
         self.assertEqual(cargo_item.received_quantity, 2)
         self.assertEqual(balance.quantity, 2)
 
-    def test_website_workflow_creates_client_deal_and_variant_aware_reservation(self):
+    def test_website_workflow_creates_client_and_deal_without_reservation(self):
         InventoryBalance.objects.create(warehouse=self.warehouse, product=self.product, variant=self.variant, quantity=2)
         order = Order.objects.create(
             user=self.user,
@@ -1435,9 +1435,48 @@ class ManagerPortalServiceTests(ManagerPortalBaseTestCase):
         self.assertEqual(result['client'].orders.get(), order)
         self.assertEqual(result['deal'].deal_type, ManagerDeal.DEAL_SALE_FROM_STOCK)
         self.assertEqual(result['deal'].stock_warehouse, self.warehouse)
+        self.assertEqual(result['reservations'], [])
+        self.assertFalse(ReservationItem.objects.filter(order_item=order_item).exists())
+
+    def test_confirmed_website_order_creates_and_cancellation_releases_variant_reservation(self):
+        InventoryBalance.objects.create(warehouse=self.warehouse, product=self.product, variant=self.variant, quantity=2)
+        order = Order.objects.create(
+            user=self.user,
+            status=Order.STATUS_NEW,
+            payment_status=Order.PAYMENT_STATUS_UNPAID,
+            payment_method=Order.PAYMENT_METHOD_MANAGER_CONTACT,
+            total=Decimal('100000.00'),
+            phone='+7 999 555 44 34',
+            email='site-confirmed@example.com',
+            first_name='Сайт',
+            city_text='Екатеринбург',
+            delivery_type=Order.DELIVERY_CDEK_PVZ,
+            address_line='ПВЗ',
+        )
+        order_item = OrderItem.objects.create(
+            order=order,
+            product=self.product,
+            variant=self.variant,
+            quantity=1,
+            price=Decimal('100000.00'),
+            variant_name=self.variant.name,
+        )
+
+        ensure_website_order_workflow(order)
+        update_order_state(order, status=Order.STATUS_CONFIRMED, payment_status=order.payment_status, actor=self.staff_user)
+
         reservation_item = ReservationItem.objects.get(order_item=order_item)
+        reservation = reservation_item.reservation
         self.assertEqual(reservation_item.variant, self.variant)
-        self.assertEqual(reservation_item.reservation.source_warehouse, self.warehouse)
+        self.assertEqual(reservation.source_warehouse, self.warehouse)
+        self.assertEqual(reservation.status, Reservation.STATUS_ACTIVE)
+
+        update_order_state(order, status=Order.STATUS_CANCELLED, payment_status=order.payment_status, actor=self.staff_user)
+
+        reservation.refresh_from_db()
+        order.manager_deal.refresh_from_db()
+        self.assertEqual(reservation.status, Reservation.STATUS_CANCELLED)
+        self.assertIsNone(order.manager_deal.primary_reservation)
 
     def test_receive_cargo_item_updates_procurement_linked_to_order_item(self):
         order = Order.objects.create(

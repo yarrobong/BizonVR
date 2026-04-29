@@ -201,7 +201,7 @@ class CheckoutForm(forms.Form):
         label='Способ оплаты',
         required=True,
         initial=Order.PAYMENT_METHOD_MANAGER_CONTACT,
-        choices=Order.PUBLIC_PAYMENT_METHOD_CHOICES,
+        choices=Order.PUBLIC_PAYMENT_METHOD_CHOICES + Order.LEGACY_PAYMENT_METHOD_CHOICES,
         widget=forms.HiddenInput(),
     )
     business_company_name = forms.CharField(
