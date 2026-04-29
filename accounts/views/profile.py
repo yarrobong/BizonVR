@@ -53,7 +53,7 @@ def _consume_pending_alerts(request):
 def _status_description(status, count):
     if count:
         descriptions = {
-            Order.STATUS_NEW: 'Требуют подтверждения или оплаты.',
+            Order.STATUS_NEW: 'Требуют подтверждения менеджером.',
             Order.STATUS_CONFIRMED: 'Менеджер подтвердил заказ и готовит его к отгрузке.',
             Order.STATUS_SHIPPING: 'Заказы в пути или ожидают выдачи.',
             Order.STATUS_READY_FOR_PICKUP: 'Заказы готовы к выдаче в точке получения.',

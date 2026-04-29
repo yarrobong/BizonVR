@@ -91,7 +91,7 @@ class LoginViewsTest(TestCase):
         })
 
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response.url, f"{reverse('accounts:register_confirm')}?email=client@example.com")
+        self.assertEqual(response.url, f"{reverse('accounts:register_confirm')}?email=client%40example.com")
 
         user = User.objects.get(email='client@example.com')
         profile = Profile.objects.get(user=user)

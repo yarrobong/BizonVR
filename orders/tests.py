@@ -14,6 +14,7 @@ from accounts.models import NotificationPreference, Profile
 from catalog.models import CartItem, Category, City, PickupPoint, Product, ProductStock
 from config.legal_docs import LEGAL_BUNDLE_VERSION
 from manager_portal.models import ManagerClient, ManagerDeal, SaleLineAllocation
+from payments.models import Payment
 
 from .forms import CheckoutForm, PurchaseRequestForm
 from .models import Order, OrderItem, OrderNotificationLog, PromoCode, PurchaseRequest
@@ -295,6 +296,7 @@ class CheckoutTest(TestCase):
         self.assertEqual(order.cdek_office_snapshot['name'], 'ПВЗ СДЭК Тверская')
         self.assertEqual(order.cdek_tariff_snapshot['tariff_code'], 136)
         self.assertEqual(order.payment_method, Order.PAYMENT_METHOD_MANAGER_CONTACT)
+        self.assertEqual(order.email, 'client@example.com')
         self.assertEqual(order.contact_channel, Order.CONTACT_CHANNEL_CALL)
         self.assertEqual(order.contact_handle, '')
         self.assertEqual(order.delivery_type, Order.DELIVERY_CDEK_PVZ)
@@ -305,6 +307,7 @@ class CheckoutTest(TestCase):
         self.assertEqual(order.items.first().quantity, 2)
         self.assertEqual(self.client.session.get('cart_items', []), [])
         self.assertEqual(PurchaseRequest.objects.count(), 0)
+        self.assertEqual(Payment.objects.filter(order=order).count(), 0)
 
     def test_guest_checkout_creates_guest_order_and_access_token(self):
         add_url = reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk})

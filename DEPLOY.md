@@ -81,7 +81,7 @@ PORT=8000
 GUNICORN_WORKERS=2
 ```
 
-По необходимости заполните `EXOLVE_*`, `PAYMENT_GATEWAY_*`, `TURNSTILE_*`, `EMAIL_*`.
+Для публичного сценария обязательно настройте корпоративную почту через `EMAIL_*` и `DEFAULT_FROM_EMAIL`. `EXOLVE_*` и `PAYMENT_GATEWAY_*` остаются legacy-настройками и не нужны для checkout без онлайн-оплаты.
 
 ### 4. Виртуальное окружение и зависимости
 
