@@ -26,6 +26,10 @@
           <span>Телефон</span>
           <span class="text-right text-white">{{ order.phone }}</span>
         </div>
+        <div class="mt-2 flex items-center justify-between text-gray-300">
+          <span>Email</span>
+          <span class="text-right text-white">{{ order.email|default:"Уточним при подтверждении" }}</span>
+        </div>
         {% if order.contact_handle or order.contact_channel %}
           <div class="mt-2 flex items-center justify-between text-gray-300">
             <span>Связь</span>
@@ -61,8 +65,8 @@
       <div class="mx-auto mt-6 max-w-xl rounded-2xl border border-accent/20 bg-accent/10 p-5 text-left text-sm text-gray-200">
         <p class="font-medium text-white">Что дальше</p>
         <p class="mt-2">1. Проверим наличие товаров и возможность отправки.</p>
-        <p class="mt-1">2. Подтвердим удобный ПВЗ и итоговую стоимость доставки.</p>
-        <p class="mt-1">3. Свяжемся с вами и согласуем следующий шаг по оплате.</p>
+        <p class="mt-1">2. Подтвердим удобный ПВЗ и детали доставки.</p>
+        <p class="mt-1">3. Отправим письмо на email и свяжемся с вами для согласования заказа.</p>
       </div>
 
       <div class="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">

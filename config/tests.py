@@ -91,18 +91,19 @@ class InvestLandingTests(SimpleTestCase):
         self.assertEqual(response['Content-Type'], 'text/html')
         self.assertIn('Компактная VR-арена', html)
         self.assertIn('Получить модель', html)
-        self.assertIn('/invest-2/', html)
+        self.assertIn('href="#investment"', html)
+        self.assertNotIn('/invest-2/', html)
         self.assertNotIn('../img/', html)
 
     def test_new_landing_alias_returns_same_html(self):
-        response = self.client.get(reverse('invest_2'))
-        html = self._streaming_content(response).decode('utf-8')
+        canonical_response = self.client.get(reverse('invest'))
+        alias_response = self.client.get(reverse('invest_2'))
+        canonical_html = self._streaming_content(canonical_response).decode('utf-8')
+        alias_html = self._streaming_content(alias_response).decode('utf-8')
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response['Content-Type'], 'text/html')
-        self.assertIn('Компактная VR-арена', html)
-        self.assertIn('Получить модель', html)
-        self.assertIn('/invest-2/', html)
+        self.assertEqual(alias_response.status_code, 200)
+        self.assertEqual(alias_response['Content-Type'], 'text/html')
+        self.assertEqual(alias_html, canonical_html)
 
     def test_landing_css_asset_is_served(self):
         response = self.client.get('/invest/styles.css')
@@ -122,6 +123,34 @@ class InvestLandingTests(SimpleTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response['Content-Type'], 'video/mp4')
 
+    def test_new_landing_route_returns_invest_2_html(self):
+        response = self.client.get(reverse('invest_2_new'))
+        html = self._streaming_content(response).decode('utf-8')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'text/html')
+        self.assertIn('Инвестиции в компактную VR-арену BIZON', html)
+        self.assertIn('href="#risks"', html)
+        self.assertIn('Риски и защита инвестора', html)
+
+    def test_new_landing_route_serves_css_asset(self):
+        response = self.client.get('/invest-2-new/styles.css')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'text/css')
+
+    def test_new_landing_route_serves_script_asset(self):
+        response = self.client.get('/invest-2-new/script.js')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('javascript', response['Content-Type'])
+
+    def test_new_landing_route_serves_image_asset(self):
+        response = self.client.get('/invest-2-new/1.jpg')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'image/jpeg')
+
     def test_landing_script_asset_is_served(self):
         response = self.client.get('/invest/script.js')
 
@@ -136,6 +165,11 @@ class InvestLandingTests(SimpleTestCase):
 
     def test_landing_rejects_path_traversal(self):
         response = self.client.get('/invest/%2E%2E/README.md')
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_new_landing_route_rejects_path_traversal(self):
+        response = self.client.get('/invest-2-new/%2E%2E/README.md')
 
         self.assertEqual(response.status_code, 404)
 

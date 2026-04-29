@@ -6,6 +6,7 @@ app_name = 'accounts'
 urlpatterns = [
     path('login/', views.login_view, name='login'),
     path('register/', views.register_view, name='register'),
+    path('register/confirm/', views.register_confirm_view, name='register_confirm'),
     path('login/password/', views.password_login_view, name='password_login'),
     path('password-reset/', views.password_reset_request_view, name='password_reset_request'),
     path('password-reset/confirm/<uidb64>/<token>/', views.password_reset_confirm_view, name='password_reset_confirm'),

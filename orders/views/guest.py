@@ -50,7 +50,6 @@ def order_guest_detail_view(request, token):
             claim_guest_orders_for_user(
                 request.user,
                 verified_email=order.email,
-                verified_phone='',
             )
             return redirect('orders:order_detail', pk=order.pk)
         can_claim_after_login = bool(profile and profile.email_verified_at and order_email)
@@ -60,7 +59,6 @@ def order_guest_detail_view(request, token):
         'order_summary': build_order_status_summary(order),
         'is_guest_order': True,
         'guest_access_token': token,
-        'test_order_no_payment': getattr(settings, 'TEST_ORDER_NO_PAYMENT', False),
         'claim_login_url': claim_login_url,
         'can_claim_after_login': can_claim_after_login,
     })

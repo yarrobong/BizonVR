@@ -4199,28 +4199,9 @@ def ensure_website_order_workflow(order, *, author=None):
     client_resolution = ensure_manager_client_for_order(order)
     client = client_resolution['client']
     deal = ensure_manager_deal_for_order(order)
-    reservations = ensure_order_reservations(
-        order,
-        client,
-        author=author,
-        strict=False,
-        comment='Автоматический резерв по заказу сайта.',
-    )
-    if reservations:
-        unique_warehouses = {reservation.source_warehouse_id for reservation in reservations if reservation.source_warehouse_id}
-        update_fields = []
-        if len(reservations) == 1 and deal.primary_reservation_id != reservations[0].id:
-            deal.primary_reservation = reservations[0]
-            deal.reserve_created_at = timezone.now()
-            update_fields.extend(['primary_reservation', 'reserve_created_at'])
-        if len(unique_warehouses) == 1:
-            warehouse_id = next(iter(unique_warehouses))
-            if deal.stock_warehouse_id != warehouse_id:
-                deal.stock_warehouse_id = warehouse_id
-                update_fields.append('stock_warehouse')
-        if update_fields:
-            update_fields.append('updated_at')
-            deal.save(update_fields=update_fields)
+    if deal.manager_client_id != client.id:
+        deal.manager_client = client
+        deal.save(update_fields=['manager_client', 'updated_at'])
     ensure_initial_deal_activity(deal, actor=author)
     if not deal.activities.filter(event_type='order.synced').exists():
         record_deal_activity(
@@ -4235,7 +4216,7 @@ def ensure_website_order_workflow(order, *, author=None):
         'client': client,
         'client_resolution': client_resolution,
         'deal': deal,
-        'reservations': reservations,
+        'reservations': [],
     }
 
 
@@ -4354,6 +4335,50 @@ def fulfill_reservation(reservation, *, author=None, comment='', shipment=None):
         shipment.source_warehouse = shipment.source_warehouse or reservation_effective_warehouse(reservation)
         shipment.save(update_fields=['reservation', 'source_warehouse', 'updated_at'])
     return dispatch_shipment(shipment, author=author, comment=comment)
+
+
+def release_order_reservations(order, *, author=None, comment='Снятие резерва по отмене заказа сайта.'):
+    reservations = list(
+        order.manager_reservations.filter(status__in=ACTIVE_RESERVATION_STATUSES)
+        .select_related('source_warehouse', 'source_cargo__destination_warehouse')
+        .order_by('id')
+    )
+    if not reservations:
+        return []
+
+    touched_warehouse_ids = set()
+    released_ids = []
+    for reservation in reservations:
+        warehouse = reservation_effective_warehouse(reservation)
+        create_or_update_reservation_movements(
+            reservation,
+            movement_type=InventoryMovement.TYPE_RELEASE,
+            author=author,
+            comment=comment,
+        )
+        reservation.status = Reservation.STATUS_CANCELLED
+        reservation.save(update_fields=['status', 'updated_at'])
+        if warehouse is not None:
+            touched_warehouse_ids.add(warehouse.pk)
+        released_ids.append(reservation.pk)
+
+    for warehouse_id in touched_warehouse_ids:
+        sync_public_stock_for_warehouse(Warehouse.objects.get(pk=warehouse_id))
+
+    try:
+        deal = order.manager_deal
+    except ManagerDeal.DoesNotExist:
+        deal = None
+    if deal is not None:
+        update_fields = []
+        if deal.primary_reservation_id in released_ids:
+            deal.primary_reservation = None
+            update_fields.append('primary_reservation')
+        if update_fields:
+            deal.save(update_fields=update_fields + ['updated_at'])
+        recompute_deal_workflow(deal, actor=author)
+
+    return reservations
 
 
 def consume_inventory_for_order(order, *, author=None):

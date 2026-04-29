@@ -110,6 +110,7 @@ class PromoCode(models.Model):
 class Order(models.Model):
     """Заказ: пользователь (или гость), статус, сумма, контакты, доставка."""
 
+    PAYMENT_METHOD_MANAGER_CONTACT = 'manager_contact'
     PAYMENT_METHOD_BANK_CARD = 'bank_card'
     PAYMENT_METHOD_SBP = 'sbp'
     PAYMENT_METHOD_MANAGER_PAYMENT = 'manager_payment'
@@ -186,12 +187,12 @@ class Order(models.Model):
     PAYMENT_METHOD_BANK_TRANSFER = 'bank_transfer'
     PAYMENT_METHOD_INVOICE = 'invoice'
     PUBLIC_PAYMENT_METHOD_CHOICES = [
-        (PAYMENT_METHOD_SBP, 'СБП после подтверждения менеджером'),
-        (PAYMENT_METHOD_BANK_TRANSFER, 'Перевод по реквизитам после подтверждения'),
-        (PAYMENT_METHOD_CASH_ON_DELIVERY, 'Наличные при самовывозе'),
-        (PAYMENT_METHOD_INVOICE, 'Счёт для юрлица'),
+        (PAYMENT_METHOD_MANAGER_CONTACT, 'Оплату согласует менеджер'),
     ]
     LEGACY_PAYMENT_METHOD_CHOICES = [
+        (PAYMENT_METHOD_BANK_TRANSFER, 'Перевод по реквизитам после подтверждения (архивный способ)'),
+        (PAYMENT_METHOD_CASH_ON_DELIVERY, 'Наличные при самовывозе (архивный способ)'),
+        (PAYMENT_METHOD_INVOICE, 'Счёт для юрлица (архивный способ)'),
         (PAYMENT_METHOD_BANK_CARD, 'Перевод на карту (архивный способ)'),
         (PAYMENT_METHOD_MANAGER_PAYMENT, 'Через менеджера для юрлиц (архивный способ)'),
         (PAYMENT_METHOD_ONLINE, 'Банковская карта (архивный способ)'),
@@ -229,7 +230,7 @@ class Order(models.Model):
         'Способ оплаты',
         max_length=32,
         choices=PAYMENT_METHOD_CHOICES,
-        default=PAYMENT_METHOD_SBP,
+        default=PAYMENT_METHOD_MANAGER_CONTACT,
     )
     contact_channel = models.CharField(
         'Предпочтительный канал связи',

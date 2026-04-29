@@ -12,7 +12,7 @@ from django.db.models import F, Q
 from django.template.loader import render_to_string
 from django.urls import reverse
 
-from accounts.services import normalize_email, normalize_phone, send_sms_message
+from accounts.services import normalize_email, normalize_phone
 
 ORDER_STATUS_PRESENTATIONS = {
     'new': {
@@ -254,43 +254,23 @@ def build_guest_order_url(order, request=None):
     return f"{getattr(settings, 'SITE_URL', '').rstrip('/')}{path}"
 
 
-def claim_guest_orders_for_user(user, *, verified_email='', verified_phone=''):
+def claim_guest_orders_for_user(user, *, verified_email=''):
     from .models import Order
 
     email = normalize_email(verified_email)
-    phone = normalize_phone(verified_phone)
-    if not email and not phone:
+    if not email:
         return 0
-    queryset = Order.objects.filter(user__isnull=True)
-    if email:
-        queryset = queryset.filter(Q(email__iexact=email) | Q(phone__isnull=False))
-    elif phone:
-        queryset = queryset.filter(phone__isnull=False)
+    queryset = Order.objects.filter(user__isnull=True, email__iexact=email)
 
     matched_ids = []
     for order in queryset.only('id', 'email', 'phone'):
         email_matches = bool(email and normalize_email(order.email) == email)
-        phone_matches = bool(phone and normalize_phone(order.phone) == phone)
-        if email_matches or phone_matches:
+        if email_matches:
             matched_ids.append(order.pk)
 
     if not matched_ids:
         return 0
     return Order.objects.filter(pk__in=matched_ids, user__isnull=True).update(user=user)
-
-
-def _is_sms_notification_allowed(order):
-    if not order.phone:
-        return False
-    if order.user_id is None:
-        return True
-
-    from accounts.models import NotificationPreference
-
-    preference = NotificationPreference.objects.filter(user=order.user).first()
-    if preference is None:
-        return True
-    return bool(preference.sms_order_updates_enabled)
 
 
 def send_order_event_notifications(order, event, *, request=None):
@@ -308,15 +288,6 @@ def send_order_event_notifications(order, event, *, request=None):
         if created:
             _send_order_event_email(order, event, request=request)
 
-    if _is_sms_notification_allowed(order):
-        _, created = OrderNotificationLog.objects.get_or_create(
-            order=order,
-            event=event,
-            channel=OrderNotificationLog.CHANNEL_SMS,
-        )
-        if created:
-            _send_order_event_sms(order, event)
-
 
 def sync_order_state_side_effects(order, *, previous_status=None, previous_payment_status=None, request=None):
     previous_status = previous_status or ''
@@ -327,13 +298,38 @@ def sync_order_state_side_effects(order, *, previous_status=None, previous_payme
         send_order_event_notifications(order, 'payment_received', request=request)
 
     if previous_status != order.status:
+        try:
+            from manager_portal.services import (
+                ensure_manager_client_for_order,
+                ensure_order_reservations,
+                release_order_reservations,
+            )
+        except Exception:
+            ensure_manager_client_for_order = None
+            ensure_order_reservations = None
+            release_order_reservations = None
+
         if order.status == order.STATUS_CONFIRMED:
+            if ensure_manager_client_for_order and ensure_order_reservations:
+                client_resolution = ensure_manager_client_for_order(order)
+                ensure_order_reservations(
+                    order,
+                    client_resolution['client'],
+                    author=getattr(request, 'user', None) if request is not None else None,
+                    strict=False,
+                    comment='Автоматический резерв после подтверждения заказа.',
+                )
             send_order_event_notifications(order, 'order_confirmed', request=request)
         elif order.status == order.STATUS_SHIPPING:
             send_order_event_notifications(order, 'order_shipped', request=request)
         elif order.status == order.STATUS_READY_FOR_PICKUP:
             send_order_event_notifications(order, 'order_ready_for_pickup', request=request)
         elif order.status == order.STATUS_CANCELLED:
+            if release_order_reservations:
+                release_order_reservations(
+                    order,
+                    author=getattr(request, 'user', None) if request is not None else None,
+                )
             send_order_event_notifications(order, 'order_cancelled', request=request)
 
     try:

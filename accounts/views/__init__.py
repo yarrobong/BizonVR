@@ -2,6 +2,7 @@ from .auth import (
     login_view,
     logout_view,
     password_login_view,
+    register_confirm_view,
     register_view,
 )
 from .password_reset import (
@@ -17,6 +18,7 @@ __all__ = [
     'login_view',
     'logout_view',
     'password_login_view',
+    'register_confirm_view',
     'register_view',
     'password_reset_confirm_view',
     'password_reset_request_view',

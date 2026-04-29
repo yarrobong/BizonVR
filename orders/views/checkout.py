@@ -79,7 +79,7 @@ def _get_selected_saved_address(request, saved_addresses):
 def _get_checkout_initial(request, saved_address):
     initial = {
         'country': 'Россия',
-        'payment_method': Order.PAYMENT_METHOD_SBP,
+        'payment_method': Order.PAYMENT_METHOD_MANAGER_CONTACT,
         'contact_channel': Order.CONTACT_CHANNEL_CALL,
         'delivery_type': Order.DELIVERY_CDEK_PVZ,
         'recipient_is_customer': True,
@@ -91,6 +91,7 @@ def _get_checkout_initial(request, saved_address):
     initial['first_name'] = (profile.contact_name or '').strip()
     initial['last_name'] = ''
     initial['phone'] = get_user_phone(request.user, profile)
+    initial['email'] = (request.user.email or '').strip()
     initial['business_phone'] = initial['phone']
 
     if saved_address:
@@ -98,6 +99,7 @@ def _get_checkout_initial(request, saved_address):
             'first_name': saved_address.recipient_name or initial.get('first_name', ''),
             'last_name': '',
             'phone': saved_address.phone or initial.get('phone', ''),
+            'email': saved_address.email or initial.get('email', ''),
             'city_text': saved_address.city,
             'recipient_name': saved_address.recipient_name or '',
             'recipient_phone': saved_address.phone or '',
@@ -583,10 +585,10 @@ def checkout_view(request):
         if order.is_guest_order:
             issue_guest_access(order)
 
-    if items_source == 'buy_now':
-        clear_buy_now_checkout_items(request)
-    else:
-        remove_cart_items(request, lines)
+        if items_source == 'buy_now':
+            clear_buy_now_checkout_items(request)
+        else:
+            remove_cart_items(request, lines)
     _set_checkout_promo_code(request, items_source, None)
     if request.user.is_authenticated:
         _sync_profile_from_checkout(request.user, form.cleaned_data)
@@ -754,5 +756,4 @@ def order_created_view(request, order_id):
         'order': order,
         'order_summary': build_order_status_summary(order) if order else None,
         'access_token': access_token if order and order.is_guest_order else '',
-        'test_order_no_payment': getattr(settings, 'TEST_ORDER_NO_PAYMENT', False),
     })
