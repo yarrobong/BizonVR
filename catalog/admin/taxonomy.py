@@ -7,6 +7,7 @@ from ..cache_utils import invalidate_catalog_cache
 from ..filter_bootstrap import bootstrap_filter_configs
 from ..filter_setup_wizard import CatalogFilterSetupWizard
 from ..models import CatalogSection, Category, ProductTag
+from .shared import _admin_image_preview
 from .filters import CategoryFilterConfigInline, SectionFilterConfigInline
 
 
@@ -122,15 +123,27 @@ class CatalogSectionAdmin(FilterSetupWizardAdminMixin, admin.ModelAdmin):
 @admin.register(Category)
 class CategoryAdmin(FilterSetupWizardAdminMixin, admin.ModelAdmin):
     filter_setup_scope_type = 'category'
-    list_display = ('name', 'slug', 'section', 'tile_size', 'is_bundles_category', 'has_icon')
+    list_display = ('name', 'slug', 'section', 'tile_size', 'is_bundles_category', 'has_image', 'has_icon')
     list_editable = ('tile_size',)
     list_filter = ('section', 'is_bundles_category')
     prepopulated_fields = {'slug': ('name',)}
     search_fields = ('name',)
-    fields = ('name', 'slug', 'section', 'icon', 'tile_size', 'is_bundles_category')
+    fields = ('name', 'slug', 'section', 'image', 'image_preview', 'icon', 'tile_size', 'is_bundles_category')
+    readonly_fields = ('image_preview',)
     inlines = (CategoryFilterConfigInline,)
     actions = ('bootstrap_filter_configs_action',)
     change_form_template = 'admin/catalog/category/change_form.html'
+
+    def image_preview(self, obj):
+        return _admin_image_preview(obj, width=140, height=104)
+
+    image_preview.short_description = 'Превью'
+
+    def has_image(self, obj):
+        return bool(obj.image)
+
+    has_image.boolean = True
+    has_image.short_description = 'Есть фото'
 
     def has_icon(self, obj):
         return bool(obj.icon)
