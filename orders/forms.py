@@ -114,8 +114,13 @@ class CheckoutForm(forms.Form):
     )
     email = forms.EmailField(
         label='Email',
-        required=False,
-        widget=forms.HiddenInput(),
+        required=True,
+        widget=forms.EmailInput(attrs={
+            'class': 'w-full rounded-2xl border border-white/10 bg-dark-700/80 px-4 py-2.5 text-white placeholder:text-gray-500 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30',
+            'placeholder': 'email@example.com',
+            'autocomplete': 'email',
+            'inputmode': 'email',
+        }),
     )
     contact_channel = forms.ChoiceField(
         label='Как с вами связаться',
@@ -193,9 +198,9 @@ class CheckoutForm(forms.Form):
         widget=forms.HiddenInput(),
     )
     payment_method = forms.ChoiceField(
-        label='Как вам удобнее оплатить после подтверждения',
+        label='Способ оплаты',
         required=True,
-        initial=Order.PAYMENT_METHOD_SBP,
+        initial=Order.PAYMENT_METHOD_MANAGER_CONTACT,
         choices=Order.PUBLIC_PAYMENT_METHOD_CHOICES,
         widget=forms.HiddenInput(),
     )
@@ -314,7 +319,7 @@ class CheckoutForm(forms.Form):
         return promo.code  # сохраняем нормализованный код
 
     def clean_email(self):
-        return (self.cleaned_data.get('email') or '').strip()
+        return (self.cleaned_data.get('email') or '').strip().lower()
 
     def clean_contact_handle(self):
         return (self.cleaned_data.get('contact_handle') or '').strip()
@@ -447,11 +452,10 @@ class CheckoutForm(forms.Form):
         if delivery_type != Order.DELIVERY_CDEK_PVZ:
             cleaned_data['delivery_type'] = Order.DELIVERY_CDEK_PVZ
 
-        cleaned_data['email'] = ''
         cleaned_data['comment'] = ''
         cleaned_data['delivery_comment'] = ''
         cleaned_data['last_name'] = last_name
-        cleaned_data['payment_method'] = Order.PAYMENT_METHOD_SBP
+        cleaned_data['payment_method'] = Order.PAYMENT_METHOD_MANAGER_CONTACT
 
         if contact_handle:
             lower_value = contact_handle.lower()
@@ -480,8 +484,6 @@ class CheckoutForm(forms.Form):
                 self.add_error('recipient_phone', 'Укажите телефон получателя.')
 
         cleaned_data['delivery_type'] = Order.DELIVERY_CDEK_PVZ
-        if cleaned_data['payment_method'] == Order.PAYMENT_METHOD_INVOICE and not cleaned_data.get('business_phone'):
-            cleaned_data['business_phone'] = phone
         cleaned_data['country'] = 'Россия'
         if 'postal_code' not in cleaned_data:
             cleaned_data['postal_code'] = ''

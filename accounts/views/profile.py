@@ -1,5 +1,5 @@
 from django.contrib.auth import get_user_model
-from django.db import IntegrityError, transaction
+from django.db import transaction
 from django.db.models import Count
 from django.shortcuts import render
 from django.urls import reverse
@@ -14,29 +14,22 @@ from ..forms import (
     EmailVerificationConfirmForm,
     EmailVerificationRequestForm,
     NotificationPreferencesForm,
-    PhoneChangeConfirmForm,
-    PhoneChangeRequestForm,
     ProfileUpdateForm,
     SavedAddressForm,
 )
 from ..models import BalanceTransaction, CommercialProposalContact, Profile, SavedAddress
-from ..security import check_send_code_rate_limits, check_verify_code_rate_limits, get_client_ip, mark_send_code_success
 from ..services import (
-    auto_claim_guest_orders_for_user,
     ensure_profile,
     confirm_email_verification,
-    create_and_send_code,
     create_and_send_email_code,
     get_or_create_notification_preferences,
     get_pending_email_verification,
     get_user_phone,
     normalize_phone,
-    verify_sms_code,
 )
 from orders.services import build_order_status_summary
 
 User = get_user_model()
-PHONE_CHANGE_SESSION_KEY = 'accounts:profile:phone_change_pending'
 PROFILE_PENDING_ALERTS_SESSION_KEY = 'accounts:profile:pending_alerts'
 
 
@@ -170,7 +163,7 @@ def _set_default_saved_address(user, address):
     return address
 
 
-def _build_profile_completion(profile, saved_addresses, orders_total, favorites_count, pending_phone_change):
+def _build_profile_completion(profile, saved_addresses, orders_total, favorites_count):
     steps = [
         {
             'label': 'Получатель указан',
@@ -201,9 +194,7 @@ def _build_profile_completion(profile, saved_addresses, orders_total, favorites_
     completed = sum(1 for step in steps if step['done'])
     percent = int((completed / len(steps)) * 100) if steps else 0
 
-    if pending_phone_change:
-        summary = 'Осталось подтвердить новый номер по SMS.'
-    elif not profile.email_verified_at:
+    if not profile.email_verified_at:
         summary = 'Подтвердите email, чтобы получать письма по аккаунту и заказам на проверенный адрес.'
     elif percent == 100:
         summary = 'Кабинет заполнен и готов к повторным заказам.'
@@ -221,7 +212,7 @@ def _build_profile_completion(profile, saved_addresses, orders_total, favorites_
     }
 
 
-def _build_profile_setup_checklist(profile, saved_addresses, notification_preferences, pending_phone_change):
+def _build_profile_setup_checklist(profile, saved_addresses, notification_preferences):
     steps = [
         {
             'title': 'Добавить данные',
@@ -249,8 +240,7 @@ def _build_profile_setup_checklist(profile, saved_addresses, notification_prefer
             'description': 'Проверьте каналы связи и оставьте только нужные уведомления.',
             'href': f"{reverse('accounts:profile_settings')}#notifications",
             'done': bool(
-                notification_preferences.sms_order_updates_enabled
-                or notification_preferences.marketing_email_enabled
+                notification_preferences.marketing_email_enabled
                 or notification_preferences.back_in_stock_enabled
             ),
             'icon': 'bell',
@@ -263,9 +253,7 @@ def _build_profile_setup_checklist(profile, saved_addresses, notification_prefer
     completed_steps = [step for step in steps if step['done']]
     progress_label = f'{completed} из {total} выполнено'
 
-    if pending_phone_change:
-        summary = 'Сначала подтвердите новый номер, затем можно закрыть оставшиеся шаги.'
-    elif completed == total:
+    if completed == total:
         summary = 'Все базовые шаги закрыты. Кабинет готов к быстрому оформлению.'
     else:
         summary = f'{progress_label}. Незавершённые шаги подняты выше, чтобы их можно было закрыть без поиска.'
@@ -284,7 +272,7 @@ def _build_profile_setup_checklist(profile, saved_addresses, notification_prefer
     }
 
 
-def _build_priority_actions(profile, saved_addresses, active_orders_count, favorites_count, pending_phone_change):
+def _build_priority_actions(profile, saved_addresses, active_orders_count, favorites_count):
     actions = []
 
     if not profile.contact_name:
@@ -302,14 +290,6 @@ def _build_priority_actions(profile, saved_addresses, active_orders_count, favor
             'href': f"{reverse('accounts:profile_settings')}#delivery",
             'variant': 'default',
             'icon': 'map-pin',
-        })
-    if pending_phone_change:
-        actions.append({
-            'title': 'Подтвердить новый номер',
-            'description': 'Смена логина завершится после ввода SMS-кода.',
-            'href': f"{reverse('accounts:profile_settings')}#security",
-            'variant': 'default',
-            'icon': 'shield-check',
         })
     if not profile.email_verified_at:
         actions.append({
@@ -404,7 +384,6 @@ def _build_overview_notifications(
     active_order_summary,
     default_saved_address,
     pending_email_verification,
-    pending_phone_change,
     profile_completion,
 ):
     notifications = []
@@ -418,15 +397,7 @@ def _build_overview_notifications(
             'tone': 'warning',
         })
 
-    if pending_phone_change:
-        notifications.append({
-            'title': 'Смена номера не завершена',
-            'text': 'Введите SMS-код, чтобы новый номер стал логином для входа.',
-            'href': f"{reverse('accounts:profile_settings')}#security",
-            'cta': 'Подтвердить номер',
-            'tone': 'warning',
-        })
-    elif pending_email_verification:
+    if pending_email_verification:
         notifications.append({
             'title': 'Email ждёт подтверждения',
             'text': f"Код уже отправлен на {pending_email_verification.email}.",
@@ -515,11 +486,6 @@ def _build_account_quick_statuses(profile, has_password, default_saved_address):
             'tone': 'success' if profile.email_verified_at else 'warning',
         },
         {
-            'label': 'Телефон',
-            'value': 'подтверждён' if profile.phone_verified_at else 'не подтверждён',
-            'tone': 'success' if profile.phone_verified_at else 'warning',
-        },
-        {
             'label': 'Пароль',
             'value': 'установлен' if has_password else 'не установлен',
             'tone': 'success' if has_password else 'muted',
@@ -539,8 +505,6 @@ def _build_profile_context(
     profile_form=None,
     email_request_form=None,
     email_confirm_form=None,
-    phone_request_form=None,
-    phone_confirm_form=None,
     address_form=None,
     notification_form=None,
     editing_address=None,
@@ -553,7 +517,6 @@ def _build_profile_context(
         cp_contact = request.user.cp_contact
     except CommercialProposalContact.DoesNotExist:
         cp_contact = None
-    pending_phone = request.session.get(PHONE_CHANGE_SESSION_KEY, '')
     pending_email_verification = get_pending_email_verification(request.user)
     confirmed_email = (request.user.email or '').strip()
 
@@ -574,20 +537,11 @@ def _build_profile_context(
             email_locked=bool(profile.email_verified_at),
             initial={'email': pending_email_verification.email if pending_email_verification else confirmed_email},
         )
-    if phone_request_form is None:
-        phone_request_form = PhoneChangeRequestForm(current_user=request.user, initial={
-            'new_phone': pending_phone or '',
-        })
-    if phone_confirm_form is None:
-        phone_confirm_form = PhoneChangeConfirmForm(current_user=request.user, initial={
-            'new_phone': pending_phone or '',
-        })
     if address_form is None:
         address_form = SavedAddressForm(initial=_saved_address_initial(editing_address))
     notification_preferences = get_or_create_notification_preferences(request.user)
     if notification_form is None:
         notification_form = NotificationPreferencesForm(initial={
-            'sms_order_updates_enabled': notification_preferences.sms_order_updates_enabled,
             'marketing_email_enabled': notification_preferences.marketing_email_enabled,
             'back_in_stock_enabled': notification_preferences.back_in_stock_enabled,
         })
@@ -630,20 +584,17 @@ def _build_profile_context(
         saved_addresses=saved_addresses,
         orders_total=sum(item['count'] for item in order_stats),
         favorites_count=favorites_count,
-        pending_phone_change=pending_phone,
     )
     profile_setup_checklist = _build_profile_setup_checklist(
         profile=profile,
         saved_addresses=saved_addresses,
         notification_preferences=notification_preferences,
-        pending_phone_change=pending_phone,
     )
     priority_actions = _build_priority_actions(
         profile=profile,
         saved_addresses=saved_addresses,
         active_orders_count=active_orders_count,
         favorites_count=favorites_count,
-        pending_phone_change=pending_phone,
     )
     customer_segment, customer_segment_description = _build_customer_segment(
         orders_total=sum(item['count'] for item in order_stats),
@@ -654,7 +605,6 @@ def _build_profile_context(
         active_order_summary=active_order_summary,
         default_saved_address=default_saved_address,
         pending_email_verification=pending_email_verification,
-        pending_phone_change=pending_phone,
         profile_completion=profile_completion,
     )
     overview_primary_action, overview_secondary_actions = _build_overview_actions(
@@ -678,7 +628,6 @@ def _build_profile_context(
         'profile': profile,
         'has_password': has_password,
         'phone_display': _format_phone(get_user_phone(request.user, profile)) or 'Телефон не указан',
-        'phone_verified_at': profile.phone_verified_at,
         'primary_contact_phone': _format_phone(primary_contact_phone) or 'Телефон не указан',
         'primary_contact_email': primary_contact_email,
         'alerts': alerts or [],
@@ -687,9 +636,6 @@ def _build_profile_context(
         'email_confirm_form': email_confirm_form,
         'pending_email_verification': pending_email_verification,
         'confirmed_email': confirmed_email,
-        'phone_request_form': phone_request_form,
-        'phone_confirm_form': phone_confirm_form,
-        'pending_phone_change': pending_phone,
         'address_form': address_form,
         'notification_form': notification_form,
         'notification_preferences': notification_preferences,
@@ -730,7 +676,6 @@ def build_account_sidebar_context(request, active_tab):
     except CommercialProposalContact.DoesNotExist:
         cp_contact = None
 
-    pending_phone_change = request.session.get(PHONE_CHANGE_SESSION_KEY, '')
     pending_email_verification = get_pending_email_verification(request.user)
     order_rows = (
         Order.objects
@@ -751,7 +696,6 @@ def build_account_sidebar_context(request, active_tab):
         saved_addresses=[None] * saved_addresses_count,
         orders_total=orders_total,
         favorites_count=favorites_count,
-        pending_phone_change=pending_phone_change,
     )
 
     primary_email = (
@@ -844,8 +788,6 @@ def _render_profile_settings(request):
     profile_form = None
     email_request_form = None
     email_confirm_form = None
-    phone_request_form = None
-    phone_confirm_form = None
     address_form = None
     notification_form = None
     editing_address = None
@@ -891,8 +833,6 @@ def _render_profile_settings(request):
                         profile_form=profile_form,
                         email_request_form=email_request_form,
                         email_confirm_form=email_confirm_form,
-                        phone_request_form=phone_request_form,
-                        phone_confirm_form=phone_confirm_form,
                         address_form=address_form,
                         editing_address=None,
                         profile_edit_mode=profile_edit_mode,
@@ -995,9 +935,7 @@ def _render_profile_settings(request):
             notification_preferences = get_or_create_notification_preferences(request.user)
             notification_form = NotificationPreferencesForm(request.POST)
             if notification_form.is_valid():
-                notification_preferences.sms_order_updates_enabled = bool(
-                    notification_form.cleaned_data.get('sms_order_updates_enabled')
-                )
+                notification_preferences.sms_order_updates_enabled = False
                 notification_preferences.marketing_email_enabled = bool(
                     notification_form.cleaned_data.get('marketing_email_enabled')
                 )
@@ -1037,86 +975,6 @@ def _render_profile_settings(request):
             else:
                 alerts.append({'level': 'error', 'text': 'Адрес не найден.'})
 
-        elif action == 'send_phone_code':
-            security_edit_mode = True
-            phone_request_form = PhoneChangeRequestForm(request.POST, current_user=request.user)
-            if phone_request_form.is_valid():
-                new_phone = phone_request_form.cleaned_data['new_phone']
-                ok_rate, rate_error = check_send_code_rate_limits(request, new_phone)
-                if not ok_rate:
-                    phone_request_form.add_error('new_phone', rate_error)
-                    alerts.append({'level': 'error', 'text': 'Не удалось отправить код на новый номер.'})
-                else:
-                    ok, error = create_and_send_code(new_phone, client_ip=get_client_ip(request))
-                    if ok:
-                        mark_send_code_success(request, new_phone)
-                        request.session[PHONE_CHANGE_SESSION_KEY] = new_phone
-                        request.session.modified = True
-                        phone_confirm_form = PhoneChangeConfirmForm(
-                            current_user=request.user,
-                            initial={'new_phone': new_phone},
-                        )
-                        alerts.append({'level': 'success', 'text': 'Код отправлен на новый номер.'})
-                    else:
-                        phone_request_form.add_error('new_phone', error)
-                        alerts.append({'level': 'error', 'text': 'Не удалось отправить код на новый номер.'})
-            else:
-                alerts.append({'level': 'error', 'text': 'Проверьте номер телефона для отправки кода.'})
-
-        elif action == 'confirm_phone_code':
-            security_edit_mode = True
-            phone_confirm_form = PhoneChangeConfirmForm(request.POST, current_user=request.user)
-            pending_phone = request.session.get(PHONE_CHANGE_SESSION_KEY, '')
-
-            if phone_confirm_form.is_valid():
-                new_phone = phone_confirm_form.cleaned_data['new_phone']
-                code = phone_confirm_form.cleaned_data['code']
-                if not pending_phone:
-                    phone_confirm_form.add_error(None, 'Сначала запросите код для нового номера.')
-                elif normalize_phone(pending_phone) != new_phone:
-                    phone_confirm_form.add_error('new_phone', 'Номер не совпадает с номером, для которого отправлен код.')
-                else:
-                    ok_rate, rate_error = check_verify_code_rate_limits(request, new_phone, endpoint='profile-phone-confirm')
-                    if not ok_rate:
-                        phone_confirm_form.add_error('code', rate_error)
-                    else:
-                        ok, error = verify_sms_code(new_phone, code, consume=True)
-                        if not ok:
-                            phone_confirm_form.add_error('code', error)
-                        elif User.objects.filter(username=new_phone).exclude(pk=request.user.pk).exists():
-                            phone_confirm_form.add_error('new_phone', 'Этот номер уже используется другим аккаунтом.')
-                        else:
-                            try:
-                                with transaction.atomic():
-                                    locked_user = User.objects.select_for_update().get(pk=request.user.pk)
-                                    Profile.objects.select_for_update().filter(user=locked_user).first()
-
-                                    if User.objects.filter(username=new_phone).exclude(pk=locked_user.pk).exists():
-                                        raise IntegrityError('duplicate username')
-
-                                    locked_user.username = new_phone
-                                    locked_user.save(update_fields=['username'])
-                                    Profile.objects.filter(user=locked_user).update(
-                                        phone=new_phone,
-                                        phone_verified_at=timezone.now(),
-                                    )
-                            except IntegrityError:
-                                phone_confirm_form.add_error('new_phone', 'Не удалось сменить номер: номер уже занят.')
-                            else:
-                                profile.phone = new_phone
-                                profile.phone_verified_at = timezone.now()
-                                request.user.username = new_phone
-                                auto_claim_guest_orders_for_user(request.user)
-                                request.session.pop(PHONE_CHANGE_SESSION_KEY, None)
-                                request.session.modified = True
-                                phone_request_form = PhoneChangeRequestForm(current_user=request.user)
-                                phone_confirm_form = PhoneChangeConfirmForm(current_user=request.user)
-                                alerts.append({'level': 'success', 'text': 'Номер телефона успешно обновлён.'})
-                                security_edit_mode = False
-
-            if phone_confirm_form.errors:
-                alerts.append({'level': 'error', 'text': 'Не удалось подтвердить смену номера.'})
-
         else:
             alerts.append({'level': 'error', 'text': 'Неизвестное действие формы.'})
 
@@ -1131,7 +989,7 @@ def _render_profile_settings(request):
                 address_edit_mode = True
                 address_form = SavedAddressForm(initial=_saved_address_initial(editing_address))
 
-    if request.session.get(PHONE_CHANGE_SESSION_KEY) or get_pending_email_verification(request.user):
+    if get_pending_email_verification(request.user):
         security_edit_mode = True
 
     context = _build_profile_context(
@@ -1141,8 +999,6 @@ def _render_profile_settings(request):
         profile_form=profile_form,
         email_request_form=email_request_form,
         email_confirm_form=email_confirm_form,
-        phone_request_form=phone_request_form,
-        phone_confirm_form=phone_confirm_form,
         address_form=address_form,
         notification_form=notification_form,
         editing_address=editing_address,

@@ -140,13 +140,6 @@ class ProfileUpdateForm(forms.Form):
 class NotificationPreferencesForm(forms.Form):
     """Настройки пользовательских уведомлений в кабинете."""
 
-    sms_order_updates_enabled = forms.BooleanField(
-        label='SMS по важным статусам',
-        required=False,
-        widget=forms.CheckboxInput(attrs={
-            'class': 'h-4 w-4 rounded border-gray-600 bg-dark-700 text-accent focus:ring-accent focus:ring-offset-0',
-        }),
-    )
     marketing_email_enabled = forms.BooleanField(
         label='Маркетинговые письма',
         required=False,
@@ -496,6 +489,40 @@ class RegistrationForm(forms.Form):
                 self.add_error('password1', exc)
 
         return cleaned_data
+
+
+class RegistrationEmailConfirmForm(forms.Form):
+    email = forms.EmailField(
+        label='Email',
+        widget=forms.EmailInput(attrs={
+            'placeholder': 'email@example.com',
+            'autocomplete': 'email',
+            'class': 'w-full rounded-2xl border border-white/10 bg-dark-700/80 px-4 py-3 text-white placeholder:text-gray-500 transition focus:border-accent/60 focus:outline-none focus:ring-2 focus:ring-accent/20',
+        }),
+    )
+    code = forms.CharField(
+        label='Код из письма',
+        max_length=10,
+        widget=forms.TextInput(attrs={
+            'placeholder': '123456',
+            'autocomplete': 'one-time-code',
+            'inputmode': 'numeric',
+            'pattern': '[0-9]*',
+            'class': 'w-full rounded-2xl border border-white/10 bg-dark-700/80 px-4 py-3 text-center tracking-widest text-white placeholder:text-gray-500 transition focus:border-accent/60 focus:outline-none focus:ring-2 focus:ring-accent/20',
+        }),
+    )
+
+    def clean_email(self):
+        email = normalize_email(self.cleaned_data.get('email') or '')
+        if not email:
+            raise forms.ValidationError('Введите корректный email.')
+        return email
+
+    def clean_code(self):
+        code = (self.cleaned_data.get('code') or '').strip()
+        if not code or not code.isdigit():
+            raise forms.ValidationError('Введите цифровой код из письма.')
+        return code
 
 
 class EmailLoginRequestForm(forms.Form):

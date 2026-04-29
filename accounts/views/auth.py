@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model, login, logout
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods, require_POST
 
@@ -7,19 +8,24 @@ from config.legal_consent import get_legal_bundle_version
 
 from ..forms import (
     PasswordLoginForm,
+    RegistrationEmailConfirmForm,
     RegistrationForm,
 )
 from ..models import Profile
 from ..services import (
     authenticate_by_login_identifier,
     auto_claim_guest_orders_for_user,
+    confirm_email_verification,
+    create_and_send_email_code,
     build_unique_email_username,
     ensure_profile,
-    get_default_profile_phone,
     get_or_create_notification_preferences,
+    get_default_profile_phone,
+    normalize_email,
 )
 
 User = get_user_model()
+REGISTER_CONFIRM_TEMPLATE = 'accounts/register_confirm.html'
 
 
 def _safe_redirect_url(next_path, default='home'):
@@ -59,6 +65,17 @@ def _render_login_page(
         'next_url': next_url,
         'show_password_registration': show_password_registration,
     })
+
+
+def _get_unverified_registered_user(email):
+    email = normalize_email(email)
+    if not email:
+        return None
+    return (
+        User.objects
+        .filter(email__iexact=email, is_active=True, profile__email_verified_at__isnull=True)
+        .first()
+    )
 
 
 @require_http_methods(['GET'])
@@ -121,14 +138,21 @@ def register_view(request):
                 user=user,
                 phone=get_default_profile_phone(user),
                 contact_name=form.cleaned_data['contact_name'],
-                email_verified_at=timezone.now(),
                 privacy_agreed_at=timezone.now(),
                 privacy_policy_version=get_legal_bundle_version(),
             )
-            get_or_create_notification_preferences(user)
-            auto_claim_guest_orders_for_user(user)
-            login(request, user, backend='django.contrib.auth.backends.ModelBackend')
-            return _redirect_after_successful_auth(request)
+            ok, error = create_and_send_email_code(user, form.cleaned_data['email'])
+            if not ok:
+                user.delete()
+                form.add_error('email', error)
+            else:
+                next_url = request.POST.get('next', '')
+                confirm_url = reverse('accounts:register_confirm')
+                if next_url:
+                    confirm_url = f'{confirm_url}?next={next_url}&email={form.cleaned_data["email"]}'
+                else:
+                    confirm_url = f'{confirm_url}?email={form.cleaned_data["email"]}'
+                return redirect(confirm_url)
     else:
         form = RegistrationForm()
 
@@ -138,3 +162,54 @@ def register_view(request):
         register_form=form,
         show_password_registration=True,
     )
+
+
+@require_http_methods(['GET', 'POST'])
+def register_confirm_view(request):
+    next_url = request.POST.get('next', '') if request.method == 'POST' else request.GET.get('next', '')
+    initial_email = request.POST.get('email', '') if request.method == 'POST' else request.GET.get('email', '')
+    resend_error = ''
+    resend_success = ''
+
+    if request.method == 'POST' and (request.POST.get('action') or 'confirm_email') == 'resend_email':
+        email = normalize_email(request.POST.get('email') or '')
+        resend_form = RegistrationEmailConfirmForm(initial={'email': email})
+        confirm_form = RegistrationEmailConfirmForm(initial={'email': email})
+        user = _get_unverified_registered_user(email)
+        if user is None:
+            resend_error = 'Регистрация с таким email не найдена или уже завершена.'
+        else:
+            ok, error = create_and_send_email_code(user, email)
+            if ok:
+                resend_success = 'Письмо с новым кодом отправлено.'
+            else:
+                resend_error = error
+        return render(request, REGISTER_CONFIRM_TEMPLATE, {
+            'form': confirm_form,
+            'email': email,
+            'next_url': next_url,
+            'resend_error': resend_error,
+            'resend_success': resend_success,
+        })
+
+    form = RegistrationEmailConfirmForm(request.POST or None, initial={'email': initial_email})
+    if request.method == 'POST' and form.is_valid():
+        email = form.cleaned_data['email']
+        user = _get_unverified_registered_user(email)
+        if user is None:
+            form.add_error('email', 'Регистрация с таким email не найдена или уже завершена.')
+        else:
+            ok, error = confirm_email_verification(user, email, form.cleaned_data['code'])
+            if ok:
+                get_or_create_notification_preferences(user)
+                login(request, user, backend='django.contrib.auth.backends.ModelBackend')
+                return redirect(_safe_redirect_url(next_url, 'home'))
+            form.add_error('code', error)
+
+    return render(request, REGISTER_CONFIRM_TEMPLATE, {
+        'form': form,
+        'email': initial_email,
+        'next_url': next_url,
+        'resend_error': resend_error,
+        'resend_success': resend_success,
+    })

@@ -153,8 +153,7 @@ def auto_claim_guest_orders_for_user(user) -> int:
     """Привязать guest-заказы по уже подтверждённым контактам пользователя."""
     profile = ensure_profile(user)
     verified_email = normalize_email(user.email) if profile.email_verified_at else ''
-    verified_phone = get_user_phone(user, profile) if profile.phone_verified_at else ''
-    if not verified_email and not verified_phone:
+    if not verified_email:
         return 0
 
     from orders.services import claim_guest_orders_for_user
@@ -162,28 +161,29 @@ def auto_claim_guest_orders_for_user(user) -> int:
     return claim_guest_orders_for_user(
         user,
         verified_email=verified_email,
-        verified_phone=verified_phone,
     )
 
 
 def authenticate_by_login_identifier(identifier: str, password: str, request=None) -> tuple[object | None, str]:
     identifier = (identifier or '').strip()
     if not identifier:
-        return None, 'Укажите телефон или email.'
+        return None, 'Укажите email.'
+    if '@' not in identifier:
+        return None, 'Вход доступен только по подтверждённому email.'
 
-    if '@' in identifier:
-        user = get_user_by_email(identifier, require_verified=False)
-    else:
-        user = get_user_by_phone(identifier)
+    user = get_user_by_email(identifier, require_verified=False)
 
     if user is None:
-        return None, 'Неверный телефон, email или пароль.'
+        return None, 'Аккаунт с таким email не найден.'
+    profile = ensure_profile(user)
+    if not profile.email_verified_at:
+        return None, 'Подтвердите email через письмо, чтобы войти в аккаунт.'
     if not user.has_usable_password():
-        return None, 'Для этого аккаунта пароль ещё не задан. Восстановите доступ по номеру или email.'
+        return None, 'Для этого аккаунта пароль ещё не задан. Установите его через восстановление доступа по email.'
 
     authenticated_user = authenticate(request, username=user.username, password=password)
     if authenticated_user is None:
-        return None, 'Неверный телефон, email или пароль.'
+        return None, 'Неверный email или пароль.'
     return authenticated_user, ''
 
 
@@ -754,29 +754,23 @@ def login_with_email_code(email: str, code: str, request) -> tuple[bool, str, ob
 
 def resolve_or_create_user_for_order_claim(email: str, phone: str):
     email = normalize_email(email)
-    phone = normalize_phone(phone)
-
     user = get_user_by_email(email) if email else None
-    if user is None and phone:
-        user = get_user_by_phone(phone)
 
     if user is None:
         user = User.objects.create_user(
-            username=phone or build_unique_email_username(),
+            username=build_unique_email_username(),
             email=email,
             is_active=True,
         )
         user.set_unusable_password()
         user.save(update_fields=['password'])
 
-    profile, _ = Profile.objects.get_or_create(user=user, defaults={'phone': phone or get_default_profile_phone(user)})
+    profile, _ = Profile.objects.get_or_create(user=user, defaults={'phone': normalize_phone(phone) or get_default_profile_phone(user)})
     update_fields = []
-    if phone and profile.phone != phone:
-        profile.phone = phone
+    normalized_phone = normalize_phone(phone)
+    if normalized_phone and profile.phone != normalized_phone:
+        profile.phone = normalized_phone
         update_fields.append('phone')
-    if phone and not profile.phone_verified_at:
-        # Для claim по email номер не считаем подтверждённым автоматически.
-        pass
     if email and user.email != email:
         user.email = email
         user.save(update_fields=['email'])

@@ -27,6 +27,10 @@
           <p class="mt-1 leading-6 text-gray-300">Если пароль потерян, новая ссылка для установки пароля отправляется только на подтверждённый email аккаунта.</p>
         </div>
         <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+          <p class="font-medium text-white">Регистрация в два шага</p>
+          <p class="mt-1 leading-6 text-gray-300">После создания аккаунта нужно подтвердить email кодом из письма. Только после этого вход и привязка гостевых заказов станут доступны.</p>
+        </div>
+        <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
           <p class="font-medium text-white">Покупка без регистрации</p>
           <p class="mt-1 leading-6 text-gray-300">Корзина и checkout работают для гостя, а аккаунт можно подключить позже без потери заказа.</p>
         </div>
@@ -75,7 +79,7 @@
           <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p class="text-sm font-medium text-white">Нужен новый аккаунт?</p>
-              <p class="mt-1 text-sm text-gray-400">Регистрация создаёт аккаунт сразу с email и паролем.</p>
+              <p class="mt-1 text-sm text-gray-400">Сначала создайте аккаунт, затем подтвердите email кодом из письма.</p>
             </div>
             <button type="button" @click="registrationOpen = !registrationOpen" class="rounded-full border border-white/10 bg-dark-900/40 px-4 py-2 text-sm font-semibold text-white transition hover:border-white/20 hover:bg-dark-900/70">
               <span x-show="!registrationOpen">Показать форму</span>
@@ -126,6 +130,7 @@
             <button type="submit" class="w-full rounded-full border border-white/10 bg-white/5 px-4 py-3 font-semibold text-white transition hover:border-white/20 hover:bg-white/10">
               Создать аккаунт с паролем
             </button>
+            <p class="text-center text-xs leading-5 text-gray-500">После отправки формы откроется шаг подтверждения email.</p>
           </form>
         </div>
       </div>

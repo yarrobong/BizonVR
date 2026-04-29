@@ -59,7 +59,6 @@ def order_detail_view(request, pk):
         'order_summary': build_order_status_summary(order),
         'is_guest_order': False,
         'guest_access_token': '',
-        'test_order_no_payment': getattr(settings, 'TEST_ORDER_NO_PAYMENT', False),
     }
     context.update(build_account_sidebar_context(request, active_tab='orders'))
     return render(request, 'orders/order_detail.html', context)

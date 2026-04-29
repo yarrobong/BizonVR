@@ -208,8 +208,8 @@
                           <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Телефон</p>
                           <p class="mt-2 text-white">{{ phone_display }}</p>
                         </div>
-                        <span class="rounded-full border px-3 py-1 text-xs {% if phone_verified_at %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% else %}border-amber-400/20 bg-amber-500/10 text-amber-100{% endif %}">
-                          Телефон — {% if phone_verified_at %}подтверждён{% else %}не подтверждён{% endif %}
+                        <span class="rounded-full border border-white/10 bg-dark-900/40 px-3 py-1 text-xs text-gray-200">
+                          Контакт для менеджера
                         </span>
                       </div>
                     </div>
@@ -231,8 +231,8 @@
               <section class="rounded-[1.5rem] border border-white/10 bg-white/5 p-5">
                 <h3 class="text-lg font-semibold text-white">Быстрый статус</h3>
                 <div class="mt-4 flex flex-wrap gap-2">
-                  <span class="rounded-full border px-3 py-1 text-xs {% if phone_verified_at %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% else %}border-amber-400/20 bg-amber-500/10 text-amber-100{% endif %}">
-                    Телефон — {% if phone_verified_at %}подтверждён{% else %}не подтверждён{% endif %}
+                  <span class="rounded-full border border-white/10 bg-dark-900/40 px-3 py-1 text-xs text-gray-200">
+                    Телефон — контактный
                   </span>
                   <span class="rounded-full border px-3 py-1 text-xs {% if profile.email_verified_at %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% else %}border-amber-400/20 bg-amber-500/10 text-amber-100{% endif %}">
                     Email — {% if profile.email_verified_at %}подтверждён{% else %}не подтверждён{% endif %}
@@ -247,7 +247,7 @@
                     <p class="mt-2 text-sm leading-6 text-gray-300">Имя, телефон и email подставляются в checkout, документы по заказу и сообщения от магазина.</p>
                   </div>
                   <div class="rounded-2xl border border-white/10 bg-dark-900/40 p-4">
-                    <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Последнее подтверждение</p>
+                    <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Подтверждение email</p>
                     <p class="mt-2 text-sm text-white">
                       {% if profile.email_verified_at %}
                         Email подтверждён {{ profile.email_verified_at|date:"d.m.Y H:i" }}
@@ -255,13 +255,7 @@
                         Email ещё не подтверждён
                       {% endif %}
                     </p>
-                    <p class="mt-2 text-sm text-white">
-                      {% if phone_verified_at %}
-                        Телефон подтверждён {{ phone_verified_at|date:"d.m.Y H:i" }}
-                      {% else %}
-                        Телефон будет подтверждён после отдельной проверки номера
-                      {% endif %}
-                    </p>
+                    <p class="mt-2 text-sm text-gray-300">Телефон хранится как контакт для доставки и связи с менеджером, без отдельной верификации.</p>
                   </div>
                 </div>
               </section>
@@ -459,11 +453,11 @@
               <div class="max-w-3xl">
                 <p class="text-[11px] uppercase tracking-[0.22em] text-accent">Безопасность</p>
                 <h2 class="mt-2 text-2xl font-semibold text-white">Доступ в аккаунт</h2>
-                <p class="mt-2 text-sm leading-6 text-gray-400">По умолчанию показываем только статус доступа. Инструменты изменения email, телефона и пароля раскрываются отдельно.</p>
+                <p class="mt-2 text-sm leading-6 text-gray-400">По умолчанию показываем только статус доступа. Здесь управляются email-подтверждение и пароль для входа.</p>
               </div>
               <div class="flex flex-wrap gap-2">
-                <span class="rounded-full border px-3 py-1 text-xs {% if phone_verified_at %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% else %}border-amber-400/20 bg-amber-500/10 text-amber-100{% endif %}">
-                  Телефон — {% if phone_verified_at %}подтверждён{% else %}не подтверждён{% endif %}
+                <span class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-gray-200">
+                  Телефон — контактный
                 </span>
                 <span class="rounded-full border px-3 py-1 text-xs {% if profile.email_verified_at %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% else %}border-amber-400/20 bg-amber-500/10 text-amber-100{% endif %}">
                   Email — {% if profile.email_verified_at %}подтверждён{% else %}не подтверждён{% endif %}
@@ -485,11 +479,11 @@
                   <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
                     <div class="flex items-start justify-between gap-3">
                       <div>
-                        <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Номер входа</p>
+                        <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Контактный телефон</p>
                         <p class="mt-2 text-white">{{ phone_display }}</p>
                       </div>
-                      <span class="rounded-full border px-3 py-1 text-xs {% if phone_verified_at %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% else %}border-amber-400/20 bg-amber-500/10 text-amber-100{% endif %}">
-                        {% if phone_verified_at %}Подтверждён{% else %}Не подтверждён{% endif %}
+                      <span class="rounded-full border border-white/10 bg-dark-900/40 px-3 py-1 text-xs text-gray-200">
+                        Для заказов
                       </span>
                     </div>
                   </div>
@@ -591,54 +585,15 @@
 
                     <div class="rounded-[1.5rem] border border-white/10 bg-white/5 p-5">
                       <div class="flex flex-wrap items-center justify-between gap-3">
-                        <h4 class="text-base font-semibold text-white">Смена номера входа</h4>
-                        <span class="rounded-full border px-3 py-1 text-xs {% if phone_verified_at %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% else %}border-amber-400/20 bg-amber-500/10 text-amber-100{% endif %}">
-                          Телефон — {% if phone_verified_at %}подтверждён{% else %}не подтверждён{% endif %}
+                        <h4 class="text-base font-semibold text-white">Телефон в профиле</h4>
+                        <span class="rounded-full border border-white/10 bg-dark-900/40 px-3 py-1 text-xs text-gray-200">
+                          Без SMS-кодов
                         </span>
                       </div>
-                      <form method="post" class="mt-4 space-y-3" hx-boost="false">
-                        {% csrf_token %}
-                        <input type="hidden" name="action" value="send_phone_code">
-                        <div>
-                          <label for="{{ phone_request_form.new_phone.id_for_label }}" class="block text-sm text-gray-300">{{ phone_request_form.new_phone.label }}</label>
-                          <div class="mt-2">{{ phone_request_form.new_phone }}</div>
-                          {% if phone_request_form.new_phone.errors %}
-                            <p class="mt-1 text-sm text-red-400">{{ phone_request_form.new_phone.errors.0 }}</p>
-                          {% endif %}
-                        </div>
-                        <button type="submit" class="inline-flex items-center justify-center rounded-full bg-accent px-5 py-3 text-sm font-semibold text-dark-900 transition hover:bg-accent-hover">
-                          Отправить код
-                        </button>
-                      </form>
-
-                      {% if pending_phone_change %}
-                        <div class="mt-4 rounded-[1.25rem] border border-white/10 bg-dark-900/40 p-4">
-                          <p class="text-sm text-gray-300">Код отправлен на <span class="text-white">{{ pending_phone_change }}</span>.</p>
-                          <form method="post" class="mt-4 space-y-3" hx-boost="false">
-                            {% csrf_token %}
-                            <input type="hidden" name="action" value="confirm_phone_code">
-                            <div class="grid gap-4 md:grid-cols-2">
-                              <div>
-                                <label for="{{ phone_confirm_form.new_phone.id_for_label }}" class="block text-sm text-gray-300">{{ phone_confirm_form.new_phone.label }}</label>
-                                <div class="mt-2">{{ phone_confirm_form.new_phone }}</div>
-                                {% if phone_confirm_form.new_phone.errors %}
-                                  <p class="mt-1 text-sm text-red-400">{{ phone_confirm_form.new_phone.errors.0 }}</p>
-                                {% endif %}
-                              </div>
-                              <div>
-                                <label for="{{ phone_confirm_form.code.id_for_label }}" class="block text-sm text-gray-300">{{ phone_confirm_form.code.label }}</label>
-                                <div class="mt-2">{{ phone_confirm_form.code }}</div>
-                                {% if phone_confirm_form.code.errors %}
-                                  <p class="mt-1 text-sm text-red-400">{{ phone_confirm_form.code.errors.0 }}</p>
-                                {% endif %}
-                              </div>
-                            </div>
-                            <button type="submit" class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white px-5 py-3 text-sm font-semibold text-dark-900 transition hover:bg-gray-100">
-                              Подтвердить смену номера
-                            </button>
-                          </form>
-                        </div>
-                      {% endif %}
+                      <p class="mt-3 text-sm leading-6 text-gray-300">Телефон используется как контакт получателя и для связи менеджера по заказу. Вход в аккаунт и подтверждение guest-заказов больше завязаны только на email.</p>
+                      <div class="mt-4 rounded-[1.25rem] border border-white/10 bg-dark-900/40 p-4 text-sm text-gray-300">
+                        Если нужно обновить контактный телефон, сохраните новый номер в следующем заказе или в адресе доставки. Отдельного сценария смены номера входа больше нет.
+                      </div>
                     </div>
 
                     <div class="rounded-[1.5rem] border border-white/10 bg-white/5 p-5">
@@ -656,7 +611,7 @@
                   </div>
                 {% else %}
                   <div class="mt-5 rounded-[1.5rem] border border-dashed border-white/10 bg-white/5 p-5">
-                    <p class="text-sm leading-6 text-gray-300">Изменение email, телефона и пароля скрыто, пока вы только просматриваете настройки доступа.</p>
+                    <p class="text-sm leading-6 text-gray-300">Подтверждение email и сценарий установки пароля скрыты, пока вы только просматриваете настройки доступа.</p>
                     <a href="{% url 'accounts:profile_settings' %}?edit_security=1#security" class="mt-4 inline-flex items-center justify-center rounded-full bg-accent px-5 py-3 text-sm font-semibold text-dark-900 transition hover:bg-accent-hover">
                       Открыть инструменты доступа
                     </a>
@@ -681,8 +636,8 @@
                     <p class="mt-2 text-base font-semibold text-white">{{ phone_display }}</p>
                     <p class="mt-2 break-all text-sm text-gray-400">{{ confirmed_email|default:primary_contact_email|default:"Email не добавлен" }}</p>
                   </div>
-                  <span class="rounded-full border px-3 py-1 text-xs {% if phone_verified_at %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% else %}border-amber-400/20 bg-amber-500/10 text-amber-100{% endif %}">
-                    {% if phone_verified_at %}Телефон подтверждён{% else %}Телефон не подтверждён{% endif %}
+                  <span class="rounded-full border border-white/10 bg-dark-900/40 px-3 py-1 text-xs text-gray-200">
+                    Телефон и email
                   </span>
                 </div>
               </section>
@@ -702,8 +657,8 @@
 
               <section class="rounded-[1.5rem] border border-white/10 bg-dark-900/40 p-5">
                 <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Как связываться менеджеру</p>
-                <p class="mt-2 text-base font-semibold text-white">Сначала телефон, затем email и страница контактов</p>
-                <p class="mt-3 text-sm leading-6 text-gray-300">Для быстрых вопросов используем подтверждённый телефон. Для документов и длинной переписки лучше подходит email.</p>
+                <p class="mt-2 text-base font-semibold text-white">Телефон для быстрых уточнений, email для подтверждений и документов</p>
+                <p class="mt-3 text-sm leading-6 text-gray-300">Подтверждение регистрации и сервисные письма приходят только на email. Телефон остаётся рабочим контактом для доставки и связи менеджера.</p>
                 <a href="{% url 'contacts' %}" class="mt-4 inline-flex text-sm text-accent hover:text-accent-hover">Открыть контакты</a>
               </section>
             </div>
@@ -716,8 +671,8 @@
                 <h2 class="mt-2 text-2xl font-semibold text-white">Сервисные сообщения и подписки</h2>
                 <p class="mt-2 text-sm leading-6 text-gray-400">Настройки уведомлений вынесены в отдельную секцию, чтобы не смешивать их с каналами связи.</p>
               </div>
-              <span class="inline-flex items-center rounded-full border px-3 py-1 text-xs {% if notification_preferences.sms_order_updates_enabled or notification_preferences.marketing_email_enabled or notification_preferences.back_in_stock_enabled %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% else %}border-white/10 bg-white/5 text-gray-200{% endif %}">
-                {% if notification_preferences.sms_order_updates_enabled or notification_preferences.marketing_email_enabled or notification_preferences.back_in_stock_enabled %}
+              <span class="inline-flex items-center rounded-full border px-3 py-1 text-xs {% if notification_preferences.marketing_email_enabled or notification_preferences.back_in_stock_enabled %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% else %}border-white/10 bg-white/5 text-gray-200{% endif %}">
+                {% if notification_preferences.marketing_email_enabled or notification_preferences.back_in_stock_enabled %}
                   Есть активные настройки
                 {% else %}
                   Используются настройки по умолчанию
@@ -733,10 +688,10 @@
                     <div class="flex items-start justify-between gap-3">
                       <div>
                         <p class="text-[11px] uppercase tracking-[0.22em] text-gray-500">Статусы заказа</p>
-                        <p class="mt-2 text-white">SMS по ключевым этапам заказа</p>
+                        <p class="mt-2 text-white">Email по ключевым этапам заказа</p>
                       </div>
-                      <span class="rounded-full border px-3 py-1 text-xs {% if notification_preferences.sms_order_updates_enabled %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% else %}border-white/10 bg-dark-900/40 text-gray-200{% endif %}">
-                        {% if notification_preferences.sms_order_updates_enabled %}Включены{% else %}Выключены{% endif %}
+                      <span class="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-100">
+                        Всегда включены
                       </span>
                     </div>
                   </div>
@@ -789,13 +744,8 @@
                       <input type="hidden" name="action" value="save_notification_preferences">
 
                       <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
-                        <div class="flex items-start gap-3">
-                          {{ notification_form.sms_order_updates_enabled }}
-                          <div class="min-w-0">
-                            <label for="{{ notification_form.sms_order_updates_enabled.id_for_label }}" class="text-sm font-medium text-white">{{ notification_form.sms_order_updates_enabled.label }}</label>
-                            <p class="mt-1 text-sm leading-6 text-gray-400">Важные SMS по изменениям статуса заказа.</p>
-                          </div>
-                        </div>
+                        <p class="text-sm font-medium text-white">Статусы заказа</p>
+                        <p class="mt-1 text-sm leading-6 text-gray-400">Сервисные письма о заявке, подтверждении, оплате, отгрузке, выдаче и отмене отправляются автоматически на подтверждённый email.</p>
                       </div>
 
                       <div class="rounded-2xl border border-white/10 bg-white/5 p-4">

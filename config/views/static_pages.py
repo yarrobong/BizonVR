@@ -101,6 +101,12 @@ def invest_2_view(request, path=''):
     return _serve_public_directory_file(landing_root, path, default_file='index.html')
 
 
+def invest_2_new_view(request, path=''):
+    """Standalone-лендинг для папки invest_2 и его локальные ассеты."""
+    landing_root = settings.BASE_DIR / INVEST_2_DIRNAME
+    return _serve_public_directory_file(landing_root, path, default_file='index.html')
+
+
 def solutions_index_view(request):
     """Индекс standalone-лендингов под /solutions/."""
     return render(
