@@ -1434,8 +1434,8 @@ class ManagerPortalServiceTests(ManagerPortalBaseTestCase):
 
         self.assertEqual(result['client'].orders.get(), order)
         self.assertEqual(result['deal'].deal_type, ManagerDeal.DEAL_SALE_FROM_STOCK)
-        self.assertEqual(result['deal'].stock_warehouse, self.warehouse)
         self.assertEqual(result['reservations'], [])
+        self.assertIsNone(result['deal'].primary_reservation)
         self.assertFalse(ReservationItem.objects.filter(order_item=order_item).exists())
 
     def test_confirmed_website_order_creates_and_cancellation_releases_variant_reservation(self):
@@ -1463,20 +1463,28 @@ class ManagerPortalServiceTests(ManagerPortalBaseTestCase):
         )
 
         ensure_website_order_workflow(order)
-        update_order_state(order, status=Order.STATUS_CONFIRMED, payment_status=order.payment_status, actor=self.staff_user)
+        update_order_state(order, status=Order.STATUS_CONFIRMED, payment_status=order.payment_status)
 
         reservation_item = ReservationItem.objects.get(order_item=order_item)
         reservation = reservation_item.reservation
         self.assertEqual(reservation_item.variant, self.variant)
         self.assertEqual(reservation.source_warehouse, self.warehouse)
         self.assertEqual(reservation.status, Reservation.STATUS_ACTIVE)
+        self.assertEqual(
+            ProductStock.objects.get(product=self.product, variant=self.variant, pickup_point=self.pickup_point).quantity,
+            1,
+        )
 
-        update_order_state(order, status=Order.STATUS_CANCELLED, payment_status=order.payment_status, actor=self.staff_user)
+        update_order_state(order, status=Order.STATUS_CANCELLED, payment_status=order.payment_status)
 
         reservation.refresh_from_db()
         order.manager_deal.refresh_from_db()
         self.assertEqual(reservation.status, Reservation.STATUS_CANCELLED)
         self.assertIsNone(order.manager_deal.primary_reservation)
+        self.assertEqual(
+            ProductStock.objects.get(product=self.product, variant=self.variant, pickup_point=self.pickup_point).quantity,
+            2,
+        )
 
     def test_receive_cargo_item_updates_procurement_linked_to_order_item(self):
         order = Order.objects.create(

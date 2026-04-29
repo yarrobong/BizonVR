@@ -1,3 +1,5 @@
+from urllib.parse import urlencode
+
 from django.contrib.auth import get_user_model, login, logout
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -148,10 +150,10 @@ def register_view(request):
             else:
                 next_url = request.POST.get('next', '')
                 confirm_url = reverse('accounts:register_confirm')
+                query = {'email': form.cleaned_data['email']}
                 if next_url:
-                    confirm_url = f'{confirm_url}?next={next_url}&email={form.cleaned_data["email"]}'
-                else:
-                    confirm_url = f'{confirm_url}?email={form.cleaned_data["email"]}'
+                    query['next'] = next_url
+                confirm_url = f'{confirm_url}?{urlencode(query)}'
                 return redirect(confirm_url)
     else:
         form = RegistrationForm()

@@ -1,7 +1,4 @@
-"""
-Сервисы заказов: начисление бонуса партнёру при оплате заказа по промокоду;
-списание остатков с точек выдачи при оплате.
-"""
+"""Сервисы заказов: бонусы, уведомления и side effects жизненного цикла заказа."""
 from decimal import Decimal
 from urllib.parse import quote
 
@@ -21,42 +18,36 @@ ORDER_STATUS_PRESENTATIONS = {
         'next_step': 'Дальше: менеджер проверит наличие, доставку и итоговую сумму и свяжется с вами в течение дня.',
         'badge_class': 'border-amber-400/20 bg-amber-500/10 text-amber-200',
         'tone': 'warning',
-        'important_sms': True,
     },
     'confirmed': {
         'description': 'Заказ подтверждён магазином и готовится к следующему этапу.',
         'next_step': 'Дальше: ожидается оплата или подготовка к отгрузке.',
         'badge_class': 'border-cyan-400/20 bg-cyan-500/10 text-cyan-200',
         'tone': 'info',
-        'important_sms': True,
     },
     'shipping': {
         'description': 'Заказ передан в доставку или находится в пути.',
         'next_step': 'Дальше: дождитесь выдачи или доставки по адресу.',
         'badge_class': 'border-accent/20 bg-accent/10 text-accent',
         'tone': 'accent',
-        'important_sms': True,
     },
     'ready_for_pickup': {
         'description': 'Заказ собран и уже доступен к получению.',
         'next_step': 'Дальше: можно приехать в точку выдачи или согласовать время получения.',
         'badge_class': 'border-emerald-400/20 bg-emerald-500/10 text-emerald-200',
         'tone': 'success',
-        'important_sms': True,
     },
     'done': {
         'description': 'Заказ завершён и сохранён в истории покупок.',
         'next_step': 'Дальше: при необходимости можно вернуться к повторной покупке или сервису.',
         'badge_class': 'border-emerald-400/20 bg-emerald-500/10 text-emerald-200',
         'tone': 'success',
-        'important_sms': False,
     },
     'cancelled': {
         'description': 'Заказ отменён. При необходимости поможем оформить новый.',
         'next_step': 'Дальше: можно связаться с магазином или оформить заказ заново.',
         'badge_class': 'border-white/10 bg-white/5 text-gray-300',
         'tone': 'muted',
-        'important_sms': True,
     },
 }
 
@@ -83,37 +74,31 @@ ORDER_EVENT_PRESENTATIONS = {
     'order_created': {
         'label': 'Заказ принят',
         'description': 'Мы получили заказ. Менеджер проверит наличие, доставку и итоговую сумму, свяжется с вами в течение дня и пришлёт реквизиты или счёт. Сейчас оплачивать ничего не нужно.',
-        'sms_text': 'BizonVR: заказ #{order_id} принят. Свяжемся с вами в течение дня.',
         'badge_class': ORDER_STATUS_PRESENTATIONS['new']['badge_class'],
     },
     'order_confirmed': {
         'label': 'Заказ подтверждён магазином',
         'description': 'Менеджер подтвердил заказ и уточнил наличие.',
-        'sms_text': 'BizonVR: заказ #{order_id} подтверждён.',
         'badge_class': ORDER_STATUS_PRESENTATIONS['confirmed']['badge_class'],
     },
     'payment_received': {
         'label': 'Оплата получена',
         'description': 'Мы зафиксировали оплату по заказу.',
-        'sms_text': 'BizonVR: оплата по заказу #{order_id} получена.',
         'badge_class': PAYMENT_STATUS_PRESENTATIONS['paid']['badge_class'],
     },
     'order_shipped': {
         'label': 'Заказ передан в доставку',
         'description': 'Заказ передан в доставку.',
-        'sms_text': 'BizonVR: заказ #{order_id} отправлен.',
         'badge_class': ORDER_STATUS_PRESENTATIONS['shipping']['badge_class'],
     },
     'order_ready_for_pickup': {
         'label': 'Заказ готов к выдаче',
         'description': 'Заказ можно получать в точке выдачи.',
-        'sms_text': 'BizonVR: заказ #{order_id} готов к выдаче.',
         'badge_class': ORDER_STATUS_PRESENTATIONS['ready_for_pickup']['badge_class'],
     },
     'order_cancelled': {
         'label': 'Заказ отменён',
         'description': 'Заказ отменён. Если нужна помощь, свяжитесь с магазином.',
-        'sms_text': 'BizonVR: заказ #{order_id} отменён.',
         'badge_class': ORDER_STATUS_PRESENTATIONS['cancelled']['badge_class'],
     },
 }
@@ -136,7 +121,6 @@ def build_order_status_summary(order):
         'payment_label': order.get_payment_status_display(),
         'payment_description': payment_meta['description'],
         'payment_badge_class': payment_meta['badge_class'],
-        'is_sms_status': bool(status_meta.get('important_sms')),
     }
 
 
@@ -379,10 +363,3 @@ def _send_order_event_email(order, event, *, request=None):
     )
     message.attach_alternative(html_body, 'text/html')
     message.send(fail_silently=False)
-
-
-def _send_order_event_sms(order, event):
-    template = get_order_event_presentation(event).get('sms_text')
-    if not template:
-        return
-    send_sms_message(order.phone, template.format(order_id=order.pk))

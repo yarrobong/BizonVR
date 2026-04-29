@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% load catalog_tags %}
 
-{% block title %}Ожидание оплаты — заказ #{{ order.pk }} — BizonVR{% endblock %}
+{% block title %}Заказ #{{ order.pk }} — BizonVR{% endblock %}
 
 {% block content %}
 <div class="container mx-auto px-4 py-12 max-w-4xl">
@@ -9,32 +9,11 @@
     <a href="{{ order_url }}" class="text-accent hover:text-accent-hover text-sm">← Заказ #{{ order.pk }}</a>
   </div>
 
-  <div class="bg-dark-800 border border-dark-600 rounded-xl p-6 space-y-6">
-    <h1 class="text-2xl font-light text-white">Ожидание оплаты</h1>
+  <div class="bg-dark-800 border border-dark-600 rounded-xl p-6 space-y-5">
+    <h1 class="text-2xl font-light text-white">Заявка в обработке</h1>
     <p class="text-gray-400">Заказ #{{ order.pk }} на сумму <span class="text-white font-medium">{{ order.total_to_pay|price_format }} ₽</span>.</p>
-
-    {% if payment %}
-      {% if payment.pay_url %}
-      <p class="text-sm text-gray-300">Перейдите по ссылке и завершите оплату заказа.</p>
-      <a href="{{ payment.pay_url }}" target="_blank" rel="noopener" class="inline-block bg-accent hover:bg-accent-hover text-dark-900 font-bold py-3 px-6 rounded-full text-sm uppercase tracking-wide transition-colors">
-        Открыть страницу оплаты
-      </a>
-      {% endif %}
-      {% if payment.pay_address %}
-      <div class="pt-4 border-t border-dark-600">
-        <p class="text-xs text-gray-500 uppercase mb-1">Платёжные реквизиты</p>
-        <p class="text-sm text-gray-300 font-mono break-all">{{ payment.pay_address }}</p>
-        {% if payment.pay_amount and payment.pay_currency %}
-        <p class="text-sm text-gray-300 mt-2">Сумма: {{ payment.pay_amount }} {{ payment.pay_currency|upper }}</p>
-        {% endif %}
-      </div>
-      {% endif %}
-      <p class="text-gray-500 text-sm">Статус: {{ payment.get_status_display }}. После поступления оплаты заказ обновится автоматически.</p>
-    {% else %}
-      <p class="text-gray-400">Платёж не найден или уже обработан.</p>
-    {% endif %}
-
-    <p class="text-gray-500 text-sm pt-2">После подтверждения оплаты статус заказа обновится автоматически. <a href="{{ order_url }}" class="text-accent hover:underline">Перейти к заказу</a></p>
+    <p class="text-sm text-gray-300">Оплата согласуется с менеджером после подтверждения заказа. Автоматического ожидания платежа на сайте больше нет.</p>
+    <a href="{{ order_url }}" class="text-accent hover:underline">Перейти к заказу</a>
   </div>
 </div>
 {% endblock %}

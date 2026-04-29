@@ -38,7 +38,8 @@ def _build_public_order_redirect_url(order, *, guest_access_token=''):
 @require_http_methods(['GET', 'POST'])
 def create_payment_view(request, order_id):
     """
-    Открыть страницу оплаты заказа.
+    Legacy entrypoint публичной оплаты.
+    В manager-only flow не создаёт Payment и возвращает пользователя к заказу.
     Доступ: свой заказ или guest-заказ по защищённому токену.
     """
     order, access_result = _get_payment_order_access(request, order_id)
@@ -49,7 +50,7 @@ def create_payment_view(request, order_id):
 
 
 def payment_wait_view(request, order_id):
-    """Страница «Ожидание оплаты»: инструкция и статус; при успехе webhook — редирект/обновление."""
+    """Legacy экран ожидания оплаты: в публичном flow возвращает пользователя к заказу."""
     order, access_result = _get_payment_order_access(request, order_id)
     if order is None:
         return redirect(access_result)
