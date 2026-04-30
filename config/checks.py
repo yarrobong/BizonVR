@@ -31,8 +31,6 @@ def production_launch_settings_check(app_configs, **kwargs):
         'LEGAL_OPERATOR_FULL_NAME': getattr(settings, 'LEGAL_OPERATOR_FULL_NAME', ''),
         'LEGAL_OPERATOR_INN': getattr(settings, 'LEGAL_OPERATOR_INN', ''),
         'LEGAL_OPERATOR_OGRN': getattr(settings, 'LEGAL_OPERATOR_OGRN', ''),
-        'LEGAL_OPERATOR_LEGAL_ADDRESS': getattr(settings, 'LEGAL_OPERATOR_LEGAL_ADDRESS', ''),
-        'LEGAL_OPERATOR_POSTAL_ADDRESS': getattr(settings, 'LEGAL_OPERATOR_POSTAL_ADDRESS', ''),
         'LEGAL_OPERATOR_PD_EMAIL': getattr(settings, 'LEGAL_OPERATOR_PD_EMAIL', ''),
     }
     missing = [name for name, value in required_values.items() if _is_blank_or_placeholder(value)]
