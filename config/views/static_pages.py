@@ -11,6 +11,7 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 
 from catalog.models import CallbackRequest, ContactRequest, Service
+from config.crm_leads import send_crm_lead_email
 from config.solution_landings import get_solution_landing
 from config.utils.spam_protection import is_spam_request
 from config.views.solutions import build_solution_hub_cards
@@ -154,12 +155,24 @@ def compact_vr_view(request):
                 message_parts.append(f'Площадь / помещение: {d["premises"]}')
             if d.get('comment'):
                 message_parts.append(f'Комментарий: {d["comment"]}')
-            ContactRequest.objects.create(
+            contact_request = ContactRequest.objects.create(
                 name=d['name'],
                 email=d.get('email', ''),
                 phone=d['contact'],
                 message='\n'.join(message_parts),
                 **build_legal_acceptance_payload(request),
+            )
+            send_crm_lead_email(
+                request=request,
+                form_type='Compact VR',
+                name=contact_request.name,
+                phone=contact_request.phone,
+                email=contact_request.email,
+                city=d['city'],
+                product_or_service=f'Компактная VR-арена ({d["format"]})',
+                comment=contact_request.message,
+                page_url=reverse('compact_vr'),
+                created_at=contact_request.created_at,
             )
             messages.success(request, 'Заявка отправлена! Мы свяжемся с вами в ближайшее время.')
             return redirect(reverse('compact_vr') + '#contact')
@@ -214,11 +227,20 @@ def arenda_view(request):
             return redirect(reverse('arenda') + '#contacts')
         callback_form = CallbackForm(request.POST)
         if callback_form.is_valid():
-            CallbackRequest.objects.create(
+            callback_request = CallbackRequest.objects.create(
                 name=callback_form.cleaned_data.get('name', '').strip(),
                 phone=callback_form.cleaned_data['phone'],
                 source='arenda',
                 **build_legal_acceptance_payload(request),
+            )
+            send_crm_lead_email(
+                request=request,
+                form_type='Аренда',
+                name=callback_request.name,
+                phone=callback_request.phone,
+                product_or_service='Аренда VR-шлемов',
+                page_url=reverse('arenda'),
+                created_at=callback_request.created_at,
             )
             messages.success(request, 'Заявка отправлена! Мы перезвоним в ближайшее время.')
             return redirect(reverse('arenda') + '#contacts')
@@ -242,11 +264,20 @@ def uslugi_view(request):
             return redirect(reverse('uslugi') + '#contacts')
         callback_form = CallbackForm(request.POST)
         if callback_form.is_valid():
-            CallbackRequest.objects.create(
+            callback_request = CallbackRequest.objects.create(
                 name=callback_form.cleaned_data.get('name', '').strip(),
                 phone=callback_form.cleaned_data['phone'],
                 source='uslugi',
                 **build_legal_acceptance_payload(request),
+            )
+            send_crm_lead_email(
+                request=request,
+                form_type='Услуги',
+                name=callback_request.name,
+                phone=callback_request.phone,
+                product_or_service='Услуги BizonVR',
+                page_url=reverse('uslugi'),
+                created_at=callback_request.created_at,
             )
             messages.success(request, 'Заявка отправлена! Мы перезвоним в ближайшее время.')
             return redirect(reverse('uslugi') + '#contacts')

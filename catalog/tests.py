@@ -17,6 +17,7 @@ from django.contrib import admin
 from django.contrib.auth.models import AnonymousUser
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
+from django.core import mail
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -3357,6 +3358,72 @@ class LegalConsentFormsAndViewsTest(TestCase):
         self.assertIsNotNone(req.legal_accepted_at)
         self.assertEqual(req.legal_docs_version, LEGAL_BUNDLE_VERSION)
 
+    @override_settings(CRM_LEADS_EMAIL='crm@example.com')
+    def test_contacts_view_sends_crm_email_after_saving_request(self):
+        resp = self.client.post(
+            reverse('contacts'),
+            {
+                'name': 'Иван',
+                'email': 'ivan@example.com',
+                'phone': '+7 999 000-00-00',
+                'message': 'Хочу узнать цену на 10 шлемов',
+                'agree_personal_data': 'on',
+            },
+        )
+
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(ContactRequest.objects.count(), 1)
+        self.assertEqual(len(mail.outbox), 1)
+        message = mail.outbox[0]
+        self.assertEqual(message.to, ['crm@example.com'])
+        self.assertEqual(message.reply_to, ['ivan@example.com'])
+        self.assertEqual(message.subject, 'Заявка с сайта BizonVR: +7 999 000-00-00 — Иван')
+        self.assertIn('Тип формы: Контакты', message.body)
+        self.assertIn('Имя: Иван', message.body)
+        self.assertIn('Телефон: +7 999 000-00-00', message.body)
+        self.assertIn('Email: ivan@example.com', message.body)
+        self.assertIn('Страница: http://testserver/contacts/', message.body)
+        self.assertIn('Комментарий:\nХочу узнать цену на 10 шлемов', message.body)
+
+    @override_settings(CRM_LEADS_EMAIL='crm@example.com')
+    def test_contacts_view_spam_does_not_send_crm_email(self):
+        resp = self.client.post(
+            reverse('contacts'),
+            {
+                'name': 'Иван',
+                'email': 'ivan@example.com',
+                'phone': '+7 999 000-00-00',
+                'message': 'Нужна консультация',
+                'agree_personal_data': 'on',
+                'website': 'spam.example',
+            },
+        )
+
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(ContactRequest.objects.count(), 0)
+        self.assertEqual(len(mail.outbox), 0)
+
+    @override_settings(CRM_LEADS_EMAIL='crm@example.com')
+    def test_contacts_crm_email_failure_keeps_success_flow_and_logs(self):
+        with (
+            patch('config.crm_leads.EmailMessage.send', side_effect=RuntimeError('smtp down')),
+            patch('config.crm_leads.logger.exception') as logger_exception,
+        ):
+            resp = self.client.post(
+                reverse('contacts'),
+                {
+                    'name': 'Иван',
+                    'email': 'ivan@example.com',
+                    'phone': '+7 999 000-00-00',
+                    'message': 'Нужна консультация',
+                    'agree_personal_data': 'on',
+                },
+            )
+
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(ContactRequest.objects.count(), 1)
+        logger_exception.assert_called_once_with('Failed to send CRM lead email.')
+
     def test_contacts_view_prefills_message_from_landing_query(self):
         resp = self.client.get(
             reverse('contacts'),
@@ -3471,6 +3538,25 @@ class ServicesPageTest(TestCase):
         self.assertIsNotNone(callback.legal_accepted_at)
         self.assertEqual(callback.legal_docs_version, LEGAL_BUNDLE_VERSION)
 
+    @override_settings(CRM_LEADS_EMAIL='crm@example.com')
+    def test_services_callback_sends_crm_email(self):
+        resp = self.client.post(
+            reverse('uslugi'),
+            {
+                'form_type': 'callback',
+                'name': 'Иван',
+                'phone': '+7 (999) 111-22-33',
+                'agree_personal_data': 'on',
+            },
+        )
+
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(CallbackRequest.objects.count(), 1)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ['crm@example.com'])
+        self.assertIn('Тип формы: Услуги', mail.outbox[0].body)
+        self.assertIn('Товар/услуга: Услуги BizonVR', mail.outbox[0].body)
+
     def test_services_callback_spam_redirects_without_creating_request(self):
         resp = self.client.post(
             reverse('uslugi'),
@@ -3506,6 +3592,24 @@ class PublicLeadFormsSpamProtectionTest(TestCase):
         self.assertTrue(resp['Location'].endswith(reverse('arenda') + '#contacts'))
         self.assertEqual(CallbackRequest.objects.count(), 0)
 
+    @override_settings(CRM_LEADS_EMAIL='crm@example.com')
+    def test_arenda_callback_sends_crm_email(self):
+        resp = self.client.post(
+            reverse('arenda'),
+            {
+                'form_type': 'callback',
+                'name': 'Иван',
+                'phone': '+7 (999) 111-22-33',
+                'agree_personal_data': 'on',
+            },
+        )
+
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(CallbackRequest.objects.count(), 1)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn('Тип формы: Аренда', mail.outbox[0].body)
+        self.assertIn('Товар/услуга: Аренда VR-шлемов', mail.outbox[0].body)
+
     def test_compact_vr_spam_redirects_without_creating_request(self):
         resp = self.client.post(
             reverse('compact_vr'),
@@ -3525,6 +3629,31 @@ class PublicLeadFormsSpamProtectionTest(TestCase):
         self.assertEqual(resp.status_code, 302)
         self.assertTrue(resp['Location'].endswith(reverse('compact_vr') + '#contact'))
         self.assertEqual(ContactRequest.objects.count(), 0)
+
+    @override_settings(CRM_LEADS_EMAIL='crm@example.com')
+    def test_compact_vr_sends_crm_email(self):
+        resp = self.client.post(
+            reverse('compact_vr'),
+            {
+                'form_type': 'compact_vr',
+                'name': 'Иван',
+                'contact': '+7 (999) 111-22-33',
+                'city': 'Екатеринбург',
+                'format': 'Core',
+                'email': 'ivan@example.com',
+                'premises': '80 м2',
+                'comment': 'Хочу обсудить запуск',
+                'agree_personal_data': 'on',
+            },
+        )
+
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(ContactRequest.objects.count(), 1)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].reply_to, ['ivan@example.com'])
+        self.assertIn('Тип формы: Compact VR', mail.outbox[0].body)
+        self.assertIn('Город: Екатеринбург', mail.outbox[0].body)
+        self.assertIn('Товар/услуга: Компактная VR-арена (Core)', mail.outbox[0].body)
 
 
 class FavoriteTest(TestCase):

@@ -38,6 +38,7 @@ from catalog.pricing import (
     resolve_public_purchase_mode,
 )
 from catalog.views.common import _get_stock_total
+from config.crm_leads import send_crm_lead_email
 from config.legal_consent import build_legal_acceptance_payload
 from config.legal_consent import get_legal_bundle_version
 from config.utils.spam_protection import is_spam_request
@@ -632,6 +633,22 @@ def checkout_view(request):
     if request.user.is_authenticated:
         _sync_profile_from_checkout(request.user, form.cleaned_data)
 
+    order_items = list(order.items.all())
+    send_crm_lead_email(
+        request=request,
+        form_type='Checkout',
+        name=' '.join(part for part in [order.first_name, order.last_name] if part),
+        phone=order.phone,
+        email=order.email,
+        city=order.city_text,
+        product_or_service=', '.join(
+            item.product_name + (f' ({item.variant_name})' if item.variant_name else '')
+            for item in order_items
+        ),
+        comment=order.comment,
+        created_at=order.created_at,
+    )
+
     send_order_event_notifications(order, 'order_created', request=request)
     sync_order_state_side_effects(order, previous_status='', previous_payment_status='', request=request)
 
@@ -777,6 +794,17 @@ def purchase_request_create_view(request):
         items=[item_snapshot],
         total=Decimal('0'),
         **build_legal_acceptance_payload(request),
+    )
+    send_crm_lead_email(
+        request=request,
+        form_type='Карточка товара',
+        phone=purchase_request.phone,
+        product_or_service=(
+            product.name + (f' ({variant.name})' if variant else '')
+        ),
+        comment=f'Telegram: {purchase_request.telegram}' if purchase_request.telegram else '',
+        page_url=source_path,
+        created_at=purchase_request.created_at,
     )
     return redirect('orders:request_created', request_id=purchase_request.pk)
 

@@ -400,6 +400,7 @@ npm run build:css
 | `EMAIL_USE_SSL` | Использовать SSL. |
 | `EMAIL_TIMEOUT` | Таймаут SMTP. |
 | `DEFAULT_FROM_EMAIL` | Адрес отправителя по умолчанию. |
+| `CRM_LEADS_EMAIL` | Отдельный email Bitrix24/CRM для plain text копий публичных заявок. |
 | `EMAIL_VERIFICATION_SUBJECT` | Тема письма подтверждения email. |
 | `PASSWORD_RESET_EMAIL_SUBJECT` | Тема письма восстановления доступа. |
 | `EMAIL_CODE_COOLDOWN_SECONDS` | Пауза между отправками email-кода. |

@@ -309,6 +309,27 @@ class CheckoutTest(TestCase):
         self.assertEqual(PurchaseRequest.objects.count(), 0)
         self.assertEqual(Payment.objects.filter(order=order).count(), 0)
 
+    @override_settings(CRM_LEADS_EMAIL='crm@example.com')
+    def test_checkout_sends_crm_email_after_creating_order(self):
+        self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
+
+        response = self.client.post(
+            reverse('orders:checkout'),
+            self._checkout_payload(comment='Хочу уточнить доставку'),
+        )
+
+        self.assertEqual(response.status_code, 302)
+        order = Order.objects.get()
+        crm_message = next(message for message in mail.outbox if message.to == ['crm@example.com'])
+        self.assertEqual(crm_message.reply_to, ['client@example.com'])
+        self.assertEqual(crm_message.subject, 'Заявка с сайта BizonVR: +7 999 123 45 67 — Иван Иванов')
+        self.assertIn('Тип формы: Checkout', crm_message.body)
+        self.assertIn('Город: Москва', crm_message.body)
+        self.assertIn('Товар/услуга: Товар', crm_message.body)
+        self.assertIn('Страница: http://testserver/orders/checkout/', crm_message.body)
+        self.assertIn('Комментарий:\n', crm_message.body)
+        self.assertEqual(order.items.count(), 1)
+
     def test_checkout_spam_redirects_to_success_without_creating_order(self):
         add_url = reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk})
         self.client.post(add_url, {'quantity': 1})
@@ -322,6 +343,19 @@ class CheckoutTest(TestCase):
         self.assertContains(response, 'Заявка отправлена')
         self.assertEqual(Order.objects.count(), 0)
         self.assertTrue(self.client.session.get('cart_items'))
+
+    @override_settings(CRM_LEADS_EMAIL='crm@example.com')
+    def test_checkout_spam_does_not_send_crm_email(self):
+        self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
+
+        response = self.client.post(
+            reverse('orders:checkout'),
+            self._checkout_payload(website='spam.example'),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(Order.objects.count(), 0)
+        self.assertEqual(len(mail.outbox), 0)
 
     def test_guest_checkout_creates_guest_order_and_access_token(self):
         add_url = reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk})
@@ -642,6 +676,29 @@ class CheckoutTest(TestCase):
         self.assertEqual(purchase_request.items[0]['stock_total'], 0)
         self.assertEqual(purchase_request.items[0]['price_in_stock'], 100.0)
         self.assertIsNone(purchase_request.items[0]['price_on_request'])
+
+    @override_settings(CRM_LEADS_EMAIL='crm@example.com')
+    def test_purchase_request_create_sends_crm_email(self):
+        ProductStock.objects.filter(product=self.product).delete()
+        response = self.client.post(reverse('orders:purchase_request_create'), {
+            'product_id': self.product.pk,
+            'variant_id': '',
+            'source_path': self.product.get_absolute_url(),
+            'phone': '+7 999 123 45 67',
+            'telegram': '@bizonvr',
+            'agree_personal_data': 'on',
+        })
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(PurchaseRequest.objects.count(), 1)
+        self.assertEqual(len(mail.outbox), 1)
+        message = mail.outbox[0]
+        self.assertEqual(message.to, ['crm@example.com'])
+        self.assertEqual(message.subject, 'Заявка с сайта BizonVR: +7 999 123 45 67')
+        self.assertIn('Тип формы: Карточка товара', message.body)
+        self.assertIn('Товар/услуга: Товар', message.body)
+        self.assertIn(f'Страница: http://testserver{self.product.get_absolute_url()}', message.body)
+        self.assertIn('Комментарий:\nTelegram: @bizonvr', message.body)
 
     def test_purchase_request_spam_redirects_to_success_without_creating_request(self):
         ProductStock.objects.filter(product=self.product).delete()

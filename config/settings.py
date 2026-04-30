@@ -258,6 +258,7 @@ EMAIL_USE_TLS = config_bool('EMAIL_USE_TLS', default=True)
 EMAIL_USE_SSL = config_bool('EMAIL_USE_SSL', default=False)
 EMAIL_TIMEOUT = config('EMAIL_TIMEOUT', default=10, cast=int)
 DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='BizonVR <no-reply@bizonvr.ru>').strip()
+CRM_LEADS_EMAIL = config('CRM_LEADS_EMAIL', default='').strip()
 EMAIL_VERIFICATION_SUBJECT = config(
     'EMAIL_VERIFICATION_SUBJECT',
     default='Подтверждение email для BizonVR',
