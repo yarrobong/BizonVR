@@ -4,6 +4,7 @@ from django.contrib import messages
 from django.shortcuts import redirect, render
 
 from catalog.models import ContactRequest
+from config.crm_leads import send_crm_lead_email
 from config.utils.spam_protection import is_spam_request
 
 from ..forms import ContactForm
@@ -42,12 +43,21 @@ def contacts_view(request):
             return redirect('contacts')
         form = ContactForm(request.POST)
         if form.is_valid():
-            ContactRequest.objects.create(
+            contact_request = ContactRequest.objects.create(
                 name=form.cleaned_data['name'],
                 email=form.cleaned_data.get('email', ''),
                 phone=form.cleaned_data.get('phone', ''),
                 message=form.cleaned_data['message'],
                 **build_legal_acceptance_payload(request),
+            )
+            send_crm_lead_email(
+                request=request,
+                form_type='Контакты',
+                name=contact_request.name,
+                phone=contact_request.phone,
+                email=contact_request.email,
+                comment=contact_request.message,
+                created_at=contact_request.created_at,
             )
             messages.success(request, 'Спасибо! Ваше сообщение отправлено. Мы свяжемся с вами в ближайшее время.')
             return redirect('contacts')

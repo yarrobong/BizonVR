@@ -58,7 +58,7 @@ sudo systemctl reload nginx
 Перед перезапуском проверьте, что в `.env` заполнены корпоративная почта и юридические реквизиты:
 
 ```bash
-grep -E '^(DEBUG|USE_HTTPS|SITE_URL|ALLOWED_HOSTS|CSRF_TRUSTED_ORIGINS|EMAIL_HOST|EMAIL_HOST_USER|DEFAULT_FROM_EMAIL|LEGAL_OPERATOR_)=' .env
+grep -E '^(DEBUG|USE_HTTPS|SITE_URL|ALLOWED_HOSTS|CSRF_TRUSTED_ORIGINS|EMAIL_HOST|EMAIL_HOST_USER|DEFAULT_FROM_EMAIL|CRM_LEADS_EMAIL|LEGAL_OPERATOR_)=' .env
 ```
 
 Для SMTP smoke можно отправить тестовое письмо себе:
