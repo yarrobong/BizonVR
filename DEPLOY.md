@@ -79,9 +79,27 @@ DB_PORT=5432
 
 PORT=8000
 GUNICORN_WORKERS=2
+
+EMAIL_HOST=smtp.example.com
+EMAIL_PORT=587
+EMAIL_HOST_USER=orders@bizonvr.ru
+EMAIL_HOST_PASSWORD=replace-me
+EMAIL_USE_TLS=1
+EMAIL_USE_SSL=0
+DEFAULT_FROM_EMAIL=BizonVR <orders@bizonvr.ru>
+
+LEGAL_OPERATOR_FULL_NAME=Индивидуальный предприниматель Едигарьев Ярослав Алексеевич
+LEGAL_OPERATOR_SHORT_NAME=ИП Едигарьев Я.А.
+LEGAL_OPERATOR_FORM=ИП
+LEGAL_OPERATOR_INN=667907832209
+LEGAL_OPERATOR_OGRN=325665800130159
+LEGAL_OPERATOR_LEGAL_ADDRESS=replace-me
+LEGAL_OPERATOR_POSTAL_ADDRESS=replace-me
+LEGAL_OPERATOR_PD_EMAIL=orders@bizonvr.ru
 ```
 
 Для публичного сценария обязательно настройте корпоративную почту через `EMAIL_*` и `DEFAULT_FROM_EMAIL`. `EXOLVE_*` и `PAYMENT_GATEWAY_*` остаются legacy-настройками и не нужны для checkout без онлайн-оплаты.
+Также настройте SPF/DKIM/DMARC для домена отправителя, иначе письма подтверждения email могут попадать в спам.
 
 ### 4. Виртуальное окружение и зависимости
 
@@ -96,6 +114,7 @@ npm run build:css
 
 ```bash
 make check-single-db
+.venv/bin/python manage.py check --deploy
 ```
 
 ### 6. Миграции и статика

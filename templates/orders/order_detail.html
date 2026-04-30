@@ -30,6 +30,30 @@
           <p class="mt-2 text-sm leading-6 text-gray-400">{{ order_summary.status_next_step }}</p>
         </div>
 
+        <div class="mt-6 rounded-2xl border border-accent/20 bg-accent/10 p-5">
+          <p class="text-[11px] uppercase tracking-[0.22em] text-accent/80">Доступ по ссылке</p>
+          <p class="mt-3 text-sm leading-6 text-gray-100">
+            Эта страница открыта по защищённой ссылке заказа. Подтверждения по заказу и сервисные письма отправляются на email, указанный при оформлении.
+          </p>
+          <p class="mt-2 text-sm leading-6 text-gray-300">
+            Чтобы сохранить заказ в кабинете, войдите в аккаунт с подтверждённым email, совпадающим с email заказа.
+          </p>
+          <div class="mt-4 flex flex-wrap gap-3">
+            <a href="{{ claim_login_url }}" class="inline-flex items-center justify-center rounded-full bg-accent px-5 py-3 text-sm font-semibold text-dark-900 transition hover:bg-accent-hover">
+              Войти и сохранить заказ
+            </a>
+            {% if can_claim_after_login %}
+              <span class="inline-flex items-center rounded-full border border-emerald-400/20 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-100">
+                После входа заказ привяжется автоматически
+              </span>
+            {% else %}
+              <span class="inline-flex items-center rounded-full border border-white/10 bg-dark-900/40 px-3 py-1 text-xs text-gray-200">
+                Нужен подтверждённый email из этого заказа
+              </span>
+            {% endif %}
+          </div>
+        </div>
+
         <div class="mt-6 grid gap-6 md:grid-cols-2">
           <div>
             <h2 class="text-lg font-medium text-white">Контакты</h2>
@@ -43,7 +67,7 @@
             <h2 class="text-lg font-medium text-white">Получатель</h2>
             <ul class="mt-3 space-y-2 text-sm text-gray-300">
               <li>Получатель: {{ order.shipping_contact_name|default:"Совпадает с покупателем" }}</li>
-              <li>Телефон: {{ order.shipping_phone|default:order.phone }}</li>
+              <li>Телефон для связи: {{ order.shipping_phone|default:order.phone }}</li>
               <li>Совпадает с покупателем: {% if order.recipient_is_customer %}Да{% else %}Нет{% endif %}</li>
             </ul>
           </div>
@@ -84,14 +108,14 @@
               <span>{{ order.total_to_pay|price_format }} ₽</span>
             </div>
           </div>
-          <p class="mt-5 text-sm leading-6 text-gray-400">Оплачивать сейчас не нужно. После подтверждения заказа менеджер свяжется с вами и пришлёт реквизиты или счёт.</p>
+          <p class="mt-5 text-sm leading-6 text-gray-400">Оплачивать сейчас не нужно. После подтверждения заказа менеджер отправит реквизиты или счёт на email и при необходимости уточнит детали по телефону или в мессенджере.</p>
         </section>
 
         <section class="rounded-3xl border border-white/10 bg-dark-800/90 p-6">
           <p class="text-xs uppercase tracking-[0.24em] text-accent/80">Что дальше</p>
           <h2 class="mt-2 text-lg font-medium text-white">Следующий шаг</h2>
           <p class="mt-2 text-sm leading-6 text-gray-400">{{ order_summary.status_next_step }}</p>
-          <p class="mt-4 text-sm text-gray-300">Предпочтительный канал связи: <span class="text-white">{{ order.get_contact_channel_display }}</span>{% if order.contact_handle %} · <span class="text-white">{{ order.contact_handle }}</span>{% endif %}</p>
+          <p class="mt-4 text-sm text-gray-300">Предпочтительный канал для уточнений: <span class="text-white">{{ order.get_contact_channel_display }}</span>{% if order.contact_handle %} · <span class="text-white">{{ order.contact_handle }}</span>{% endif %}</p>
         </section>
       </aside>
     </div>
@@ -151,7 +175,7 @@
                   <h2 class="text-lg font-medium text-white">Получатель</h2>
                   <ul class="mt-3 space-y-2 text-sm text-gray-300">
                     <li>Получатель: {{ order.shipping_contact_name|default:"Совпадает с покупателем" }}</li>
-                    <li>Телефон: {{ order.shipping_phone|default:order.phone }}</li>
+                    <li>Телефон для связи: {{ order.shipping_phone|default:order.phone }}</li>
                     <li>Совпадает с покупателем: {% if order.recipient_is_customer %}Да{% else %}Нет{% endif %}</li>
                   </ul>
                 </div>
@@ -174,7 +198,7 @@
                   <h2 class="text-lg font-medium text-white">Оплата</h2>
                   <ul class="mt-3 space-y-2 text-sm text-gray-300">
                     <li>Предпочтительный способ оплаты: {{ order.get_payment_method_display }}</li>
-                    <li>Канал связи: {{ order.get_contact_channel_display }}{% if order.contact_handle %} · {{ order.contact_handle }}{% endif %}</li>
+                    <li>Канал для уточнений: {{ order.get_contact_channel_display }}{% if order.contact_handle %} · {{ order.contact_handle }}{% endif %}</li>
                     <li>Статус оплаты: {{ order.get_payment_status_display }}</li>
                     <li>Сумма к оплате за товар: {{ order.total_to_pay|price_format }} ₽</li>
                     {% if order.comment %}<li>Комментарий к заказу: {{ order.comment }}</li>{% endif %}
@@ -217,7 +241,7 @@
                     <span>{{ order.total_to_pay|price_format }} ₽</span>
                   </div>
                 </div>
-                <p class="mt-5 text-sm leading-6 text-gray-400">После подтверждения заказа менеджер пришлёт реквизиты или счёт и согласует детали оплаты.</p>
+                <p class="mt-5 text-sm leading-6 text-gray-400">После подтверждения заказа менеджер пришлёт реквизиты или счёт на email и согласует детали оплаты и доставки через выбранный контактный канал.</p>
               </section>
 
               <section class="rounded-[1.75rem] border border-white/10 bg-dark-800/90 p-6">

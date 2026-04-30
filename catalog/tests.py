@@ -3,6 +3,7 @@ import json
 import os
 import re
 import shutil
+import time
 import tempfile
 import zipfile
 from urllib.parse import urlencode
@@ -32,6 +33,7 @@ from django.utils import timezone
 from accounts.models import Profile
 from config.forms import CallbackForm, ContactForm
 from config.legal_docs import LEGAL_BUNDLE_VERSION
+from config.utils.spam_protection import is_spam_request
 from orders.models import Order, OrderItem
 
 from .cart_services import get_cart_count, get_cart_items, get_favorite_product_ids
@@ -177,6 +179,63 @@ class CatalogSortLinksEscapingTest(TestCase):
             html,
         )
         self.assertNotIn('href="?sort=name&category=sort-escape-vr-headsets&section=sort-escape-vr-oborudovanie&tag=sort-escape-bestseller&q=Quest&price_min=50&price_max=150"', html)
+
+
+class SpamProtectionHelperTest(TestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    def test_honeypot_website_blocks(self):
+        request = self.factory.post('/contacts/', {'website': 'spam.example'})
+        self.assertTrue(is_spam_request(request))
+
+    def test_honeypot_company_site_blocks(self):
+        request = self.factory.post('/contacts/', {'company_site': 'spam.example'})
+        self.assertTrue(is_spam_request(request))
+
+    def test_fast_submit_blocks(self):
+        request = self.factory.post('/contacts/', {'form_started_at': str(int(time.time()))})
+        self.assertTrue(is_spam_request(request))
+
+    def test_missing_form_started_at_does_not_block(self):
+        request = self.factory.post('/contacts/', {'message': 'Нужна консультация'})
+        self.assertFalse(is_spam_request(request))
+
+    def test_invalid_form_started_at_does_not_block(self):
+        request = self.factory.post('/contacts/', {
+            'message': 'Нужна консультация',
+            'form_started_at': 'not-a-timestamp',
+        })
+        self.assertFalse(is_spam_request(request))
+
+    def test_two_links_block(self):
+        request = self.factory.post('/contacts/', {'message': 'https://spam.example и www.bad.example'})
+        self.assertTrue(is_spam_request(request))
+
+    def test_spam_word_blocks(self):
+        request = self.factory.post('/contacts/', {'message': 'Нужен seo traffic прямо сейчас'})
+        self.assertTrue(is_spam_request(request))
+
+    def test_normal_payload_passes(self):
+        request = self.factory.post('/contacts/', {
+            'message': 'Нужна консультация по VR-арене',
+            'form_started_at': str(int(time.time()) - 3),
+        })
+        self.assertFalse(is_spam_request(request))
+
+    def test_telegram_text_does_not_block(self):
+        request = self.factory.post('/contacts/', {
+            'message': 'Telegram @username',
+            'form_started_at': str(int(time.time()) - 3),
+        })
+        self.assertFalse(is_spam_request(request))
+
+    def test_whatsapp_text_does_not_block(self):
+        request = self.factory.post('/contacts/', {
+            'message': 'WhatsApp +79991234567',
+            'form_started_at': str(int(time.time()) - 3),
+        })
+        self.assertFalse(is_spam_request(request))
 
 
 @override_settings(
@@ -3227,8 +3286,19 @@ class LegalPagesAndLinksTest(TestCase):
             resp = self.client.get(reverse(name))
             self.assertEqual(resp.status_code, 200, msg=name)
             self.assertContains(resp, marker)
+            self.assertNotContains(resp, '[УКАЖИТЕ')
+            self.assertNotContains(resp, '[ТЕЛЕФОН]')
+            self.assertNotContains(resp, 'Заполните placeholders')
         oferta_resp = self.client.get(reverse('oferta'))
         self.assertNotContains(oferta_resp, 'Настоящая политика конфиденциальности определяет')
+
+    def test_cookie_and_privacy_pages_disclose_tracking_services(self):
+        for name in ('privacy', 'cookies_policy'):
+            resp = self.client.get(reverse(name))
+            self.assertEqual(resp.status_code, 200, msg=name)
+            self.assertContains(resp, 'Яндекс.Метрик')
+            self.assertContains(resp, 'Calltouch')
+            self.assertContains(resp, 'Alfa-Track')
 
     def test_home_footer_and_cookie_banner_have_legal_links(self):
         resp = self.client.get(reverse('home'))
@@ -3335,6 +3405,22 @@ class LegalConsentFormsAndViewsTest(TestCase):
         self.assertEqual(req.email, '')
         self.assertIsNotNone(req.legal_accepted_at)
 
+    def test_contacts_view_spam_redirects_like_success_without_saving(self):
+        resp = self.client.post(
+            reverse('contacts'),
+            {
+                'name': 'Иван',
+                'email': 'ivan@example.com',
+                'phone': '+7 (999) 111-22-33',
+                'message': 'Нужна консультация',
+                'agree_personal_data': 'on',
+                'website': 'spam.example',
+            },
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp['Location'], reverse('contacts'))
+        self.assertEqual(ContactRequest.objects.count(), 0)
+
 
 class ServicesPageTest(TestCase):
     """Страница услуг: вывод из БД и обработка callback-формы."""
@@ -3384,6 +3470,61 @@ class ServicesPageTest(TestCase):
         self.assertEqual(callback.name, 'Иван')
         self.assertIsNotNone(callback.legal_accepted_at)
         self.assertEqual(callback.legal_docs_version, LEGAL_BUNDLE_VERSION)
+
+    def test_services_callback_spam_redirects_without_creating_request(self):
+        resp = self.client.post(
+            reverse('uslugi'),
+            {
+                'form_type': 'callback',
+                'name': 'Иван',
+                'phone': '+7 (999) 111-22-33',
+                'agree_personal_data': 'on',
+                'website': 'spam.example',
+            },
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertTrue(resp['Location'].endswith(reverse('uslugi') + '#contacts'))
+        self.assertEqual(CallbackRequest.objects.count(), 0)
+
+
+class PublicLeadFormsSpamProtectionTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+
+    def test_arenda_callback_spam_redirects_without_creating_request(self):
+        resp = self.client.post(
+            reverse('arenda'),
+            {
+                'form_type': 'callback',
+                'name': 'Иван',
+                'phone': '+7 (999) 111-22-33',
+                'agree_personal_data': 'on',
+                'website': 'spam.example',
+            },
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertTrue(resp['Location'].endswith(reverse('arenda') + '#contacts'))
+        self.assertEqual(CallbackRequest.objects.count(), 0)
+
+    def test_compact_vr_spam_redirects_without_creating_request(self):
+        resp = self.client.post(
+            reverse('compact_vr'),
+            {
+                'form_type': 'compact_vr',
+                'name': 'Иван',
+                'contact': '+7 (999) 111-22-33',
+                'city': 'Екатеринбург',
+                'format': 'Core',
+                'email': 'ivan@example.com',
+                'premises': '',
+                'comment': 'Хочу обсудить запуск',
+                'agree_personal_data': 'on',
+                'website': 'spam.example',
+            },
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertTrue(resp['Location'].endswith(reverse('compact_vr') + '#contact'))
+        self.assertEqual(ContactRequest.objects.count(), 0)
 
 
 class FavoriteTest(TestCase):

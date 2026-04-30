@@ -1,5 +1,6 @@
 import mimetypes
 import os
+import time
 from urllib.parse import quote
 
 from django.conf import settings
@@ -11,6 +12,7 @@ from django.urls import reverse
 
 from catalog.models import CallbackRequest, ContactRequest, Service
 from config.solution_landings import get_solution_landing
+from config.utils.spam_protection import is_spam_request
 from config.views.solutions import build_solution_hub_cards
 
 from ..forms import CallbackForm, CompactVRForm
@@ -141,6 +143,9 @@ def compact_vr_view(request):
 
     lead_form = CompactVRForm()
     if request.method == 'POST' and request.POST.get('form_type') == 'compact_vr':
+        if is_spam_request(request):
+            messages.success(request, 'Заявка отправлена! Мы свяжемся с вами в ближайшее время.')
+            return redirect(reverse('compact_vr') + '#contact')
         lead_form = CompactVRForm(request.POST)
         if lead_form.is_valid():
             d = lead_form.cleaned_data
@@ -164,6 +169,7 @@ def compact_vr_view(request):
         'compact_vr.html',
         {
             'lead_form': lead_form,
+            'form_started_at': int(time.time()),
             'hide_footer_products': True,
         },
     )
@@ -203,6 +209,9 @@ def arenda_view(request):
 
     callback_form = CallbackForm()
     if request.method == 'POST' and request.POST.get('form_type') == 'callback':
+        if is_spam_request(request):
+            messages.success(request, 'Заявка отправлена! Мы перезвоним в ближайшее время.')
+            return redirect(reverse('arenda') + '#contacts')
         callback_form = CallbackForm(request.POST)
         if callback_form.is_valid():
             CallbackRequest.objects.create(
@@ -218,6 +227,7 @@ def arenda_view(request):
         'quest3_image_url': build_media_url('rent/Quest 3.webp'),
         'quest2_image_url': build_media_url('rent/Quest 2.webp'),
         'callback_form': callback_form,
+        'form_started_at': int(time.time()),
     })
 
 
@@ -227,6 +237,9 @@ def uslugi_view(request):
     callback_form = CallbackForm()
 
     if request.method == 'POST' and request.POST.get('form_type') == 'callback':
+        if is_spam_request(request):
+            messages.success(request, 'Заявка отправлена! Мы перезвоним в ближайшее время.')
+            return redirect(reverse('uslugi') + '#contacts')
         callback_form = CallbackForm(request.POST)
         if callback_form.is_valid():
             CallbackRequest.objects.create(
@@ -244,5 +257,6 @@ def uslugi_view(request):
         {
             'services': services,
             'callback_form': callback_form,
+            'form_started_at': int(time.time()),
         },
     )

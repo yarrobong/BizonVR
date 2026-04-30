@@ -29,7 +29,12 @@ git restore --source=HEAD --worktree --staged static/css/tailwind.css
 sudo git pull --ff-only
 .venv/bin/pip install -r requirements.txt
 .venv/bin/python scripts/check_single_db_contract.py
+.venv/bin/python manage.py check --deploy
+set -a; . ./.env; set +a
+mkdir -p backups
+PGPASSWORD="$DB_PASSWORD" pg_dump -h "${DB_HOST:-127.0.0.1}" -p "${DB_PORT:-5432}" -U "$DB_USER" -Fc "$DB_NAME" > "backups/bizon_$(date +%F_%H%M).dump"
 .venv/bin/python manage.py migrate
+.venv/bin/python manage.py migrate --check
 .venv/bin/python manage.py collectstatic --noinput
 sudo systemctl restart bizonvr
 sudo systemctl reload nginx
@@ -41,10 +46,26 @@ sudo systemctl reload nginx
 - `sudo git pull --ff-only` — подтягивает последние изменения из репозитория без merge-коммита.
 - `.venv/bin/pip install -r requirements.txt` — обновляет Python-зависимости, если они поменялись.
 - `.venv/bin/python scripts/check_single_db_contract.py` — проверяет, что проект всё ещё работает только с одной PostgreSQL БД.
+- `.venv/bin/python manage.py check --deploy` — проверяет production-настройки, HTTPS/cookies, SMTP и юридические реквизиты; если здесь ошибка, не перезапускайте сервис.
+- `set -a; . ./.env; set +a` — загружает переменные БД из `.env` для backup-команды.
+- `pg_dump ... > backups/...dump` — делает backup PostgreSQL перед миграциями.
 - `.venv/bin/python manage.py migrate` — применяет новые миграции.
+- `.venv/bin/python manage.py migrate --check` — подтверждает, что после миграции не осталось неприменённых миграций.
 - `.venv/bin/python manage.py collectstatic --noinput` — собирает статику в `staticfiles/` из уже закоммиченных файлов репозитория.
 - `sudo systemctl restart bizonvr` — перезапускает Gunicorn/Django.
 - `sudo systemctl reload nginx` — перечитывает конфигурацию Nginx без полного рестарта.
+
+Перед перезапуском проверьте, что в `.env` заполнены корпоративная почта и юридические реквизиты:
+
+```bash
+grep -E '^(DEBUG|USE_HTTPS|SITE_URL|ALLOWED_HOSTS|CSRF_TRUSTED_ORIGINS|EMAIL_HOST|EMAIL_HOST_USER|DEFAULT_FROM_EMAIL|LEGAL_OPERATOR_)=' .env
+```
+
+Для SMTP smoke можно отправить тестовое письмо себе:
+
+```bash
+.venv/bin/python manage.py shell -c "from django.core.mail import send_mail; send_mail('BizonVR SMTP check', 'Проверка корпоративной почты BizonVR.', None, ['YOUR_EMAIL@example.com'], fail_silently=False)"
+```
 
 `static/css/tailwind.css` хранится в репозитории и участвует в `collectstatic`, поэтому при обычном повторном деплое не нужно пересобирать Tailwind на сервере. Если CSS менялся, его нужно собрать локально перед коммитом и закоммитить вместе с остальными изменениями.
 

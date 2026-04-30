@@ -1,4 +1,5 @@
 """Базовые тесты аккаунта и аутентификации."""
+import json
 import os
 from decimal import Decimal
 from unittest.mock import Mock, patch
@@ -15,7 +16,7 @@ from django.utils.http import urlsafe_base64_encode
 
 from config.env import parse_bool_value
 from config.legal_docs import LEGAL_BUNDLE_VERSION
-from catalog.models import Category, Product
+from catalog.models import Category, City, PickupPoint, Product, ProductStock
 from orders.models import Order
 
 from .models import (
@@ -686,6 +687,8 @@ class ProfileDashboardTest(TestCase):
         self.assertContains(resp, 'Email — не подтверждён')
         self.assertContains(resp, 'Телефон — контактный')
         self.assertContains(resp, 'Пароль — установлен')
+        self.assertContains(resp, 'Подтверждение регистрации и сервисные письма приходят только на email.')
+        self.assertNotContains(resp, 'SMS')
         self.assertNotContains(resp, 'Секции настроек')
         self.assertNotContains(resp, 'Доставка и связь')
         self.assertNotContains(resp, 'id="profile-edit-form"', html=False)
@@ -711,6 +714,7 @@ class ProfileDashboardTest(TestCase):
         self.assertContains(response, 'Инструменты доступа открыты')
         self.assertContains(response, 'Подтверждение email')
         self.assertContains(response, 'Телефон в профиле')
+        self.assertContains(response, 'подтверждение guest-заказов больше завязаны только на email')
 
     def test_profile_settings_opens_notification_form_only_by_explicit_action(self):
         self.client.force_login(self.user)
@@ -948,6 +952,9 @@ class SavedAddressAndCheckoutTest(TestCase):
             price=Decimal('100.00'),
             is_active=True,
         )
+        self.city = City.objects.create(name='Екатеринбург', slug='ekb-account-checkout')
+        self.pickup_point = PickupPoint.objects.create(city=self.city, name='Основной ПВЗ')
+        ProductStock.objects.create(product=self.product, pickup_point=self.pickup_point, quantity=10)
 
     def _address_payload(self, **overrides):
         payload = {
@@ -960,6 +967,48 @@ class SavedAddressAndCheckoutTest(TestCase):
             'address': 'ул. Мира, 1',
             'comment': 'Позвонить заранее',
             'is_default': 'on',
+        }
+        payload.update(overrides)
+        return payload
+
+    def _checkout_payload(self, **overrides):
+        payload = {
+            'promo_code': '',
+            'first_name': 'Петров',
+            'last_name': 'Петр',
+            'phone': '+7 999 123 45 67',
+            'email': 'client@example.com',
+            'contact_channel': Order.CONTACT_CHANNEL_CALL,
+            'contact_handle': '',
+            'delivery_type': Order.DELIVERY_CDEK_PVZ,
+            'city_text': 'Екатеринбург',
+            'address_line': 'ул. Мира, 1',
+            'delivery_comment': '',
+            'cdek_office_snapshot_raw': json.dumps({
+                'city_code': 250,
+                'city': 'Екатеринбург',
+                'type': 'PVZ',
+                'postal_code': '620000',
+                'country_code': 'RU',
+                'have_cashless': True,
+                'have_cash': False,
+                'allowed_cod': False,
+                'is_dressing_room': False,
+                'code': 'EKB001',
+                'name': 'ПВЗ СДЭК',
+                'address': 'Екатеринбург, ул. Мира, 1',
+                'work_time': 'Пн-Пт 10:00-19:00',
+                'location': [60.6122, 56.8519],
+            }),
+            'cdek_tariff_snapshot_raw': json.dumps({
+                'tariff_code': 136,
+                'tariff_name': 'Посылка склад-склад',
+            }),
+            'recipient_is_customer': 'on',
+            'payment_method': Order.PAYMENT_METHOD_MANAGER_CONTACT,
+            'comment': '',
+            'agree_personal_data': 'on',
+            'agree_offer': 'on',
         }
         payload.update(overrides)
         return payload
@@ -1147,20 +1196,7 @@ class SavedAddressAndCheckoutTest(TestCase):
         self.client.force_login(self.user)
         self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
 
-        response = self.client.post(reverse('orders:checkout'), {
-            'promo_code': '',
-            'first_name': 'Петров',
-            'last_name': 'Петр',
-            'phone': '+7 999 123 45 67',
-            'email': 'client@example.com',
-            'city_text': 'Екатеринбург',
-            'address_line': 'ул. Мира, 1',
-            'delivery_comment': '',
-            'comment': '',
-            'recipient_is_customer': 'on',
-            'agree_personal_data': 'on',
-            'agree_offer': 'on',
-        })
+        response = self.client.post(reverse('orders:checkout'), self._checkout_payload())
 
         self.assertEqual(response.status_code, 302)
         self.profile.refresh_from_db()

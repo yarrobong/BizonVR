@@ -197,6 +197,10 @@ class CheckoutForm(forms.Form):
         required=False,
         widget=forms.HiddenInput(),
     )
+    saved_address_id = forms.IntegerField(
+        required=False,
+        widget=forms.HiddenInput(),
+    )
     payment_method = forms.ChoiceField(
         label='Способ оплаты',
         required=True,
@@ -348,6 +352,15 @@ class CheckoutForm(forms.Form):
     def clean_delivery_comment(self):
         return (self.cleaned_data.get('delivery_comment') or '').strip()
 
+    def clean_saved_address_id(self):
+        value = self.cleaned_data.get('saved_address_id')
+        if value in (None, ''):
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            raise forms.ValidationError('Не удалось определить сохранённый адрес.')
+
     def clean_cdek_office_snapshot_raw(self):
         return (self.cleaned_data.get('cdek_office_snapshot_raw') or '').strip()
 
@@ -415,10 +428,13 @@ class CheckoutForm(forms.Form):
         recipient_is_customer = bool(cleaned_data.get('recipient_is_customer'))
         recipient_name = (cleaned_data.get('recipient_name') or '').strip()
         recipient_phone = (cleaned_data.get('recipient_phone') or '').strip()
-
+        saved_address = self._resolve_saved_address(cleaned_data.get('saved_address_id'))
+        has_manual_saved_address = saved_address is not None and not (
+            cleaned_data.get('cdek_office_snapshot_raw') or ''
+        ).strip()
         office_snapshot = self._parse_cdek_snapshot(
             cleaned_data.get('cdek_office_snapshot_raw'),
-            required=True,
+            required=not has_manual_saved_address,
             field_name='cdek_office_snapshot_raw',
             missing_message='Выберите ПВЗ СДЭК на карте.',
             invalid_message='Выберите ПВЗ СДЭК на карте.',
@@ -445,6 +461,20 @@ class CheckoutForm(forms.Form):
                 cleaned_data['address_line'] = f'{office_code} — {office_name}, {office_address}'
                 cleaned_data['address'] = cleaned_data['address_line']
                 cleaned_data['cdek_office_snapshot'] = office_snapshot
+        elif has_manual_saved_address:
+            manual_city = (cleaned_data.get('city_text') or saved_address.city or '').strip()
+            manual_address = (cleaned_data.get('address_line') or saved_address.address or '').strip()
+            if not manual_city or not manual_address:
+                self.add_error('address_line', 'Проверьте сохранённый адрес перед отправкой заявки.')
+            cleaned_data['city_text'] = manual_city
+            cleaned_data['address_line'] = manual_address
+            cleaned_data['address'] = manual_address
+            cleaned_data['postal_code'] = ''
+            cleaned_data['delivery_comment'] = (
+                (cleaned_data.get('delivery_comment') or '').strip()
+                or (saved_address.comment or '').strip()
+            )
+            cleaned_data['cdek_office_snapshot'] = {}
         else:
             cleaned_data['cdek_office_snapshot'] = {}
 
@@ -488,6 +518,16 @@ class CheckoutForm(forms.Form):
         if 'postal_code' not in cleaned_data:
             cleaned_data['postal_code'] = ''
         return cleaned_data
+
+    def _resolve_saved_address(self, saved_address_id):
+        if not saved_address_id or not getattr(self.user, 'is_authenticated', False):
+            return None
+        from accounts.models import SavedAddress
+
+        return SavedAddress.objects.filter(
+            pk=saved_address_id,
+            user=self.user,
+        ).first()
 
     def _parse_cdek_snapshot(self, raw_value, *, required, field_name, missing_message, invalid_message):
         raw_value = (raw_value or '').strip()
