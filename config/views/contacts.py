@@ -1,7 +1,10 @@
+import time
+
 from django.contrib import messages
 from django.shortcuts import redirect, render
 
 from catalog.models import ContactRequest
+from config.utils.spam_protection import is_spam_request
 
 from ..forms import ContactForm
 from ..legal_consent import build_legal_acceptance_payload
@@ -34,6 +37,9 @@ def contacts_view(request):
     }
     form = ContactForm(initial=initial)
     if request.method == 'POST':
+        if is_spam_request(request):
+            messages.success(request, 'Спасибо! Ваше сообщение отправлено. Мы свяжемся с вами в ближайшее время.')
+            return redirect('contacts')
         form = ContactForm(request.POST)
         if form.is_valid():
             ContactRequest.objects.create(
@@ -45,4 +51,4 @@ def contacts_view(request):
             )
             messages.success(request, 'Спасибо! Ваше сообщение отправлено. Мы свяжемся с вами в ближайшее время.')
             return redirect('contacts')
-    return render(request, 'contacts.html', {'form': form})
+    return render(request, 'contacts.html', {'form': form, 'form_started_at': int(time.time())})

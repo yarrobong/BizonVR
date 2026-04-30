@@ -1,4 +1,5 @@
 import re
+import time
 from difflib import SequenceMatcher
 
 from django.core.paginator import Paginator
@@ -580,6 +581,7 @@ class ProductDetailView(DetailView):
             },
             'allowOrderOnRequest': self.object.allow_order_on_request,
         }
+        context['form_started_at'] = int(time.time())
         context['purchase_request_source_path'] = purchase_request_source_path
         if 'purchase_request_form' not in context:
             context['purchase_request_form'] = PurchaseRequestForm(initial={

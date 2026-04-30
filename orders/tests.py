@@ -309,6 +309,20 @@ class CheckoutTest(TestCase):
         self.assertEqual(PurchaseRequest.objects.count(), 0)
         self.assertEqual(Payment.objects.filter(order=order).count(), 0)
 
+    def test_checkout_spam_redirects_to_success_without_creating_order(self):
+        add_url = reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk})
+        self.client.post(add_url, {'quantity': 1})
+
+        response = self.client.post(
+            reverse('orders:checkout'),
+            self._checkout_payload(website='spam.example'),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Заявка отправлена')
+        self.assertEqual(Order.objects.count(), 0)
+        self.assertTrue(self.client.session.get('cart_items'))
+
     def test_guest_checkout_creates_guest_order_and_access_token(self):
         add_url = reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk})
         self.client.post(add_url, {'quantity': 1})
@@ -629,6 +643,22 @@ class CheckoutTest(TestCase):
         self.assertEqual(purchase_request.items[0]['price_in_stock'], 100.0)
         self.assertIsNone(purchase_request.items[0]['price_on_request'])
 
+    def test_purchase_request_spam_redirects_to_success_without_creating_request(self):
+        ProductStock.objects.filter(product=self.product).delete()
+        response = self.client.post(reverse('orders:purchase_request_create'), {
+            'product_id': self.product.pk,
+            'variant_id': '',
+            'source_path': self.product.get_absolute_url(),
+            'phone': '+7 999 123 45 67',
+            'telegram': '',
+            'agree_personal_data': 'on',
+            'website': 'spam.example',
+        })
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse('orders:request_created', kwargs={'request_id': 0}))
+        self.assertEqual(PurchaseRequest.objects.count(), 0)
+
     def test_purchase_request_create_saves_null_in_stock_price_when_price_missing(self):
         self.product.price = None
         self.product.price_on_request = None
@@ -822,7 +852,7 @@ class CheckoutFormsLegalValidationTest(TestCase):
 
 
 class GuestOrderTest(TestCase):
-    """Guest order теперь открывается по токену, старые URL по id закрыты."""
+    """Guest order открывается только по токену, legacy URL удалены."""
 
     def setUp(self):
         self.client = Client()
@@ -849,38 +879,53 @@ class GuestOrderTest(TestCase):
         )
         OrderItem.objects.create(order=self.order, product=self.product, quantity=1, price=Decimal('100.00'))
 
-    def test_guest_lookup_requires_login(self):
-        url = reverse('orders:order_guest_lookup')
-        resp = self.client.get(url)
-        self.assertEqual(resp.status_code, 302)
-        self.assertTrue(resp.url.startswith(reverse('accounts:login')))
-        resp = self.client.post(url, {'order_id': self.order.pk, 'phone': '+7 999 000 00 00'})
-        self.assertEqual(resp.status_code, 302)
-        self.assertTrue(resp.url.startswith(reverse('accounts:login')))
-        self.assertNotIn('guest_order_ids', self.client.session)
+    def test_legacy_guest_lookup_route_is_removed(self):
+        resp = self.client.get('/orders/guest/')
+        self.assertEqual(resp.status_code, 404)
 
-    def test_guest_lookup_authenticated_redirects_to_order_list(self):
-        self.client.force_login(self.user)
-        url = reverse('orders:order_guest_lookup')
-        resp = self.client.post(url, {'order_id': self.order.pk, 'phone': '+7 999 111 22 33'})
-        self.assertEqual(resp.status_code, 302)
-        self.assertEqual(resp.url, reverse('orders:order_list'))
+        post_resp = self.client.post('/orders/guest/', {'order_id': self.order.pk, 'phone': '+7 999 000 00 00'})
+        self.assertEqual(post_resp.status_code, 404)
 
-    def test_guest_order_detail_requires_login(self):
-        resp = self.client.get(reverse('orders:order_guest', kwargs={'order_id': self.order.pk}))
-        self.assertEqual(resp.status_code, 302)
-        self.assertTrue(resp.url.startswith(reverse('accounts:login')))
-
-    def test_guest_order_detail_authenticated_redirects_to_order_list_for_guest_order(self):
-        self.client.force_login(self.user)
-        resp = self.client.get(reverse('orders:order_guest', kwargs={'order_id': self.order.pk}))
-        self.assertEqual(resp.status_code, 302)
-        self.assertEqual(resp.url, reverse('orders:order_list'))
+    def test_legacy_guest_detail_route_is_removed(self):
+        resp = self.client.get(f'/orders/guest/{self.order.pk}/')
+        self.assertEqual(resp.status_code, 404)
 
     def test_guest_order_detail_by_token_is_available_without_login(self):
         response = self.client.get(reverse('orders:guest_order_detail', kwargs={'token': self.order.guest_access_token}))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, f'Заказ #{self.order.pk}')
+        self.assertContains(response, 'защищённой ссылке заказа')
+        self.assertContains(response, 'Войти и сохранить заказ')
+
+    def test_guest_order_detail_with_invalid_token_returns_404(self):
+        response = self.client.get(reverse('orders:guest_order_detail', kwargs={'token': 'missing-token'}))
+        self.assertEqual(response.status_code, 404)
+
+    def test_guest_order_detail_with_expired_token_returns_404(self):
+        self.order.guest_access_expires_at = timezone.now() - timezone.timedelta(minutes=1)
+        self.order.save(update_fields=['guest_access_expires_at'])
+
+        response = self.client.get(reverse('orders:guest_order_detail', kwargs={'token': self.order.guest_access_token}))
+        self.assertEqual(response.status_code, 404)
+
+    def test_authenticated_verified_email_user_claims_guest_order_from_token_page(self):
+        self.user.email = self.order.email
+        self.user.save(update_fields=['email'])
+        Profile.objects.create(
+            user=self.user,
+            phone='9991234567',
+            email_verified_at=timezone.now(),
+            contact_name='Иван Иванов',
+            privacy_agreed_at=timezone.now(),
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('orders:guest_order_detail', kwargs={'token': self.order.guest_access_token}))
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse('orders:order_detail', kwargs={'pk': self.order.pk}))
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.user, self.user)
 
 
 @override_settings(
@@ -1033,30 +1078,25 @@ class OrderSecurityRegressionTest(TestCase):
         self.assertNotContains(response, self.request_obj.phone)
         self.assertNotContains(response, self.request_obj.telegram)
 
-    def test_guest_order_detail_requires_login(self):
-        response = self.client.get(reverse('orders:order_guest', kwargs={'order_id': self.guest_order.pk}))
-        self.assertEqual(response.status_code, 302)
-        self.assertTrue(response.url.startswith(reverse('accounts:login')))
+    def test_removed_legacy_guest_routes_return_404(self):
+        response = self.client.get(f'/orders/guest/{self.guest_order.pk}/')
+        self.assertEqual(response.status_code, 404)
 
-    def test_guest_order_post_without_login_does_not_mutate_session(self):
-        response = self.client.post(
-            reverse('orders:order_guest', kwargs={'order_id': self.guest_order.pk}),
-            {'phone': '+7 999 000 00 00'},
-        )
-        self.assertEqual(response.status_code, 302)
-        self.assertTrue(response.url.startswith(reverse('accounts:login')))
-        self.assertNotIn('guest_order_ids', self.client.session)
+        lookup_response = self.client.get('/orders/guest/')
+        self.assertEqual(lookup_response.status_code, 404)
 
     def test_authenticated_user_cannot_open_foreign_order_detail(self):
         self.client.force_login(self.other_user)
         response = self.client.get(reverse('orders:order_detail', kwargs={'pk': self.user_order.pk}))
         self.assertEqual(response.status_code, 404)
 
-    def test_authenticated_user_guest_route_redirects_to_own_order_detail(self):
-        self.client.force_login(self.user)
-        response = self.client.get(reverse('orders:order_guest', kwargs={'order_id': self.user_order.pk}))
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(response.url, reverse('orders:order_detail', kwargs={'pk': self.user_order.pk}))
+    def test_guest_token_route_does_not_open_non_guest_order(self):
+        self.user_order.refresh_guest_access(ttl_days=7)
+        self.user_order.save(update_fields=['guest_access_token', 'guest_access_expires_at'])
+
+        response = self.client.get(reverse('orders:guest_order_detail', kwargs={'token': self.user_order.guest_access_token}))
+
+        self.assertEqual(response.status_code, 404)
 
 
 class OrderNotificationPolicyTest(TestCase):

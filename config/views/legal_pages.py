@@ -30,7 +30,7 @@ class _LegalOperatorContacts:
 
 def _get_legal_operator_contacts():
     return _LegalOperatorContacts(
-        full_name=getattr(settings, 'LEGAL_OPERATOR_FULL_NAME', '[УКАЖИТЕ ПОЛНОЕ НАИМЕНОВАНИЕ ОПЕРАТОРА ПД]'),
+        full_name=getattr(settings, 'LEGAL_OPERATOR_FULL_NAME', getattr(settings, 'SITE_BRAND', 'BizonVR')),
         short_name=getattr(settings, 'LEGAL_OPERATOR_SHORT_NAME', getattr(settings, 'SITE_BRAND', 'BizonVR')),
         legal_form=getattr(settings, 'LEGAL_OPERATOR_FORM', '[ООО/ИП]'),
         inn=getattr(settings, 'LEGAL_OPERATOR_INN', '[ИНН]'),

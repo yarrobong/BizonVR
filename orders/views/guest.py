@@ -1,29 +1,13 @@
 from django.conf import settings
-from django.contrib.auth.views import redirect_to_login
 from django.http import Http404
 from django.shortcuts import redirect, render
+from django.contrib.auth.views import redirect_to_login
 
 from accounts.services import (
     normalize_email,
 )
 from ..models import Order
 from ..services import build_order_status_summary, claim_guest_orders_for_user
-
-
-def order_guest_lookup_view(request):
-    """Старый guest entrypoint: статус заказа доступен только после входа."""
-    if not request.user.is_authenticated:
-        return redirect_to_login(request.get_full_path())
-    return redirect('orders:order_list')
-
-
-def order_guest_view(request, order_id):
-    """Старый guest entrypoint: после входа открываем только собственный заказ."""
-    if not request.user.is_authenticated:
-        return redirect_to_login(request.get_full_path())
-    if Order.objects.filter(pk=order_id, user=request.user).exists():
-        return redirect('orders:order_detail', pk=order_id)
-    return redirect('orders:order_list')
 
 
 def order_guest_detail_view(request, token):
@@ -61,4 +45,5 @@ def order_guest_detail_view(request, token):
         'guest_access_token': token,
         'claim_login_url': claim_login_url,
         'can_claim_after_login': can_claim_after_login,
+        'guest_access_path': request.path,
     })

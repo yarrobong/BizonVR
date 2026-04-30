@@ -26,12 +26,18 @@
     <div class="max-w-3xl">
       <h1 class="text-2xl font-semibold text-white sm:text-3xl">Оформление заявки</h1>
       <p class="mt-1.5 text-sm leading-6 text-gray-300 sm:text-[15px]">
-        Оставьте контакты и выберите ПВЗ СДЭК. Мы подтвердим наличие и свяжемся с вами в течение дня.
+        {% if use_saved_address_delivery %}
+          Оставьте контакты и проверьте сохранённый адрес. Мы подтвердим наличие и свяжемся с вами в течение дня.
+        {% else %}
+          Оставьте контакты и выберите ПВЗ СДЭК. Мы подтвердим наличие и свяжемся с вами в течение дня.
+        {% endif %}
       </p>
     </div>
     <div class="flex flex-wrap gap-2 pt-0.5 text-xs text-gray-300 sm:text-sm">
       <span class="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1">Только нужные поля</span>
-      <span class="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1">ПВЗ СДЭК на карте</span>
+      <span class="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1">
+        {% if use_saved_address_delivery %}Сохранённый адрес{% else %}ПВЗ СДЭК на карте{% endif %}
+      </span>
       <span class="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-3 py-1">Свяжемся в течение дня</span>
     </div>
   </div>
@@ -83,6 +89,8 @@
     <div class="flex flex-col gap-3.5 md:flex-row md:items-start lg:gap-5">
       <form id="checkout-form" method="post" action="{{ request.get_full_path }}" class="min-w-0 space-y-2.5 pb-36 md:w-2/3 md:space-y-3 lg:pb-0">
         {% csrf_token %}
+        <input type="hidden" name="website" value="">
+        <input type="hidden" name="form_started_at" value="{{ form_started_at }}">
         {% for hidden in form.hidden_fields %}
           {% if hidden.name != 'promo_code' %}
             {{ hidden }}
@@ -143,8 +151,14 @@
         <section class="rounded-[2rem] border border-white/10 bg-dark-800/90 p-3.5 sm:p-4">
           <div class="mb-2.5">
             <p class="text-xs uppercase tracking-[0.22em] text-accent/80">Получение заказа</p>
-            <h2 class="mt-1 text-xl font-semibold text-white">Получение</h2>
-            <p class="mt-1 max-w-2xl text-sm leading-5 text-gray-400">Выберите ПВЗ СДЭК. Так мы быстрее подтвердим удобную точку и доставку.</p>
+            <h2 class="mt-1 text-xl font-semibold text-white">{% if use_saved_address_delivery %}Адрес доставки{% else %}Получение{% endif %}</h2>
+            <p class="mt-1 max-w-2xl text-sm leading-5 text-gray-400">
+              {% if use_saved_address_delivery %}
+                Используем сохранённый адрес из кабинета. Если нужно, вы сможете выбрать другой адрес в профиле перед следующим заказом.
+              {% else %}
+                Выберите ПВЗ СДЭК. Так мы быстрее подтвердим удобную точку и доставку.
+              {% endif %}
+            </p>
           </div>
 
           {% if form.cdek_office_snapshot_raw.errors %}
@@ -153,7 +167,46 @@
             </div>
           {% endif %}
 
-          {% if cdek_widget_enabled %}
+          {% if use_saved_address_delivery %}
+            <div class="rounded-3xl border border-white/10 bg-dark-900/60 p-3 sm:p-3.5">
+              <div class="flex flex-col gap-2.5 sm:flex-row sm:items-start sm:justify-between">
+                <div class="min-w-0 flex-1">
+                  <div class="flex flex-wrap items-center gap-3">
+                    <p class="text-xs uppercase tracking-[0.22em] text-accent/80">Сохранённый адрес</p>
+                    {% if selected_saved_address %}
+                      <span class="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-gray-300">{{ selected_saved_address.label }}</span>
+                    {% endif %}
+                  </div>
+                  <dl class="mt-2.5 grid gap-2 text-sm text-gray-300 sm:grid-cols-2">
+                    <div>
+                      <dt class="text-gray-500">Город</dt>
+                      <dd class="mt-0.5 text-white">{{ form.city_text.value|default:"—" }}</dd>
+                    </div>
+                    <div>
+                      <dt class="text-gray-500">Получатель</dt>
+                      <dd class="mt-0.5 text-white">{{ form.recipient_name.value|default:form.first_name.value|default:"—" }}</dd>
+                    </div>
+                    <div class="sm:col-span-2">
+                      <dt class="text-gray-500">Адрес</dt>
+                      <dd class="mt-0.5 text-white">{{ form.address_line.value|default:"—" }}</dd>
+                    </div>
+                    {% if form.delivery_comment.value %}
+                      <div class="sm:col-span-2">
+                        <dt class="text-gray-500">Комментарий к доставке</dt>
+                        <dd class="mt-0.5 text-white">{{ form.delivery_comment.value }}</dd>
+                      </div>
+                    {% endif %}
+                  </dl>
+                </div>
+                <a
+                  href="{% url 'accounts:profile_settings' %}#addresses"
+                  class="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:border-white/20 hover:bg-white/10"
+                >
+                  Изменить в кабинете
+                </a>
+              </div>
+            </div>
+          {% elif cdek_widget_enabled %}
             <div class="space-y-2.5">
               <div
                 id="cdek-selection-empty"
@@ -310,7 +363,7 @@
     {% include "orders/partials/checkout_mobile_bar.html" %}
   {% endif %}
 </div>
-{% if cdek_widget_enabled %}
+{% if show_cdek_widget %}
   {{ cdek_widget_config|json_script:"cdek-widget-config" }}
   <div
     id="cdek-widget-modal"

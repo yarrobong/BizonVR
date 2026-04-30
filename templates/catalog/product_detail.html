@@ -843,6 +843,8 @@
             {% csrf_token %}
             {{ purchase_request_form.product_id }}
             {{ purchase_request_form.source_path }}
+            <input type="hidden" name="website" value="">
+            <input type="hidden" name="form_started_at" value="{{ form_started_at }}">
             <input type="hidden" name="variant_id" :value="selectedVariant ? selectedVariant.id : '{{ purchase_request_variant_id|default_if_none:''|escapejs }}'" />
             <div class="purchase-request-field">
               <label for="{{ purchase_request_form.phone.id_for_label }}" class="purchase-request-label">Телефон</label>

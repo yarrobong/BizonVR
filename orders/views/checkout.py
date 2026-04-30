@@ -1,4 +1,5 @@
 from decimal import Decimal
+import time
 from urllib.parse import urlencode
 
 from django.conf import settings
@@ -39,6 +40,7 @@ from catalog.pricing import (
 from catalog.views.common import _get_stock_total
 from config.legal_consent import build_legal_acceptance_payload
 from config.legal_consent import get_legal_bundle_version
+from config.utils.spam_protection import is_spam_request
 
 from ..forms import CheckoutForm, PurchaseRequestForm
 from ..models import Order, OrderItem, PromoCode, PurchaseRequest, resolve_order_item_image_url
@@ -95,18 +97,38 @@ def _get_checkout_initial(request, saved_address):
     initial['business_phone'] = initial['phone']
 
     if saved_address:
+        saved_first_name, saved_last_name = _split_checkout_name(saved_address.recipient_name)
         initial.update({
-            'first_name': saved_address.recipient_name or initial.get('first_name', ''),
-            'last_name': '',
+            'saved_address_id': saved_address.pk,
+            'first_name': saved_first_name or initial.get('first_name', ''),
+            'last_name': saved_last_name,
             'phone': saved_address.phone or initial.get('phone', ''),
             'email': saved_address.email or initial.get('email', ''),
             'city_text': saved_address.city,
+            'address_line': saved_address.address,
+            'delivery_comment': saved_address.comment,
             'recipient_name': saved_address.recipient_name or '',
             'recipient_phone': saved_address.phone or '',
             'recipient_is_customer': True,
         })
 
     return initial
+
+
+def _use_saved_address_delivery(form, selected_saved_address):
+    if selected_saved_address is None:
+        return False
+    office_snapshot = _extract_bound_office_snapshot(form)
+    return not bool(office_snapshot)
+
+
+def _split_checkout_name(value):
+    parts = (value or '').strip().split(maxsplit=1)
+    if not parts:
+        return '', ''
+    if len(parts) == 1:
+        return parts[0], ''
+    return parts[0], parts[1]
 
 
 def _normalize_checkout_source(value):
@@ -158,7 +180,14 @@ def _sync_profile_from_checkout(user, cleaned_data):
     profile = ensure_profile(user)
     update_fields = []
 
-    contact_name = (cleaned_data.get('first_name') or '').strip()
+    contact_name = ' '.join(
+        part
+        for part in [
+            (cleaned_data.get('first_name') or '').strip(),
+            (cleaned_data.get('last_name') or '').strip(),
+        ]
+        if part
+    )
     existing_name = ' '.join((profile.contact_name or '').split())
     if contact_name and (
         not existing_name
@@ -224,6 +253,8 @@ def _build_checkout_context(
     )
     checkout_mode = 'buy_now' if items_source == 'buy_now' else ''
     session_city = _get_session_selected_city(request)
+    use_saved_address_delivery = _use_saved_address_delivery(form, selected_saved_address)
+    show_cdek_widget = _is_cdek_widget_enabled() and not use_saved_address_delivery
     return {
         'form': form,
         'cart_empty': not cart_items,
@@ -236,12 +267,18 @@ def _build_checkout_context(
         'is_buy_now_checkout': checkout_mode == 'buy_now',
         'hide_footer_products': True,
         'checkout_step': _get_checkout_step(form),
-        'cdek_widget_enabled': _is_cdek_widget_enabled(),
-        'cdek_widget_config': _build_cdek_widget_config(
-            request,
-            form,
-            selected_saved_address=selected_saved_address,
-            session_city=session_city,
+        'use_saved_address_delivery': use_saved_address_delivery,
+        'show_cdek_widget': show_cdek_widget,
+        'cdek_widget_enabled': show_cdek_widget,
+        'form_started_at': int(time.time()),
+        'cdek_widget_config': (
+            _build_cdek_widget_config(
+                request,
+                form,
+                selected_saved_address=selected_saved_address,
+                session_city=session_city,
+            )
+            if show_cdek_widget else {}
         ),
         **pricing_context,
     }
@@ -513,6 +550,8 @@ def checkout_view(request):
         promo_code = (form.cleaned_data.get('promo_code') or '').strip()
         if promo_code:
             promo = PromoCode.objects.filter(code__iexact=promo_code, is_active=True).first()
+    if is_spam_request(request):
+        return render(request, 'orders/request_created.html')
 
     subtotal = sum(line['price'] * line['quantity'] for line in lines)
     promo_discount = _discount_for_promo(subtotal, promo)
@@ -717,6 +756,8 @@ def purchase_request_create_view(request):
     if public_purchase_mode != PURCHASE_MODE_REQUEST_ONLY:
         form.add_error(None, 'Эту позицию можно оформить через корзину. Заявка нужна только для товаров без наличия и цены под заказ.')
         return _render_purchase_request_product_page(request, product, form=form, variant=variant, status=400)
+    if is_spam_request(request):
+        return redirect('orders:request_created', request_id=0)
 
     source_path = (form.cleaned_data.get('source_path') or '').strip() or _build_purchase_request_source_path(product, variant)
     item_snapshot = {

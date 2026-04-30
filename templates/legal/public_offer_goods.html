@@ -43,7 +43,7 @@
 <section id="returns">
   <h2>6. Возврат, обмен и гарантия</h2>
   <p>Возврат и обмен товара осуществляются в соответствии с законодательством РФ о защите прав потребителей, правилами дистанционной торговли и условиями Продавца, опубликованными в <a href="{% url 'sales_terms' %}">разделе условий оплаты/доставки/возврата</a>.</p>
-  <p>Для отдельных категорий товаров могут действовать специальные ограничения, установленные законом. До релиза необходимо проверить финальные формулировки под актуальный ассортимент (в том числе технически сложные товары).</p>
+  <p>Для отдельных категорий товаров могут действовать специальные ограничения, установленные законом и согласованными документами по конкретному заказу, в том числе для технически сложных товаров.</p>
 </section>
 
 <section id="liability">
@@ -66,7 +66,7 @@
     <li>Юридический адрес: {{ operator_contacts.legal_address }}</li>
     <li>Почтовый адрес: {{ operator_contacts.postal_address }}</li>
     <li>Email: {{ operator_contacts.email }}</li>
-    <li>Телефон: {{ operator_contacts.phone|default:'[ТЕЛЕФОН]' }}</li>
+    {% if operator_contacts.phone %}<li>Телефон: {{ operator_contacts.phone }}</li>{% endif %}
     {% if operator_contacts.bank_account %}<li>Расчетный счет: {{ operator_contacts.bank_account }}</li>{% endif %}
     {% if operator_contacts.bank_name %}<li>Банк: {{ operator_contacts.bank_name }}</li>{% endif %}
     {% if operator_contacts.bank_bik %}<li>БИК: {{ operator_contacts.bank_bik }}</li>{% endif %}
