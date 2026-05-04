@@ -1,0 +1,132 @@
+<!-- Calltouch requests -->
+<script>
+  (function (w, d) {
+    var siteId = '78900';
+    var endpoint = 'https://api.calltouch.ru/calls-service/RestAPI/requests/' + siteId + '/register/';
+    var submitSelector = 'form [type="submit"]:not([name="promo_action"])';
+
+    function getFieldValue(form, selector) {
+      var field = form.querySelector(selector);
+      return field ? field.value : '';
+    }
+
+    function serialize(data) {
+      return Object.keys(data).reduce(function (parts, key) {
+        if (data[key]) {
+          parts.push(key + '=' + encodeURIComponent(data[key]));
+        }
+        return parts;
+      }, []).join('&');
+    }
+
+    function sendPayload(data) {
+      var body = serialize(data);
+
+      if (!body || w.ct_snd_flag) {
+        return;
+      }
+
+      w.ct_snd_flag = true;
+      w.setTimeout(function () {
+        w.ct_snd_flag = false;
+      }, 20000);
+
+      if (navigator.sendBeacon && typeof Blob === 'function') {
+        var beaconBody = new Blob([body], { type: 'application/x-www-form-urlencoded' });
+        if (navigator.sendBeacon(endpoint, beaconBody)) {
+          return;
+        }
+      }
+
+      if (typeof w.fetch === 'function') {
+        w.fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+          },
+          body: body,
+          keepalive: true,
+          mode: 'cors',
+          credentials: 'omit'
+        }).catch(function () {});
+        return;
+      }
+
+      var request = w.ActiveXObject ? new ActiveXObject('Microsoft.XMLHTTP') : new XMLHttpRequest();
+      request.open('POST', endpoint, true);
+      request.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+      request.send(body);
+    }
+
+    function flushWhenSessionReady(data) {
+      var attempts = 0;
+
+      function trySend() {
+        attempts += 1;
+
+        if (!data.sessionId && w.call_value) {
+          data.sessionId = w.call_value;
+        }
+
+        if (data.sessionId || attempts >= 6) {
+          sendPayload(data);
+          return;
+        }
+
+        w.setTimeout(trySend, 500);
+      }
+
+      trySend();
+    }
+
+    d.addEventListener('click', function (event) {
+      var submit = event.target && event.target.closest ? event.target.closest(submitSelector) : null;
+      if (!submit) {
+        return;
+      }
+
+      var form = submit.closest('form');
+      if (!form) {
+        return;
+      }
+
+      try {
+        var formMode = form.getAttribute('x-show');
+        var formId = form.getAttribute('id');
+        var fio = getFieldValue(form, 'input[name="name"],input[name="contact_name"],input[name="first_name"]');
+        var phone = getFieldValue(form, 'input[name="phone"]');
+        var email = getFieldValue(form, 'input[name="email"]');
+        var password1 = getFieldValue(form, 'input[name="password1"]');
+        var password2 = getFieldValue(form, 'input[name="password2"]');
+        var comment = getFieldValue(form, 'textarea[name="message"]');
+        var subject = 'Заявка с ' + w.location.hostname;
+        var isValid = Boolean(phone || email);
+
+        if (formMode === 'registrationOpen') {
+          subject = 'Регистрация с ' + w.location.hostname;
+          isValid = Boolean(email && fio && password1 && password2);
+        }
+
+        if (formId === 'checkout-form') {
+          subject = 'Корзина с ' + w.location.hostname;
+          isValid = Boolean(phone && fio);
+        }
+
+        if (!isValid) {
+          return;
+        }
+
+        flushWhenSessionReady({
+          fio: fio,
+          phoneNumber: phone,
+          email: email,
+          subject: subject,
+          requestUrl: w.location.href,
+          comment: comment,
+          sessionId: w.call_value || ''
+        });
+      } catch (error) {}
+    }, true);
+  })(window, document);
+</script>
+<!-- /Calltouch requests -->

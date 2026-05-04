@@ -80,6 +80,7 @@ class LoginViewsTest(TestCase):
     @override_settings(
         EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
         DEFAULT_FROM_EMAIL='BizonVR <no-reply@bizonvr.ru>',
+        EMAIL_VERIFICATION_SUBJECT='Код подтверждения BizonVR',
     )
     @patch('accounts.services.generate_code', return_value='112233')
     def test_register_creates_unverified_account_and_redirects_to_email_confirmation(self, mocked_generate_code):
@@ -105,7 +106,107 @@ class LoginViewsTest(TestCase):
         self.assertIsNone(self.client.session.get('_auth_user_id'))
         self.assertTrue(EmailVerificationCode.objects.filter(user=user, email='client@example.com', used_at__isnull=True).exists())
         self.assertEqual(len(mail.outbox), 1)
-        self.assertIn('112233', mail.outbox[0].body)
+        message = mail.outbox[0]
+        self.assertEqual(message.subject, 'Код подтверждения BizonVR')
+        self.assertIn('Код подтверждения: 112233', message.body)
+        self.assertEqual(len(message.alternatives), 1)
+        self.assertIn('Код подтверждения: 112233', message.alternatives[0].content)
+        self.assertIn(reverse('accounts:register_confirm'), message.body)
+
+    def test_register_confirm_template_supports_one_time_code_autofill(self):
+        response = self.client.get(reverse('accounts:register_confirm'), {'email': 'client@example.com'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'autocomplete="one-time-code"', html=False)
+        self.assertContains(response, 'inputmode="numeric"', html=False)
+        self.assertContains(response, 'pattern="[0-9]{6}"', html=False)
+        self.assertContains(response, 'maxlength="6"', html=False)
+
+    def test_register_confirm_success_logs_user_in_and_marks_email_verified(self):
+        user = User.objects.create_user(
+            username='user_confirm_success',
+            email='client@example.com',
+            password='StrongPass123!',
+        )
+        profile = Profile.objects.create(
+            user=user,
+            contact_name='Иван Иванов',
+            privacy_agreed_at=timezone.now(),
+        )
+        EmailVerificationCode.objects.create(user=user, email='client@example.com', code='123456')
+
+        response = self.client.post(reverse('accounts:register_confirm'), {
+            'email': 'client@example.com',
+            'code': '123456',
+        })
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse('home'))
+        self.assertEqual(self.client.session.get('_auth_user_id'), str(user.pk))
+        profile.refresh_from_db()
+        self.assertIsNotNone(profile.email_verified_at)
+        self.assertFalse(EmailVerificationCode.objects.filter(user=user, used_at__isnull=True).exists())
+
+    @override_settings(
+        EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
+        DEFAULT_FROM_EMAIL='BizonVR <no-reply@bizonvr.ru>',
+        EMAIL_CODE_COOLDOWN_SECONDS=0,
+    )
+    @patch('accounts.services.generate_code', return_value='654321')
+    def test_register_confirm_resend_creates_new_code_and_invalidates_previous(self, mocked_generate_code):
+        user = User.objects.create_user(
+            username='user_resend_email',
+            email='client@example.com',
+            password='StrongPass123!',
+        )
+        Profile.objects.create(user=user, contact_name='Иван Иванов')
+        old_code = EmailVerificationCode.objects.create(user=user, email='client@example.com', code='123456')
+
+        response = self.client.post(reverse('accounts:register_confirm'), {
+            'action': 'resend_email',
+            'email': 'client@example.com',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Письмо с новым кодом отправлено.')
+        old_code.refresh_from_db()
+        self.assertIsNotNone(old_code.used_at)
+        self.assertTrue(EmailVerificationCode.objects.filter(user=user, email='client@example.com', code='654321', used_at__isnull=True).exists())
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn('Код подтверждения: 654321', mail.outbox[0].body)
+
+    def test_register_confirm_rejects_wrong_expired_and_used_codes(self):
+        scenarios = (
+            ('wrong@example.com', '123456', '000000', None),
+            ('expired@example.com', '222222', '222222', timezone.now() - timezone.timedelta(minutes=16)),
+            ('used@example.com', '333333', '333333', 'used'),
+        )
+
+        for email, stored_code, posted_code, created_at in scenarios:
+            with self.subTest(email=email):
+                user = User.objects.create_user(
+                    username=f'user_{email.split("@")[0]}',
+                    email=email,
+                    password='StrongPass123!',
+                )
+                profile = Profile.objects.create(user=user, contact_name='Иван Иванов')
+                record = EmailVerificationCode.objects.create(user=user, email=email, code=stored_code)
+                if created_at == 'used':
+                    record.used_at = timezone.now()
+                    record.save(update_fields=['used_at'])
+                elif created_at is not None:
+                    record.created_at = created_at
+                    record.save(update_fields=['created_at'])
+
+                response = self.client.post(reverse('accounts:register_confirm'), {
+                    'email': email,
+                    'code': posted_code,
+                })
+
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, 'Неверный или устаревший код')
+                profile.refresh_from_db()
+                self.assertIsNone(profile.email_verified_at)
 
     def test_register_rejects_duplicate_email(self):
         existing = User.objects.create_user(
@@ -284,7 +385,7 @@ class PasswordAccessRecoveryTest(TestCase):
         self.assertNotContains(response, 'Номер телефона')
         self.assertNotContains(response, 'Способ восстановления')
 
-    def test_password_reset_rejects_unverified_email_account(self):
+    def test_password_reset_does_not_reveal_unverified_email_account(self):
         unverified_user = User.objects.create_user(
             username='user_unverified_email',
             password='OldPassword123!',
@@ -296,13 +397,23 @@ class PasswordAccessRecoveryTest(TestCase):
             'email': 'oneboardshol@gmail.com',
         })
 
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Аккаунт с таким email не найден.')
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, f"{reverse('accounts:password_reset_request')}?sent=email")
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_password_reset_does_not_reveal_unknown_email(self):
+        response = self.client.post(reverse('accounts:password_reset_request'), {
+            'email': 'unknown@example.com',
+        })
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, f"{reverse('accounts:password_reset_request')}?sent=email")
         self.assertEqual(len(mail.outbox), 0)
 
     @override_settings(
         EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
-        PASSWORD_RESET_EMAIL_SUBJECT='Восстановление доступа BizonVR',
+        PASSWORD_RESET_EMAIL_SUBJECT='Восстановление пароля BizonVR',
+        PASSWORD_RESET_TIMEOUT=900,
     )
     def test_email_password_reset_sends_mail_and_sets_new_password(self):
         request_response = self.client.post(reverse('accounts:password_reset_request'), {
@@ -312,7 +423,12 @@ class PasswordAccessRecoveryTest(TestCase):
         self.assertEqual(request_response.status_code, 302)
         self.assertEqual(request_response.url, f"{reverse('accounts:password_reset_request')}?sent=email")
         self.assertEqual(len(mail.outbox), 1)
-        self.assertIn('/accounts/password-reset/confirm/', mail.outbox[0].body)
+        message = mail.outbox[0]
+        self.assertEqual(message.subject, 'Восстановление пароля BizonVR')
+        self.assertIn('/accounts/password-reset/confirm/', message.body)
+        self.assertIn('Ссылка действует 15 минут', message.body)
+        self.assertEqual(len(message.alternatives), 1)
+        self.assertIn('/accounts/password-reset/confirm/', message.alternatives[0].content)
 
         uidb64 = urlsafe_base64_encode(force_bytes(self.user.pk))
         token = default_token_generator.make_token(self.user)
@@ -329,6 +445,12 @@ class PasswordAccessRecoveryTest(TestCase):
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password('EmailStrong789!'))
         self.assertEqual(self.client.session.get('_auth_user_id'), str(self.user.pk))
+
+        reused_response = self.client.get(
+            reverse('accounts:password_reset_confirm', kwargs={'uidb64': uidb64, 'token': token}),
+        )
+        self.assertEqual(reused_response.status_code, 200)
+        self.assertContains(reused_response, 'Ссылка недействительна или уже использована.')
 
 
 class SmsServiceTest(SimpleTestCase):

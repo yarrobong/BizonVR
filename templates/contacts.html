@@ -40,7 +40,7 @@
     border: 1px solid var(--panel-border);
     border-radius: var(--radius);
     padding: 2.5rem;
-    box-shadow: 0 20px 40px -10px rgba(0,0,0,0.5);
+    box-shadow: 0 14px 30px -10px rgba(0,0,0,0.34);
     position: relative;
     overflow: hidden;
     transition: transform 0.3s ease, box-shadow 0.3s ease;
@@ -146,13 +146,12 @@
     position: relative;
     overflow: hidden;
     transition: all 0.3s ease;
-    box-shadow: 0 10px 20px -5px var(--primary-glow);
+    box-shadow: 0 8px 16px -6px var(--primary-glow);
   }
 
   .submit-btn:hover {
     transform: translateY(-3px);
-    box-shadow: 0 15px 30px -5px var(--primary-glow);
-    filter: brightness(1.1);
+    box-shadow: 0 10px 20px -8px var(--primary-glow);
   }
   
   .submit-btn:active {
@@ -206,19 +205,20 @@
     overflow: hidden;
     position: relative;
     border: 1px solid var(--panel-border);
-    filter: grayscale(100%);
-    transition: filter 0.5s ease;
+    background: linear-gradient(180deg, rgba(17, 24, 39, 0.82), rgba(3, 7, 18, 0.96));
   }
   
-  .map-container:hover {
-    filter: grayscale(0%); /* Цвет при наведении */
-  }
-
   .map-overlay {
     position: absolute;
     inset: 0;
-    background: linear-gradient(to bottom, transparent, rgba(0,0,0,0.8));
+    background: linear-gradient(to bottom, rgba(8,12,22,0.18), rgba(0,0,0,0.72));
     pointer-events: none;
+    opacity: 0.85;
+    transition: opacity 0.3s ease;
+  }
+
+  .map-container:hover .map-overlay {
+    opacity: 0.55;
   }
 </style>
 

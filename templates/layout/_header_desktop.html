@@ -38,8 +38,8 @@
       </button>
 
       <!-- Поиск -->
-      <form action="{% url 'catalog:product_list' %}" method="get" class="flex-1 relative min-w-0 mr-4 md:mr-6">
-        <input type="search" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Поиск по товарам" class="search-input-glass w-full text-white rounded-full px-5 pl-5 pr-12 focus:outline-none focus:ring-1 focus:ring-accent text-sm py-2" />
+      <form action="{% url 'catalog:product_list' %}" method="get" class="flex-1 relative min-w-0 mr-4 md:mr-6" data-live-search-form data-live-search-url="{% url 'catalog:search_suggest' %}">
+        <input type="search" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Поиск по товарам" class="search-input-glass w-full text-white rounded-full px-5 pl-5 pr-12 focus:outline-none focus:ring-1 focus:ring-accent text-sm py-2" autocomplete="off" data-live-search-input />
         <button type="submit" class="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white w-[18px] h-[18px] inline-flex items-center justify-center focus:outline-none">
           <i data-lucide="search" class="w-[18px] h-[18px] inline-block"></i>
         </button>
@@ -143,8 +143,8 @@
           <span class="text-white">КАТАЛОГ</span>
         </button>
 
-        <form action="{% url 'catalog:product_list' %}" method="get" class="flex-1 relative hidden md:block min-w-0">
-          <input type="search" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Поиск по товарам" class="search-input-glass w-full text-white rounded-full px-5 pl-5 pr-12 focus:outline-none focus:ring-1 focus:ring-accent text-sm py-2" />
+        <form action="{% url 'catalog:product_list' %}" method="get" class="flex-1 relative hidden md:block min-w-0" data-live-search-form data-live-search-url="{% url 'catalog:search_suggest' %}">
+          <input type="search" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Поиск по товарам" class="search-input-glass w-full text-white rounded-full px-5 pl-5 pr-12 focus:outline-none focus:ring-1 focus:ring-accent text-sm py-2" autocomplete="off" data-live-search-input />
           <button type="submit" class="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white w-[18px] h-[18px] inline-flex items-center justify-center focus:outline-none">
             <i data-lucide="search" class="w-[18px] h-[18px] inline-block"></i>
           </button>
@@ -231,8 +231,8 @@
         </div>
       </div>
 
-      <form action="{% url 'catalog:product_list' %}" method="get" class="mt-3 md:hidden relative w-full">
-        <input type="search" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Поиск по товарам" class="search-input-glass w-full text-white rounded-lg py-2 px-4 pr-10 focus:outline-none focus:ring-1 focus:ring-accent text-sm" />
+      <form action="{% url 'catalog:product_list' %}" method="get" class="mt-3 md:hidden relative w-full" data-live-search-form data-live-search-url="{% url 'catalog:search_suggest' %}">
+        <input type="search" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Поиск по товарам" class="search-input-glass w-full text-white rounded-lg py-2 px-4 pr-10 focus:outline-none focus:ring-1 focus:ring-accent text-sm" autocomplete="off" data-live-search-input />
         <button type="submit" class="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 inline-flex items-center justify-center focus:outline-none">
           <i data-lucide="search" class="w-4 h-4 inline-block"></i>
         </button>

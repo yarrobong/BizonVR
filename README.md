@@ -403,6 +403,7 @@ npm run build:css
 | `CRM_LEADS_EMAIL` | Отдельный email Bitrix24/CRM для plain text копий публичных заявок. |
 | `EMAIL_VERIFICATION_SUBJECT` | Тема письма подтверждения email. |
 | `PASSWORD_RESET_EMAIL_SUBJECT` | Тема письма восстановления доступа. |
+| `PASSWORD_RESET_TIMEOUT` | Срок действия ссылки восстановления пароля в секундах. |
 | `EMAIL_CODE_COOLDOWN_SECONDS` | Пауза между отправками email-кода. |
 | `EMAIL_CODE_TTL_MINUTES` | Время жизни email-кода. |
 

@@ -53,6 +53,19 @@ def _asset_url(asset):
         return ''
 
 
+def _asset_dimensions(asset):
+    if not asset or not getattr(asset, 'image', None):
+        return None, None
+    try:
+        width = int(getattr(asset.image, 'width', 0) or 0)
+        height = int(getattr(asset.image, 'height', 0) or 0)
+    except (ValueError, OSError, FileNotFoundError):
+        return None, None
+    if width <= 0 or height <= 0:
+        return None, None
+    return width, height
+
+
 def _asset_map(block):
     related_assets = getattr(block, 'assets', [])
     assets = list(related_assets.all() if hasattr(related_assets, 'all') else related_assets)
@@ -72,10 +85,13 @@ def _resolve_image(data, block=None):
                 asset = None
         if asset is None:
             asset = next(iter(assets.values()), None)
+    width, height = _asset_dimensions(asset)
     return {
         'url': _asset_url(asset) or _text(data.get('image_url')),
         'alt': _text(data.get('alt')) or _text(getattr(asset, 'alt', '')),
         'caption': _text(data.get('caption')) or _text(getattr(asset, 'caption', '')),
+        'width': width,
+        'height': height,
     }
 
 

@@ -2,10 +2,45 @@
 <link rel="dns-prefetch" href="//cloud.emailtracking.ru">
 <link rel="preconnect" href="https://cloud.emailtracking.ru" crossorigin="">
 
-<script>;(function(al,f,a,t,ra,c,k){
-    window.alfatrack=window.alfatrack||{};window.alfatrack.token='Co3FRFhjX2';
-    var loaded=false;var ver=(Date.now()/36e5|0);var mirrors=['https://cloud.emailtracking.ru/gtm/script.js','https://cloud.alfa-track.com/gtm/script.js'];
-    function loadFrom(url){var s=document.createElement("script");s.src=url+"?ver="+ver;s.async=1;s.onload=s.onreadystatechange=function(){if(!loaded&&(!s.readyState||s.readyState==='complete')){loaded=true;console.log('at script is loaded by ',url);if(typeof alfatrack.initParameters==='function'){alfatrack.initParameters();}}else{s.remove();}};s.onerror=function(){console.warn("at loaded error by",url);};
-        document.scripts[0].parentNode.insertBefore(s,document.scripts[0]);}for(var i=0;i<mirrors.length;i++){loadFrom(mirrors[i]);}
-})()</script>
+<script>
+  (function (w) {
+    var trackerLoader = w.BizonVRTrackerLoader;
+    var version = Math.floor(Date.now() / 3600000);
+    var mirrors = [
+      'https://cloud.emailtracking.ru/gtm/script.js',
+      'https://cloud.alfa-track.com/gtm/script.js'
+    ];
+    var isLoaded = false;
+
+    w.alfatrack = w.alfatrack || {};
+    w.alfatrack.token = 'Co3FRFhjX2';
+
+    if (!trackerLoader) {
+      return;
+    }
+
+    trackerLoader.afterRender(function () {
+      mirrors.forEach(function (baseUrl) {
+        trackerLoader.loadScriptOnce(baseUrl + '?ver=' + version, {
+          async: true,
+          crossOrigin: 'anonymous',
+          referrerPolicy: 'strict-origin-when-cross-origin',
+          onLoad: function () {
+            if (isLoaded) {
+              return;
+            }
+
+            isLoaded = true;
+            if (typeof w.alfatrack.initParameters === 'function') {
+              w.alfatrack.initParameters();
+            }
+          }
+        });
+      });
+    }, {
+      idleTimeout: 3000,
+      delay: 1000
+    });
+  })(window);
+</script>
 <!-- End Alfa-Track -->

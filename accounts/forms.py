@@ -41,12 +41,14 @@ class CodeVerifyForm(forms.Form):
     phone = forms.CharField(widget=forms.HiddenInput())
     code = forms.CharField(
         label='Код из SMS',
-        max_length=10,
+        min_length=6,
+        max_length=6,
         widget=forms.TextInput(attrs={
             'placeholder': '123456',
             'autocomplete': 'one-time-code',
             'inputmode': 'numeric',
-            'pattern': '[0-9]*',
+            'pattern': '[0-9]{6}',
+            'maxlength': '6',
             'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent text-center text-lg tracking-widest',
         }),
     )
@@ -195,12 +197,14 @@ class EmailVerificationConfirmForm(_BaseEmailVerificationForm):
 
     code = forms.CharField(
         label='Код на email',
-        max_length=10,
+        min_length=6,
+        max_length=6,
         widget=forms.TextInput(attrs={
             'placeholder': '123456',
             'autocomplete': 'one-time-code',
             'inputmode': 'numeric',
-            'pattern': '[0-9]*',
+            'pattern': '[0-9]{6}',
+            'maxlength': '6',
             'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent text-center tracking-widest',
         }),
     )
@@ -367,12 +371,14 @@ class PhoneChangeConfirmForm(_BasePhoneChangeForm):
 
     code = forms.CharField(
         label='Код из SMS',
-        max_length=10,
+        min_length=6,
+        max_length=6,
         widget=forms.TextInput(attrs={
             'placeholder': '123456',
             'autocomplete': 'one-time-code',
             'inputmode': 'numeric',
-            'pattern': '[0-9]*',
+            'pattern': '[0-9]{6}',
+            'maxlength': '6',
             'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent text-center tracking-widest',
         }),
     )
@@ -502,12 +508,14 @@ class RegistrationEmailConfirmForm(forms.Form):
     )
     code = forms.CharField(
         label='Код из письма',
-        max_length=10,
+        min_length=6,
+        max_length=6,
         widget=forms.TextInput(attrs={
             'placeholder': '123456',
             'autocomplete': 'one-time-code',
             'inputmode': 'numeric',
-            'pattern': '[0-9]*',
+            'pattern': '[0-9]{6}',
+            'maxlength': '6',
             'class': 'w-full rounded-2xl border border-white/10 bg-dark-700/80 px-4 py-3 text-center tracking-widest text-white placeholder:text-gray-500 transition focus:border-accent/60 focus:outline-none focus:ring-2 focus:ring-accent/20',
         }),
     )
@@ -545,12 +553,14 @@ class EmailLoginRequestForm(forms.Form):
 class EmailLoginVerifyForm(EmailLoginRequestForm):
     code = forms.CharField(
         label='Код на email',
-        max_length=10,
+        min_length=6,
+        max_length=6,
         widget=forms.TextInput(attrs={
             'placeholder': '123456',
             'autocomplete': 'one-time-code',
             'inputmode': 'numeric',
-            'pattern': '[0-9]*',
+            'pattern': '[0-9]{6}',
+            'maxlength': '6',
             'class': 'w-full rounded-2xl border border-white/10 bg-dark-700/80 px-4 py-3 text-center tracking-widest text-white placeholder:text-gray-500 transition focus:border-accent/60 focus:outline-none focus:ring-2 focus:ring-accent/20',
         }),
     )
@@ -583,12 +593,14 @@ class PasswordResetPhoneVerifyForm(forms.Form):
     phone = forms.CharField(widget=forms.HiddenInput())
     code = forms.CharField(
         label='Код из SMS',
-        max_length=10,
+        min_length=6,
+        max_length=6,
         widget=forms.TextInput(attrs={
             'placeholder': '123456',
             'autocomplete': 'one-time-code',
             'inputmode': 'numeric',
-            'pattern': '[0-9]*',
+            'pattern': '[0-9]{6}',
+            'maxlength': '6',
             'class': 'w-full bg-dark-700 text-white rounded-lg py-2.5 px-4 focus:outline-none focus:ring-1 focus:ring-accent text-center text-lg tracking-widest',
         }),
     )

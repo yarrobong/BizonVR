@@ -1,7 +1,7 @@
 <article class="content-block content-block--image-text {% if item.data.image_position == 'right' %}is-image-right{% endif %}">
   {% if item.image.url %}
     <div class="content-block__media-shell">
-      <img src="{{ item.image.url }}" alt="{{ item.image.alt|default:item.data.title|default:product.name }}" class="content-block__image content-block__image--cover" loading="lazy" />
+      <img src="{{ item.image.url }}" alt="{{ item.image.alt|default:item.data.title|default:product.name }}" class="content-block__image content-block__image--cover" loading="lazy" decoding="async" {{ item.image|image_dimension_attrs }} />
       {% if item.image.caption %}
         <p class="content-block__caption">{{ item.image.caption }}</p>
       {% endif %}

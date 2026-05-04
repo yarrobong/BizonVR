@@ -249,3 +249,32 @@ def tag_badge_style(tag):
         if keyword in lookup:
             return style
     return default_style
+
+
+def _resolve_image_dimensions(value):
+    if isinstance(value, dict):
+        width = value.get('width')
+        height = value.get('height')
+    else:
+        try:
+            width = getattr(value, 'width', None)
+            height = getattr(value, 'height', None)
+        except (ValueError, OSError, FileNotFoundError):
+            return None, None
+    try:
+        width = int(width or 0)
+        height = int(height or 0)
+    except (TypeError, ValueError):
+        return None, None
+    if width <= 0 or height <= 0:
+        return None, None
+    return width, height
+
+
+@register.filter
+def image_dimension_attrs(value):
+    """Вернуть готовые width/height атрибуты для img или пустую строку."""
+    width, height = _resolve_image_dimensions(value)
+    if width is None or height is None:
+        return ''
+    return mark_safe(f'width="{width}" height="{height}"')

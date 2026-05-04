@@ -14,6 +14,11 @@ from ..forms import (
     RegistrationForm,
 )
 from ..models import Profile
+from ..security import (
+    check_send_email_rate_limits,
+    check_verify_email_code_rate_limits,
+    mark_send_email_success,
+)
 from ..services import (
     authenticate_by_login_identifier,
     auto_claim_guest_orders_for_user,
@@ -80,6 +85,13 @@ def _get_unverified_registered_user(email):
     )
 
 
+def _build_register_confirm_url(request, email, next_url=''):
+    query = {'email': normalize_email(email)}
+    if next_url:
+        query['next'] = next_url
+    return request.build_absolute_uri(f"{reverse('accounts:register_confirm')}?{urlencode(query)}")
+
+
 @require_http_methods(['GET'])
 def login_view(request):
     """Публичный экран входа: только email + пароль и регистрация."""
@@ -143,12 +155,16 @@ def register_view(request):
                 privacy_agreed_at=timezone.now(),
                 privacy_policy_version=get_legal_bundle_version(),
             )
-            ok, error = create_and_send_email_code(user, form.cleaned_data['email'])
+            next_url = request.POST.get('next', '')
+            ok, error = create_and_send_email_code(
+                user,
+                form.cleaned_data['email'],
+                action_url=_build_register_confirm_url(request, form.cleaned_data['email'], next_url),
+            )
             if not ok:
                 user.delete()
                 form.add_error('email', error)
             else:
-                next_url = request.POST.get('next', '')
                 confirm_url = reverse('accounts:register_confirm')
                 query = {'email': form.cleaned_data['email']}
                 if next_url:
@@ -175,14 +191,26 @@ def register_confirm_view(request):
 
     if request.method == 'POST' and (request.POST.get('action') or 'confirm_email') == 'resend_email':
         email = normalize_email(request.POST.get('email') or '')
-        resend_form = RegistrationEmailConfirmForm(initial={'email': email})
         confirm_form = RegistrationEmailConfirmForm(initial={'email': email})
         user = _get_unverified_registered_user(email)
         if user is None:
             resend_error = 'Регистрация с таким email не найдена или уже завершена.'
         else:
-            ok, error = create_and_send_email_code(user, email)
+            ok_rate, rate_error = check_send_email_rate_limits(
+                request,
+                email,
+                endpoint='registration-email-code',
+            )
+            if not ok_rate:
+                ok, error = False, rate_error
+            else:
+                ok, error = create_and_send_email_code(
+                    user,
+                    email,
+                    action_url=_build_register_confirm_url(request, email, next_url),
+                )
             if ok:
+                mark_send_email_success(request, email, endpoint='registration-email-code')
                 resend_success = 'Письмо с новым кодом отправлено.'
             else:
                 resend_error = error
@@ -197,8 +225,15 @@ def register_confirm_view(request):
     form = RegistrationEmailConfirmForm(request.POST or None, initial={'email': initial_email})
     if request.method == 'POST' and form.is_valid():
         email = form.cleaned_data['email']
+        ok_rate, rate_error = check_verify_email_code_rate_limits(
+            request,
+            email,
+            endpoint='registration-email-code',
+        )
         user = _get_unverified_registered_user(email)
-        if user is None:
+        if not ok_rate:
+            form.add_error('code', rate_error)
+        elif user is None:
             form.add_error('email', 'Регистрация с таким email не найдена или уже завершена.')
         else:
             ok, error = confirm_email_verification(user, email, form.cleaned_data['code'])

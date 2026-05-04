@@ -325,8 +325,14 @@ class PublicSiteMetrikaTemplateTests(TestCase):
     def test_home_page_includes_yandex_metrika_counter(self):
         response = self.client.get(reverse('home'))
 
-        self.assertContains(response, 'https://mc.yandex.ru/metrika/tag.js?id=108292006', html=False)
+        self.assertContains(response, 'https://mc.yandex.ru/metrika/tag.js?id=', html=False)
+        self.assertContains(response, "requestIdleCallback", html=False)
+        self.assertContains(response, "BizonVRTrackerLoader", html=False)
+        self.assertContains(response, "addEventListener('DOMContentLoaded', scheduleMetrika, {once: true})", html=False)
         self.assertContains(response, 'https://mc.yandex.ru/watch/108292006', html=False)
+        self.assertContains(response, 'https://cloud.emailtracking.ru/gtm/script.js', html=False)
+        self.assertContains(response, 'https://cloud.alfa-track.com/gtm/script.js', html=False)
+        self.assertContains(response, 'https://mod.calltouch.ru/', html=False)
 
     def test_custom_404_page_includes_yandex_metrika_counter(self):
         request = RequestFactory().get('/missing-page/')
@@ -335,4 +341,6 @@ class PublicSiteMetrikaTemplateTests(TestCase):
         response = not_found_view(request, unmatched_path='missing-page/')
 
         self.assertEqual(response.status_code, 404)
-        self.assertIn('https://mc.yandex.ru/metrika/tag.js?id=108292006', response.content.decode('utf-8'))
+        self.assertIn('https://mc.yandex.ru/metrika/tag.js?id=', response.content.decode('utf-8'))
+        self.assertIn("requestIdleCallback", response.content.decode('utf-8'))
+        self.assertIn("BizonVRTrackerLoader", response.content.decode('utf-8'))

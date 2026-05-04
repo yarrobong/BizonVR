@@ -18,6 +18,11 @@ from ..forms import (
     SavedAddressForm,
 )
 from ..models import BalanceTransaction, CommercialProposalContact, Profile, SavedAddress
+from ..security import (
+    check_send_email_rate_limits,
+    check_verify_email_code_rate_limits,
+    mark_send_email_success,
+)
 from ..services import (
     ensure_profile,
     confirm_email_verification,
@@ -882,8 +887,17 @@ def _render_profile_settings(request):
                 alerts.append({'level': 'error', 'text': 'Email уже подтверждён и не требует повторной верификации.'})
             elif email_request_form.is_valid():
                 email = email_request_form.cleaned_data['email']
-                ok, error = create_and_send_email_code(request.user, email)
+                ok_rate, rate_error = check_send_email_rate_limits(
+                    request,
+                    email,
+                    endpoint='profile-email-code',
+                )
+                if ok_rate:
+                    ok, error = create_and_send_email_code(request.user, email)
+                else:
+                    ok, error = False, rate_error
                 if ok:
+                    mark_send_email_success(request, email, endpoint='profile-email-code')
                     email_confirm_form = EmailVerificationConfirmForm(
                         current_user=request.user,
                         initial={'email': email},
@@ -907,7 +921,15 @@ def _render_profile_settings(request):
             elif email_confirm_form.is_valid():
                 email = email_confirm_form.cleaned_data['email']
                 code = email_confirm_form.cleaned_data['code']
-                ok, error = confirm_email_verification(request.user, email, code)
+                ok_rate, rate_error = check_verify_email_code_rate_limits(
+                    request,
+                    email,
+                    endpoint='profile-email-code',
+                )
+                if ok_rate:
+                    ok, error = confirm_email_verification(request.user, email, code)
+                else:
+                    ok, error = False, rate_error
                 if ok:
                     profile.refresh_from_db(fields=['email_verified_at'])
                     request.user.refresh_from_db(fields=['email'])

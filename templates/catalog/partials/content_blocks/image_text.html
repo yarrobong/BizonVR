@@ -4,7 +4,9 @@
       <img src="{{ block.image.url }}"
            alt="{{ block.title|default:product.name }}"
            class="content-block__image content-block__image--cover"
-           loading="lazy" />
+           loading="lazy"
+           decoding="async"
+           {{ block.image|image_dimension_attrs }} />
     {% endif %}
   </div>
   <div class="content-block__text-shell">

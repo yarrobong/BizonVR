@@ -1,10 +1,13 @@
 import re
 import time
+from hashlib import sha1
 from difflib import SequenceMatcher
 
+from django.core.cache import cache
 from django.core.paginator import Paginator
-from django.db.models import Case, Count, F, IntegerField, Prefetch, Q, Sum, Value, When
+from django.db.models import Case, Count, F, IntegerField, Max, Prefetch, Q, Sum, Value, When
 from django.db.utils import ProgrammingError
+from django.http import JsonResponse
 from django.views.generic import DetailView, ListView
 
 from config.formatting import format_amount
@@ -19,6 +22,7 @@ from ..models import (
     ProductBundle,
     ProductContentBlock,
     ProductStock,
+    ProductVariant,
 )
 from ..product_descriptions import resolve_product_description
 from ..pricing import (
@@ -36,6 +40,253 @@ from ..pricing import (
 from ..recommendations import build_pdp_recommendations
 from ..stock import public_stock_status
 from .common import _get_stock_total, _product_stock_totals, _variant_stock_totals
+
+LIVE_SEARCH_MIN_QUERY_LENGTH = 2
+LIVE_SEARCH_MAX_QUERY_LENGTH = 80
+LIVE_SEARCH_GROUP_LIMIT = 3
+LIVE_SEARCH_CACHE_TTL_SECONDS = 120
+
+
+def _normalize_live_search_query(raw_query):
+    return (raw_query or '').strip()[:LIVE_SEARCH_MAX_QUERY_LENGTH]
+
+
+def _build_live_search_cache_key(request, query):
+    host = request.get_host() if request is not None else ''
+    scheme = 'https' if request is not None and request.is_secure() else 'http'
+    digest = sha1(f'{scheme}:{host}:{query.casefold()}'.encode('utf-8')).hexdigest()
+    return f'bizonvr:catalog:search_suggest:{digest}'
+
+
+def _build_media_url(request, image_field):
+    if not image_field:
+        return ''
+    try:
+        image_url = image_field.url
+    except (ValueError, AttributeError):
+        return ''
+    return request.build_absolute_uri(image_url)
+
+
+def _format_price_label(value):
+    if value is None:
+        return ''
+    return f'{format_amount(value)} ₽'
+
+
+def _resolve_product_display_image(product):
+    if product.image:
+        return product.image
+    for variant in product.variants.all():
+        if variant.image:
+            return variant.image
+    extra_images = list(product.images.all())
+    first_extra = extra_images[0] if extra_images else None
+    if first_extra and first_extra.image:
+        return first_extra.image
+    return None
+
+
+def _resolve_short_status(stock_total, *, allow_order_on_request=True):
+    if int(stock_total or 0) > 0:
+        return 'В наличии'
+    if allow_order_on_request:
+        return 'Под заказ'
+    return 'Нет в наличии'
+
+
+def _serialize_product_suggestion(request, product, stock_total):
+    image = _resolve_product_display_image(product)
+    price = resolve_catalog_effective_price(product, stock_total=stock_total)
+    return {
+        'type': 'product',
+        'title': product.name,
+        'subtitle': product.category.name if product.category_id else '',
+        'url': product.get_absolute_url(),
+        'image_url': _build_media_url(request, image),
+        'price_label': _format_price_label(price),
+        'status_label': _resolve_short_status(
+            stock_total,
+            allow_order_on_request=product.allow_order_on_request,
+        ),
+        'badge': 'Товар',
+    }
+
+
+def _resolve_bundle_status(bundle, product_stock_totals):
+    has_on_request_items = False
+    has_items = False
+    for item in bundle.items.all():
+        has_items = True
+        stock_total = product_stock_totals.get(item.product_id, 0)
+        if stock_total > 0:
+            continue
+        if item.product.allow_order_on_request:
+            has_on_request_items = True
+            continue
+        return 'Нет в наличии'
+    if not has_items:
+        return 'Нет в наличии'
+    if has_on_request_items:
+        return 'Под заказ'
+    return 'В наличии'
+
+
+def _serialize_bundle_suggestion(request, bundle, product_stock_totals):
+    image = bundle.get_display_image()
+    bundle_items = list(bundle.items.all())
+    item_names = [item.product.name for item in bundle_items[:2]]
+    subtitle = ', '.join(item_names)
+    if len(bundle_items) > 2:
+        subtitle = f'{subtitle} и еще {len(bundle_items) - 2}'
+    return {
+        'type': 'bundle',
+        'title': bundle.name or f'Комплект #{bundle.pk}',
+        'subtitle': subtitle,
+        'url': bundle.get_absolute_url(),
+        'image_url': _build_media_url(request, image),
+        'price_label': _format_price_label(bundle.total_price),
+        'status_label': _resolve_bundle_status(bundle, product_stock_totals),
+        'badge': 'Комплект',
+    }
+
+
+def _serialize_variant_suggestion(request, variant, stock_total):
+    image = variant.image or _resolve_product_display_image(variant.product)
+    price = resolve_catalog_effective_price(variant.product, variant, stock_total=stock_total)
+    subtitle_bits = []
+    if variant.sku:
+        subtitle_bits.append(f'SKU: {variant.sku}')
+    if variant.product.category_id:
+        subtitle_bits.append(variant.product.category.name)
+    return {
+        'type': 'variant',
+        'title': f'{variant.product.name} · {variant.name}',
+        'subtitle': ' • '.join(subtitle_bits) if subtitle_bits else 'Вариант товара',
+        'url': f'{variant.product.get_absolute_url()}?variant={variant.pk}',
+        'image_url': _build_media_url(request, image),
+        'price_label': _format_price_label(price),
+        'status_label': _resolve_short_status(
+            stock_total,
+            allow_order_on_request=variant.product.allow_order_on_request,
+        ),
+        'badge': 'Вариант',
+    }
+
+
+def product_search_suggest_view(request):
+    query = _normalize_live_search_query(request.GET.get('q'))
+    empty_payload = {
+        'query': query,
+        'groups': {
+            'products': [],
+            'bundles': [],
+            'variants': [],
+        },
+        'has_results': False,
+    }
+    if len(query) < LIVE_SEARCH_MIN_QUERY_LENGTH:
+        return JsonResponse(empty_payload)
+
+    cache_key = _build_live_search_cache_key(request, query)
+    cached_payload = cache.get(cache_key)
+    if cached_payload is not None:
+        return JsonResponse(cached_payload)
+
+    products = list(
+        Product.objects.filter(is_active=True)
+        .filter(Q(name__icontains=query) | Q(description__icontains=query))
+        .select_related('category')
+        .prefetch_related('variants', 'images')
+        .annotate(
+            relevance=Case(
+                When(name__istartswith=query, then=Value(4)),
+                When(name__icontains=query, then=Value(3)),
+                When(description__icontains=query, then=Value(1)),
+                default=Value(0),
+                output_field=IntegerField(),
+            )
+        )
+        .filter(relevance__gt=0)
+        .order_by('-relevance', '-created_at')[:LIVE_SEARCH_GROUP_LIMIT]
+    )
+    product_stock_totals = _product_stock_totals([product.pk for product in products])
+
+    bundles = list(
+        ProductBundle.objects.select_related('category')
+        .prefetch_related('items__product')
+        .annotate(items_count=Count('items', distinct=True))
+        .filter(items_count__gte=2)
+        .filter(
+            Q(name__icontains=query)
+            | Q(description__icontains=query)
+            | Q(items__product__name__icontains=query)
+            | Q(items__product__description__icontains=query)
+        )
+        .annotate(
+            relevance=Max(
+                Case(
+                    When(name__istartswith=query, then=Value(4)),
+                    When(name__icontains=query, then=Value(3)),
+                    When(description__icontains=query, then=Value(2)),
+                    When(items__product__name__istartswith=query, then=Value(2)),
+                    When(items__product__name__icontains=query, then=Value(1)),
+                    default=Value(0),
+                    output_field=IntegerField(),
+                )
+            )
+        )
+        .filter(relevance__gt=0)
+        .order_by('-relevance', '-created_at')[:LIVE_SEARCH_GROUP_LIMIT]
+    )
+    bundle_product_ids = []
+    for bundle in bundles:
+        bundle_product_ids.extend(item.product_id for item in bundle.items.all())
+    bundle_product_stock_totals = _product_stock_totals(bundle_product_ids)
+
+    variants = list(
+        ProductVariant.objects.select_related('product', 'product__category')
+        .prefetch_related('product__images', 'product__variants')
+        .filter(product__is_active=True)
+        .filter(Q(name__icontains=query) | Q(sku__icontains=query))
+        .annotate(
+            relevance=Case(
+                When(sku__iexact=query, then=Value(5)),
+                When(name__iexact=query, then=Value(4)),
+                When(sku__istartswith=query, then=Value(3)),
+                When(name__istartswith=query, then=Value(3)),
+                When(sku__icontains=query, then=Value(2)),
+                When(name__icontains=query, then=Value(2)),
+                default=Value(0),
+                output_field=IntegerField(),
+            )
+        )
+        .filter(relevance__gt=0)
+        .order_by('-relevance', '-product__created_at', 'order', 'name')[:LIVE_SEARCH_GROUP_LIMIT]
+    )
+    variant_stock_totals = _variant_stock_totals([variant.product_id for variant in variants])
+
+    groups = {
+        'products': [
+            _serialize_product_suggestion(request, product, product_stock_totals.get(product.pk, 0))
+            for product in products
+        ],
+        'bundles': [
+            _serialize_bundle_suggestion(request, bundle, bundle_product_stock_totals)
+            for bundle in bundles
+        ],
+        'variants': [
+            _serialize_variant_suggestion(request, variant, variant_stock_totals.get(variant.pk, 0))
+            for variant in variants
+        ],
+    }
+    payload = {
+        'query': query,
+        'groups': groups,
+        'has_results': any(groups.values()),
+    }
+    cache.set(cache_key, payload, LIVE_SEARCH_CACHE_TTL_SECONDS)
+    return JsonResponse(payload)
 
 
 class BundleDetailView(DetailView):
@@ -453,26 +704,42 @@ class ProductDetailView(DetailView):
             except (ValueError, OSError):
                 return ''
 
+        def _safe_image_dimensions(img_field):
+            try:
+                if not img_field:
+                    return None, None
+                width = int(getattr(img_field, 'width', 0) or 0)
+                height = int(getattr(img_field, 'height', 0) or 0)
+            except (ValueError, OSError, FileNotFoundError):
+                return None, None
+            if width <= 0 or height <= 0:
+                return None, None
+            return width, height
+
         gallery = []
         product_media = []
         seen_images = set()
         seen_video_embeds = set()
 
-        def _append_image(url, title=''):
+        def _append_image(img_field, title=''):
+            url = _safe_image_url(img_field)
             if not url or url in seen_images:
                 return
             seen_images.add(url)
+            width, height = _safe_image_dimensions(img_field)
             gallery.append(url)
             product_media.append({
                 'type': 'image',
                 'imageUrl': url,
                 'thumbnailUrl': url,
                 'title': title or self.object.name,
+                'width': width,
+                'height': height,
             })
 
-        _append_image(_safe_image_url(self.object.image), self.object.name)
+        _append_image(self.object.image, self.object.name)
         for img in self.object.images.all():
-            _append_image(_safe_image_url(img.image), self.object.name)
+            _append_image(img.image, self.object.name)
 
         for video in self.object.videos.all():
             embed_url = (video.embed_url or '').strip()
@@ -499,6 +766,7 @@ class ProductDetailView(DetailView):
             variant_stock_total = context['stock_by_variant'].get(variant.pk, 0)
             variant_in_stock_price = resolve_in_stock_price(self.object, variant)
             variant_on_request_price = resolve_on_request_price(self.object, variant)
+            variant_image_width, variant_image_height = _safe_image_dimensions(variant.image)
             variant_public_mode = resolve_public_purchase_mode(
                 self.object,
                 variant,
@@ -522,6 +790,8 @@ class ProductDetailView(DetailView):
                     )
                 ),
                 'imageUrl': _safe_image_url(variant.image),
+                'imageWidth': variant_image_width,
+                'imageHeight': variant_image_height,
             })
         initial_variant_id = None
         raw_variant_id = (self.request.GET.get('variant') or '').strip()

@@ -2,8 +2,8 @@
 <!-- Мобильный корень каталога: только поиск сверху -->
 <div x-show="!filtersModalOpen"
      class="md:hidden sticky top-0 z-[99998] px-3 py-3 mb-4 bg-dark-900/80 backdrop-blur-md border-b border-dark-600/50" style="border-radius: 0 0 24px 24px;">
-  <form action="{% url 'catalog:product_list' %}" method="get" class="relative">
-    <input type="search" name="q" value="{{ search_query }}" placeholder="Поиск по товарам" class="search-input-glass w-full text-white rounded-full pl-4 pr-10 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-accent" />
+  <form action="{% url 'catalog:product_list' %}" method="get" class="relative" data-live-search-form data-live-search-url="{% url 'catalog:search_suggest' %}">
+    <input type="search" name="q" value="{{ search_query }}" placeholder="Поиск по товарам" class="search-input-glass w-full text-white rounded-full pl-4 pr-10 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-accent" autocomplete="off" data-live-search-input />
     <button type="submit" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white w-[18px] h-[18px] flex items-center justify-center" aria-label="Искать"><i data-lucide="search" class="w-[18px] h-[18px]"></i></button>
   </form>
 </div>
@@ -15,7 +15,7 @@
     <a href="javascript:history.back()" class="flex-shrink-0 w-10 h-10 rounded-full bg-dark-800 hover:bg-dark-700 flex items-center justify-center text-white transition-colors" aria-label="Назад">
       <i data-lucide="arrow-left" class="w-5 h-5"></i>
     </a>
-    <form action="{% url 'catalog:product_list' %}" method="get" class="flex-1 min-w-0 relative">
+    <form action="{% url 'catalog:product_list' %}" method="get" class="flex-1 min-w-0 relative" data-live-search-form data-live-search-url="{% url 'catalog:search_suggest' %}">
       {% if current_category %}<input type="hidden" name="category" value="{{ current_category }}">{% endif %}
       {% if current_section %}<input type="hidden" name="section" value="{{ current_section }}">{% endif %}
       {% if current_tag %}<input type="hidden" name="tag" value="{{ current_tag }}">{% endif %}
@@ -23,7 +23,7 @@
       {% if price_min_filter %}<input type="hidden" name="price_min" value="{{ price_min_filter }}">{% endif %}
       {% if price_max_filter %}<input type="hidden" name="price_max" value="{{ price_max_filter }}">{% endif %}
       {% for k, v in char_filters.items %}<input type="hidden" name="char_{{ k }}" value="{{ v }}">{% endfor %}
-      <input type="search" name="q" value="{{ search_query }}" placeholder="Поиск по товарам" class="search-input-glass w-full text-white rounded-full pl-4 pr-10 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-accent" />
+      <input type="search" name="q" value="{{ search_query }}" placeholder="Поиск по товарам" class="search-input-glass w-full text-white rounded-full pl-4 pr-10 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-accent" autocomplete="off" data-live-search-input />
       <button type="submit" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white w-[18px] h-[18px] flex items-center justify-center" aria-label="Искать"><i data-lucide="search" class="w-[18px] h-[18px]"></i></button>
     </form>
     <button type="button" @click="

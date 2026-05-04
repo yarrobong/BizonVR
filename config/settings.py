@@ -261,12 +261,13 @@ DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='BizonVR <no-reply@biz
 CRM_LEADS_EMAIL = config('CRM_LEADS_EMAIL', default='').strip()
 EMAIL_VERIFICATION_SUBJECT = config(
     'EMAIL_VERIFICATION_SUBJECT',
-    default='Подтверждение email для BizonVR',
+    default='Код подтверждения BizonVR',
 ).strip()
 PASSWORD_RESET_EMAIL_SUBJECT = config(
     'PASSWORD_RESET_EMAIL_SUBJECT',
-    default='Восстановление доступа BizonVR',
+    default='Восстановление пароля BizonVR',
 ).strip()
+PASSWORD_RESET_TIMEOUT = config('PASSWORD_RESET_TIMEOUT', default=15 * 60, cast=int)
 EMAIL_BACKEND = config(
     'EMAIL_BACKEND',
     default=(
