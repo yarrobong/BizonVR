@@ -1,0 +1,95 @@
+<script>
+  (function (w, d) {
+    if (w.BizonVRTrackerLoader) {
+      return;
+    }
+
+    function onDomReady(callback) {
+      if (d.readyState === 'loading') {
+        d.addEventListener('DOMContentLoaded', callback, { once: true });
+        return;
+      }
+
+      callback();
+    }
+
+    function afterMainRender(callback, options) {
+      var settings = options || {};
+
+      onDomReady(function () {
+        var scheduleIdle = function () {
+          if ('requestIdleCallback' in w) {
+            w.requestIdleCallback(function () {
+              w.setTimeout(callback, 0);
+            }, { timeout: settings.idleTimeout || 3000 });
+            return;
+          }
+
+          w.setTimeout(callback, settings.delay || 1200);
+        };
+
+        if ('requestAnimationFrame' in w) {
+          w.requestAnimationFrame(function () {
+            w.requestAnimationFrame(scheduleIdle);
+          });
+          return;
+        }
+
+        w.setTimeout(scheduleIdle, 0);
+      });
+    }
+
+    function loadScriptOnce(src, options) {
+      var settings = options || {};
+
+      for (var i = 0; i < d.scripts.length; i += 1) {
+        if (d.scripts[i].src === src) {
+          return d.scripts[i];
+        }
+      }
+
+      var script = d.createElement('script');
+      var firstScript = d.scripts[0];
+
+      script.src = src;
+      script.async = settings.async !== false;
+
+      if (settings.defer) {
+        script.defer = true;
+      }
+
+      if (settings.crossOrigin) {
+        script.crossOrigin = settings.crossOrigin;
+      }
+
+      if (settings.referrerPolicy) {
+        script.referrerPolicy = settings.referrerPolicy;
+      }
+
+      if ('fetchPriority' in script) {
+        script.fetchPriority = settings.fetchPriority || 'low';
+      }
+
+      if (typeof settings.onLoad === 'function') {
+        script.addEventListener('load', settings.onLoad, { once: true });
+      }
+
+      if (typeof settings.onError === 'function') {
+        script.addEventListener('error', settings.onError, { once: true });
+      }
+
+      if (firstScript && firstScript.parentNode) {
+        firstScript.parentNode.insertBefore(script, firstScript);
+      } else {
+        (d.head || d.documentElement).appendChild(script);
+      }
+
+      return script;
+    }
+
+    w.BizonVRTrackerLoader = {
+      afterRender: afterMainRender,
+      loadScriptOnce: loadScriptOnce
+    };
+  })(window, document);
+</script>

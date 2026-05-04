@@ -61,7 +61,6 @@
   background:
     radial-gradient(circle at top center, rgba(0, 212, 255, 0.08), transparent 30%),
     rgba(3, 6, 13, 0.84);
-  backdrop-filter: blur(12px);
   overscroll-behavior: contain;
 }
 
@@ -1086,7 +1085,6 @@
   background:
     radial-gradient(circle at top center, rgba(0, 212, 255, 0.08), transparent 46%),
     linear-gradient(180deg, rgba(13, 17, 26, 0.98), rgba(11, 13, 20, 0.96));
-  backdrop-filter: blur(10px);
 }
 
 .filters-modal-body--desktop {
@@ -1230,7 +1228,6 @@
   background:
     radial-gradient(circle at top center, rgba(0, 212, 255, 0.08), transparent 46%),
     linear-gradient(180deg, rgba(13, 17, 26, 0.92), rgba(8, 11, 18, 0.99));
-  backdrop-filter: blur(10px);
 }
 
 .filters-modal-footer-copy {
@@ -1291,7 +1288,6 @@
   z-index: 3;
   background:
     linear-gradient(180deg, rgba(11, 13, 20, 0.9), rgba(11, 13, 20, 0.98));
-  backdrop-filter: blur(10px);
 }
 
 .filters-mobile-note {
@@ -1334,7 +1330,7 @@
   }
 
   .filters-mobile-sheet {
-    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.26);
+    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.18);
   }
 
   .filters-mobile-footer {

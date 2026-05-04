@@ -4,7 +4,7 @@
     <div class="csm-thumb-wrap">
       <div class="csm-thumb">
         {% if item.image_url %}
-          <img src="{{ item.image_url|absolute_uri:request }}" alt="{{ item.name }}" class="csm-thumb-image" />
+          <img src="{{ item.image_url|absolute_uri:request }}" alt="{{ item.name }}" class="csm-thumb-image" loading="lazy" decoding="async" width="104" height="104" />
         {% else %}
           <i data-lucide="package" class="csm-thumb-icon"></i>
         {% endif %}

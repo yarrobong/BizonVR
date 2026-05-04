@@ -46,7 +46,6 @@
   border: 1px solid rgba(23, 36, 42, 0.08);
   border-radius: 22px;
   background: rgba(255, 249, 240, 0.9);
-  backdrop-filter: blur(16px);
   box-shadow: var(--shadow);
 }
 
@@ -133,7 +132,6 @@
   right: max(18px, calc((100vw - 1380px) / 2));
   top: var(--cvr-sticky-rail-top, 118px);
   z-index: 15;
-  transition: top 160ms ease;
 }
 
 .compact-vr-v3 .rail-card {
@@ -270,7 +268,6 @@
   border-radius: 24px;
   border: 1px solid rgba(255,255,255,0.12);
   background: rgba(255,255,255,0.05);
-  backdrop-filter: blur(10px);
 }
 
 .compact-vr-v3 .hero-stage-node { width: 220px; }
@@ -690,7 +687,6 @@
   border-radius: 999px;
   border: 1px solid rgba(23, 36, 42, 0.12);
   background: rgba(255, 249, 240, 0.9);
-  backdrop-filter: blur(8px);
   font-size: 0.84rem;
   font-weight: 700;
   letter-spacing: 0.04em;
@@ -3140,7 +3136,6 @@
   position: sticky;
   top: 0;
   background: rgba(244, 234, 221, 0.98);
-  backdrop-filter: blur(8px);
   z-index: 1;
   font-size: 0.78rem;
   letter-spacing: 0.08em;
@@ -4105,8 +4100,8 @@
   inset: auto -14% -36% 38%;
   height: 85%;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.14);
-  filter: blur(18px);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.04) 46%, transparent 72%);
+  opacity: 0.9;
   transform: rotate(-18deg);
 }
 
@@ -4163,8 +4158,8 @@
   z-index: 1;
   inset: auto -16% -42% 42%;
   height: 92%;
-  background: rgba(255, 255, 255, 0.16);
-  filter: blur(18px);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.05) 48%, transparent 74%);
+  opacity: 0.92;
   transform: rotate(-18deg);
 }
 
@@ -4550,8 +4545,7 @@
   width: 144px;
   height: 144px;
   border-radius: 50%;
-  background: rgba(232, 184, 75, 0.08);
-  filter: blur(6px);
+  background: radial-gradient(circle, rgba(232, 184, 75, 0.08) 0%, rgba(232, 184, 75, 0.03) 48%, transparent 76%);
   pointer-events: none;
 }
 
@@ -4739,7 +4733,7 @@
   background:
     radial-gradient(circle at center, rgba(232, 184, 75, 0.12), transparent 56%),
     linear-gradient(180deg, rgba(8, 13, 19, 0.08), rgba(8, 13, 19, 0.42));
-  filter: blur(8px);
+  opacity: 0.9;
 }
 
 .compact-vr-v3 .hero-stage-media img {
@@ -4855,7 +4849,6 @@
   position: absolute;
   inset: 0;
   background: rgba(15, 27, 32, 0.68);
-  backdrop-filter: blur(10px);
 }
 
 .compact-vr-v3 .game-modal-dialog {
@@ -4871,7 +4864,7 @@
   background:
     linear-gradient(180deg, rgba(15, 20, 25, 0.98), rgba(15, 18, 24, 0.98)),
     radial-gradient(circle at top right, rgba(195, 118, 53, 0.16), transparent 28%);
-  box-shadow: 0 38px 86px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 22px 52px rgba(0, 0, 0, 0.28);
   clip-path: polygon(0 0, calc(100% - 26px) 0, 100% 26px, 100% 100%, 26px 100%, 0 calc(100% - 26px));
 }
 
@@ -4968,7 +4961,6 @@
   justify-content: center;
   transform: translateY(-50%);
   cursor: pointer;
-  backdrop-filter: blur(10px);
 }
 
 .compact-vr-v3 .game-modal-arrow-left {
@@ -5259,7 +5251,6 @@
   border-radius: 0;
   background: transparent;
   box-shadow: none;
-  backdrop-filter: blur(12px);
 }
 
 .compact-vr-v3 .topbar::before {
@@ -5596,7 +5587,6 @@
 
 .compact-vr-v3 .game-modal-backdrop {
   background: rgba(10, 14, 18, 0.72);
-  backdrop-filter: blur(6px);
 }
 
 .compact-vr-v3 .game-modal-dialog {

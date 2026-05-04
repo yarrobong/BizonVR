@@ -530,9 +530,7 @@
     padding-bottom: calc(0.75rem + env(safe-area-inset-bottom));
     background: rgba(15, 17, 21, 0.95);
     border-top: 1px solid rgba(148, 163, 184, 0.22);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    box-shadow: 0 -10px 25px rgba(2, 6, 23, 0.45);
+    box-shadow: 0 -8px 18px rgba(2, 6, 23, 0.28);
   }
 
   .cart-mobile-total {
@@ -866,7 +864,7 @@
                 <input type="checkbox" class="cart-checkbox cart-item-checkbox" data-item-select {% if item.is_checkout_available %}checked{% else %}disabled{% endif %} aria-label="Выбрать товар">
                 <div class="cart-thumb">
                   {% if item.image_url %}
-                    <img src="{{ item.image_url|absolute_uri:request }}" alt="{{ item.name }}" />
+                    <img src="{{ item.image_url|absolute_uri:request }}" alt="{{ item.name }}" loading="lazy" decoding="async" width="96" height="120" />
                   {% else %}
                     <div class="cart-thumb-placeholder">
                       <i data-lucide="package" class="w-7 h-7"></i>

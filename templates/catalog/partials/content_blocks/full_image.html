@@ -7,7 +7,9 @@
       <img src="{{ block.image.url }}"
            alt="{{ block.title|default:product.name }}"
            class="content-block__image content-block__image--contain"
-           loading="lazy" />
+           loading="lazy"
+           decoding="async"
+           {{ block.image|image_dimension_attrs }} />
     </div>
   {% endif %}
   {% if block.caption %}

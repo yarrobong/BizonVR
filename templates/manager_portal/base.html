@@ -5,6 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}Кабинет менеджера{% endblock %}</title>
+  {% include "layout/_tracker_loader.html" %}
   {% include "layout/_alfatrack.html" %}
   {% include "layout/_head_assets.html" %}
   <link rel="stylesheet" href="{% static 'css/manager_portal.css' %}">

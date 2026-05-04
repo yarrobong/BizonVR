@@ -22,6 +22,10 @@ def _complete_password_setup(request, user):
     return redirect('accounts:profile')
 
 
+def _password_reset_sent_redirect(request):
+    return redirect(f'{request.path}?sent=email')
+
+
 @require_http_methods(['GET', 'POST'])
 @ensure_csrf_cookie
 def password_reset_request_view(request):
@@ -32,23 +36,22 @@ def password_reset_request_view(request):
         form = PasswordResetRequestForm(request.POST)
         if form.is_valid():
             email = form.cleaned_data['email']
-            user = get_user_by_email(email)
-            if user is None:
-                form.add_error('email', 'Аккаунт с таким email не найден.')
+            ok_rate, rate_error = check_send_email_rate_limits(
+                request,
+                email,
+                endpoint='password-reset-email',
+            )
+            if not ok_rate:
+                form.add_error('email', rate_error)
             else:
-                ok_rate, rate_error = check_send_email_rate_limits(
-                    request,
-                    email,
-                    endpoint='password-reset-email',
-                )
-                if not ok_rate:
-                    form.add_error('email', rate_error)
-                else:
+                user = get_user_by_email(email)
+                if user is not None:
                     ok, error = send_password_reset_email(user, request=request)
                     if ok:
                         mark_send_email_success(request, email, endpoint='password-reset-email')
-                        return redirect(f'{request.path}?sent=email')
-                    form.add_error('email', error)
+                else:
+                    mark_send_email_success(request, email, endpoint='password-reset-email')
+                return _password_reset_sent_redirect(request)
 
     return render(request, 'accounts/password_reset_request.html', {
         'form': form,

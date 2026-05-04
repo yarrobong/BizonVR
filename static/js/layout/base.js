@@ -1,5 +1,15 @@
     let lucideRetryTimer = null;
-    let lucideObserverStarted = false;
+    let pendingLucideRoot = null;
+    let lucideObserver = null;
+    let liveSearchStates = [];
+    let liveSearchActiveState = null;
+    let liveSearchDocumentListenersBound = false;
+    const liveSearchCache = new Map();
+    const LIVE_SEARCH_MIN_QUERY_LENGTH = 2;
+    const LIVE_SEARCH_MAX_QUERY_LENGTH = 80;
+    const LIVE_SEARCH_DEBOUNCE_MS = 180;
+    const LIVE_SEARCH_CACHE_LIMIT = 24;
+    const LUCIDE_PENDING_ATTR = 'data-lucide-pending';
 
     window.catalogProductList = window.catalogProductList || function catalogProductList() {
       return {
@@ -177,62 +187,151 @@
       };
     };
 
-    function scheduleLucideRetry(delay = 0) {
-      if (lucideRetryTimer) {
-        window.clearTimeout(lucideRetryTimer);
+    function clearQueuedLucideInit() {
+      if (lucideRetryTimer === null || typeof window === 'undefined') {
+        return;
       }
-      lucideRetryTimer = window.setTimeout(() => {
-        lucideRetryTimer = null;
-        initLucide(true);
-      }, delay);
+
+      window.clearTimeout(lucideRetryTimer);
+      lucideRetryTimer = null;
     }
 
-    function hasPendingLucideIcons(node) {
-      if (!(node instanceof Element)) {
-        return false;
-      }
-      return node.hasAttribute('data-lucide') || Boolean(node.querySelector('[data-lucide]'));
+    function isLucideScope(root) {
+      return root === document || root instanceof Element || root instanceof DocumentFragment;
     }
 
-    // Инициализация Lucide иконок после загрузки HTMX контента
-    function initLucide(fromRetry = false) {
+    function normalizeLucideRoot(root) {
+      if (isLucideScope(root)) {
+        return root;
+      }
+      return document;
+    }
+
+    function mergeLucideRoots(currentRoot, nextRoot) {
+      const normalizedNextRoot = normalizeLucideRoot(nextRoot);
+      if (!currentRoot || currentRoot === normalizedNextRoot) {
+        return normalizedNextRoot;
+      }
+      if (currentRoot === document || normalizedNextRoot === document) {
+        return document;
+      }
+      if (currentRoot.contains?.(normalizedNextRoot)) {
+        return currentRoot;
+      }
+      if (normalizedNextRoot.contains?.(currentRoot)) {
+        return normalizedNextRoot;
+      }
+      return document;
+    }
+
+    function queueLucideInit(root = document, delay = 0) {
       if (typeof window === 'undefined') {
         return false;
       }
 
+      pendingLucideRoot = mergeLucideRoots(pendingLucideRoot, root);
+      if (lucideRetryTimer !== null) {
+        return true;
+      }
+
+      lucideRetryTimer = window.setTimeout(() => {
+        const rootToInit = pendingLucideRoot || document;
+        pendingLucideRoot = null;
+        lucideRetryTimer = null;
+        initLucide(rootToInit, true);
+      }, delay);
+
+      return true;
+    }
+
+    function isLucidePlaceholder(node) {
+      return node instanceof Element && node.matches('[data-lucide]:not(svg)');
+    }
+
+    function collectPendingLucidePlaceholders(root = document) {
+      if (!isLucideScope(root)) {
+        return [];
+      }
+
+      const normalizedRoot = normalizeLucideRoot(root);
+      if (normalizedRoot === document) {
+        return Array.from(document.querySelectorAll('[data-lucide]:not(svg)'));
+      }
+
+      const placeholders = [];
+      if (isLucidePlaceholder(normalizedRoot)) {
+        placeholders.push(normalizedRoot);
+      }
+      placeholders.push(...normalizedRoot.querySelectorAll('[data-lucide]:not(svg)'));
+      return placeholders;
+    }
+
+    function markPendingLucidePlaceholders(root = document) {
+      const placeholders = collectPendingLucidePlaceholders(root);
+      placeholders.forEach((placeholder) => {
+        placeholder.setAttribute(LUCIDE_PENDING_ATTR, placeholder.getAttribute('data-lucide') || '');
+      });
+      return placeholders.length;
+    }
+
+    function hasPendingLucideIcons(node) {
+      return collectPendingLucidePlaceholders(node).length > 0;
+    }
+
+    function observeLucidePlaceholders() {
+      if (lucideObserver || typeof MutationObserver === 'undefined' || !document.body) {
+        return;
+      }
+
+      lucideObserver = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+          if (mutation.type !== 'childList' || !mutation.addedNodes.length) {
+            continue;
+          }
+
+          for (const node of mutation.addedNodes) {
+            if (hasPendingLucideIcons(node)) {
+              queueLucideInit(node, 0);
+              return;
+            }
+          }
+        }
+      });
+
+      lucideObserver.observe(document.body, {
+        childList: true,
+        subtree: true,
+      });
+    }
+
+    // Инициализация Lucide иконок после загрузки HTMX контента
+    function initLucide(rootOrRetry = document, fromRetry = false) {
+      if (typeof window === 'undefined') {
+        return false;
+      }
+
+      const root = typeof rootOrRetry === 'boolean' ? document : normalizeLucideRoot(rootOrRetry);
+      const retry = typeof rootOrRetry === 'boolean' ? rootOrRetry : fromRetry;
+
       if (!window.lucide || typeof window.lucide.createIcons !== 'function') {
-        if (!fromRetry) {
-          scheduleLucideRetry(120);
+        if (!retry) {
+          queueLucideInit(root, 120);
         }
         return false;
       }
 
-      window.lucide.createIcons();
-      return true;
-    }
-
-    function ensureLucideObserver() {
-      if (
-        lucideObserverStarted
-        || typeof window === 'undefined'
-        || typeof MutationObserver === 'undefined'
-        || !document.body
-      ) {
-        return;
+      clearQueuedLucideInit();
+      if (!markPendingLucidePlaceholders(root)) {
+        return true;
       }
 
-      const observer = new MutationObserver((mutations) => {
-        const shouldInit = mutations.some((mutation) =>
-          Array.from(mutation.addedNodes || []).some((node) => hasPendingLucideIcons(node))
-        );
-
-        if (shouldInit) {
-          scheduleLucideRetry(0);
-        }
+      window.lucide.createIcons({
+        nameAttr: LUCIDE_PENDING_ATTR,
       });
-
-      observer.observe(document.body, { childList: true, subtree: true });
-      lucideObserverStarted = true;
+      document.querySelectorAll(`svg[${LUCIDE_PENDING_ATTR}]`).forEach((icon) => {
+        icon.removeAttribute(LUCIDE_PENDING_ATTR);
+      });
+      return true;
     }
 
     window.initLucide = initLucide;
@@ -266,6 +365,371 @@
 
     function isCatalogProductPath(path) {
       return path.startsWith('/catalog/product/');
+    }
+
+    function normalizeLiveSearchQuery(value) {
+      return String(value || '').trim().slice(0, LIVE_SEARCH_MAX_QUERY_LENGTH);
+    }
+
+    function setLiveSearchCache(cacheKey, payload) {
+      if (liveSearchCache.has(cacheKey)) {
+        liveSearchCache.delete(cacheKey);
+      }
+      liveSearchCache.set(cacheKey, payload);
+      while (liveSearchCache.size > LIVE_SEARCH_CACHE_LIMIT) {
+        const oldestKey = liveSearchCache.keys().next().value;
+        if (!oldestKey) {
+          break;
+        }
+        liveSearchCache.delete(oldestKey);
+      }
+    }
+
+    function shouldRunLiveSearch(query) {
+      return normalizeLiveSearchQuery(query).length >= LIVE_SEARCH_MIN_QUERY_LENGTH;
+    }
+
+    function escapeHtml(value) {
+      return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function getLiveSearchResultLinks(state) {
+      if (!state?.panel) {
+        return [];
+      }
+      return Array.from(state.panel.querySelectorAll('[data-live-search-result-link]'));
+    }
+
+    function closeLiveSearch(state) {
+      if (!state?.panel) {
+        return;
+      }
+      state.panel.classList.remove('is-open');
+      state.panel.innerHTML = '';
+      state.input.setAttribute('aria-expanded', 'false');
+      state.activeIndex = -1;
+      if (liveSearchActiveState === state) {
+        liveSearchActiveState = null;
+      }
+    }
+
+    function closeAllLiveSearch(exceptState = null) {
+      liveSearchStates = liveSearchStates.filter((state) => state.form?.isConnected);
+      liveSearchStates.forEach((state) => {
+        if (state !== exceptState) {
+          closeLiveSearch(state);
+        }
+      });
+    }
+
+    function setLiveSearchActiveResult(state, index) {
+      const links = getLiveSearchResultLinks(state);
+      if (!links.length) {
+        state.activeIndex = -1;
+        return;
+      }
+
+      const normalizedIndex = Math.max(0, Math.min(index, links.length - 1));
+      state.activeIndex = normalizedIndex;
+      links.forEach((link, linkIndex) => {
+        const isActive = linkIndex === normalizedIndex;
+        link.classList.toggle('is-active', isActive);
+        if (isActive) {
+          link.scrollIntoView({ block: 'nearest' });
+        }
+      });
+    }
+
+    function buildLiveSearchResultsUrl(state, query) {
+      const url = new URL(state.form.action, window.location.origin);
+      const formData = new FormData(state.form);
+      formData.forEach((value, key) => {
+        if (key === 'q') {
+          return;
+        }
+        if (value === null || typeof value === 'undefined' || value === '') {
+          return;
+        }
+        url.searchParams.set(key, value);
+      });
+      if (query) {
+        url.searchParams.set('q', query);
+      } else {
+        url.searchParams.delete('q');
+      }
+      return `${url.pathname}${url.search}`;
+    }
+
+    function renderLiveSearchItem(item, index) {
+      const mediaHtml = item.image_url
+        ? `<img src="${escapeHtml(item.image_url)}" alt="" loading="lazy">`
+        : `<span class="live-search-item-placeholder">${escapeHtml(item.badge || '')}</span>`;
+      const subtitleHtml = item.subtitle
+        ? `<div class="live-search-item-subtitle">${escapeHtml(item.subtitle)}</div>`
+        : '';
+      const metaParts = [];
+      if (item.price_label) {
+        metaParts.push(`<span class="live-search-item-price">${escapeHtml(item.price_label)}</span>`);
+      }
+      if (item.status_label) {
+        metaParts.push(`<span class="live-search-item-status">${escapeHtml(item.status_label)}</span>`);
+      }
+      const metaHtml = metaParts.length
+        ? `<div class="live-search-item-meta">${metaParts.join('')}</div>`
+        : '';
+
+      return `
+        <a href="${escapeHtml(item.url)}" class="live-search-item" data-live-search-result-link data-live-search-index="${index}">
+          <span class="live-search-item-media">${mediaHtml}</span>
+          <span class="live-search-item-copy">
+            <span class="live-search-item-topline">
+              <span class="live-search-item-title">${escapeHtml(item.title)}</span>
+              ${item.badge ? `<span class="live-search-item-badge">${escapeHtml(item.badge)}</span>` : ''}
+            </span>
+            ${subtitleHtml}
+            ${metaHtml}
+          </span>
+        </a>
+      `;
+    }
+
+    function renderLiveSearchGroup(title, items, offset) {
+      if (!items.length) {
+        return { html: '', nextOffset: offset };
+      }
+      const groupItemsHtml = items.map((item, index) => renderLiveSearchItem(item, offset + index)).join('');
+      return {
+        html: `
+          <section class="live-search-group">
+            <div class="live-search-group-title">${escapeHtml(title)}</div>
+            <div>${groupItemsHtml}</div>
+          </section>
+        `,
+        nextOffset: offset + items.length,
+      };
+    }
+
+    function openLiveSearch(state) {
+      if (!state?.panel) {
+        return;
+      }
+      closeAllLiveSearch(state);
+      state.panel.classList.add('is-open');
+      state.input.setAttribute('aria-expanded', 'true');
+      liveSearchActiveState = state;
+    }
+
+    function renderLiveSearchResults(state, payload) {
+      const groups = payload?.groups || {};
+      const products = Array.isArray(groups.products) ? groups.products : [];
+      const bundles = Array.isArray(groups.bundles) ? groups.bundles : [];
+      const variants = Array.isArray(groups.variants) ? groups.variants : [];
+      let offset = 0;
+      const renderedProducts = renderLiveSearchGroup('Товары', products, offset);
+      offset = renderedProducts.nextOffset;
+      const renderedBundles = renderLiveSearchGroup('Комплекты', bundles, offset);
+      offset = renderedBundles.nextOffset;
+      const renderedVariants = renderLiveSearchGroup('Варианты', variants, offset);
+      const hasResults = Boolean(products.length || bundles.length || variants.length);
+      const query = normalizeLiveSearchQuery(payload?.query || state.input.value);
+      const footerHtml = hasResults
+        ? `
+          <div class="live-search-footer">
+            <a href="${escapeHtml(buildLiveSearchResultsUrl(state, query))}" class="live-search-all-link">
+              Показать все результаты
+            </a>
+          </div>
+        `
+        : '';
+      const bodyHtml = hasResults
+        ? `${renderedProducts.html}${renderedBundles.html}${renderedVariants.html}`
+        : `<div class="live-search-empty">Ничего не найдено. Попробуйте другое название товара, комплекта или варианта.</div>`;
+
+      state.panel.innerHTML = `
+        <div class="live-search-panel-body">
+          ${bodyHtml}
+        </div>
+        ${footerHtml}
+      `;
+      state.activeIndex = -1;
+      openLiveSearch(state);
+    }
+
+    function requestLiveSearch(state, rawQuery) {
+      const query = normalizeLiveSearchQuery(rawQuery);
+      state.lastQuery = query;
+
+      if (!shouldRunLiveSearch(query)) {
+        if (state.abortController) {
+          state.abortController.abort();
+          state.abortController = null;
+        }
+        closeLiveSearch(state);
+        return Promise.resolve();
+      }
+
+      const cacheKey = query.toLocaleLowerCase('ru-RU');
+      if (liveSearchCache.has(cacheKey)) {
+        renderLiveSearchResults(state, liveSearchCache.get(cacheKey));
+        return Promise.resolve();
+      }
+
+      if (state.abortController) {
+        state.abortController.abort();
+      }
+
+      state.requestToken += 1;
+      const requestToken = state.requestToken;
+      const requestUrl = new URL(state.url, window.location.origin);
+      requestUrl.searchParams.set('q', query);
+      state.abortController = new AbortController();
+
+      return window.fetch(requestUrl.toString(), {
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        signal: state.abortController.signal,
+      })
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`Live search failed: ${response.status}`);
+          }
+          return response.json();
+        })
+        .then((payload) => {
+          if (requestToken !== state.requestToken || query !== state.lastQuery) {
+            return;
+          }
+          setLiveSearchCache(cacheKey, payload);
+          renderLiveSearchResults(state, payload);
+        })
+        .catch((error) => {
+          if (error.name !== 'AbortError') {
+            window.console.error(error);
+          }
+        });
+    }
+
+    function scheduleLiveSearch(state, rawQuery) {
+      if (state.timer) {
+        window.clearTimeout(state.timer);
+      }
+      state.timer = window.setTimeout(() => {
+        requestLiveSearch(state, rawQuery);
+      }, LIVE_SEARCH_DEBOUNCE_MS);
+    }
+
+    function handleLiveSearchSubmit(state, event) {
+      const links = getLiveSearchResultLinks(state);
+      if (state.panel.classList.contains('is-open') && state.activeIndex >= 0 && links[state.activeIndex]) {
+        event.preventDefault();
+        window.location.href = links[state.activeIndex].href;
+      }
+    }
+
+    function initLiveSearchDocumentListeners() {
+      if (liveSearchDocumentListenersBound) {
+        return;
+      }
+      liveSearchDocumentListenersBound = true;
+
+      document.addEventListener('click', (event) => {
+        const clickedInsideState = liveSearchStates.find((state) => state.form.contains(event.target) || state.panel.contains(event.target));
+        if (!clickedInsideState) {
+          closeAllLiveSearch();
+        }
+      });
+    }
+
+    function wireLiveSearch(root = document) {
+      initLiveSearchDocumentListeners();
+      root.querySelectorAll('[data-live-search-form]').forEach((form) => {
+        if (form.dataset.liveSearchBound === '1') {
+          return;
+        }
+        const input = form.querySelector('[data-live-search-input]');
+        const url = form.dataset.liveSearchUrl;
+        if (!input || !url) {
+          return;
+        }
+
+        let panel = form.querySelector('[data-live-search-panel]');
+        if (!panel) {
+          panel = document.createElement('div');
+          panel.className = 'live-search-panel';
+          panel.dataset.liveSearchPanel = '1';
+          form.appendChild(panel);
+        }
+
+        const panelId = `live-search-panel-${liveSearchStates.length + 1}`;
+        panel.id = panelId;
+        input.setAttribute('aria-controls', panelId);
+        input.setAttribute('aria-expanded', 'false');
+        input.setAttribute('aria-autocomplete', 'list');
+        input.setAttribute('aria-haspopup', 'listbox');
+
+        const state = {
+          form,
+          input,
+          url,
+          panel,
+          timer: null,
+          abortController: null,
+          requestToken: 0,
+          activeIndex: -1,
+          lastQuery: '',
+        };
+        liveSearchStates.push(state);
+        form.dataset.liveSearchBound = '1';
+
+        input.addEventListener('focus', () => {
+          liveSearchActiveState = state;
+          if (shouldRunLiveSearch(input.value)) {
+            requestLiveSearch(state, input.value);
+          }
+        });
+
+        input.addEventListener('input', () => {
+          liveSearchActiveState = state;
+          scheduleLiveSearch(state, input.value);
+        });
+
+        input.addEventListener('keydown', (event) => {
+          const links = getLiveSearchResultLinks(state);
+          if (event.key === 'ArrowDown' && links.length) {
+            event.preventDefault();
+            setLiveSearchActiveResult(state, state.activeIndex + 1);
+            return;
+          }
+          if (event.key === 'ArrowUp' && links.length) {
+            event.preventDefault();
+            const nextIndex = state.activeIndex <= 0 ? links.length - 1 : state.activeIndex - 1;
+            setLiveSearchActiveResult(state, nextIndex);
+            return;
+          }
+          if (event.key === 'Escape') {
+            closeLiveSearch(state);
+          }
+        });
+
+        form.addEventListener('submit', (event) => handleLiveSearchSubmit(state, event));
+
+        panel.addEventListener('mousemove', (event) => {
+          const link = event.target.closest('[data-live-search-result-link]');
+          if (!link) {
+            return;
+          }
+          const nextIndex = Number(link.dataset.liveSearchIndex || '-1');
+          if (Number.isInteger(nextIndex) && nextIndex >= 0) {
+            setLiveSearchActiveResult(state, nextIndex);
+          }
+        });
+      });
     }
 
     function initCookieConsentBanner() {
@@ -470,8 +934,8 @@
       }
 
       initLucide(); // иконки в шапке (каталог и др.) сразу при загрузке
-      ensureLucideObserver();
       initPhoneMasks(document);
+      wireLiveSearch(document);
       initCookieConsentBanner();
       syncLayoutState();
       // Проверяем, что body уже существует
@@ -479,6 +943,8 @@
         console.warn('document.body is not available yet');
         return;
       }
+
+      observeLucidePlaceholders();
 
       document.body.addEventListener('htmx:beforeRequest', function(ev) {
         if (ev.detail.target?.id !== 'main-content') return;
@@ -520,7 +986,6 @@
         }
       });
       document.body.addEventListener('htmx:afterSettle', function(ev) {
-        scheduleLucideRetry(0);
         initPhoneMasks(document);
         // После полного обновления DOM
         if (ev.detail.target.id === 'main-content') {
@@ -530,6 +995,7 @@
           if (mainContent) {
             mainContent.style.minHeight = '';
           }
+          wireLiveSearch(document);
           // Обновляем активную вкладку в мобильном меню
           updateActiveDockItem();
         }
@@ -539,16 +1005,19 @@
         }
       });
       document.body.addEventListener('htmx:afterSwap', function(ev) {
-        if (ev.detail.target.id === 'main-content') {
+        const swapTarget = ev.detail?.target;
+
+        if (hasPendingLucideIcons(swapTarget)) {
+          queueLucideInit(swapTarget, 0);
+        }
+
+        if (swapTarget?.id === 'main-content') {
           // НЕ скроллим вверх автоматически - позицию восстановит скрипт ниже
-          // Alpine.js автоматически обнаружит новые элементы с x-data через MutationObserver
+          // Alpine.js сам подхватит новые элементы с x-data
           // Поэтому initTree вызывать не обязательно и это может вызвать ошибки
           syncLayoutState();
-          scheduleLucideRetry(0);
           initPhoneMasks(document);
-        }
-        if (ev.detail.target.id === 'manager-main-content') {
-          scheduleLucideRetry(0);
+          wireLiveSearch(document);
         }
       });
       
@@ -561,7 +1030,7 @@
       initHtmxHandlers();
     }
     window.addEventListener('load', () => {
-      scheduleLucideRetry(0);
+      initLucide();
     });
 
     // Сохраняем скролл только для сценария:

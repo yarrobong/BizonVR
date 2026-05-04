@@ -1,0 +1,38 @@
+<!-- Calltouch -->
+<script>
+  (function (w) {
+    var counterId = 'mswgnlnh';
+    var trackerLoader = w.BizonVRTrackerLoader;
+
+    w.CalltouchDataObject = 'ct';
+    w.ct = w.ct || function () {
+      (w.ct.callbacks = w.ct.callbacks || []).push(arguments);
+    };
+    w.ct.callbacks = w.ct.callbacks || [];
+    w.ct.loaded = Boolean(w.ct.loaded);
+    w.ct.counters = w.ct.counters || [];
+
+    if (w.ct.counters.indexOf(counterId) === -1) {
+      w.ct.counters.push(counterId);
+    }
+
+    if (!trackerLoader) {
+      return;
+    }
+
+    trackerLoader.afterRender(function () {
+      var scriptName = typeof Array.prototype.find === 'function' ? 'init-min.js' : 'init.js';
+      var scriptSrc = 'https://mod.calltouch.ru/' + scriptName + '?id=' + counterId;
+
+      trackerLoader.loadScriptOnce(scriptSrc, {
+        async: true,
+        crossOrigin: 'anonymous',
+        referrerPolicy: 'strict-origin-when-cross-origin'
+      });
+    }, {
+      idleTimeout: 2500,
+      delay: 900
+    });
+  })(window);
+</script>
+<!-- /Calltouch -->

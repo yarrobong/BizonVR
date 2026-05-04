@@ -10,21 +10,21 @@
        return () => window.removeEventListener('scroll', throttled);
      ">
   <div class="mobile-header-wrapper">
-    <form action="{% url 'catalog:product_list' %}" method="get" class="mobile-header-search-form">
+    <form action="{% url 'catalog:product_list' %}" method="get" class="mobile-header-search-form" data-live-search-form data-live-search-url="{% url 'catalog:search_suggest' %}">
       <button type="submit" class="mobile-header-search-btn" aria-label="Поиск">
         <i data-lucide="search"></i>
       </button>
-      <input type="search" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Искать на BizonVR" class="mobile-header-search-input" />
+      <input type="search" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Искать на BizonVR" class="mobile-header-search-input" autocomplete="off" data-live-search-input />
     </form>
   </div>
 
   <!-- Фиксированный поиск: появляется при скролле -->
   <div class="mobile-header-fixed-search" :class="{ 'visible': showFixedSearch }">
-    <form action="{% url 'catalog:product_list' %}" method="get" class="mobile-header-search-form">
+    <form action="{% url 'catalog:product_list' %}" method="get" class="mobile-header-search-form" data-live-search-form data-live-search-url="{% url 'catalog:search_suggest' %}">
       <button type="submit" class="mobile-header-search-btn" aria-label="Поиск">
         <i data-lucide="search"></i>
       </button>
-      <input type="search" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Искать на BizonVR" class="mobile-header-search-input" />
+      <input type="search" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Искать на BizonVR" class="mobile-header-search-input" autocomplete="off" data-live-search-input />
     </form>
   </div>
 </div>

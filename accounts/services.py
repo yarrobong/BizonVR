@@ -188,22 +188,24 @@ def authenticate_by_login_identifier(identifier: str, password: str, request=Non
 
 
 def build_email_verification_subject() -> str:
-    return getattr(settings, 'EMAIL_VERIFICATION_SUBJECT', 'Подтверждение email для BizonVR').strip()
+    return getattr(settings, 'EMAIL_VERIFICATION_SUBJECT', 'Код подтверждения BizonVR').strip()
 
 
-def build_email_verification_plain_message(code: str) -> str:
+def build_email_verification_plain_message(code: str, *, action_url: str = '') -> str:
     ttl_minutes = getattr(settings, 'EMAIL_CODE_TTL_MINUTES', 15)
     site_url = getattr(settings, 'SITE_URL', '').rstrip('/')
     profile_url = f'{site_url}/accounts/profile/' if site_url else ''
     support_email = getattr(settings, 'SITE_CONTACT_EMAIL', '').strip()
     support_phone = getattr(settings, 'SITE_CONTACT_PHONE', '').strip()
     lines = [
-        'Подтверждение email для BizonVR',
+        'Код подтверждения BizonVR',
         '',
-        f'Ваш код: {code}',
+        f'Код подтверждения: {code}',
         f'Код действует {ttl_minutes} минут.',
     ]
-    if profile_url:
+    if action_url:
+        lines.append(f'Страница подтверждения: {action_url}')
+    elif profile_url:
         lines.append(f'Личный кабинет: {profile_url}')
     if support_email:
         lines.append(f'Поддержка: {support_email}')
@@ -216,19 +218,21 @@ def build_email_verification_plain_message(code: str) -> str:
     return '\n'.join(lines)
 
 
-def send_email_verification(email: str, code: str) -> bool:
+def send_email_verification(email: str, code: str, *, action_url: str = '') -> bool:
     site_url = getattr(settings, 'SITE_URL', '').rstrip('/')
+    default_profile_url = f'{site_url}/accounts/profile/' if site_url else ''
     context = {
         'brand': getattr(settings, 'SITE_BRAND', 'BizonVR'),
         'site_url': site_url,
-        'profile_url': f'{site_url}/accounts/profile/' if site_url else '',
+        'action_url': action_url or default_profile_url,
+        'action_label': 'Открыть страницу подтверждения' if action_url else 'Открыть личный кабинет',
         'code': code,
         'ttl_minutes': getattr(settings, 'EMAIL_CODE_TTL_MINUTES', 15),
         'support_email': getattr(settings, 'SITE_CONTACT_EMAIL', '').strip(),
         'support_phone': getattr(settings, 'SITE_CONTACT_PHONE', '').strip(),
     }
     subject = build_email_verification_subject()
-    text_body = build_email_verification_plain_message(code)
+    text_body = build_email_verification_plain_message(code, action_url=action_url)
     html_body = render_to_string('emails/email_verification.html', context)
 
     try:
@@ -293,6 +297,23 @@ def send_email_login_code_message(email: str, code: str) -> bool:
     return True
 
 
+def build_password_reset_plain_message(reset_url: str) -> str:
+    timeout_minutes = max(1, int(getattr(settings, 'PASSWORD_RESET_TIMEOUT', 15 * 60)) // 60)
+    support_email = getattr(settings, 'SITE_CONTACT_EMAIL', '').strip()
+    lines = [
+        'Восстановление пароля BizonVR',
+        '',
+        'Чтобы установить новый пароль, откройте ссылку:',
+        reset_url,
+        '',
+        f'Ссылка действует {timeout_minutes} минут и станет недействительной после смены пароля.',
+        'Если вы не запрашивали восстановление, просто проигнорируйте это письмо.',
+    ]
+    if support_email:
+        lines.append(f'Поддержка: {support_email}')
+    return '\n'.join(lines)
+
+
 def send_password_reset_email(user, *, request=None) -> tuple[bool, str]:
     email = normalize_email(getattr(user, 'email', ''))
     if not email:
@@ -302,13 +323,16 @@ def send_password_reset_email(user, *, request=None) -> tuple[bool, str]:
     token = default_token_generator.make_token(user)
     path = reverse('accounts:password_reset_confirm', kwargs={'uidb64': uid, 'token': token})
     reset_url = request.build_absolute_uri(path) if request is not None else f'{settings.SITE_URL}{path}'
-    subject = getattr(settings, 'PASSWORD_RESET_EMAIL_SUBJECT', 'Восстановление доступа BizonVR').strip()
-    text_body = (
-        'Здравствуйте!\n\n'
-        'Чтобы установить новый пароль для аккаунта BizonVR, перейдите по ссылке:\n'
-        f'{reset_url}\n\n'
-        'Если вы не запрашивали восстановление доступа, просто проигнорируйте это письмо.'
-    )
+    subject = getattr(settings, 'PASSWORD_RESET_EMAIL_SUBJECT', 'Восстановление пароля BizonVR').strip()
+    timeout_minutes = max(1, int(getattr(settings, 'PASSWORD_RESET_TIMEOUT', 15 * 60)) // 60)
+    text_body = build_password_reset_plain_message(reset_url)
+    html_body = render_to_string('emails/password_reset.html', {
+        'brand': getattr(settings, 'SITE_BRAND', 'BizonVR'),
+        'reset_url': reset_url,
+        'timeout_minutes': timeout_minutes,
+        'support_email': getattr(settings, 'SITE_CONTACT_EMAIL', '').strip(),
+        'support_phone': getattr(settings, 'SITE_CONTACT_PHONE', '').strip(),
+    })
 
     try:
         message = EmailMultiAlternatives(
@@ -317,6 +341,7 @@ def send_password_reset_email(user, *, request=None) -> tuple[bool, str]:
             from_email=settings.DEFAULT_FROM_EMAIL,
             to=[email],
         )
+        message.attach_alternative(html_body, 'text/html')
         message.send(fail_silently=False)
     except Exception:
         logger.exception('Password reset email send failed for %s', email)
@@ -570,7 +595,7 @@ def verify_email_login_code(email: str, code: str, *, purpose: str = EmailLoginC
     return True, ''
 
 
-def create_and_send_email_code(user, email: str) -> tuple[bool, str]:
+def create_and_send_email_code(user, email: str, *, action_url: str = '') -> tuple[bool, str]:
     """
     Создать и отправить код подтверждения email.
     Подтверждение выполняется один раз: после успешной верификации email больше не меняется.
@@ -591,7 +616,7 @@ def create_and_send_email_code(user, email: str) -> tuple[bool, str]:
         return False, f'Код уже отправлен. Повторите через {cooldown} сек.'
 
     code = generate_code()
-    if not send_email_verification(email, code):
+    if not send_email_verification(email, code, action_url=action_url):
         return False, 'Не удалось отправить письмо. Проверьте настройки почты и попробуйте позже.'
 
     EmailVerificationCode.objects.filter(user=user, used_at__isnull=True).update(used_at=now)
@@ -644,6 +669,7 @@ def confirm_email_verification(user, email: str, code: str) -> tuple[bool, str]:
         locked_user.save(update_fields=['email'])
         profile.email_verified_at = timezone.now()
         profile.save(update_fields=['email_verified_at'])
+        EmailVerificationCode.objects.filter(user=locked_user, used_at__isnull=True).update(used_at=profile.email_verified_at)
 
     user.refresh_from_db(fields=['email'])
     auto_claim_guest_orders_for_user(user)

@@ -5,6 +5,7 @@ from . import views
 app_name = 'catalog'
 
 urlpatterns = [
+    path('search/suggest/', views.product_search_suggest_view, name='search_suggest'),
     path('', views.ProductListView.as_view(), name='product_list'),
     path('footer-products/', views.footer_products_feed_view, name='footer_products_feed'),
     path('favorites/', views.favorite_list_view, name='favorites'),

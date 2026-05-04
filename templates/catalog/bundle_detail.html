@@ -66,14 +66,14 @@
   </div>
   <div class="pd-mobile-search-overlay" x-show="mobileSearchOpen" x-cloak x-transition.opacity>
     <div class="pd-mobile-search-row">
-      <form action="{% url 'catalog:product_list' %}" method="get" hx-boost="false" class="pd-mobile-search-form">
+      <form action="{% url 'catalog:product_list' %}" method="get" hx-boost="false" class="pd-mobile-search-form" data-live-search-form data-live-search-url="{% url 'catalog:search_suggest' %}">
         <button type="submit" class="pd-mobile-search-submit" aria-label="Искать">
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"></circle>
             <path d="M20 20l-3.5-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
           </svg>
         </button>
-        <input x-ref="searchInput" type="search" name="q" placeholder="Поиск по товарам" class="pd-mobile-search-input" />
+        <input x-ref="searchInput" type="search" name="q" placeholder="Поиск по товарам" class="pd-mobile-search-input" autocomplete="off" data-live-search-input />
       </form>
       <button type="button" class="pd-mobile-cancel-btn" @click="mobileSearchOpen = false">Отмена</button>
     </div>
@@ -132,12 +132,12 @@
       <div class="gallery-container">
         <div class="main-image-wrapper">
           {% if bundle.image %}
-            <img src="{{ bundle.image.url }}" class="main-image" alt="{{ bundle.name|default:'Набор' }}" loading="eager" />
+            <img src="{{ bundle.image.url }}" class="main-image" alt="{{ bundle.name|default:'Набор' }}" loading="eager" decoding="async" {{ bundle.image|image_dimension_attrs }} />
           {% else %}
             {% for item in bundle_items %}
               {% if forloop.first %}
                 {% if item.product.image %}
-                  <img src="{{ item.product.image.url }}" class="main-image" alt="{{ bundle.name|default:'Набор' }}" loading="eager" />
+                  <img src="{{ item.product.image.url }}" class="main-image" alt="{{ bundle.name|default:'Набор' }}" loading="eager" decoding="async" {{ item.product.image|image_dimension_attrs }} />
                 {% else %}
                   <div style="color: var(--pd-muted);">Нет фото</div>
                 {% endif %}
@@ -289,7 +289,7 @@
             <td class="bundle-td-photo">
               <a href="{% url 'catalog:product_detail' item.product.slug %}" class="bundle-composition-img-link">
                 {% if item.product.image %}
-                  <img src="{{ item.product.image.url }}" alt="{{ item.product.name }}" class="bundle-composition-img" loading="lazy" />
+                  <img src="{{ item.product.image.url }}" alt="{{ item.product.name }}" class="bundle-composition-img" loading="lazy" decoding="async" {{ item.product.image|image_dimension_attrs }} />
                 {% else %}
                   <span class="bundle-composition-no-img">Нет фото</span>
                 {% endif %}

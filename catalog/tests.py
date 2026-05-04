@@ -138,6 +138,186 @@ class CatalogSearchTest(TestCase):
         self.assertEqual(len(resp.context['products']), 2)
 
 
+class CatalogSearchSuggestTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.suggest_url = reverse('catalog:search_suggest')
+        self.category = Category.objects.create(name='Шлемы', slug='headsets')
+        self.bundle_category = Category.objects.create(
+            name='Комплекты',
+            slug='bundles',
+            is_bundles_category=True,
+        )
+        self.city = City.objects.create(name='Екатеринбург', slug='ekaterinburg')
+        self.pickup_point = PickupPoint.objects.create(city=self.city, name='Основной склад')
+
+        self.product_by_name = Product.objects.create(
+            category=self.category,
+            name='Quest 3 Pro',
+            slug='quest-3-pro',
+            description='Флагманский VR шлем',
+            price=100,
+            is_active=True,
+        )
+        ProductStock.objects.create(
+            product=self.product_by_name,
+            pickup_point=self.pickup_point,
+            quantity=4,
+        )
+
+        self.product_by_description = Product.objects.create(
+            category=self.category,
+            name='Pico Ultra',
+            slug='pico-ultra',
+            description='Квестовый VR шлем для аркад',
+            price=90,
+            is_active=True,
+        )
+        ProductStock.objects.create(
+            product=self.product_by_description,
+            pickup_point=self.pickup_point,
+            quantity=2,
+        )
+
+        self.variant_product = Product.objects.create(
+            category=self.category,
+            name='Meta Quest Carry',
+            slug='meta-quest-carry',
+            description='Товар с вариантами',
+            price=120,
+            is_active=True,
+        )
+        self.variant = ProductVariant.objects.create(
+            product=self.variant_product,
+            name='256 GB',
+            sku='Q3-256',
+        )
+        ProductStock.objects.create(
+            product=self.variant_product,
+            pickup_point=self.pickup_point,
+            variant=self.variant,
+            quantity=1,
+        )
+
+        self.bundle_helper_product = Product.objects.create(
+            category=self.category,
+            name='Titan Stand',
+            slug='titan-stand',
+            description='Стойка для VR',
+            price=55,
+            is_active=True,
+        )
+        ProductStock.objects.create(
+            product=self.bundle_helper_product,
+            pickup_point=self.pickup_point,
+            quantity=3,
+        )
+
+        self.bundle = ProductBundle.objects.create(
+            category=self.bundle_category,
+            name='Аркадный комплект',
+            slug='arcade-bundle',
+        )
+        ProductBundleItem.objects.create(bundle=self.bundle, product=self.product_by_name, quantity=1)
+        ProductBundleItem.objects.create(bundle=self.bundle, product=self.bundle_helper_product, quantity=1)
+
+        self.inactive_product = Product.objects.create(
+            category=self.category,
+            name='Ghost Quest',
+            slug='ghost-quest',
+            description='Скрытый товар',
+            price=70,
+            is_active=False,
+        )
+
+        for index in range(4):
+            product = Product.objects.create(
+                category=self.category,
+                name=f'Neo Limit {index}',
+                slug=f'neo-limit-{index}',
+                description='Тест лимита',
+                price=80 + index,
+                is_active=True,
+            )
+            ProductStock.objects.create(
+                product=product,
+                pickup_point=self.pickup_point,
+                quantity=1,
+            )
+
+    def test_short_query_returns_empty_groups(self):
+        response = self.client.get(self.suggest_url, {'q': 'Q'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {
+                'query': 'Q',
+                'groups': {
+                    'products': [],
+                    'bundles': [],
+                    'variants': [],
+                },
+                'has_results': False,
+            },
+        )
+
+    def test_finds_product_by_name(self):
+        response = self.client.get(self.suggest_url, {'q': 'Quest 3'})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload['has_results'])
+        self.assertEqual(payload['groups']['products'][0]['title'], self.product_by_name.name)
+        self.assertEqual(
+            set(payload['groups']['products'][0].keys()),
+            {'type', 'title', 'subtitle', 'url', 'image_url', 'price_label', 'status_label', 'badge'},
+        )
+
+    def test_finds_product_by_description(self):
+        response = self.client.get(self.suggest_url, {'q': 'аркад'})
+
+        self.assertEqual(response.status_code, 200)
+        product_titles = [item['title'] for item in response.json()['groups']['products']]
+        self.assertIn(self.product_by_description.name, product_titles)
+
+    def test_finds_bundle_by_included_product_name(self):
+        response = self.client.get(self.suggest_url, {'q': 'Titan Stand'})
+
+        self.assertEqual(response.status_code, 200)
+        bundle_titles = [item['title'] for item in response.json()['groups']['bundles']]
+        self.assertIn(self.bundle.name, bundle_titles)
+
+    def test_returns_variant_row_when_matching_variant_name(self):
+        response = self.client.get(self.suggest_url, {'q': '256 GB'})
+
+        self.assertEqual(response.status_code, 200)
+        variants = response.json()['groups']['variants']
+        self.assertEqual(variants[0]['title'], f'{self.variant_product.name} · {self.variant.name}')
+        self.assertEqual(variants[0]['badge'], 'Вариант')
+
+    def test_returns_variant_row_when_matching_variant_sku(self):
+        response = self.client.get(self.suggest_url, {'q': 'Q3-256'})
+
+        self.assertEqual(response.status_code, 200)
+        variants = response.json()['groups']['variants']
+        self.assertEqual(variants[0]['title'], f'{self.variant_product.name} · {self.variant.name}')
+
+    def test_inactive_products_do_not_appear(self):
+        response = self.client.get(self.suggest_url, {'q': 'Ghost Quest'})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertFalse(payload['has_results'])
+        self.assertEqual(payload['groups']['products'], [])
+
+    def test_limits_group_size_to_three_items(self):
+        response = self.client.get(self.suggest_url, {'q': 'Neo Limit'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.json()['groups']['products']), 3)
+
+
 class CatalogSortLinksEscapingTest(TestCase):
     def setUp(self):
         self.client = Client()
