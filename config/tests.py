@@ -297,6 +297,13 @@ class CompactVRLandingTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Компактная VR-арена')
+        self.assertContains(response, '/static/images/compact-vr-v3/1.webp')
+        self.assertContains(response, '/static/images/compact-vr-v3/katvrplayer.webp')
+        self.assertContains(response, 'loading="lazy"', html=False)
+        self.assertContains(response, 'decoding="async"', html=False)
+        self.assertContains(response, 'width="1536" height="1024"', html=False)
+        self.assertNotContains(response, '/static/images/compact-vr-v3/1.png')
+        self.assertNotContains(response, '/static/images/compact-vr-v3/katvrplayer.png')
 
     def test_compact_vr_boosted_request_forces_full_redirect(self):
         response = self.client.get(
@@ -317,11 +324,32 @@ class CompactVRLandingTests(TestCase):
         response = self.client.get(reverse('home'))
         html = response.content.decode('utf-8')
 
-        self.assertIn('/static/images/compact-vr-v3/katvrplayer.png', html)
+        self.assertNotIn('/static/images/compact-vr-v3/katvrplayer.png', html)
         self.assertNotIn('/compact-vr/img/katvrplayer.png', html)
+
+    def test_compact_vr_script_reacts_to_threshold_events_instead_of_global_scroll_listener(self):
+        script_path = settings.BASE_DIR / 'static/js/compact-vr-v3.js'
+        script = script_path.read_text(encoding='utf-8')
+
+        self.assertIn('layout-scroll-threshold', script)
+        self.assertNotIn('window.addEventListener("scroll"', script)
 
 
 class PublicSiteMetrikaTemplateTests(TestCase):
+    def test_home_layout_uses_shared_threshold_observer_for_sticky_header(self):
+        response = self.client.get(reverse('home'))
+        html = response.content.decode('utf-8')
+
+        self.assertIn('observePageThreshold(180, syncLayoutScrollThreshold)', html)
+        self.assertNotIn('@scroll.window.passive.throttle.50ms=', html)
+
+    def test_home_mobile_header_uses_threshold_observer_for_fixed_search(self):
+        response = self.client.get(reverse('home'))
+        html = response.content.decode('utf-8')
+
+        self.assertIn('observePageThreshold(100, syncFixedSearch)', html)
+        self.assertNotIn("window.addEventListener('scroll', throttled", html)
+
     def test_home_page_includes_yandex_metrika_counter(self):
         response = self.client.get(reverse('home'))
 
@@ -330,9 +358,19 @@ class PublicSiteMetrikaTemplateTests(TestCase):
         self.assertContains(response, "BizonVRTrackerLoader", html=False)
         self.assertContains(response, "addEventListener('DOMContentLoaded', scheduleMetrika, {once: true})", html=False)
         self.assertContains(response, 'https://mc.yandex.ru/watch/108292006', html=False)
+        self.assertContains(response, 'https://mod.calltouch.ru/', html=False)
+        self.assertNotContains(response, 'https://cloud.emailtracking.ru/gtm/script.js', html=False)
+        self.assertNotContains(response, 'https://cloud.alfa-track.com/gtm/script.js', html=False)
+        self.assertNotContains(response, 'tryLoadMirror(0)', html=False)
+        self.assertNotContains(response, 'mirrors.forEach(', html=False)
+
+    @override_settings(ENABLE_ALFATRACK=True)
+    def test_home_page_includes_alfatrack_when_enabled(self):
+        response = self.client.get(reverse('home'))
+
         self.assertContains(response, 'https://cloud.emailtracking.ru/gtm/script.js', html=False)
         self.assertContains(response, 'https://cloud.alfa-track.com/gtm/script.js', html=False)
-        self.assertContains(response, 'https://mod.calltouch.ru/', html=False)
+        self.assertContains(response, 'tryLoadMirror(0)', html=False)
 
     def test_custom_404_page_includes_yandex_metrika_counter(self):
         request = RequestFactory().get('/missing-page/')
@@ -344,3 +382,14 @@ class PublicSiteMetrikaTemplateTests(TestCase):
         self.assertIn('https://mc.yandex.ru/metrika/tag.js?id=', response.content.decode('utf-8'))
         self.assertIn("requestIdleCallback", response.content.decode('utf-8'))
         self.assertIn("BizonVRTrackerLoader", response.content.decode('utf-8'))
+
+    def test_error_page_disables_webvisor_outside_public_funnel(self):
+        request = RequestFactory().get('/missing-page/')
+        request.user = AnonymousUser()
+        request.session = {}
+        response = not_found_view(request, unmatched_path='missing-page/')
+        html = response.content.decode('utf-8')
+
+        self.assertIn('webvisorAllowedPrefixes', html)
+        self.assertIn('webvisor: shouldEnableWebvisor(w.location && w.location.pathname)', html)
+        self.assertNotIn('webvisor: true', html)

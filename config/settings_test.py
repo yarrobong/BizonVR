@@ -1,6 +1,7 @@
 from .settings import *  # noqa: F401,F403
 
 DEBUG = True
+ENABLE_ALFATRACK = False
 
 # В тестах не нужен collectstatic: используем finders-based static storage.
 STORAGES['staticfiles'] = {

@@ -31,6 +31,7 @@ const sectionLinks = navLinks.filter((link) => {
 const sections = sectionLinks
   .map((link) => rootQuery(link.getAttribute("href")))
   .filter(Boolean);
+let sectionOffsetFrame = 0;
 
 function getHeaderCandidates() {
   return [
@@ -98,12 +99,17 @@ function scrollToHash(hash, smooth = true) {
 function scheduleSectionOffsetSync(delay = 0) {
   if (delay > 0) {
     window.setTimeout(() => {
-      updateSectionScrollOffsets();
+      scheduleSectionOffsetSync();
     }, delay);
     return;
   }
 
-  window.requestAnimationFrame(() => {
+  if (sectionOffsetFrame) {
+    return;
+  }
+
+  sectionOffsetFrame = window.requestAnimationFrame(() => {
+    sectionOffsetFrame = 0;
     updateSectionScrollOffsets();
   });
 }
@@ -134,6 +140,18 @@ function setupHeaderStateObservers() {
 
     candidates.forEach((element) => {
       resizeObserver.observe(element);
+    });
+  }
+
+  if (typeof IntersectionObserver === "function") {
+    const visibilityObserver = new IntersectionObserver(() => {
+      scheduleSectionOffsetSync();
+    }, {
+      threshold: [0, 1],
+    });
+
+    candidates.forEach((element) => {
+      visibilityObserver.observe(element);
     });
   }
 }
@@ -173,9 +191,13 @@ window.addEventListener("resize", () => {
   scheduleSectionOffsetSync();
 });
 
-window.addEventListener("scroll", () => {
+window.addEventListener("layout-scroll-threshold", () => {
   scheduleSectionOffsetSync();
-}, { passive: true });
+});
+
+window.addEventListener("header-expand", () => {
+  scheduleSectionOffsetSync();
+});
 
 window.addEventListener("load", () => {
   updateSectionScrollOffsets();

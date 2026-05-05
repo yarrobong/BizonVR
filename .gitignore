@@ -51,3 +51,7 @@ legacy/docuflow (2)/node_modules/
 legacy/docuflow (2)/dist/
 legacy/docuflow (2)/test-results/
 tmp-home-catalog-product-form-trace.json
+
+# Chrome performance traces
+tmp-*-trace.json
+*.trace.json

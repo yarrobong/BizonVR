@@ -1,3 +1,4 @@
+{% load catalog_tags %}
 {% if not is_catalog_root %}
 <div x-show="!filtersModalOpen" class="lg:hidden relative">
   <div class="filter-launcher-row mb-4">
@@ -5,12 +6,12 @@
       <button type="button" @click="sortDropdownOpen = !sortDropdownOpen; filtersModalOpen = false"
               class="filter-circle-button"
               aria-label="Сортировка">
-        <i data-lucide="arrow-up-down" class="w-5 h-5"></i>
+        {% lucide_icon "arrow-up-down" "w-5 h-5" %}
       </button>
       <button type="button" @click="filtersModalOpen = true; sortDropdownOpen = false"
               class="filter-circle-button"
               aria-label="Фильтры">
-        <i data-lucide="sliders-horizontal" class="w-5 h-5"></i>
+        {% lucide_icon "sliders-horizontal" "w-5 h-5" %}
       </button>
     </div>
     <div class="flex items-center gap-2 overflow-x-auto min-w-0 flex-1" style="scrollbar-width: none; -ms-overflow-style: none;">

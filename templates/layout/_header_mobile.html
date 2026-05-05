@@ -2,17 +2,21 @@
 {% if not request.resolver_match or request.resolver_match.url_name != 'cart' %}
 <div class="mobile-header md:hidden" x-data="{ showFixedSearch: false }"
      x-init="
-       const check = () => { showFixedSearch = window.scrollY > 100 };
-       let raf = null;
-       const throttled = () => { if (!raf) raf = requestAnimationFrame(() => { check(); raf = null; }); };
-       window.addEventListener('scroll', throttled, { passive: true });
-       check();
-       return () => window.removeEventListener('scroll', throttled);
+       const syncFixedSearch = (isPastThreshold) => { showFixedSearch = isPastThreshold; };
+       const stopFixedSearchObserver = typeof observePageThreshold === 'function'
+         ? observePageThreshold(100, syncFixedSearch)
+         : null;
+       syncFixedSearch(window.scrollY > 100);
+       return () => {
+         if (typeof stopFixedSearchObserver === 'function') {
+           stopFixedSearchObserver();
+         }
+       };
      ">
   <div class="mobile-header-wrapper">
     <form action="{% url 'catalog:product_list' %}" method="get" class="mobile-header-search-form" data-live-search-form data-live-search-url="{% url 'catalog:search_suggest' %}">
       <button type="submit" class="mobile-header-search-btn" aria-label="Поиск">
-        <i data-lucide="search"></i>
+        {% lucide_icon "search" %}
       </button>
       <input type="search" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Искать на BizonVR" class="mobile-header-search-input" autocomplete="off" data-live-search-input />
     </form>
@@ -22,7 +26,7 @@
   <div class="mobile-header-fixed-search" :class="{ 'visible': showFixedSearch }">
     <form action="{% url 'catalog:product_list' %}" method="get" class="mobile-header-search-form" data-live-search-form data-live-search-url="{% url 'catalog:search_suggest' %}">
       <button type="submit" class="mobile-header-search-btn" aria-label="Поиск">
-        <i data-lucide="search"></i>
+        {% lucide_icon "search" %}
       </button>
       <input type="search" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Искать на BizonVR" class="mobile-header-search-input" autocomplete="off" data-live-search-input />
     </form>

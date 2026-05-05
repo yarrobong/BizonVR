@@ -1,3 +1,4 @@
+{% load catalog_tags %}
 <!-- Левая панель фильтров: только на десктопе, сразу применяются по клику -->
 <aside class="catalog-filters w-full hidden lg:block">
   <div class="filters-panel filters-panel--quick sticky top-24 flex flex-col">
@@ -9,7 +10,7 @@
       <button type="button"
               class="filter-ghost-button filter-ghost-button--quick"
               @click="filtersModalOpen = true">
-        <i data-lucide="sliders-horizontal" class="w-4 h-4"></i>
+        {% lucide_icon "sliders-horizontal" "w-4 h-4" %}
         Все
       </button>
     </div>

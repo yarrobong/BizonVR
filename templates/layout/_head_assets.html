@@ -21,9 +21,10 @@
 <!-- HTMX & Alpine.js -->
 <script defer src="{% static 'vendor/htmx/htmx-1.9.10.min.js' %}"></script>
 <script defer src="{% static 'js/layout/base.js' %}"></script>
+{% if not disable_public_tracking_helpers %}
 <script defer src="{% static 'js/layout/metrika.js' %}"></script>
+{% endif %}
 <script defer src="{% static 'vendor/alpine/alpine-3.13.3-cdn.min.js' %}"></script>
-<script defer src="{% static 'js/orders/checkout_cdek_widget.js' %}"></script>
 
 <!-- Lucide Icons -->
 <script defer src="{% static 'vendor/lucide/lucide-0.468.0.min.js' %}"></script>

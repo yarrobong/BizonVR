@@ -28,6 +28,7 @@ SECRET_KEY = config('SECRET_KEY', default='django-insecure-change-me')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config_bool('DEBUG', default=True)
+ENABLE_ALFATRACK = config_bool('ENABLE_ALFATRACK', default=not DEBUG)
 
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=Csv())
 

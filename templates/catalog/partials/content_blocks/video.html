@@ -3,15 +3,7 @@
     <h3 class="content-block__title">{{ block.title }}</h3>
   {% endif %}
   {% if block.embed_url %}
-    <div class="content-block__video-shell">
-      <iframe
-        src="{{ block.embed_url }}"
-        title="{{ block.title|default:product.name }}"
-        class="content-block__video"
-        frameborder="0"
-        allow="clipboard-write; autoplay; encrypted-media; picture-in-picture; web-share"
-        allowfullscreen></iframe>
-    </div>
+    {% include "catalog/partials/_lazy_video_embed.html" with embed_url=block.embed_url title=block.title %}
   {% endif %}
   {% if block.caption %}
     <p class="content-block__caption">{{ block.caption }}</p>

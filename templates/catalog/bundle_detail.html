@@ -18,10 +18,31 @@
          this.headerFilled = rect.bottom <= 64;
        }
      }"
-     x-init="$nextTick(() => updateHeaderFilled())"
-     @scroll.window.passive="updateHeaderFilled()"
+     x-init="
+       let stopHeaderFilledObserver = null;
+       const startHeaderFilledObserver = () => {
+         const photoEl = document.querySelector('.product-detail-scope .main-image-wrapper');
+         if (!photoEl) {
+           updateHeaderFilled();
+           return;
+         }
+         if (typeof observeElementViewportState === 'function') {
+           stopHeaderFilledObserver = observeElementViewportState(photoEl, (isVisible) => {
+             headerFilled = !isVisible;
+           }, { topOffset: 64 });
+           return;
+         }
+         updateHeaderFilled();
+       };
+       $nextTick(() => startHeaderFilledObserver());
+       return () => {
+         if (typeof stopHeaderFilledObserver === 'function') {
+           stopHeaderFilledObserver();
+         }
+       };
+     "
      @pageshow.window="mobileSearchOpen = false; $nextTick(() => updateHeaderFilled())"
-     @resize.window="updateHeaderFilled()">
+     >
   <div class="pd-mobile-header-bar" :class="{ 'is-filled': headerFilled }">
     <button type="button"
             class="pd-mobile-icon-btn"
@@ -132,12 +153,12 @@
       <div class="gallery-container">
         <div class="main-image-wrapper">
           {% if bundle.image %}
-            <img src="{{ bundle.image.url }}" class="main-image" alt="{{ bundle.name|default:'Набор' }}" loading="eager" decoding="async" {{ bundle.image|image_dimension_attrs }} />
+            <img src="{{ bundle.image|image_variant_url:'960' }}" srcset="{{ bundle.image|image_srcset:'640,960,1280,1600' }}" sizes="(min-width: 1280px) 42vw, (min-width: 768px) 50vw, 100vw" class="main-image" alt="{{ bundle.name|default:'Набор' }}" loading="eager" decoding="async" {{ bundle.image|image_dimension_attrs }} />
           {% else %}
             {% for item in bundle_items %}
               {% if forloop.first %}
                 {% if item.product.image %}
-                  <img src="{{ item.product.image.url }}" class="main-image" alt="{{ bundle.name|default:'Набор' }}" loading="eager" decoding="async" {{ item.product.image|image_dimension_attrs }} />
+                  <img src="{{ item.product.image|image_variant_url:'960' }}" srcset="{{ item.product.image|image_srcset:'640,960,1280,1600' }}" sizes="(min-width: 1280px) 42vw, (min-width: 768px) 50vw, 100vw" class="main-image" alt="{{ bundle.name|default:'Набор' }}" loading="eager" decoding="async" {{ item.product.image|image_dimension_attrs }} />
                 {% else %}
                   <div style="color: var(--pd-muted);">Нет фото</div>
                 {% endif %}
@@ -161,13 +182,13 @@
         <div class="delivery-section" style="border-radius: 24px;">
           <h3 class="delivery-section-title">Доставка</h3>
           <div class="delivery-row">
-            <i data-lucide="package" class="w-4 h-4 inline-block" style="vertical-align: middle;"></i>
+            {% lucide_icon "package" "w-4 h-4 inline-block" style="vertical-align: middle;" %}
             <div>
               <strong>Комплект подбирается под заказ</strong>
             </div>
           </div>
           <div class="delivery-row">
-            <i data-lucide="truck" class="w-4 h-4 inline-block" style="vertical-align: middle;"></i>
+            {% lucide_icon "truck" "w-4 h-4 inline-block" style="vertical-align: middle;" %}
             <div>
               <strong>Доставка</strong><br>
               <span style="font-weight: bold;">По всей России</span>
@@ -229,13 +250,13 @@
         <div class="delivery-section">
           <h3 class="delivery-section-title">Доставка</h3>
           <div class="delivery-row">
-            <i data-lucide="package" class="w-4 h-4 inline-block" style="vertical-align: middle;"></i>
+            {% lucide_icon "package" "w-4 h-4 inline-block" style="vertical-align: middle;" %}
             <div>
               <strong>Комплект подбирается под заказ</strong>
             </div>
           </div>
           <div class="delivery-row">
-            <i data-lucide="truck" class="w-4 h-4 inline-block" style="vertical-align: middle;"></i>
+            {% lucide_icon "truck" "w-4 h-4 inline-block" style="vertical-align: middle;" %}
             <div>
               <strong>Доставка</strong><br>
               <span style="font-weight: bold;">По всей России</span>

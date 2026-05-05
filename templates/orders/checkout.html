@@ -3,6 +3,13 @@
 
 {% block title %}Оформление заявки — BizonVR{% endblock %}
 
+{% block extra_head %}
+  {{ block.super }}
+  {% if show_cdek_widget and not cart_empty %}
+    <script defer src="{% static 'js/orders/checkout_cdek_widget.js' %}"></script>
+  {% endif %}
+{% endblock %}
+
 {% block content %}
 <div
   class="container mx-auto max-w-6xl px-4 py-3 sm:py-5"
@@ -13,7 +20,7 @@
 >
   <nav class="mb-3">
     <a href="{% url 'catalog:cart' %}" class="inline-flex items-center gap-1 text-sm text-gray-400 transition hover:text-accent">
-      <i data-lucide="arrow-left" class="inline-block h-4 w-4"></i>
+      {% lucide_icon "arrow-left" "inline-block h-4 w-4" %}
       Вернуться в корзину
     </a>
   </nav>
@@ -47,7 +54,7 @@
       <p class="mb-4">Корзина пуста. Добавьте товары, чтобы оформить заявку.</p>
       <a href="{% url 'catalog:product_list' %}" class="inline-flex items-center gap-2 rounded-full bg-accent px-6 py-3 text-sm font-bold uppercase tracking-wide text-dark-900 transition hover:bg-accent-hover">
         Перейти в каталог
-        <i data-lucide="arrow-right" class="inline-block h-4 w-4"></i>
+        {% lucide_icon "arrow-right" "inline-block h-4 w-4" %}
       </a>
     </div>
   {% else %}
@@ -384,7 +391,7 @@
             data-cdek-close
             aria-label="Закрыть карту ПВЗ"
           >
-            <i data-lucide="x" class="h-5 w-5"></i>
+            {% lucide_icon "x" "h-5 w-5" %}
           </button>
         </div>
         <div class="flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5 lg:overflow-hidden">
