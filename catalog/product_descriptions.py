@@ -169,6 +169,7 @@ def normalize_block_data(block_type_slug, data):
             'title': _text(data.get('title')),
             'rutube_url': _text(data.get('rutube_url')),
             'embed_url': _text(data.get('embed_url')),
+            'poster_url': _text(data.get('poster_url') or data.get('thumbnail_url')),
             'caption': _text(data.get('caption')),
         }
     return data

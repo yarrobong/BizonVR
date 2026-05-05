@@ -77,25 +77,25 @@
   
   <div class="mobile-dock" data-mobile-dock>
     <a href="{% url 'home' %}" class="dock-item {% if active_section == 'home' %}active{% endif %}" title="Главная" aria-label="Главная" hx-boost="false">
-      <i data-lucide="home" width="24" height="24"></i>
+      {% lucide_icon "home" "h-6 w-6" %}
     </a>
     
     <a href="{% url 'catalog:product_list' %}" class="dock-item {% if active_section == 'catalog' %}active{% endif %}" title="Каталог" aria-label="Каталог" hx-boost="false">
-      <i data-lucide="search" width="24" height="24"></i>
+      {% lucide_icon "search" "h-6 w-6" %}
     </a>
     
     <a href="{% url 'catalog:favorites' %}" class="dock-item {% if active_section == 'favorites' %}active{% endif %}" title="Избранное" aria-label="Избранное" hx-boost="false">
-      <i data-lucide="heart" width="24" height="24"></i>
+      {% lucide_icon "heart" "h-6 w-6" %}
       <span class="badge badge-gray" x-text="favoritesCount" x-show="favoritesCount > 0">{{ favorites_count|default:0 }}</span>
     </a>
     
     <a href="{% url 'catalog:cart' %}" class="dock-item {% if active_section == 'cart' %}active{% endif %}" title="Корзина" aria-label="Корзина" hx-boost="false">
-      <i data-lucide="shopping-cart" width="24" height="24"></i>
+      {% lucide_icon "shopping-cart" "h-6 w-6" %}
       <span class="badge badge-accent" x-text="cartCount">{{ cart_count|default:0 }}</span>
     </a>
     
     <a href="{% url 'accounts:profile' %}" class="dock-item {% if active_section == 'profile' %}active{% endif %}" title="Профиль" aria-label="Профиль" hx-boost="false">
-      <i data-lucide="user" width="24" height="24"></i>
+      {% lucide_icon "user" "h-6 w-6" %}
     </a>
   </div>
 

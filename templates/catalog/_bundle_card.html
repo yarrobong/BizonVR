@@ -8,7 +8,7 @@
           <img src="{{ display_image.url|absolute_uri:request }}" alt="{{ bundle.name|default:'Комплект' }}" class="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300" loading="lazy" decoding="async" {{ display_image|image_dimension_attrs }} />
         {% else %}
           <div class="w-full h-full flex items-center justify-center text-gray-500">
-            <i data-lucide="package" class="w-12 h-12 inline-block"></i>
+            {% lucide_icon "package" "w-12 h-12 inline-block" %}
           </div>
         {% endif %}
       {% endwith %}

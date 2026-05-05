@@ -1,6 +1,5 @@
     let lucideRetryTimer = null;
     let pendingLucideRoot = null;
-    let lucideObserver = null;
     let liveSearchStates = [];
     let liveSearchActiveState = null;
     let liveSearchDocumentListenersBound = false;
@@ -10,6 +9,182 @@
     const LIVE_SEARCH_DEBOUNCE_MS = 180;
     const LIVE_SEARCH_CACHE_LIMIT = 24;
     const LUCIDE_PENDING_ATTR = 'data-lucide-pending';
+    const pageThresholdObservers = new Map();
+
+    function getViewportHeight() {
+      if (typeof window === 'undefined') {
+        return 0;
+      }
+      return window.innerHeight || document.documentElement.clientHeight || 0;
+    }
+
+    function ensurePageThresholdObserver(rawOffset = 0) {
+      const offset = Math.max(0, Number(rawOffset) || 0);
+      const existingObserver = pageThresholdObservers.get(offset);
+      if (existingObserver) {
+        return existingObserver;
+      }
+
+      const sentinel = document.createElement('span');
+      sentinel.setAttribute('aria-hidden', 'true');
+      sentinel.setAttribute('data-page-threshold-sentinel', String(offset));
+      Object.assign(sentinel.style, {
+        position: 'absolute',
+        top: `${offset}px`,
+        left: '0',
+        width: '1px',
+        height: '1px',
+        opacity: '0',
+        pointerEvents: 'none',
+      });
+
+      const controller = {
+        offset,
+        listeners: new Set(),
+        observer: null,
+        fallbackHandler: null,
+        lastState: false,
+        hasEmitted: false,
+        emit(nextState) {
+          if (this.hasEmitted && this.lastState === nextState) {
+            return;
+          }
+          this.lastState = nextState;
+          this.hasEmitted = true;
+          this.listeners.forEach((listener) => listener(nextState));
+        },
+        destroy() {
+          if (this.observer) {
+            this.observer.disconnect();
+          }
+          if (this.fallbackHandler) {
+            window.removeEventListener('scroll', this.fallbackHandler);
+            window.removeEventListener('resize', this.fallbackHandler);
+          }
+          if (sentinel.isConnected) {
+            sentinel.remove();
+          }
+        },
+      };
+
+      if (document.body && !sentinel.isConnected) {
+        document.body.appendChild(sentinel);
+      }
+
+      if (typeof IntersectionObserver === 'function') {
+        controller.observer = new IntersectionObserver((entries) => {
+          const entry = entries[0];
+          controller.emit(!(entry && entry.isIntersecting));
+        }, {
+          threshold: 0,
+        });
+        controller.observer.observe(sentinel);
+      } else {
+        controller.fallbackHandler = () => {
+          controller.emit(window.scrollY > offset);
+        };
+        window.addEventListener('scroll', controller.fallbackHandler, { passive: true });
+        window.addEventListener('resize', controller.fallbackHandler);
+      }
+
+      controller.emit(window.scrollY > offset);
+      pageThresholdObservers.set(offset, controller);
+      return controller;
+    }
+
+    function observePageThreshold(offset, listener) {
+      if (typeof window === 'undefined' || typeof document === 'undefined' || typeof listener !== 'function') {
+        return () => {};
+      }
+
+      const controller = ensurePageThresholdObserver(offset);
+      controller.listeners.add(listener);
+      listener(controller.lastState);
+
+      return () => {
+        controller.listeners.delete(listener);
+        if (controller.listeners.size > 0) {
+          return;
+        }
+        controller.destroy();
+        pageThresholdObservers.delete(controller.offset);
+      };
+    }
+
+    function computeViewportVisibility(element, topOffset = 0, bottomOffset = 0) {
+      if (!(element instanceof Element)) {
+        return false;
+      }
+
+      const rect = element.getBoundingClientRect();
+      const viewportHeight = getViewportHeight();
+      return rect.bottom > topOffset && rect.top < (viewportHeight - bottomOffset);
+    }
+
+    function observeElementViewportState(element, callback, options = {}) {
+      if (!(element instanceof Element) || typeof callback !== 'function') {
+        return () => {};
+      }
+
+      const topOffset = Math.max(0, Number(options.topOffset) || 0);
+      const bottomOffset = Math.max(0, Number(options.bottomOffset) || 0);
+      const threshold = Array.isArray(options.threshold) || typeof options.threshold === 'number'
+        ? options.threshold
+        : 0;
+
+      if (typeof IntersectionObserver === 'function') {
+        const observer = new IntersectionObserver((entries) => {
+          const entry = entries[0] || null;
+          callback(Boolean(entry && entry.isIntersecting), entry);
+        }, {
+          threshold,
+          rootMargin: `${-topOffset}px 0px ${-bottomOffset}px 0px`,
+        });
+        observer.observe(element);
+        callback(computeViewportVisibility(element, topOffset, bottomOffset), null);
+        return () => observer.disconnect();
+      }
+
+      const sync = () => {
+        callback(computeViewportVisibility(element, topOffset, bottomOffset), null);
+      };
+
+      window.addEventListener('scroll', sync, { passive: true });
+      window.addEventListener('resize', sync);
+      sync();
+
+      return () => {
+        window.removeEventListener('scroll', sync);
+        window.removeEventListener('resize', sync);
+      };
+    }
+
+    function observeElementSize(element, callback) {
+      if (!(element instanceof Element) || typeof callback !== 'function') {
+        return () => {};
+      }
+
+      if (typeof ResizeObserver === 'function') {
+        const observer = new ResizeObserver(() => {
+          callback(element);
+        });
+        observer.observe(element);
+        callback(element);
+        return () => observer.disconnect();
+      }
+
+      const sync = () => callback(element);
+      window.addEventListener('resize', sync);
+      sync();
+
+      return () => {
+        window.removeEventListener('resize', sync);
+      };
+    }
+
+    window.observePageThreshold = observePageThreshold;
+    window.observeElementViewportState = observeElementViewportState;
+    window.observeElementSize = observeElementSize;
 
     window.catalogProductList = window.catalogProductList || function catalogProductList() {
       return {
@@ -278,32 +453,6 @@
       return collectPendingLucidePlaceholders(node).length > 0;
     }
 
-    function observeLucidePlaceholders() {
-      if (lucideObserver || typeof MutationObserver === 'undefined' || !document.body) {
-        return;
-      }
-
-      lucideObserver = new MutationObserver((mutations) => {
-        for (const mutation of mutations) {
-          if (mutation.type !== 'childList' || !mutation.addedNodes.length) {
-            continue;
-          }
-
-          for (const node of mutation.addedNodes) {
-            if (hasPendingLucideIcons(node)) {
-              queueLucideInit(node, 0);
-              return;
-            }
-          }
-        }
-      });
-
-      lucideObserver.observe(document.body, {
-        childList: true,
-        subtree: true,
-      });
-    }
-
     // Инициализация Lucide иконок после загрузки HTMX контента
     function initLucide(rootOrRetry = document, fromRetry = false) {
       if (typeof window === 'undefined') {
@@ -334,6 +483,7 @@
       return true;
     }
 
+    window.queueLucideInit = queueLucideInit;
     window.initLucide = initLucide;
     
     function scrollToTop() {
@@ -933,7 +1083,9 @@
         }));
       }
 
-      initLucide(); // иконки в шапке (каталог и др.) сразу при загрузке
+      if (hasPendingLucideIcons(document)) {
+        initLucide(document);
+      }
       initPhoneMasks(document);
       wireLiveSearch(document);
       initCookieConsentBanner();
@@ -943,8 +1095,6 @@
         console.warn('document.body is not available yet');
         return;
       }
-
-      observeLucidePlaceholders();
 
       document.body.addEventListener('htmx:beforeRequest', function(ev) {
         if (ev.detail.target?.id !== 'main-content') return;
@@ -969,7 +1119,8 @@
         if (ev.detail.target.id === 'main-content') {
           const parser = new DOMParser();
           const doc = parser.parseFromString(ev.detail.xhr.responseText, 'text/html');
-          const newActiveSection = doc.body.dataset.activeSection;
+          const activeSectionMarker = doc.querySelector('#htmx-active-section');
+          const newActiveSection = activeSectionMarker?.dataset?.section || doc.body.dataset.activeSection;
           if (newActiveSection) {
             document.body.dataset.activeSection = newActiveSection;
           }
@@ -1005,7 +1156,7 @@
         }
       });
       document.body.addEventListener('htmx:afterSwap', function(ev) {
-        const swapTarget = ev.detail?.target;
+        const swapTarget = ev.detail?.target || document;
 
         if (hasPendingLucideIcons(swapTarget)) {
           queueLucideInit(swapTarget, 0);
@@ -1029,9 +1180,6 @@
     } else {
       initHtmxHandlers();
     }
-    window.addEventListener('load', () => {
-      initLucide();
-    });
 
     // Сохраняем скролл только для сценария:
     // список каталога -> карточка товара -> возврат в тот же список.

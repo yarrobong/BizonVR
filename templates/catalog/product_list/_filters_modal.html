@@ -1,7 +1,7 @@
+{% load catalog_tags %}
 <!-- Модалка «Все фильтры» -->
 <div x-show="filtersModalOpen"
      x-cloak
-     x-effect="filtersModalOpen && typeof lucide !== 'undefined' && lucide.createIcons()"
      x-transition:enter="transition ease-out duration-200"
      x-transition:enter-start="opacity-0"
      x-transition:enter-end="opacity-100"
@@ -28,7 +28,7 @@
                 class="filter-icon-button"
                 @click="filtersModalOpen = false"
                 aria-label="Закрыть">
-          <i data-lucide="x" class="w-5 h-5"></i>
+          {% lucide_icon "x" "w-5 h-5" %}
         </button>
       </div>
       <div class="filters-modal-body filters-modal-body--desktop filters-modal-scroll flex-1 min-h-0"
@@ -81,7 +81,7 @@
               class="filter-icon-button"
               @click="filtersModalOpen = false"
               aria-label="Закрыть">
-        <i data-lucide="x" class="w-5 h-5"></i>
+        {% lucide_icon "x" "w-5 h-5" %}
       </button>
     </div>
     <div class="px-3 pb-3 filters-mobile-scroll">

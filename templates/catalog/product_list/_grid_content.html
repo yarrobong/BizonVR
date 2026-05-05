@@ -57,7 +57,7 @@
     {% endif %}
   {% else %}
     <div class="text-center py-16 text-gray-400">
-      <i data-lucide="package" class="w-16 h-16 mx-auto mb-4 opacity-50"></i>
+      {% lucide_icon "package" "w-16 h-16 mx-auto mb-4 opacity-50" %}
       <p>Наборов пока нет.</p>
     </div>
   {% endif %}
@@ -89,7 +89,7 @@
   {% endif %}
 {% else %}
   <div class="text-center py-16 text-gray-400">
-    <i data-lucide="package-x" class="w-16 h-16 mx-auto mb-4 opacity-50"></i>
+    {% lucide_icon "package-x" "w-16 h-16 mx-auto mb-4 opacity-50" %}
     <p>Товаров пока нет.</p>
   </div>
 {% endif %}

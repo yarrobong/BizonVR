@@ -7,17 +7,21 @@
 <!-- Мобильная шапка: только на мобильных; на десктопе скрыта -->
 <div class="mobile-header md:hidden" x-data="{ showFixedSearch: false }"
      x-init="
-       const check = () => { showFixedSearch = window.scrollY > 100 };
-       let raf = null;
-       const throttled = () => { if (!raf) raf = requestAnimationFrame(() => { check(); raf = null; }); };
-       window.addEventListener('scroll', throttled, { passive: true });
-       check();
-       return () => window.removeEventListener('scroll', throttled);
+       const syncFixedSearch = (isPastThreshold) => { showFixedSearch = isPastThreshold; };
+       const stopFixedSearchObserver = typeof observePageThreshold === 'function'
+         ? observePageThreshold(100, syncFixedSearch)
+         : null;
+       syncFixedSearch(window.scrollY > 100);
+       return () => {
+         if (typeof stopFixedSearchObserver === 'function') {
+           stopFixedSearchObserver();
+         }
+       };
      ">
   <div class="mobile-header-wrapper">
     <form action="{% url 'catalog:product_list' %}" method="get" class="mobile-header-search-form" data-live-search-form data-live-search-url="{% url 'catalog:search_suggest' %}">
       <button type="submit" class="mobile-header-search-btn" aria-label="Поиск">
-        <i data-lucide="search"></i>
+        {% lucide_icon "search" "w-5 h-5" %}
       </button>
       <input type="search" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Искать на BizonVR" class="mobile-header-search-input" autocomplete="off" data-live-search-input />
     </form>
@@ -26,7 +30,7 @@
   <div class="mobile-header-fixed-search" :class="{ 'visible': showFixedSearch }">
     <form action="{% url 'catalog:product_list' %}" method="get" class="mobile-header-search-form" data-live-search-form data-live-search-url="{% url 'catalog:search_suggest' %}">
       <button type="submit" class="mobile-header-search-btn" aria-label="Поиск">
-        <i data-lucide="search"></i>
+        {% lucide_icon "search" "w-5 h-5" %}
       </button>
       <input type="search" name="q" value="{{ request.GET.q|default:'' }}" placeholder="Искать на BizonVR" class="mobile-header-search-input" autocomplete="off" data-live-search-input />
     </form>
@@ -304,13 +308,13 @@
                 @click="current = current === 0 ? total - 1 : current - 1"
                 class="hero-nav-btn hero-nav-btn--left pointer-events-auto absolute top-1/2 -translate-y-1/2 flex items-center justify-center flex-shrink-0"
                 aria-label="Предыдущий слайд">
-          <i data-lucide="chevron-left" class="w-6 h-6 inline-block"></i>
+          {% lucide_icon "chevron-left" "w-6 h-6 inline-block" %}
         </button>
         <button type="button"
                 @click="current = (current + 1) % total"
                 class="hero-nav-btn hero-nav-btn--right pointer-events-auto absolute top-1/2 -translate-y-1/2 flex items-center justify-center flex-shrink-0"
                 aria-label="Следующий слайд">
-          <i data-lucide="chevron-right" class="w-6 h-6 inline-block"></i>
+          {% lucide_icon "chevron-right" "w-6 h-6 inline-block" %}
         </button>
       </div>
     </div>
@@ -334,49 +338,49 @@
     <div class="quicklinks-row flex gap-2 overflow-x-auto scrollbar-hide pb-1 -mx-4 px-4">
       <a href="{% url 'catalog:product_list' %}" class="brick flex-shrink-0 w-[72px] flex flex-col items-center gap-2">
         <span class="w-[54px] h-[54px] rounded-2xl bg-dark-800 border border-dark-600/50 shadow-lg shadow-black/20 flex items-center justify-center">
-          <i data-lucide="layout-grid" class="w-6 h-6 text-accent inline-block"></i>
+          {% lucide_icon "layout-grid" "w-6 h-6 text-accent inline-block" %}
         </span>
         <span class="text-[11px] font-medium text-white text-center leading-tight">Категории</span>
       </a>
 
       <a href="{% url 'arenda' %}" class="brick flex-shrink-0 w-[72px] flex flex-col items-center gap-2">
         <span class="w-[54px] h-[54px] rounded-2xl bg-dark-800 border border-dark-600/50 shadow-lg shadow-black/20 flex items-center justify-center">
-          <i data-lucide="glasses" class="w-6 h-6 text-accent inline-block"></i>
+          {% lucide_icon "glasses" "w-6 h-6 text-accent inline-block" %}
         </span>
         <span class="text-[11px] font-medium text-white text-center leading-tight">Аренда</span>
       </a>
 
       <a href="{% url 'uslugi' %}" class="brick flex-shrink-0 w-[72px] flex flex-col items-center gap-2">
         <span class="w-[54px] h-[54px] rounded-2xl bg-dark-800 border border-dark-600/50 shadow-lg shadow-black/20 flex items-center justify-center">
-          <i data-lucide="briefcase" class="w-6 h-6 text-accent inline-block"></i>
+          {% lucide_icon "briefcase" "w-6 h-6 text-accent inline-block" %}
         </span>
         <span class="text-[11px] font-medium text-white text-center leading-tight">Услуги</span>
       </a>
 
       <a href="{% url 'catalog:favorites' %}" class="brick flex-shrink-0 w-[72px] flex flex-col items-center gap-2">
         <span class="w-[54px] h-[54px] rounded-2xl bg-dark-800 border border-dark-600/50 shadow-lg shadow-black/20 flex items-center justify-center">
-          <i data-lucide="heart" class="w-6 h-6 text-accent inline-block"></i>
+          {% lucide_icon "heart" "w-6 h-6 text-accent inline-block" %}
         </span>
         <span class="text-[11px] font-medium text-white text-center leading-tight">Избранное</span>
       </a>
 
       <a href="{% url 'catalog:cart' %}" class="brick flex-shrink-0 w-[72px] flex flex-col items-center gap-2">
         <span class="w-[54px] h-[54px] rounded-2xl bg-dark-800 border border-dark-600/50 shadow-lg shadow-black/20 flex items-center justify-center">
-          <i data-lucide="shopping-cart" class="w-6 h-6 text-accent inline-block"></i>
+          {% lucide_icon "shopping-cart" "w-6 h-6 text-accent inline-block" %}
         </span>
         <span class="text-[11px] font-medium text-white text-center leading-tight" x-text="`Корзина ${cartCount}`">Корзина {{ cart_count|default:0 }}</span>
       </a>
 
       <a href="{% if user.is_authenticated %}{% url 'accounts:profile' %}{% else %}{% url 'accounts:login' %}{% endif %}" class="brick flex-shrink-0 w-[72px] flex flex-col items-center gap-2" hx-boost="false">
         <span class="w-[54px] h-[54px] rounded-2xl bg-dark-800 border border-dark-600/50 shadow-lg shadow-black/20 flex items-center justify-center">
-          <i data-lucide="user" class="w-6 h-6 text-accent inline-block"></i>
+          {% lucide_icon "user" "w-6 h-6 text-accent inline-block" %}
         </span>
         <span class="text-[11px] font-medium text-white text-center leading-tight">{% if user.is_authenticated %}Профиль{% else %}Войти{% endif %}</span>
       </a>
 
       <a href="{% url 'contacts' %}" class="brick flex-shrink-0 w-[72px] flex flex-col items-center gap-2">
         <span class="w-[54px] h-[54px] rounded-2xl bg-dark-800 border border-dark-600/50 shadow-lg shadow-black/20 flex items-center justify-center">
-          <i data-lucide="phone" class="w-6 h-6 text-accent inline-block"></i>
+          {% lucide_icon "phone" "w-6 h-6 text-accent inline-block" %}
         </span>
         <span class="text-[11px] font-medium text-white text-center leading-tight">Контакты</span>
       </a>
@@ -444,7 +448,7 @@
                 
                 <!-- Стрелка -->
                 <div class="mt-2 opacity-0 group-hover:opacity-100 transform translate-x-0 group-hover:translate-x-1 transition-all duration-300">
-                  <i data-lucide="arrow-right" class="w-4 h-4 md:w-5 md:h-5 text-accent inline-block"></i>
+                  {% lucide_icon "arrow-right" "w-4 h-4 md:w-5 md:h-5 text-accent inline-block" %}
                 </div>
               </div>
               
@@ -498,21 +502,21 @@
         <div class="absolute -top-8 -right-8 w-24 h-24 rounded-full bg-cyan-300/30 blur-2xl group-hover:scale-125 transition-transform duration-500"></div>
         <div class="relative">
           <div class="w-11 h-11 rounded-xl bg-cyan-300/20 border border-cyan-200/30 flex items-center justify-center mb-4">
-            <i data-lucide="send" class="w-5 h-5 text-cyan-200"></i>
+            {% lucide_icon "send" "w-5 h-5 text-cyan-200" %}
           </div>
           <div class="text-xs uppercase tracking-[0.2em] text-cyan-200/80 mb-2">Telegram</div>
           <h3 class="text-xl font-bold text-white mb-2">Канал BizonVR</h3>
           <p class="text-sm text-gray-200/90 leading-relaxed mb-5">Новости, обновления ассортимента, анонсы и быстрые ответы по VR-оборудованию.</p>
           <div class="inline-flex items-center gap-2 text-sm font-semibold text-white">
             <span class="px-3 py-1.5 rounded-full bg-white/10 border border-white/10 group-hover:bg-white/15 transition-colors">Перейти в канал</span>
-            <i data-lucide="arrow-up-right" class="w-4 h-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform"></i>
+            {% lucide_icon "arrow-up-right" "w-4 h-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" %}
           </div>
         </div>
       </a>
       {% else %}
       <div class="relative overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-5 md:p-6 opacity-70">
         <div class="w-11 h-11 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center mb-4">
-          <i data-lucide="send" class="w-5 h-5 text-white"></i>
+          {% lucide_icon "send" "w-5 h-5 text-white" %}
         </div>
         <div class="text-xs uppercase tracking-[0.2em] text-gray-400 mb-2">Telegram</div>
         <h3 class="text-xl font-bold text-white mb-2">Канал BizonVR</h3>
@@ -525,21 +529,21 @@
         <div class="absolute -top-8 -right-8 w-24 h-24 rounded-full bg-red-300/30 blur-2xl group-hover:scale-125 transition-transform duration-500"></div>
         <div class="relative">
           <div class="w-11 h-11 rounded-xl bg-red-300/20 border border-red-200/30 flex items-center justify-center mb-4">
-            <i data-lucide="youtube" class="w-5 h-5 text-red-100"></i>
+            {% lucide_icon "youtube" "w-5 h-5 text-red-100" %}
           </div>
           <div class="text-xs uppercase tracking-[0.2em] text-red-200/80 mb-2">YouTube</div>
           <h3 class="text-xl font-bold text-white mb-2">Видеообзоры и гайды</h3>
           <p class="text-sm text-gray-200/90 leading-relaxed mb-5">Подробные обзоры шлемов, инструкции по настройке и разборы VR-сценариев.</p>
           <div class="inline-flex items-center gap-2 text-sm font-semibold text-white">
             <span class="px-3 py-1.5 rounded-full bg-white/10 border border-white/10 group-hover:bg-white/15 transition-colors">Смотреть канал</span>
-            <i data-lucide="arrow-up-right" class="w-4 h-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform"></i>
+            {% lucide_icon "arrow-up-right" "w-4 h-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" %}
           </div>
         </div>
       </a>
       {% else %}
       <div class="relative overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-5 md:p-6 opacity-70">
         <div class="w-11 h-11 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center mb-4">
-          <i data-lucide="youtube" class="w-5 h-5 text-white"></i>
+          {% lucide_icon "youtube" "w-5 h-5 text-white" %}
         </div>
         <div class="text-xs uppercase tracking-[0.2em] text-gray-400 mb-2">YouTube</div>
         <h3 class="text-xl font-bold text-white mb-2">Видеообзоры и гайды</h3>
@@ -552,21 +556,21 @@
         <div class="absolute -top-8 -right-8 w-24 h-24 rounded-full bg-pink-300/30 blur-2xl group-hover:scale-125 transition-transform duration-500"></div>
         <div class="relative">
           <div class="w-11 h-11 rounded-xl bg-pink-300/20 border border-pink-200/30 flex items-center justify-center mb-4">
-            <i data-lucide="music" class="w-5 h-5 text-pink-100"></i>
+            {% lucide_icon "music" "w-5 h-5 text-pink-100" %}
           </div>
           <div class="text-xs uppercase tracking-[0.2em] text-pink-200/80 mb-2">TikTok</div>
           <h3 class="text-xl font-bold text-white mb-2">Короткие видео</h3>
           <p class="text-sm text-gray-200/90 leading-relaxed mb-5">Быстрые обзоры, распаковки, лайфхаки и актуальные новости мира VR/AR/MR.</p>
           <div class="inline-flex items-center gap-2 text-sm font-semibold text-white">
             <span class="px-3 py-1.5 rounded-full bg-white/10 border border-white/10 group-hover:bg-white/15 transition-colors">Открыть TikTok</span>
-            <i data-lucide="arrow-up-right" class="w-4 h-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform"></i>
+            {% lucide_icon "arrow-up-right" "w-4 h-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" %}
           </div>
         </div>
       </a>
       {% else %}
       <div class="relative overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-5 md:p-6 opacity-70">
         <div class="w-11 h-11 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center mb-4">
-          <i data-lucide="music" class="w-5 h-5 text-white"></i>
+          {% lucide_icon "music" "w-5 h-5 text-white" %}
         </div>
         <div class="text-xs uppercase tracking-[0.2em] text-gray-400 mb-2">TikTok</div>
         <h3 class="text-xl font-bold text-white mb-2">Короткие видео</h3>
@@ -579,21 +583,21 @@
         <div class="absolute -top-8 -right-8 w-24 h-24 rounded-full bg-amber-300/30 blur-2xl group-hover:scale-125 transition-transform duration-500"></div>
         <div class="relative">
           <div class="w-11 h-11 rounded-xl bg-amber-300/20 border border-amber-200/30 flex items-center justify-center mb-4">
-            <i data-lucide="store" class="w-5 h-5 text-amber-100"></i>
+            {% lucide_icon "store" "w-5 h-5 text-amber-100" %}
           </div>
           <div class="text-xs uppercase tracking-[0.2em] text-amber-200/80 mb-2">Avito</div>
           <h3 class="text-xl font-bold text-white mb-2">Профиль BizonVR</h3>
           <p class="text-sm text-gray-200/90 leading-relaxed mb-5">Актуальные объявления, быстрый переход к предложениям и дополнительный канал связи.</p>
           <div class="inline-flex items-center gap-2 text-sm font-semibold text-white">
             <span class="px-3 py-1.5 rounded-full bg-white/10 border border-white/10 group-hover:bg-white/15 transition-colors">Открыть Avito</span>
-            <i data-lucide="arrow-up-right" class="w-4 h-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform"></i>
+            {% lucide_icon "arrow-up-right" "w-4 h-4 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" %}
           </div>
         </div>
       </a>
       {% else %}
       <div class="relative overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-5 md:p-6 opacity-70">
         <div class="w-11 h-11 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center mb-4">
-          <i data-lucide="store" class="w-5 h-5 text-white"></i>
+          {% lucide_icon "store" "w-5 h-5 text-white" %}
         </div>
         <div class="text-xs uppercase tracking-[0.2em] text-gray-400 mb-2">Avito</div>
         <h3 class="text-xl font-bold text-white mb-2">Профиль BizonVR</h3>

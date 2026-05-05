@@ -1,4 +1,5 @@
 {% load static catalog_tags %}
+{% if not render_htmx_partial %}
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -39,7 +40,7 @@
         cartOpen: false, 
         showStickyHeader: false, 
         stickyHeaderEnabled: true,
-        scrolled: false,
+        scrollThresholdPassed: false,
         ready: false, 
         cartCount: {{ cart_count|default:0 }}, 
         favoritesCount: {{ favorites_count|default:0 }}, 
@@ -50,14 +51,19 @@
         catalogDefaultSection: {% if catalog_sections %}{{ catalog_sections.0.pk }}{% else %}null{% endif %},
         catalogHoverSection: {% if catalog_sections %}{{ catalog_sections.0.pk }}{% else %}null{% endif %}, 
         catalogHoverTimeout: null,
-        stickyHeaderJustShownAt: 0,
-        lastScrollAt: 0,
         catalogOpenedAt: 0,
         headerChangedAt: 0,
-        catalogTopPx: '5.5rem'
+        catalogTopPx: '5.5rem',
+        applyStickyHeaderState() {
+          const nextValue = Boolean(this.ready && this.stickyHeaderEnabled && this.scrollThresholdPassed);
+          if (this.showStickyHeader === nextValue) {
+            return;
+          }
+          this.showStickyHeader = nextValue;
+          this.headerChangedAt = Date.now();
+        }
       }"
-      @scroll.window.passive="lastScrollAt = Date.now(); scrolled = window.scrollY > 180"
-      @open-search.window="searchOpen = true; $nextTick(() => setTimeout(() => typeof initLucide === 'function' && initLucide(), 80))"
+      @open-search.window="searchOpen = true"
      @open-cart.window="cartOpen = true"
      @cart-updated.window="cartCount = $event.detail.count; if ($event.detail.added_item) { miniCartData = $event.detail; miniCartOpen = true; cartOpen = false; setTimeout(() => miniCartOpen = false, 6000) }"
      @favorites-updated.window="favoritesCount = $event.detail.count"
@@ -66,39 +72,30 @@
       if (!stickyHeaderEnabled) {
         showStickyHeader = false;
         headerChangedAt = Date.now();
+      } else {
+        applyStickyHeaderState();
       }
      "
-    @scroll.window.passive.throttle.50ms="
-      if (!ready) return;
-      const y = window.scrollY;
-      const threshold = 180;
-      const isAboveThreshold = y > threshold;
-      if (!stickyHeaderEnabled) {
-        showStickyHeader = false;
-        scrolled = isAboveThreshold;
-        lastScrollAt = Date.now();
-        return;
-      }
-      if (isAboveThreshold && !showStickyHeader) {
-        showStickyHeader = true;
-        stickyHeaderJustShownAt = Date.now();
-        headerChangedAt = Date.now();
-      } else if (!isAboveThreshold && showStickyHeader) {
-        showStickyHeader = false;
-        headerChangedAt = Date.now();
-      }
-      scrolled = isAboveThreshold;
-      lastScrollAt = Date.now();
-    "
-     @header-expand.window="showStickyHeader = false; headerChangedAt = Date.now()"
+     @header-expand.window="showStickyHeader = false; headerChangedAt = Date.now(); $nextTick(() => applyStickyHeaderState())"
      @keydown.escape.window="catalogOverlayOpen = false"
      x-init="
        // НЕ скроллим вверх при инициализации - позицию восстановит скрипт
        showStickyHeader = false;
-       scrolled = false;
-       setTimeout(() => { ready = true; document.body.classList.remove('preload'); }, 150);
-       $watch('searchOpen', v => { if (v) $nextTick(() => setTimeout(() => typeof initLucide === 'function' && initLucide(), 80)) });
-       $watch('miniCartOpen', v => { if (v) $nextTick(() => setTimeout(() => typeof initLucide === 'function' && initLucide(), 80)) });
+       const syncLayoutScrollThreshold = (isAboveThreshold) => {
+         scrollThresholdPassed = isAboveThreshold;
+         applyStickyHeaderState();
+         window.dispatchEvent(new CustomEvent('layout-scroll-threshold', {
+           detail: {
+             offset: 180,
+             pastThreshold: isAboveThreshold
+           }
+         }));
+       };
+       const stopLayoutThresholdObserver = typeof observePageThreshold === 'function'
+         ? observePageThreshold(180, syncLayoutScrollThreshold)
+         : null;
+       syncLayoutScrollThreshold(window.scrollY > 180);
+       setTimeout(() => { ready = true; applyStickyHeaderState(); document.body.classList.remove('preload'); }, 150);
        $watch('catalogOverlayOpen', v => {
          document.body.style.overflow = v ? 'hidden' : '';
          document.documentElement.style.overflow = v ? 'hidden' : '';
@@ -110,9 +107,13 @@
              const el = document.getElementById('header-main-row');
              catalogTopPx = el ? (el.getBoundingClientRect().bottom + 'px') : '5.5rem';
            });
-           $nextTick(() => setTimeout(() => typeof initLucide === 'function' && initLucide(), 80));
          }
        });
+       return () => {
+         if (typeof stopLayoutThresholdObserver === 'function') {
+           stopLayoutThresholdObserver();
+         }
+       };
      ">
   {% include "layout/_yandex_metrika.html" %}
   <!-- Начальный скролл вверх НЕ используем, чтобы не конфликтовать с восстановлением позиции -->
@@ -124,24 +125,34 @@
   {% include "layout/_calltouch_requests.html" %}
 
   {% include "layout/_catalog_overlay.html" %}
+{% endif %}
 
-  <div id="mobile-header-slot" hx-swap-oob="outerHTML">
-    {% block mobile_header %}
-    {% include "layout/_header_mobile.html" %}
-    {% endblock %}
-  </div>
+{% if render_htmx_partial and htmx_page_title %}
+<title>{{ htmx_page_title }}</title>
+{% endif %}
 
+<div id="htmx-active-section" data-section="{{ active_section }}" hidden></div>
+
+<div id="mobile-header-slot" hx-swap-oob="outerHTML">
+  {% block mobile_header %}
+  {% include "layout/_header_mobile.html" %}
+  {% endblock %}
+</div>
+
+{% if not render_htmx_partial %}
   {% include "layout/_header_desktop.html" %}
-  
-  <main id="main-content" class="fade-in">
-    {% block content %}
-    {% endblock %}
-  </main>
+{% endif %}
 
+<main id="main-content" class="fade-in">
+  {% block content %}
+  {% endblock %}
+</main>
 
+{% if not render_htmx_partial %}
   {% block footer %}
   {% include "layout/_footer.html" %}
   {% endblock %}
 
 </body>
 </html>
+{% endif %}

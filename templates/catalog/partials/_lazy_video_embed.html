@@ -1,0 +1,30 @@
+<div class="content-block__video-shell" x-data="{ videoLoaded: false }">
+  <button
+    type="button"
+    class="content-block__video-poster"
+    x-show="!videoLoaded"
+    @click="videoLoaded = true"
+    aria-label="Воспроизвести видео{% if title %}: {{ title }}{% endif %}">
+    {% if poster_url %}
+      <img
+        src="{{ poster_url }}"
+        alt="{{ title|default:product.name }}"
+        class="content-block__video-poster-image"
+        loading="lazy"
+        decoding="async" />
+    {% else %}
+      <span class="content-block__video-poster-fallback">{{ title|default:"Смотреть видео" }}</span>
+    {% endif %}
+    <span class="content-block__video-play" aria-hidden="true"></span>
+  </button>
+  <iframe
+    x-show="videoLoaded"
+    x-bind:src="videoLoaded ? '{{ embed_url|escapejs }}' : ''"
+    title="{{ title|default:product.name }}"
+    class="content-block__video"
+    frameborder="0"
+    allow="clipboard-write; autoplay; encrypted-media; picture-in-picture; web-share"
+    loading="lazy"
+    allowfullscreen
+    x-cloak></iframe>
+</div>

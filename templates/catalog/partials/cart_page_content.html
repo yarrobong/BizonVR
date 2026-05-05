@@ -832,7 +832,7 @@
               {% csrf_token %}
               <input type="hidden" name="selected_item_keys" value="" data-share-keys-input />
               <button type="submit" class="cart-toolbar-btn" data-share-btn aria-label="Поделиться корзиной">
-                <i data-lucide="share-2" class="w-4 h-4"></i>
+                {% lucide_icon "share-2" "w-4 h-4" %}
               </button>
             </form>
 
@@ -844,7 +844,7 @@
               {% csrf_token %}
               <input type="hidden" name="next" value="{% url 'catalog:cart' %}" />
               <button type="submit" class="cart-toolbar-btn" aria-label="Очистить корзину">
-                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                {% lucide_icon "trash-2" "w-4 h-4" %}
               </button>
             </form>
           </div>
@@ -867,7 +867,7 @@
                     <img src="{{ item.image_url|absolute_uri:request }}" alt="{{ item.name }}" loading="lazy" decoding="async" width="96" height="120" />
                   {% else %}
                     <div class="cart-thumb-placeholder">
-                      <i data-lucide="package" class="w-7 h-7"></i>
+                      {% lucide_icon "package" "w-7 h-7" %}
                     </div>
                   {% endif %}
                 </div>
@@ -928,7 +928,7 @@
                   {% csrf_token %}
                   <input type="hidden" name="next" value="{% url 'catalog:cart' %}" />
                   <button type="submit" class="cart-icon-btn" aria-label="В избранное">
-                    <i data-lucide="heart" class="w-4 h-4"></i>
+                    {% lucide_icon "heart" "w-4 h-4" %}
                   </button>
                 </form>
 
@@ -944,7 +944,7 @@
                   <input type="hidden" name="quantity" value="0" />
                   <input type="hidden" name="next" value="{% url 'catalog:cart' %}" />
                   <button type="submit" class="cart-icon-btn" aria-label="Удалить товар">
-                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                    {% lucide_icon "trash-2" "w-4 h-4" %}
                   </button>
                 </form>
 
@@ -961,7 +961,7 @@
                     <input type="hidden" name="quantity" value="{% if item.quantity > 1 %}{{ item.quantity|add:'-1' }}{% else %}1{% endif %}" />
                     <input type="hidden" name="next" value="{% url 'catalog:cart' %}" />
                     <button type="submit" class="cart-qty-btn" aria-label="Уменьшить">
-                      <i data-lucide="minus" class="w-4 h-4"></i>
+                      {% lucide_icon "minus" "w-4 h-4" %}
                     </button>
                   </form>
 
@@ -979,7 +979,7 @@
                     <input type="hidden" name="quantity" value="{% if item.quantity < 99 %}{{ item.quantity|add:'1' }}{% else %}99{% endif %}" />
                     <input type="hidden" name="next" value="{% url 'catalog:cart' %}" />
                     <button type="submit" class="cart-qty-btn" aria-label="Увеличить">
-                      <i data-lucide="plus" class="w-4 h-4"></i>
+                      {% lucide_icon "plus" "w-4 h-4" %}
                     </button>
                   </form>
                 </div>
@@ -1040,7 +1040,7 @@
       <p>Добавьте товары из каталога, чтобы оформить заказ.</p>
       <a href="{% url 'catalog:product_list' %}" class="cart-empty-link">
         Перейти в каталог
-        <i data-lucide="arrow-right" class="w-4 h-4"></i>
+        {% lucide_icon "arrow-right" "w-4 h-4" %}
       </a>
     </div>
   {% endif %}
@@ -1202,8 +1202,8 @@
         return;
       }
       setScrollLock(true);
-      if (typeof lucide !== 'undefined') {
-        lucide.createIcons();
+      if (typeof initLucide === 'function') {
+        initLucide(activeModal);
       }
     };
 

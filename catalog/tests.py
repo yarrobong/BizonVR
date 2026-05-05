@@ -1,4 +1,5 @@
 """Базовые тесты каталога: поиск, избранное (Фаза 6)."""
+import html as html_lib
 import json
 import os
 import re
@@ -6,6 +7,7 @@ import shutil
 import time
 import tempfile
 import zipfile
+from pathlib import Path
 from urllib.parse import urlencode
 from xml.etree import ElementTree as ET
 from datetime import timedelta
@@ -30,6 +32,7 @@ from django.test import Client, TestCase, override_settings
 from django.test.client import RequestFactory
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
+from PIL import Image as PilImage
 
 from accounts.models import Profile
 from config.forms import CallbackForm, ContactForm
@@ -53,6 +56,7 @@ from .filter_presets import get_typed_value_sort_key
 from .filter_setup_wizard import CatalogFilterSetupWizard
 from .import_workflow import CatalogImportWorkflowService, make_direct_target_reference
 from .importers import CatalogDataImporter
+from .image_utils import build_responsive_image_data
 from .product_descriptions import build_admin_constructor_state, migrate_legacy_blocks
 from .pricing import resolve_in_stock_price
 from .models import (
@@ -96,6 +100,17 @@ from .admin.products import ProductAdmin, ProductAdminForm, ProductContentBlockA
 User = get_user_model()
 
 
+def _build_test_uploaded_image(name='test.jpg', *, size=(1600, 1200), image_format='JPEG', color='#22c55e'):
+    image_bytes = BytesIO()
+    image = PilImage.new('RGB', size, color=color)
+    image.save(image_bytes, format=image_format)
+    return SimpleUploadedFile(
+        name,
+        image_bytes.getvalue(),
+        content_type=f'image/{image_format.lower()}',
+    )
+
+
 class CatalogSearchTest(TestCase):
     """Поиск по товарам (параметр q=)."""
 
@@ -136,6 +151,34 @@ class CatalogSearchTest(TestCase):
         resp = self.client.get(reverse('catalog:product_list'), {'q': ''})
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(len(resp.context['products']), 2)
+
+    def test_product_list_uses_shared_catalog_runtime_without_extra_page_script(self):
+        resp = self.client.get(reverse('catalog:product_list'))
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'x-data="catalogProductList()"', html=False)
+        self.assertNotContains(resp, "js/catalog/product_list.js", html=False)
+
+    def test_product_list_htmx_response_omits_global_layout_shell(self):
+        resp = self.client.get(
+            reverse('catalog:product_list'),
+            HTTP_HX_REQUEST='true',
+            HTTP_HX_BOOSTED='true',
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, '<title>Каталог — BizonVR</title>', html=False)
+        self.assertContains(resp, 'id="htmx-active-section"', html=False)
+        self.assertContains(resp, 'id="mobile-header-slot"', html=False)
+        self.assertContains(resp, 'id="main-content"', html=False)
+        self.assertNotContains(resp, '<html', html=False)
+        self.assertNotContains(resp, 'id="main-body"', html=False)
+        self.assertNotContains(resp, 'id="sticky-header"', html=False)
+        self.assertNotContains(resp, 'id="catalog-overlay"', html=False)
+        self.assertNotContains(resp, 'class="vr-footer"', html=False)
+        self.assertNotContains(resp, 'id="cookie-consent-banner"', html=False)
+        self.assertNotContains(resp, 'class="mobile-dock"', html=False)
+        self.assertNotContains(resp, 'id="footer-products-feed"', html=False)
 
 
 class CatalogSearchSuggestTest(TestCase):
@@ -468,12 +511,12 @@ class VariantGalleryAndCatalogCardsTest(TestCase):
     def _extract_product_detail_data(self, response):
         html = response.content.decode()
         match = re.search(
-            r'<script id="product-detail-data" type="application/json">(.*?)</script>',
+            r'<div id="product-detail-data" data-product-detail="([^"]+)" hidden></div>',
             html,
             re.S,
         )
         self.assertIsNotNone(match)
-        return json.loads(match.group(1))
+        return json.loads(html_lib.unescape(match.group(1)))
 
     def _mock_http_response(self, *, json_data=None, text='', status_code=200):
         response = Mock()
@@ -524,6 +567,54 @@ class VariantGalleryAndCatalogCardsTest(TestCase):
         )
         self.assertIn('x-bind:src="effectiveImage ||', html)
 
+    def test_responsive_image_builder_generates_cached_candidates(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with override_settings(MEDIA_ROOT=temp_dir):
+                self.product.image = _build_test_uploaded_image('responsive-source.jpg')
+                self.product.save(update_fields=['image'])
+
+                data = build_responsive_image_data(
+                    self.product.image,
+                    widths=(320, 640, 1600),
+                    default_width=640,
+                )
+
+                self.assertIn('/media/cache/responsive/', data['src'])
+                self.assertIn('320w', data['srcset'])
+                self.assertIn('640w', data['srcset'])
+                self.assertIn('1600w', data['srcset'])
+                self.assertTrue((Path(temp_dir) / 'cache' / 'responsive').exists())
+
+    def test_product_detail_serializes_responsive_media_and_srcset(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with override_settings(MEDIA_ROOT=temp_dir):
+                self.product.image = _build_test_uploaded_image('detail-responsive.jpg')
+                self.product.save(update_fields=['image'])
+                self.variant_one.image = _build_test_uploaded_image(
+                    'variant-responsive.jpg',
+                    size=(1200, 1200),
+                )
+                self.variant_one.save(update_fields=['image'])
+
+                resp = self.client.get(
+                    reverse('catalog:product_detail', kwargs={'slug': self.product.slug}),
+                    {'variant': self.variant_one.pk},
+                )
+
+                self.assertEqual(resp.status_code, 200)
+                data = self._extract_product_detail_data(resp)
+                html = resp.content.decode()
+                first_media = data['productMedia'][0]
+                variant_payload = next(item for item in data['variants'] if item['id'] == self.variant_one.pk)
+
+                self.assertIn('imageSrcset', first_media)
+                self.assertIn('/media/cache/responsive/', first_media['imageSrcset'])
+                self.assertIn('thumbnailSrcset', first_media)
+                self.assertIn('imageSrcset', variant_payload)
+                self.assertIn('thumbnailSrcset', variant_payload)
+                self.assertIn('srcset="', html)
+                self.assertIn(':srcset="media.thumbnailSrcset || null"', html)
+
     def test_product_detail_renders_mobile_back_header_in_mobile_slot(self):
         resp = self.client.get(reverse('catalog:product_detail', kwargs={'slug': self.product.slug}))
         self.assertEqual(resp.status_code, 200)
@@ -537,6 +628,31 @@ class VariantGalleryAndCatalogCardsTest(TestCase):
         self.assertIn('aria-label="Назад"', html)
         self.assertNotIn('pd-mobile-back-btn__label', html)
 
+    def test_product_detail_htmx_response_keeps_selected_content_only(self):
+        resp = self.client.get(
+            reverse('catalog:product_detail', kwargs={'slug': self.product.slug}),
+            HTTP_HX_REQUEST='true',
+            HTTP_HX_BOOSTED='true',
+        )
+        self.assertEqual(resp.status_code, 200)
+        html = resp.content.decode()
+
+        self.assertIn(f'<title>{self.product.name} — BizonVR</title>', html)
+        self.assertIn('id="mobile-header-slot"', html)
+        self.assertIn('class="pd-mobile-header md:hidden"', html)
+        self.assertIn('id="main-content"', html)
+        self.assertIn('id="product-detail-data"', html)
+        self.assertIn('id="htmx-active-section"', html)
+        self.assertNotIn('<html', html)
+        self.assertNotIn('id="main-body"', html)
+        self.assertNotIn('id="sticky-header"', html)
+        self.assertNotIn('id="catalog-overlay"', html)
+        self.assertNotIn('class="vr-footer"', html)
+        self.assertNotIn('id="cookie-consent-banner"', html)
+        self.assertNotIn('class="mobile-dock"', html)
+        self.assertNotIn('id="footer-products-feed"', html)
+        self.assertNotIn('<script', html)
+
     def test_product_detail_mobile_search_uses_full_navigation_and_visible_qty_has_id(self):
         resp = self.client.get(reverse('catalog:product_detail', kwargs={'slug': self.product.slug}))
         self.assertEqual(resp.status_code, 200)
@@ -545,6 +661,9 @@ class VariantGalleryAndCatalogCardsTest(TestCase):
         self.assertIn('method="get" hx-boost="false" class="pd-mobile-search-form"', html)
         self.assertIn('id="mobile-qty-visible"', html)
         self.assertIn('@pageshow.window="mobileSearchOpen = false; $nextTick(() => updateHeaderFilled())"', html)
+        self.assertIn('observeElementViewportState', html)
+        self.assertNotIn('@scroll.window.passive="updateHeaderFilled()"', html)
+        self.assertNotIn('@resize.window="updateHeaderFilled()"', html)
 
     def test_product_detail_renders_unified_mobile_hero_layout(self):
         resp = self.client.get(reverse('catalog:product_detail', kwargs={'slug': self.product.slug}))
@@ -556,6 +675,50 @@ class VariantGalleryAndCatalogCardsTest(TestCase):
         self.assertNotIn('class="mobile-card mobile-only"', html)
         self.assertNotIn('class="mobile-hero-about"', html)
         self.assertNotIn('class="mobile-hero-subtitle"', html)
+
+    def test_lucide_icon_template_tag_renders_inline_svg_with_alpine_attrs(self):
+        html = Template(
+            '{% load catalog_tags %}'
+            '{% lucide_icon "x" "w-4 h-4" x_show="catalogOverlayOpen" x_cloak=1 aria_hidden="false" %}'
+        ).render(Context())
+
+        self.assertIn('<svg', html)
+        self.assertIn('class="lucide-icon lucide-icon--x w-4 h-4"', html)
+        self.assertIn('x-show="catalogOverlayOpen"', html)
+        self.assertIn('x-cloak', html)
+        self.assertIn('aria-hidden="false"', html)
+        self.assertNotIn('data-lucide=', html)
+
+    def test_catalog_product_card_placeholder_uses_inline_svg(self):
+        request = RequestFactory().get(reverse('catalog:product_list'))
+        html = Template('{% include "catalog/_product_card.html" %}').render(
+            Context(
+                {
+                    'request': request,
+                    'product': self.product,
+                    'show_favorite': False,
+                    'show_add_button': False,
+                    'favorite_product_ids': None,
+                    'product_stock_total': {},
+                    'variant_stock_total': {},
+                    'recommended_variant_ids': {},
+                    'from_favorites_page': False,
+                }
+            )
+        )
+
+        self.assertIn('lucide-icon--image-off', html)
+        self.assertNotIn('data-lucide="image-off"', html)
+        self.assertNotIn('lucide.createIcons()', html)
+
+    def test_home_page_footer_mobile_dock_uses_inline_home_icon(self):
+        response = self.client.get(reverse('home'))
+
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+
+        self.assertIn('lucide-icon--home', html)
+        self.assertNotIn('<i data-lucide="home"', html)
         self.assertNotIn('class="floating-action__summary"', html)
 
     def test_product_detail_keeps_variant_picker_inside_mobile_hero(self):
@@ -604,6 +767,9 @@ class VariantGalleryAndCatalogCardsTest(TestCase):
         html = resp.content.decode()
 
         self.assertIn('method="get" hx-boost="false" class="pd-mobile-search-form"', html)
+        self.assertIn('observeElementViewportState', html)
+        self.assertNotIn('@scroll.window.passive="updateHeaderFilled()"', html)
+        self.assertNotIn('@resize.window="updateHeaderFilled()"', html)
 
     def test_bundle_detail_no_longer_shows_bundle_discount_copy(self):
         bundle_category = Category.objects.create(
@@ -708,7 +874,7 @@ class VariantGalleryAndCatalogCardsTest(TestCase):
                 rutube_url='https://rutube.ru/video/private/7716bd3e665725c3c008ae7ab4ff02e2/?p=secret',
             ).clean()
 
-    def test_product_detail_includes_rutube_video_after_images_and_renders_inline_player_markup(self):
+    def test_product_detail_includes_rutube_video_after_images_and_renders_lazy_player_markup(self):
         png_bytes = (
             b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01'
             b'\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDAT\x08\xd7c\xf8\xff\xff?'
@@ -744,7 +910,9 @@ class VariantGalleryAndCatalogCardsTest(TestCase):
             'https://rutube.ru/play/embed/7716bd3e665725c3c008ae7ab4ff02e2',
         )
         self.assertEqual(data['productMedia'][-1]['thumbnailUrl'], 'https://cdn.example/rutube-poster.jpg')
-        self.assertIn('class="main-video"', html)
+        self.assertIn('class="main-video-poster"', html)
+        self.assertIn('activateCurrentVideo()', html)
+        self.assertIn('loading="lazy"', html)
         self.assertIn('thumb-video-play', html)
         self.assertIn("effectiveMedia && effectiveMedia.type === 'video'", html)
 
@@ -1159,7 +1327,8 @@ class ProductContentBlocksTest(TestCase):
         self.assertIn('alt="Первый блок"', html)
         self.assertIn('alt="Финальный блок"', html)
         self.assertIn('class="content-block content-block--video"', html)
-        self.assertIn('https://rutube.ru/play/embed/7716bd3e665725c3c008ae7ab4ff02e2', html)
+        self.assertIn('class="content-block__video-poster"', html)
+        self.assertIn("x-bind:src=\"videoLoaded ? 'https://rutube.ru/play/embed/7716bd3e665725c3c008ae7ab4ff02e2' : ''\"", html)
         self.assertIn('Видео обзор', html)
         self.assertLess(html.index('Первый блок'), html.index('Второй блок'))
         self.assertLess(html.index('Второй блок'), html.index('Финальный блок'))

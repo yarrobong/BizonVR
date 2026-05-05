@@ -413,6 +413,19 @@ class ManagerPortalAccessTests(ManagerPortalBaseTestCase):
         self.assertEqual(response.status_code, 403)
         self.assertTemplateUsed(response, '403.html')
 
+    def test_manager_portal_does_not_include_public_trackers_or_metrika_helper(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse('manager_portal:entry'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'BizonVRTrackerLoader', html=False)
+        self.assertNotContains(response, 'cloud.emailtracking.ru', html=False)
+        self.assertNotContains(response, 'cloud.alfa-track.com', html=False)
+        self.assertNotContains(response, 'mc.yandex.ru/metrika/tag.js', html=False)
+        self.assertNotContains(response, 'mod.calltouch.ru', html=False)
+        self.assertNotContains(response, "js/layout/metrika.js", html=False)
+
     def test_finance_operator_can_open_finance_only_routes(self):
         finance_group, _ = Group.objects.get_or_create(name=FINANCE_OPERATOR_GROUP)
         finance_user = User.objects.create_user(username='finance-operator', password='pass1234')

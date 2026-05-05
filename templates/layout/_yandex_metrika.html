@@ -5,11 +5,41 @@
         var scriptSrc = 'https://mc.yandex.ru/metrika/tag.js?id=' + counterId;
         var hasScheduledLoad = false;
         var trackerLoader = w.BizonVRTrackerLoader;
+        var webvisorAllowedPrefixes = [
+            '/',
+            '/catalog/',
+            '/orders/',
+            '/contacts/',
+            '/solutions/',
+            '/compact-vr/',
+            '/invest/',
+            '/invest-2/',
+            '/invest-2-new/',
+            '/conference-attractions/',
+            '/arenda/',
+            '/uslugi/'
+        ];
 
         w.ym = w.ym || function() {
             (w.ym.a = w.ym.a || []).push(arguments);
         };
         w.ym.l = w.ym.l || Date.now();
+
+        function shouldEnableWebvisor(pathname) {
+            var path = pathname || '/';
+            if (path === '/') {
+                return true;
+            }
+
+            for (var i = 0; i < webvisorAllowedPrefixes.length; i++) {
+                var prefix = webvisorAllowedPrefixes[i];
+                if (prefix !== '/' && path.indexOf(prefix) === 0) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
 
         function initMetrika() {
             if (hasScheduledLoad) {
@@ -44,7 +74,7 @@
 
             w.ym(counterId, 'init', {
                 ssr: true,
-                webvisor: true,
+                webvisor: shouldEnableWebvisor(w.location && w.location.pathname),
                 clickmap: true,
                 ecommerce: 'dataLayer',
                 referrer: d.referrer,
@@ -54,23 +84,63 @@
             });
         }
 
+        function scheduleAfterFirstInteraction(callback) {
+            var triggered = false;
+            var interactionEvents = ['pointerdown', 'keydown', 'touchstart', 'scroll'];
+            var cleanupFns = [];
+
+            function cleanup() {
+                for (var i = 0; i < cleanupFns.length; i++) {
+                    cleanupFns[i]();
+                }
+                cleanupFns = [];
+            }
+
+            function run() {
+                if (triggered) {
+                    return;
+                }
+                triggered = true;
+                cleanup();
+                callback();
+            }
+
+            for (var i = 0; i < interactionEvents.length; i++) {
+                (function(eventName) {
+                    var listener = function() {
+                        run();
+                    };
+                    w.addEventListener(eventName, listener, { once: true, passive: true });
+                    cleanupFns.push(function() {
+                        w.removeEventListener(eventName, listener, { passive: true });
+                    });
+                })(interactionEvents[i]);
+            }
+
+            w.setTimeout(run, 8000);
+        }
+
         function scheduleMetrika() {
-            if (trackerLoader) {
-                trackerLoader.afterRender(initMetrika, {
-                    idleTimeout: 4000,
-                    delay: 1500
-                });
-                return;
-            }
+            var deferInit = function() {
+                if (trackerLoader) {
+                    trackerLoader.afterRender(initMetrika, {
+                        idleTimeout: 5000,
+                        delay: 2500
+                    });
+                    return;
+                }
 
-            if ('requestIdleCallback' in w) {
-                w.requestIdleCallback(function() {
-                    w.setTimeout(initMetrika, 0);
-                }, {timeout: 4000});
-                return;
-            }
+                if ('requestIdleCallback' in w) {
+                    w.requestIdleCallback(function() {
+                        w.setTimeout(initMetrika, 0);
+                    }, {timeout: 5000});
+                    return;
+                }
 
-            w.setTimeout(initMetrika, 1500);
+                w.setTimeout(initMetrika, 2500);
+            };
+
+            scheduleAfterFirstInteraction(deferInit);
         }
 
         if (d.readyState === 'interactive' || d.readyState === 'complete') {

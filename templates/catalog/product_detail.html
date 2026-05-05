@@ -21,9 +21,29 @@
          this.headerFilled = rect.bottom <= threshold;
        }
      }"
-     x-init="$nextTick(() => updateHeaderFilled())"
-     @scroll.window.passive="updateHeaderFilled()"
-     @resize.window="updateHeaderFilled()"
+     x-init="
+       let stopHeaderFilledObserver = null;
+       const startHeaderFilledObserver = () => {
+         const photoEl = document.querySelector('.product-detail-scope .main-image-wrapper');
+         if (!photoEl) {
+           updateHeaderFilled();
+           return;
+         }
+         if (typeof observeElementViewportState === 'function') {
+           stopHeaderFilledObserver = observeElementViewportState(photoEl, (isVisible) => {
+             headerFilled = !isVisible;
+           }, { topOffset: 64 });
+           return;
+         }
+         updateHeaderFilled();
+       };
+       $nextTick(() => startHeaderFilledObserver());
+       return () => {
+         if (typeof stopHeaderFilledObserver === 'function') {
+           stopHeaderFilledObserver();
+         }
+       };
+     "
      @pageshow.window="mobileSearchOpen = false; $nextTick(() => updateHeaderFilled())"
      @pd-variant-change.window="mobileVariantName = ($event.detail && $event.detail.name) ? $event.detail.name : ''">
   <div class="pd-mobile-header-bar" :class="{ 'is-filled': headerFilled }">
@@ -113,7 +133,7 @@
 {% endblock %}
 
 {% block content %}
-{{ product_detail_data|json_script:"product-detail-data" }}
+<div id="product-detail-data" data-product-detail="{{ product_detail_data_json|escape }}" hidden></div>
 {% include "catalog/partials/product_detail_scope_styles.html" %}
 <div class="product-detail-scope" x-data="{
   data: {},
@@ -129,7 +149,9 @@
   mobileQtyBusy: false,
   pendingMobileQty: null,
   mobileDockOffsetPx: 74,
+  mobileDockResizeBound: false,
   selectedImageIndex: 0,
+  activeVideoKey: '',
   touchStartX: 0,
   touchStartY: 0,
   lastMoveX: 0,
@@ -141,7 +163,7 @@
 	    try {
 	      const el = document.getElementById('product-detail-data');
 	      if (el) {
-	        this.data = JSON.parse(el.textContent);
+	        this.data = JSON.parse(el.dataset.productDetail || '{}');
 	        this.variants = this.data.variants || [];
 	        this.productPrice = this.data.productPrice ?? null;
           this.selectedPurchaseMode = this.data.defaultPurchaseMode || 'stock';
@@ -162,8 +184,17 @@
 	    } catch(e) { console.error('Error init product detail', e); }
       this.$nextTick(() => {
         this.syncMobileDockOffset();
-        window.addEventListener('resize', () => this.syncMobileDockOffset(), { passive: true });
-        window.addEventListener('orientationchange', () => this.syncMobileDockOffset());
+        if (!this.mobileDockResizeBound) {
+          const dock = document.querySelector('.mobile-dock');
+          if (dock && typeof observeElementSize === 'function') {
+            observeElementSize(dock, () => this.syncMobileDockOffset());
+            this.mobileDockResizeBound = true;
+          } else {
+            window.addEventListener('resize', () => this.syncMobileDockOffset(), { passive: true });
+            window.addEventListener('orientationchange', () => this.syncMobileDockOffset());
+            this.mobileDockResizeBound = true;
+          }
+        }
       });
 	  },
   syncMobileDockOffset() {
@@ -176,10 +207,29 @@
   },
 	  setVariant(v) {
 	    this.selectedVariant = v;
-	    this.selectedImageIndex = 0;
+	    this.activeVideoKey = '';
+      this.showMedia(0);
       this.syncPurchaseModeForSelection(true);
 	    window.dispatchEvent(new CustomEvent('pd-variant-change', { detail: { name: v ? v.name : '' } }));
 	  },
+  videoKey(media) {
+    if (!media || media.type !== 'video' || !media.embedUrl) return '';
+    return media.embedUrl;
+  },
+  showMedia(index) {
+    const nextIndex = Math.max(0, Number(index) || 0);
+    this.selectedImageIndex = nextIndex;
+    const media = this.displayMedia[nextIndex] || null;
+    if (this.activeVideoKey && this.activeVideoKey !== this.videoKey(media)) {
+      this.activeVideoKey = '';
+    }
+  },
+  activateCurrentVideo() {
+    const media = this.effectiveMedia;
+    const key = this.videoKey(media);
+    if (!key) return;
+    this.activeVideoKey = key;
+  },
   syncPurchaseModeForSelection(force = false) {
     const nextMode = this.defaultPurchaseModeForSelection;
     if (force || !this.isPurchaseModeAvailable(this.selectedPurchaseMode)) {
@@ -205,7 +255,11 @@
       const variantMedia = {
         type: 'image',
         imageUrl: variantImage,
-        thumbnailUrl: variantImage,
+        imageSrcset: this.selectedVariant.imageSrcset || '',
+        imageSizes: this.selectedVariant.imageSizes || '',
+        thumbnailUrl: this.selectedVariant.thumbnailUrl || variantImage,
+        thumbnailSrcset: this.selectedVariant.thumbnailSrcset || '',
+        thumbnailSizes: this.selectedVariant.thumbnailSizes || '',
         title: this.selectedVariant && this.selectedVariant.name ? this.selectedVariant.name : '{{ product.name|escapejs }}',
       };
       if (this.data.productImage && baseMedia.length > 0 && baseMedia[0].type === 'image') {
@@ -242,6 +296,11 @@
       return media.imageUrl || media.thumbnailUrl || null;
     }
     return this.data.productImage || null;
+  },
+  get isEffectiveVideoActive() {
+    const media = this.effectiveMedia;
+    const key = this.videoKey(media);
+    return !!key && this.activeVideoKey === key;
   },
   get displayCharacteristics() {
     if (this.selectedVariant) {
@@ -496,9 +555,9 @@
     if (!shouldAdvance || absDx <= absDy) return;
 
     if (dir < 0) {
-      if (this.selectedImageIndex < mediaLen - 1) this.selectedImageIndex++;
+      if (this.selectedImageIndex < mediaLen - 1) this.showMedia(this.selectedImageIndex + 1);
     } else if (dir > 0) {
-      if (this.selectedImageIndex > 0) this.selectedImageIndex--;
+      if (this.selectedImageIndex > 0) this.showMedia(this.selectedImageIndex - 1);
     }
   },
   shareProduct() {
@@ -521,9 +580,9 @@
       <div class="gallery-container">
         <div class="thumbs desktop-only" x-show="displayMedia.length > 1" x-cloak>
           <template x-for="(media, i) in displayMedia" :key="`${media.type}-${i}`">
-            <button type="button" class="thumb" :class="selectedImageIndex === i ? 'active' : ''" @click="selectedImageIndex = i">
+            <button type="button" class="thumb" :class="selectedImageIndex === i ? 'active' : ''" @click="showMedia(i)">
               <template x-if="media.type === 'image'">
-                <img :src="media.thumbnailUrl || media.imageUrl" class="thumb-media thumb-media--image" :alt="media.title || ''" :width="media.width || null" :height="media.height || null" loading="lazy" decoding="async" />
+                <img :src="media.thumbnailUrl || media.imageUrl" :srcset="media.thumbnailSrcset || null" :sizes="media.thumbnailSizes || '96px'" class="thumb-media thumb-media--image" :alt="media.title || ''" :width="media.width || null" :height="media.height || null" loading="lazy" decoding="async" />
               </template>
               <template x-if="media.type === 'video'">
                 <div class="thumb-video" :class="{ 'thumb-video--fallback': !(media.thumbnailUrl) }">
@@ -548,25 +607,35 @@
           <div class="main-video-shell"
                x-show="effectiveMedia && effectiveMedia.type === 'video'"
                {% if not product_media or product_media.0.type != 'video' %}style="display:none;"{% endif %}>
-            {% if product_media and product_media.0.type == 'video' %}
-              <iframe
-                src="{{ product_media.0.embedUrl }}"
-                x-bind:src="effectiveMedia && effectiveMedia.type === 'video' ? effectiveMedia.embedUrl : '{{ product_media.0.embedUrl|escapejs }}'"
-                x-bind:title="effectiveMedia && effectiveMedia.title ? effectiveMedia.title : '{{ product.name|escapejs }}'"
-                class="main-video"
-                frameborder="0"
-                allow="clipboard-write; autoplay; encrypted-media; picture-in-picture; web-share"
-                allowfullscreen></iframe>
-            {% else %}
-              <iframe
-                x-bind:src="effectiveMedia && effectiveMedia.type === 'video' ? effectiveMedia.embedUrl : ''"
-                x-bind:title="effectiveMedia && effectiveMedia.title ? effectiveMedia.title : '{{ product.name|escapejs }}'"
-                class="main-video"
-                frameborder="0"
-                allow="clipboard-write; autoplay; encrypted-media; picture-in-picture; web-share"
-                allowfullscreen
-                x-cloak></iframe>
-            {% endif %}
+            <button
+              type="button"
+              class="main-video-poster"
+              x-show="!isEffectiveVideoActive"
+              @click="activateCurrentVideo()"
+              :aria-label="effectiveMedia && effectiveMedia.title ? `Воспроизвести видео: ${effectiveMedia.title}` : 'Воспроизвести видео товара'">
+              <template x-if="effectiveMedia && effectiveMedia.thumbnailUrl">
+                <img
+                  :src="effectiveMedia.thumbnailUrl"
+                  class="main-video-poster-image"
+                  :alt="effectiveMedia && effectiveMedia.title ? effectiveMedia.title : '{{ product.name|escapejs }}'"
+                  loading="lazy"
+                  decoding="async" />
+              </template>
+              <template x-if="!effectiveMedia || !effectiveMedia.thumbnailUrl">
+                <span class="main-video-poster-fallback" x-text="effectiveMedia && effectiveMedia.title ? effectiveMedia.title : 'Видео товара'"></span>
+              </template>
+              <span class="main-video-play" aria-hidden="true"></span>
+            </button>
+            <iframe
+              x-show="isEffectiveVideoActive"
+              x-bind:src="isEffectiveVideoActive ? effectiveMedia.embedUrl : ''"
+              x-bind:title="effectiveMedia && effectiveMedia.title ? effectiveMedia.title : '{{ product.name|escapejs }}'"
+              class="main-video"
+              frameborder="0"
+              allow="clipboard-write; autoplay; encrypted-media; picture-in-picture; web-share"
+              loading="lazy"
+              allowfullscreen
+              x-cloak></iframe>
           </div>
           <div class="main-image-shell"
                x-show="!effectiveMedia || effectiveMedia.type === 'image'"
@@ -574,7 +643,11 @@
             {% if product_media and product_media.0.type == 'image' %}
               <img
                 src="{{ product_media.0.imageUrl }}"
+                srcset="{{ product_media.0.imageSrcset }}"
+                sizes="{{ product_media.0.imageSizes }}"
                 x-bind:src="effectiveImage || '{{ product_media.0.imageUrl|escapejs }}'"
+                x-bind:srcset="effectiveMedia && effectiveMedia.type === 'image' ? (effectiveMedia.imageSrcset || null) : null"
+                x-bind:sizes="effectiveMedia && effectiveMedia.type === 'image' ? (effectiveMedia.imageSizes || null) : null"
                 x-bind:width="effectiveMedia && effectiveMedia.type === 'image' ? (effectiveMedia.width || null) : null"
                 x-bind:height="effectiveMedia && effectiveMedia.type === 'image' ? (effectiveMedia.height || null) : null"
                 class="main-image"
@@ -592,8 +665,12 @@
                 decoding="async" />
             {% elif product.image %}
               <img
-                src="{{ product.image.url }}"
-                x-bind:src="effectiveImage || '{{ product.image.url|escapejs }}'"
+                src="{{ product.image|image_variant_url:'960' }}"
+                srcset="{{ product.image|image_srcset:'640,960,1280,1600' }}"
+                sizes="(min-width: 1280px) 42vw, (min-width: 768px) 50vw, 100vw"
+                x-bind:src="effectiveImage || '{{ product.image|image_variant_url:'960'|escapejs }}'"
+                x-bind:srcset="effectiveMedia && effectiveMedia.type === 'image' ? (effectiveMedia.imageSrcset || null) : null"
+                x-bind:sizes="effectiveMedia && effectiveMedia.type === 'image' ? (effectiveMedia.imageSizes || null) : null"
                 class="main-image"
                 alt="{{ product.name }}"
                 loading="eager"
@@ -693,7 +770,7 @@
               <template x-for="v in variants" :key="v.id">
                 <div class="color-opt" :class="selectedVariant && selectedVariant.id === v.id ? 'selected' : ''" @click="setVariant(v)">
                   <template x-if="v.imageUrl">
-                    <img :src="v.imageUrl" alt="" :width="v.imageWidth || null" :height="v.imageHeight || null" loading="lazy" decoding="async" />
+                    <img :src="v.thumbnailUrl || v.imageUrl" :srcset="v.thumbnailSrcset || null" :sizes="v.thumbnailSizes || '56px'" alt="" :width="v.imageWidth || null" :height="v.imageHeight || null" loading="lazy" decoding="async" />
                   </template>
                   <template x-if="!v.imageUrl">
                     <div style="width: 100%; height: 100%; background: rgba(255,255,255,0.06);"></div>
@@ -715,7 +792,7 @@
             <template x-for="v in variants" :key="v.id">
 	              <div class="color-opt" :class="selectedVariant && selectedVariant.id === v.id ? 'selected' : ''" @click="setVariant(v)">
                 <template x-if="v.imageUrl">
-                  <img :src="v.imageUrl" alt="" :width="v.imageWidth || null" :height="v.imageHeight || null" loading="lazy" decoding="async" />
+                  <img :src="v.thumbnailUrl || v.imageUrl" :srcset="v.thumbnailSrcset || null" :sizes="v.thumbnailSizes || '56px'" alt="" :width="v.imageWidth || null" :height="v.imageHeight || null" loading="lazy" decoding="async" />
                 </template>
                 <template x-if="!v.imageUrl">
                   <div style="width: 100%; height: 100%; background: rgba(255,255,255,0.06);"></div>

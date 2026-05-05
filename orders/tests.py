@@ -167,6 +167,7 @@ class CheckoutTest(TestCase):
         self.assertContains(resp, 'Оформление заявки')
         self.assertContains(resp, 'Корзина пуста')
         self.assertNotContains(resp, 'Еще товары')
+        self.assertNotContains(resp, 'js/orders/checkout_cdek_widget.js')
 
     def test_checkout_get_authenticated_returns_200(self):
         add_url = reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk})
@@ -183,6 +184,7 @@ class CheckoutTest(TestCase):
         self.assertContains(resp, 'Скидка к заказу')
         self.assertContains(resp, 'Введите промокод')
         self.assertContains(resp, 'OpenStreetMap')
+        self.assertContains(resp, 'js/orders/checkout_cdek_widget.js')
         self.assertNotContains(resp, 'CDEKWidget')
         self.assertNotContains(resp, '<label for="id_city_text"', html=False)
         self.assertNotContains(resp, '<label for="id_address_line"', html=False)

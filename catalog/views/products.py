@@ -1,3 +1,4 @@
+import json
 import re
 import time
 from hashlib import sha1
@@ -15,6 +16,12 @@ from config.formatting import format_amount
 from ..cache_utils import get_active_category_ids, get_catalog_sections
 from ..cart_services import get_cart_items
 from ..filtering import CatalogFilterService
+from ..image_utils import (
+    RESPONSIVE_GALLERY_WIDTHS,
+    RESPONSIVE_HERO_WIDTHS,
+    RESPONSIVE_VARIANT_WIDTHS,
+    build_responsive_image_data,
+)
 from ..models import (
     Category,
     ProductDescriptionBlock,
@@ -45,6 +52,20 @@ LIVE_SEARCH_MIN_QUERY_LENGTH = 2
 LIVE_SEARCH_MAX_QUERY_LENGTH = 80
 LIVE_SEARCH_GROUP_LIMIT = 3
 LIVE_SEARCH_CACHE_TTL_SECONDS = 120
+
+
+class HtmxPartialResponseMixin:
+    def is_htmx_request(self):
+        return self.request.headers.get('HX-Request') == 'true'
+
+    def get_htmx_page_title(self):
+        return ''
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['render_htmx_partial'] = self.is_htmx_request()
+        context['htmx_page_title'] = self.get_htmx_page_title() if context['render_htmx_partial'] else ''
+        return context
 
 
 def _normalize_live_search_query(raw_query):
@@ -321,7 +342,7 @@ class BundleDetailView(DetailView):
         return context
 
 
-class ProductListView(ListView):
+class ProductListView(HtmxPartialResponseMixin, ListView):
     """Список товаров с фильтрацией по категории, пагинацией и сортировкой."""
     model = Product
     context_object_name = 'products'
@@ -333,6 +354,9 @@ class ProductListView(ListView):
         if not hasattr(self, '_filter_service'):
             self._filter_service = CatalogFilterService(self.request)
         return self._filter_service
+
+    def get_htmx_page_title(self):
+        return 'Каталог — BizonVR'
 
     def _build_query_string(self, **updates):
         return self.filter_service.build_query_string(**updates)
@@ -586,12 +610,17 @@ def _float_or_none(value):
     return float(value) if value is not None else None
 
 
-class ProductDetailView(DetailView):
+class ProductDetailView(HtmxPartialResponseMixin, DetailView):
     """Детальная страница товара."""
     model = Product
     context_object_name = 'product'
     slug_url_kwarg = 'slug'
     template_name = 'catalog/product_detail.html'
+
+    def get_htmx_page_title(self):
+        if getattr(self, 'object', None) is not None:
+            return f'{self.object.name} — BizonVR'
+        return 'BizonVR'
 
     def get(self, request, *args, **kwargs):
         self.object = self.get_object()
@@ -716,6 +745,15 @@ class ProductDetailView(DetailView):
                 return None, None
             return width, height
 
+        def _serialize_responsive_image(img_field, *, widths, default_width, sizes=''):
+            return build_responsive_image_data(
+                img_field,
+                widths=widths,
+                default_width=default_width,
+                request=self.request,
+                sizes=sizes,
+            )
+
         gallery = []
         product_media = []
         seen_images = set()
@@ -727,11 +765,27 @@ class ProductDetailView(DetailView):
                 return
             seen_images.add(url)
             width, height = _safe_image_dimensions(img_field)
+            hero_image = _serialize_responsive_image(
+                img_field,
+                widths=RESPONSIVE_HERO_WIDTHS,
+                default_width=960,
+                sizes='(min-width: 1280px) 42vw, (min-width: 768px) 50vw, 100vw',
+            )
+            thumbnail_image = _serialize_responsive_image(
+                img_field,
+                widths=RESPONSIVE_GALLERY_WIDTHS,
+                default_width=240,
+                sizes='96px',
+            )
             gallery.append(url)
             product_media.append({
                 'type': 'image',
-                'imageUrl': url,
-                'thumbnailUrl': url,
+                'imageUrl': hero_image.get('src') or url,
+                'imageSrcset': hero_image.get('srcset', ''),
+                'imageSizes': hero_image.get('sizes', ''),
+                'thumbnailUrl': thumbnail_image.get('src') or url,
+                'thumbnailSrcset': thumbnail_image.get('srcset', ''),
+                'thumbnailSizes': thumbnail_image.get('sizes', ''),
                 'title': title or self.object.name,
                 'width': width,
                 'height': height,
@@ -767,6 +821,18 @@ class ProductDetailView(DetailView):
             variant_in_stock_price = resolve_in_stock_price(self.object, variant)
             variant_on_request_price = resolve_on_request_price(self.object, variant)
             variant_image_width, variant_image_height = _safe_image_dimensions(variant.image)
+            variant_hero_image = _serialize_responsive_image(
+                variant.image,
+                widths=RESPONSIVE_HERO_WIDTHS,
+                default_width=960,
+                sizes='(min-width: 1280px) 42vw, (min-width: 768px) 50vw, 100vw',
+            )
+            variant_thumbnail_image = _serialize_responsive_image(
+                variant.image,
+                widths=RESPONSIVE_VARIANT_WIDTHS,
+                default_width=120,
+                sizes='56px',
+            )
             variant_public_mode = resolve_public_purchase_mode(
                 self.object,
                 variant,
@@ -789,7 +855,12 @@ class ProductDetailView(DetailView):
                         stock_total=variant_stock_total,
                     )
                 ),
-                'imageUrl': _safe_image_url(variant.image),
+                'imageUrl': variant_hero_image.get('src') or _safe_image_url(variant.image),
+                'imageSrcset': variant_hero_image.get('srcset', ''),
+                'imageSizes': variant_hero_image.get('sizes', ''),
+                'thumbnailUrl': variant_thumbnail_image.get('src') or _safe_image_url(variant.image),
+                'thumbnailSrcset': variant_thumbnail_image.get('srcset', ''),
+                'thumbnailSizes': variant_thumbnail_image.get('sizes', ''),
                 'imageWidth': variant_image_width,
                 'imageHeight': variant_image_height,
             })
@@ -819,7 +890,15 @@ class ProductDetailView(DetailView):
 
         context['product_detail_data'] = {
             'variants': variants_data,
-            'productImage': _safe_image_url(self.object.image),
+            'productImage': (
+                _serialize_responsive_image(
+                    self.object.image,
+                    widths=RESPONSIVE_HERO_WIDTHS,
+                    default_width=960,
+                    sizes='(min-width: 1280px) 42vw, (min-width: 768px) 50vw, 100vw',
+                ).get('src')
+                or _safe_image_url(self.object.image)
+            ),
             'productPrice': _float_or_none(self.object.price),
             'productDiscountPercent': _float_or_none(self.object.discount_percent),
             'productRegularInStockPrice': _float_or_none(resolve_in_stock_base_price(self.object)),
@@ -879,5 +958,6 @@ class ProductDetailView(DetailView):
                 cart_qty_by_variant[key] = cart_qty_by_variant.get(key, 0) + quantity
         context['product_detail_data']['cartQtyProduct'] = cart_qty_product
         context['product_detail_data']['cartQtyByVariant'] = cart_qty_by_variant
+        context['product_detail_data_json'] = json.dumps(context['product_detail_data'], ensure_ascii=False)
 
         return context
