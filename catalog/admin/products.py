@@ -1,4 +1,5 @@
 import csv
+import copy
 import io
 import json
 import os
@@ -30,6 +31,7 @@ from ..models import (
     DescriptionBlockType,
     DescriptionTemplate,
     DescriptionTemplateSlot,
+    GamePackItem,
     Product,
     ProductCharacteristic,
     ProductContentBlock,
@@ -208,6 +210,15 @@ class ProductVariantInline(admin.TabularInline):
     image_preview.short_description = 'Превью'
 
 
+class GamePackItemInline(SortableInlineAdminMixin, admin.TabularInline):
+    model = GamePackItem
+    extra = 0
+    sortable_field_name = 'sort_order'
+    fields = ('title', 'platform', 'note', 'sort_order')
+    verbose_name = 'Игра в паке'
+    verbose_name_plural = 'Состав игрового пака'
+
+
 class ProductImageInline(SortableInlineAdminMixin, admin.TabularInline):
     model = ProductImage
     extra = 1
@@ -335,6 +346,42 @@ def _duplicate_description_template(template, *, name=None, slug=None):
         for slot in template.slots.select_related('block_type').order_by('sort_order', 'id')
     ]
     DescriptionTemplateSlot.objects.bulk_create(slot_copies)
+    return duplicated
+
+
+def _build_duplicate_product_name(name):
+    base_name = (name or '').strip() or 'Товар'
+    match = re.match(r'^(?P<base>.*?)(?:\s+\(копия(?:\s+(?P<number>\d+))?\))$', base_name, re.IGNORECASE)
+    if match:
+        base_name = (match.group('base') or '').strip() or base_name
+        copy_number = int(match.group('number') or '1') + 1
+        return f'{base_name} (копия {copy_number})'
+    return f'{base_name} (копия)'
+
+
+def _duplicate_game_pack_product(product):
+    duplicated = copy.copy(product)
+    duplicated.pk = None
+    duplicated.id = None
+    duplicated.slug = ''
+    duplicated.sku = ''
+    duplicated.name = _build_duplicate_product_name(product.name)
+    duplicated.created_at = None
+    duplicated.updated_at = None
+    duplicated.save()
+    duplicated.tags.set(product.tags.all())
+    GamePackItem.objects.bulk_create(
+        [
+            GamePackItem(
+                product=duplicated,
+                title=item.title,
+                platform=item.platform,
+                note=item.note,
+                sort_order=item.sort_order,
+            )
+            for item in product.game_pack_items.all().order_by('sort_order', 'id')
+        ]
+    )
     return duplicated
 
 
@@ -545,15 +592,18 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
         'sku',
         'image_preview',
         'category',
+        'product_kind_badge',
+        'game_pack_preview',
         'price',
         'discount_percent',
         'price_on_request',
         'option_label',
         'is_active',
         'allow_order_on_request',
+        'duplicate_game_pack_link',
         'created_at',
     )
-    list_filter = ('category__section', 'category', 'is_active', 'tags')
+    list_filter = ('category__section', 'category', 'product_kind', 'is_active', 'tags')
     search_fields = ('name', 'sku', 'description')
     prepopulated_fields = {'slug': ('name',)}
     inlines = (
@@ -561,12 +611,13 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
         ProductVideoInline,
         ProductCharacteristicInline,
         ProductContentBlockInline,
+        GamePackItemInline,
         ProductVariantInline,
         ProductStockInlineForProduct,
         ProductBundleItemInlineForProduct,
     )
     readonly_fields = ('created_at', 'updated_at', 'description_constructor')
-    actions = ('export_catalog_with_images', 'backup_full_catalog',)
+    actions = ('export_catalog_with_images', 'backup_full_catalog', 'duplicate_game_packs')
     change_form_template = 'admin/catalog/product/change_form.html'
     save_on_top = False
     fieldsets = (
@@ -575,6 +626,7 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
                 'name',
                 'sku',
                 'category',
+                'product_kind',
                 'price',
                 'discount_percent',
                 'price_on_request',
@@ -611,6 +663,7 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
                         'name',
                         'sku',
                         'category',
+                        'product_kind',
                         'price',
                         'discount_percent',
                         'price_on_request',
@@ -648,6 +701,9 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
                 if not isinstance(inline, ProductContentBlockInline)
             ]
         for inline in inline_instances:
+            if isinstance(inline, GamePackItemInline):
+                inline_instances = [candidate for candidate in inline_instances if candidate is not inline]
+                continue
             if isinstance(inline, (ProductStockInlineForProduct, ProductBundleItemInlineForProduct)):
                 inline.classes = ('collapse',) if obj is None else ()
         return inline_instances
@@ -815,10 +871,82 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
 
     image_preview.short_description = 'Превью'
 
+    @admin.display(description='Тип')
+    def product_kind_badge(self, obj):
+        if obj.is_game_pack:
+            return format_html(
+                '<span style="display:inline-flex;align-items:center;border-radius:999px;padding:0.2rem 0.55rem;'
+                'background:#082f49;color:#7dd3fc;font-weight:700;font-size:11px;">Игровой пак</span>'
+            )
+        return format_html(
+            '<span style="display:inline-flex;align-items:center;border-radius:999px;padding:0.2rem 0.55rem;'
+            'background:#1f2937;color:#e5e7eb;font-weight:700;font-size:11px;">Товар</span>'
+        )
+
+    @admin.display(description='Состав пака')
+    def game_pack_preview(self, obj):
+        if not obj.is_game_pack:
+            return '—'
+        all_items = list(obj.game_pack_items.all().order_by('sort_order', 'id'))
+        items = all_items[:4]
+        if not items:
+            return format_html('<span style="color:#9ca3af;">Состав не заполнен</span>')
+        preview = []
+        total_count = len(all_items)
+        for item in items:
+            title = item.title
+            if item.platform:
+                title = f'{title} ({item.platform})'
+            preview.append(title)
+        if total_count > len(items):
+            preview.append(f'ещё {total_count - len(items)}')
+        return ', '.join(preview)
+
+    @admin.display(description='Дублировать')
+    def duplicate_game_pack_link(self, obj):
+        if not obj.is_game_pack:
+            return '—'
+        url = reverse('admin:catalog_product_duplicate_game_pack', args=[obj.pk])
+        return format_html('<a class="button" href="{}">Дублировать</a>', url)
+
+    @admin.display(description='Тип')
+    def product_kind_badge(self, obj):
+        if obj.is_game_pack:
+            return format_html(
+                '<span style="display:inline-flex;align-items:center;border-radius:999px;padding:0.2rem 0.55rem;'
+                'background:#082f49;color:#7dd3fc;font-weight:700;font-size:11px;">{}</span>',
+                'Игровой пак',
+            )
+        return format_html(
+            '<span style="display:inline-flex;align-items:center;border-radius:999px;padding:0.2rem 0.55rem;'
+            'background:#1f2937;color:#e5e7eb;font-weight:700;font-size:11px;">{}</span>',
+            'Товар',
+        )
+
+    @admin.display(description='Состав пака')
+    def game_pack_preview(self, obj):
+        if not obj.is_game_pack:
+            return '—'
+        all_items = list(obj.game_pack_items.all().order_by('sort_order', 'id'))
+        items = all_items[:4]
+        if not items:
+            return format_html('<span style="color:#9ca3af;">{}</span>', 'Состав не заполнен')
+        preview = []
+        total_count = len(all_items)
+        for item in items:
+            title = item.title
+            if item.platform:
+                title = f'{title} ({item.platform})'
+            preview.append(title)
+        if total_count > len(items):
+            preview.append(f'ещё {total_count - len(items)}')
+        return ', '.join(preview)
+
     def get_queryset(self, request):
         return super().get_queryset(request).select_related('category', 'category__section', 'product_description').prefetch_related(
             'tags',
             'variants',
+            'game_pack_items',
             'characteristics',
             'content_blocks',
             'product_description__blocks__block_type',
@@ -1055,10 +1183,39 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
             path('product-content-blocks/<int:product_id>/', self.admin_site.admin_view(self.product_content_blocks_api_view), name='catalog_product_content_blocks'),
             path('description-templates/', self.admin_site.admin_view(self.description_templates_api_view), name='catalog_product_description_templates'),
             path('description-templates/<int:template_id>/', self.admin_site.admin_view(self.description_template_detail_api_view), name='catalog_product_description_template_detail'),
+            path('<int:product_id>/duplicate-game-pack/', self.admin_site.admin_view(self.duplicate_game_pack_view), name='catalog_product_duplicate_game_pack'),
             path('<int:product_id>/description/preview/', self.admin_site.admin_view(self.product_description_preview_api_view), name='catalog_product_description_preview'),
             path('<int:product_id>/description/apply-template/', self.admin_site.admin_view(self.product_description_apply_template_api_view), name='catalog_product_description_apply_template'),
         ]
         return custom_urls + urls
+
+    def duplicate_game_pack_view(self, request, product_id):
+        product = get_object_or_404(Product.objects.prefetch_related('tags', 'game_pack_items'), pk=product_id)
+        if not product.is_game_pack:
+            self.message_user(request, 'Дублирование доступно только для игровых паков.', messages.WARNING)
+            return HttpResponseRedirect(reverse('admin:catalog_product_change', args=[product.pk]))
+        duplicated = _duplicate_game_pack_product(product)
+        self.message_user(
+            request,
+            f'Игровой пак «{product.name}» продублирован как «{duplicated.name}».',
+            messages.SUCCESS,
+        )
+        return HttpResponseRedirect(reverse('admin:catalog_product_change', args=[duplicated.pk]))
+
+    @admin.action(description='Дублировать выбранные игровые паки')
+    def duplicate_game_packs(self, request, queryset):
+        duplicated_count = 0
+        skipped_count = 0
+        for product in queryset.prefetch_related('tags', 'game_pack_items'):
+            if not product.is_game_pack:
+                skipped_count += 1
+                continue
+            _duplicate_game_pack_product(product)
+            duplicated_count += 1
+        if duplicated_count:
+            self.message_user(request, f'Продублировано игровых паков: {duplicated_count}.', messages.SUCCESS)
+        if skipped_count:
+            self.message_user(request, f'Пропущено не-игровых товаров: {skipped_count}.', messages.WARNING)
 
     def _description_template_payload(self, template, *, include_slots=False):
         payload = serialize_template(template)

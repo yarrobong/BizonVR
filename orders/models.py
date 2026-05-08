@@ -10,7 +10,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 
-from catalog.models import Product, ProductVariant
+from catalog.models import GamePack, Product, ProductVariant
 
 
 def resolve_order_item_image_url(*, product=None, variant=None):
@@ -490,6 +490,14 @@ class OrderItem(models.Model):
         related_name='order_items',
         verbose_name='Товар',
     )
+    game_pack = models.ForeignKey(
+        GamePack,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='order_items',
+        verbose_name='Игровой пак',
+    )
     product_name = models.CharField(
         'Название товара',
         max_length=300,
@@ -572,6 +580,12 @@ class OrderItem(models.Model):
         default=Decimal('0'),
     )
     comment = models.TextField('Комментарий', blank=True)
+    metadata = models.JSONField(
+        'Дополнительные данные',
+        default=dict,
+        blank=True,
+        help_text='Снапшот состава игрового комплекта или услуги.',
+    )
 
     class Meta:
         verbose_name = 'Позиция заказа'
@@ -581,13 +595,14 @@ class OrderItem(models.Model):
                 condition=(
                     (
                         Q(line_type='catalog')
-                        & Q(product__isnull=False)
+                        & (Q(product__isnull=False) | Q(game_pack__isnull=False))
                         & ~Q(product_name='')
                         & Q(custom_sku='')
                     )
                     | (
                         Q(line_type='custom')
                         & Q(product__isnull=True)
+                        & Q(game_pack__isnull=True)
                         & Q(variant__isnull=True)
                         & ~Q(product_name='')
                     )
@@ -618,8 +633,9 @@ class OrderItem(models.Model):
     def save(self, *args, **kwargs):
         if self.line_type == self.LINE_TYPE_CUSTOM:
             self.product = None
+            self.game_pack = None
             self.variant = None
-        elif self.product_id:
+        elif self.product_id or self.game_pack_id:
             self.line_type = self.LINE_TYPE_CATALOG
         if self.planned_unit_cost in (None, Decimal('0')) and self.purchase_price:
             self.planned_unit_cost = self.purchase_price
@@ -633,6 +649,15 @@ class OrderItem(models.Model):
                 self.product_name = self.product.name
             if not (self.product_image_url or '').strip():
                 self.product_image_url = resolve_order_item_image_url(product=self.product, variant=self.variant)
+        elif self.game_pack_id:
+            if not (self.product_name or '').strip():
+                self.product_name = self.game_pack.name
+            if not (self.product_image_url or '').strip():
+                image = self.game_pack.get_display_image()
+                try:
+                    self.product_image_url = image.url if image else ''
+                except (AttributeError, ValueError):
+                    self.product_image_url = ''
         update_fields = kwargs.get('update_fields')
         if update_fields is not None:
             normalized_fields = set(update_fields)
@@ -640,6 +665,7 @@ class OrderItem(models.Model):
                 {
                     'line_type',
                     'product',
+                    'game_pack',
                     'variant',
                     'product_name',
                     'product_image_url',
@@ -653,13 +679,15 @@ class OrderItem(models.Model):
         super().save(*args, **kwargs)
 
     def clean(self):
-        if self.line_type == self.LINE_TYPE_CATALOG and not self.product_id:
+        if self.line_type == self.LINE_TYPE_CATALOG and not (self.product_id or self.game_pack_id):
             raise ValidationError({'product': 'Для каталоговой строки выберите товар.'})
-        if self.line_type == self.LINE_TYPE_CUSTOM and self.product_id:
+        if self.line_type == self.LINE_TYPE_CUSTOM and (self.product_id or self.game_pack_id):
             raise ValidationError({'product': 'Произвольная строка не должна ссылаться на товар каталога.'})
-        if not self.product_id and not (self.product_name or '').strip():
+        if self.product_id and self.game_pack_id:
+            raise ValidationError({'game_pack': 'У позиции заказа можно указать либо товар, либо игровой пак.'})
+        if not self.product_id and not self.game_pack_id and not (self.product_name or '').strip():
             raise ValidationError({'product_name': 'Укажите название позиции.'})
-        if self.variant_id and not self.product_id:
+        if self.variant_id and (not self.product_id or self.game_pack_id):
             raise ValidationError({'variant': 'Вариант можно указать только для товара из каталога.'})
         if self.variant_id and self.variant.product_id != self.product_id:
             raise ValidationError({'variant': 'Вариант должен относиться к выбранному товару.'})
@@ -669,6 +697,8 @@ class OrderItem(models.Model):
             self.product_name = self.product.name
         if self.product_id and not (self.product_image_url or '').strip():
             self.product_image_url = resolve_order_item_image_url(product=self.product, variant=self.variant)
+        if self.game_pack_id and not (self.product_name or '').strip():
+            self.product_name = self.game_pack.name
         if self.line_type == self.LINE_TYPE_CATALOG and (self.custom_sku or '').strip():
             raise ValidationError({'custom_sku': 'Для каталоговой строки произвольный SKU не используется.'})
         if self.planned_unit_cost and self.actual_unit_cost and self.actual_unit_cost < 0:
@@ -694,7 +724,7 @@ class OrderItem(models.Model):
 
     @property
     def is_catalog_item(self):
-        return bool(self.product_id)
+        return bool(self.product_id or self.game_pack_id)
 
     @property
     def active_quantity(self):
@@ -789,6 +819,8 @@ class OrderItem(models.Model):
             return self.product_name.strip()
         if self.product_id:
             return self.product.name
+        if self.game_pack_id:
+            return self.game_pack.name
         return 'Товар'
 
     @property
@@ -812,6 +844,12 @@ class OrderItem(models.Model):
             return self.product_image_url.strip()
         if self.product_id:
             return resolve_order_item_image_url(product=self.product, variant=self.variant)
+        if self.game_pack_id:
+            image = self.game_pack.get_display_image()
+            try:
+                return image.url if image else ''
+            except (AttributeError, ValueError):
+                return ''
         return ''
 
     @property
@@ -822,4 +860,6 @@ class OrderItem(models.Model):
             return self.variant.sku.strip()
         if self.product_id:
             return (self.product.sku or '').strip()
+        if self.game_pack_id:
+            return ''
         return ''

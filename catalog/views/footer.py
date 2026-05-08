@@ -3,7 +3,7 @@ from django.shortcuts import render
 from django.views.decorators.http import require_GET
 
 from ..models import Product
-from .common import _product_stock_totals
+from .common import _product_stock_totals, _with_game_pack_availability
 
 FOOTER_PRODUCTS_ROWS_PER_BATCH = 3
 FOOTER_PRODUCTS_COLS = 5
@@ -51,7 +51,7 @@ def footer_products_feed_view(request):
 
     products_qs = Product.objects.filter(
         pk__in=page_ids, is_active=True
-    ).only('id', 'name', 'slug', 'price', 'image', 'created_at').prefetch_related('tags')
+    ).only('id', 'name', 'slug', 'price', 'image', 'created_at').prefetch_related('tags', 'images')
     product_map = {p.pk: p for p in products_qs}
     products = [product_map[pid] for pid in page_ids if pid in product_map]
 
@@ -71,5 +71,8 @@ def footer_products_feed_view(request):
         'next_page': current_page + 1 if has_next else None,
         'footer_products_layout': footer_products_layout,
         'favorite_product_ids': get_favorite_product_ids(request),
-        'product_stock_total': _product_stock_totals([product.pk for product in products]),
+        'product_stock_total': _with_game_pack_availability(
+            _product_stock_totals([product.pk for product in products]),
+            products,
+        ),
     })

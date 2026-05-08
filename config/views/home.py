@@ -38,7 +38,7 @@ def _home_view_impl(request):
         Product.objects.filter(is_active=True)
         .filter(promo_tag_filter)
         .select_related('category')
-        .prefetch_related('tags')
+        .prefetch_related('tags', 'images')
         .distinct()
         .order_by('-created_at')
     )

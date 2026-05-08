@@ -5,7 +5,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
 from ..models import Favorite, Product
-from .common import _product_stock_totals
+from .common import _product_stock_totals, _with_game_pack_availability
 
 
 def favorite_list_view(request):
@@ -21,7 +21,10 @@ def favorite_list_view(request):
             .select_related('category')
             .prefetch_related('tags', 'variants', 'images')
         )
-    product_stock_total = _product_stock_totals([product.pk for product in products])
+    product_stock_total = _with_game_pack_availability(
+        _product_stock_totals([product.pk for product in products]),
+        products,
+    )
     return render(request, 'catalog/favorite_list.html', {
         'products': products,
         'favorite_product_ids': set(p.pk for p in products),
@@ -63,7 +66,10 @@ def toggle_favorite_view(request, product_id):
             grid_html = render(request, 'catalog/partials/favorites_grid_oob.html', {
                 'products': products_list,
                 'favorite_product_ids': favorite_ids,
-                'product_stock_total': _product_stock_totals([product.pk for product in products_list]),
+                'product_stock_total': _with_game_pack_availability(
+                    _product_stock_totals([product.pk for product in products_list]),
+                    products_list,
+                ),
             }).content.decode()
             resp = HttpResponse(button_html + grid_html)
         resp['HX-Trigger'] = json.dumps({

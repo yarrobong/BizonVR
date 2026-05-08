@@ -240,6 +240,9 @@
     if (mode === 'on_request') {
       return this.allowOnRequest;
     }
+    if (this.isGamePack) {
+      return this.hasInStockPrice;
+    }
     return this.stockTotal > 0 && this.hasInStockPrice;
   },
   setPurchaseMode(mode) {
@@ -322,7 +325,13 @@
     return this.data.stockStatusProduct || 'on_request';
   },
   get stockLevelLabel() {
+    if (this.stockStatus === 'digital_pack') {
+      return 'Доступен';
+    }
     return this.stockStatus === 'in_stock_high' ? 'Много' : 'Мало';
+  },
+  get stockPrimaryLabel() {
+    return this.isGamePack ? 'Цифровой пакет' : 'В наличии';
   },
   get inStockDeliveryDays() {
     return 5;
@@ -331,6 +340,9 @@
     return 35;
   },
   get inStockDeliveryText() {
+    if (this.isGamePack) {
+      return 'Цифровой пакет без складских ограничений';
+    }
     return `Доставка за ${this.inStockDeliveryDays} дней`;
   },
   get onRequestDeliveryText() {
@@ -377,6 +389,9 @@
   },
   get allowOnRequest() {
     return !!this.data.allowOrderOnRequest && this.hasOnRequestPrice;
+  },
+  get isGamePack() {
+    return !!this.data.isGamePack;
   },
   get currentPublicPurchaseMode() {
     if (this.selectedVariant) {
@@ -723,9 +738,9 @@
                 </div>
                 <div class="offer-meta">
                   <div class="offer-status-row">
-                    <span class="offer-status-label">В наличии</span>
+                    <span class="offer-status-label" x-text="stockPrimaryLabel">В наличии</span>
                     <span class="offer-stock-badge"
-                          :class="stockStatus === 'in_stock_high' ? 'is-high' : 'is-low'"
+                          :class="stockStatus === 'in_stock_high' || stockStatus === 'digital_pack' ? 'is-high' : 'is-low'"
                           x-text="stockLevelLabel">Мало</span>
                   </div>
                   <p class="offer-meta-text" x-text="inStockDeliveryText">Доставка за 5 дней</p>
@@ -835,9 +850,9 @@
                 </div>
                 <div class="offer-meta">
                   <div class="offer-status-row">
-                    <span class="offer-status-label">В наличии</span>
+                    <span class="offer-status-label" x-text="stockPrimaryLabel">В наличии</span>
                     <span class="offer-stock-badge"
-                          :class="stockStatus === 'in_stock_high' ? 'is-high' : 'is-low'"
+                          :class="stockStatus === 'in_stock_high' || stockStatus === 'digital_pack' ? 'is-high' : 'is-low'"
                           x-text="stockLevelLabel">Мало</span>
                   </div>
                   <p class="offer-meta-text" x-text="inStockDeliveryText">Доставка за 5 дней</p>
@@ -959,6 +974,105 @@
         {% include "catalog/partials/product_marketplace_links.html" with product=product only %}
       </div>
     </div>
+
+    {% if show_vr_club_games_upsell %}
+    <section class="product-bundles-block">
+      <div class="rec-panel mb-6" style="border-color: rgba(34,211,238,.35); background: linear-gradient(135deg, rgba(8,145,178,.18), rgba(15,23,42,.86));">
+        <div class="rec-caption mb-3">
+          <div>
+            <p class="text-xs uppercase tracking-[0.24em] text-cyan-300/80">B2B комплект</p>
+            <h2 class="text-xl md:text-2xl font-semibold text-white mt-2">Добавить игры и настройку</h2>
+            <p class="text-sm text-slate-300 mt-2">Соберите коммерческий комплект запуска: игры под эти шлемы, аккаунты, multiplayer, PCVR, обучение персонала и поддержку.</p>
+          </div>
+          <a href="{% url 'catalog:vr_club_games' %}?device={{ product.name|urlencode }}#constructor" class="add-cart-btn" style="max-width: 320px;">Собрать комплект</a>
+        </div>
+        {% if vr_club_recommended_packs %}
+          <div class="grid gap-3 md:grid-cols-3">
+            {% for pack in vr_club_recommended_packs %}
+              <a href="{{ pack.get_absolute_url }}" class="rounded-2xl border border-white/10 bg-white/5 p-4 text-white hover:border-cyan-300/50">
+                <span class="text-xs uppercase tracking-[0.18em] text-cyan-200">{{ pack.get_vr_club_tariff_display|default:"Пакет" }}</span>
+                <strong class="mt-2 block">{{ pack.name }}</strong>
+                <span class="mt-1 block text-sm text-slate-400">{% if pack.in_stock_price %}{{ pack.in_stock_price|rub }}{% else %}По запросу{% endif %}</span>
+              </a>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </div>
+    </section>
+    {% endif %}
+
+    {% if product.is_game_pack and game_pack_items %}
+    <div class="product-bundles-block product-bundles-block--game-pack">
+      <h2 class="section-title">Игры в комплекте</h2>
+      <div class="rec-panel mb-6">
+      <div class="rec-caption mb-3">
+        <div>
+          <p class="text-xs uppercase tracking-[0.24em] text-cyan-300/80">Состав пака</p>
+          <h2 class="text-xl md:text-2xl font-semibold text-white mt-2">Игры в комплекте</h2>
+        </div>
+        <div class="text-sm text-slate-400">{{ game_pack_items|length }} шт.</div>
+      </div>
+      <div class="game-pack-items-grid">
+        {% for game in game_pack_items %}
+        <article class="game-pack-item-card">
+          <div class="game-pack-item-card__media">
+            {% if game.image_url %}
+              {% if game.detail_url %}
+              <a href="{{ game.detail_url }}" class="game-pack-item-card__media-link">
+                <img src="{{ game.image_url }}" alt="{{ game.title }}" class="game-pack-item-card__image" loading="lazy" decoding="async">
+              </a>
+              {% else %}
+              <img src="{{ game.image_url }}" alt="{{ game.title }}" class="game-pack-item-card__image" loading="lazy" decoding="async">
+              {% endif %}
+            {% else %}
+              <div class="game-pack-item-card__image-placeholder">VR Game</div>
+            {% endif %}
+          </div>
+          <div class="game-pack-item-card__head">
+            <div>
+              <h3 class="game-pack-item-card__title">
+                {% if game.detail_url %}
+                <a href="{{ game.detail_url }}" class="game-pack-item-card__title-link">{{ game.title }}</a>
+                {% else %}
+                {{ game.title }}
+                {% endif %}
+              </h3>
+              {% if game.genre %}
+              <p class="game-pack-item-card__genre">{{ game.genre }}</p>
+              {% endif %}
+              {% if game.platform %}
+              <p class="game-pack-item-card__platform">{{ game.platform }}</p>
+              {% endif %}
+            </div>
+            <span class="game-pack-item-card__badge">
+              Игра {{ forloop.counter }}
+            </span>
+          </div>
+          {% if game.modes or game.devices %}
+          <div class="game-pack-item-card__meta-list">
+            {% if game.modes %}
+            <div class="game-pack-item-card__meta-row">
+              <span class="game-pack-item-card__meta-label">Режимы</span>
+              <span class="game-pack-item-card__meta-value">{{ game.modes }}</span>
+            </div>
+            {% endif %}
+            {% if game.devices %}
+            <div class="game-pack-item-card__meta-row">
+              <span class="game-pack-item-card__meta-label">Устройства</span>
+              <span class="game-pack-item-card__meta-value">{{ game.devices }}</span>
+            </div>
+            {% endif %}
+          </div>
+          {% endif %}
+          {% if game.note %}
+          <p class="game-pack-item-card__note">{{ game.note }}</p>
+          {% endif %}
+        </article>
+        {% endfor %}
+      </div>
+      </div>
+    </div>
+    {% endif %}
 
     <!-- Floating Action Bar (Mobile Only) -->
     <div class="floating-action mobile-only" x-show="!isRequestOnlySelection" x-cloak>

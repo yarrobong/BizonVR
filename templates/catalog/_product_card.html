@@ -3,6 +3,7 @@
 <article id="product-{{ product.pk }}{% if card_variant %}-v{{ card_variant.pk }}{% endif %}" class="group bg-dark-800/90 md:hover:bg-dark-800 border border-dark-700 rounded-xl transition-all duration-300 relative flex flex-col h-full scroll-mt-40 overflow-hidden hover:-translate-y-0.5 hover:border-accent/60 shadow-[0_10px_28px_rgba(0,0,0,0.28)]">
   {# Фото вплотную к верхнему и боковым краям, обводка rgb(31 37 50) #}
   <div class="relative w-full aspect-square flex-shrink-0 overflow-hidden">
+    {% product_card_gallery_images product card_variant as gallery_images %}
     {% if product.tags.all %}
     <div class="absolute z-20 flex flex-col items-start max-w-[70%] {% if in_recommendations %}gap-1.5{% else %}gap-1{% endif %}" style="top: {% if in_recommendations %}0.75rem{% else %}0.5rem{% endif %}; left: {% if in_recommendations %}0.75rem{% else %}0.5rem{% endif %}; right: auto !important;">
       {% for tag in product.tags.all %}
@@ -22,15 +23,21 @@
     </div>
     {% endif %}
   <a href="{% url 'catalog:product_detail' product.slug %}{% if card_variant %}?variant={{ card_variant.id }}{% endif %}" class="absolute inset-0 flex items-center justify-center rounded-t-xl border-b border-dark-700">
-    {% if card_variant and card_variant.image %}
-    <img src="{{ card_variant.image|image_variant_url:'480' }}" srcset="{{ card_variant.image|image_srcset:'320,480,640' }}" sizes="(min-width: 1536px) 320px, (min-width: 1280px) 25vw, (min-width: 768px) 33vw, 50vw" alt="{{ product.name }}{% if card_variant %} — {{ card_variant.name }}{% endif %}" class="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300 product-card-img" loading="lazy" decoding="async" {{ card_variant.image|image_dimension_attrs }} onerror="this.classList.add('!hidden'); this.nextElementSibling.classList.remove('hidden'); this.nextElementSibling.classList.add('flex');" />
-    <div class="hidden absolute inset-0 w-full h-full items-center justify-center text-gray-500 product-card-placeholder bg-dark-700">
-      {% lucide_icon "image-off" "w-12 h-12 inline-block" %}
-    </div>
-    {% elif product.image %}
-    <img src="{{ product.image|image_variant_url:'480' }}" srcset="{{ product.image|image_srcset:'320,480,640' }}" sizes="(min-width: 1536px) 320px, (min-width: 1280px) 25vw, (min-width: 768px) 33vw, 50vw" alt="{{ product.name }}{% if card_variant %} — {{ card_variant.name }}{% endif %}" class="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300 product-card-img" loading="lazy" decoding="async" {{ product.image|image_dimension_attrs }} onerror="this.classList.add('!hidden'); this.nextElementSibling.classList.remove('hidden'); this.nextElementSibling.classList.add('flex');" />
-    <div class="hidden absolute inset-0 w-full h-full items-center justify-center text-gray-500 product-card-placeholder bg-dark-700">
-      {% lucide_icon "image-off" "w-12 h-12 inline-block" %}
+    {% if gallery_images %}
+    <div class="product-card-gallery" data-product-card-gallery data-gallery-count="{{ gallery_images|length }}">
+      {% for gallery_image in gallery_images %}
+      <img src="{{ gallery_image|image_variant_url:'480' }}" srcset="{{ gallery_image|image_srcset:'320,480,640' }}" sizes="(min-width: 1536px) 320px, (min-width: 1280px) 25vw, (min-width: 768px) 33vw, 50vw" alt="{{ product.name }}{% if card_variant %} — {{ card_variant.name }}{% endif %}" class="product-card-gallery__image{% if forloop.first %} is-active{% endif %}" data-product-card-image data-gallery-index="{{ forloop.counter0 }}" loading="lazy" decoding="async" {{ gallery_image|image_dimension_attrs }} />
+      {% endfor %}
+      <div class="product-card-placeholder absolute inset-0 hidden w-full h-full items-center justify-center text-gray-500 bg-dark-700" data-product-card-placeholder>
+        {% lucide_icon "image-off" "w-12 h-12 inline-block" %}
+      </div>
+      {% if gallery_images|length > 1 %}
+      <div class="product-card-gallery__segments" data-product-card-segments aria-hidden="true">
+        {% for gallery_image in gallery_images %}
+        <span class="product-card-gallery__segment{% if forloop.first %} is-active{% endif %}" data-product-card-segment data-gallery-index="{{ forloop.counter0 }}"></span>
+        {% endfor %}
+      </div>
+      {% endif %}
     </div>
     {% else %}
     <div class="w-full h-full flex items-center justify-center text-gray-500">
@@ -44,6 +51,11 @@
     {% if recommendation_badge %}
     <div class="mb-2">
       <span class="inline-flex items-center px-2 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wider bg-accent/15 text-accent border border-accent/30">{{ recommendation_badge }}</span>
+    </div>
+    {% endif %}
+    {% if product.is_game_pack %}
+    <div class="mb-2">
+      <span class="inline-flex items-center px-2 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wider border border-sky-300/30 bg-sky-300/10 text-sky-200">Игровой пак</span>
     </div>
     {% endif %}
     <h3 class="text-white font-semibold line-clamp-2" style="font-size: 0.95rem; line-height: 1.3; min-height: 2.45rem;">
@@ -88,7 +100,14 @@
     {% else %}
       {% with stock=product_stock_total|get_item:product.id|default:0 %}
       <div class="mt-2">
-        {% if stock > 0 and product.in_stock_price is not None %}
+        {% if product.is_game_pack and product.in_stock_price is not None %}
+          <div class="text-[1.35rem] font-bold leading-none text-accent">{{ product.in_stock_price|price_format }} ₽</div>
+          <div class="mt-2 flex items-center gap-2 text-xs text-white/92">
+            <span class="inline-block h-2.5 w-2.5 rounded-full bg-sky-300 shadow-[0_0_12px_rgba(125,211,252,0.45)]"></span>
+            <span class="font-medium">Цифровой пакет</span>
+          </div>
+          <p class="mt-1 text-xs text-gray-400">Доступен сразу после согласования заказа</p>
+        {% elif stock > 0 and product.in_stock_price is not None %}
           <div class="text-[1.35rem] font-bold leading-none text-accent">{{ product.in_stock_price|price_format }} ₽</div>
           {% if product.discount_percent > 0 and product.price > product.in_stock_price %}
           <div class="mt-1 text-xs text-gray-500"><span class="line-through">{{ product.price|price_format }} ₽</span> <span class="text-green-400">−{{ product.discount_percent|floatformat:"-2" }}%</span></div>
@@ -165,7 +184,21 @@
         {% endwith %}
       {% else %}
         {% with stock=product_stock_total|get_item:product.id|default:0 %}
-          {% if stock > 0 and product.in_stock_price is not None %}
+          {% if product.is_game_pack and product.in_stock_price is not None %}
+            <form action="{% url 'catalog:add_to_cart' product.pk %}" method="post"
+                  hx-post="{% url 'catalog:add_to_cart' product.pk %}"
+                  hx-target="#cart-modal-content"
+                  hx-swap="innerHTML"
+                  class="mt-auto pt-3">
+              {% csrf_token %}
+              <input type="hidden" name="quantity" value="1" />
+              <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+              <button type="submit"
+                      class="w-full h-9 rounded-lg bg-accent hover:bg-accent-hover text-dark-900 text-xs font-bold uppercase tracking-wide transition-colors shadow-[0_8px_20px_rgba(0,212,255,0.24)]">
+                + В корзину
+              </button>
+            </form>
+          {% elif stock > 0 and product.in_stock_price is not None %}
             <form action="{% url 'catalog:add_to_cart' product.pk %}" method="post"
                   hx-post="{% url 'catalog:add_to_cart' product.pk %}"
                   hx-target="#cart-modal-content"

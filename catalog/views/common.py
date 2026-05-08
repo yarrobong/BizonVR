@@ -3,6 +3,8 @@ from django.utils.http import url_has_allowed_host_and_scheme
 
 from ..models import ProductStock
 
+ALWAYS_AVAILABLE_STOCK_TOTAL = 999
+
 
 def _get_stock_in_city(city_id, product_id, variant_id=None):
     """Суммарный остаток товара по городу. variant_id — для товаров с вариантами."""
@@ -57,6 +59,15 @@ def _variant_stock_totals(product_ids):
         .annotate(total=Sum('quantity'))
     )
     return {row['variant_id']: int(row['total'] or 0) for row in rows}
+
+
+def _with_game_pack_availability(stock_map, products):
+    """Force availability marker for digital game products that do not track stock."""
+    result = dict(stock_map or {})
+    for product in products:
+        if not getattr(product, 'tracks_stock', True):
+            result[product.pk] = max(ALWAYS_AVAILABLE_STOCK_TOTAL, int(result.get(product.pk, 0) or 0))
+    return result
 
 
 def _safe_redirect_target(url, request):

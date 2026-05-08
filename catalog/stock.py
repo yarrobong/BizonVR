@@ -23,3 +23,18 @@ def public_stock_status(quantity):
         'code': 'on_request',
         'label': 'Под заказ',
     }
+
+
+def public_product_stock_status(product, quantity):
+    """Return a public availability status for a concrete product."""
+    if getattr(product, 'is_game_pack', False):
+        return {
+            'code': 'digital_pack',
+            'label': 'Цифровой пакет',
+        }
+    if getattr(product, 'is_game_product', False):
+        return {
+            'code': 'in_stock_high',
+            'label': 'В наличии',
+        }
+    return public_stock_status(quantity)

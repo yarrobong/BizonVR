@@ -3116,6 +3116,35 @@ def _manager_price_text(value):
     return '' if value is None else str(value)
 
 
+def _game_pack_preview_text(product, *, limit=4):
+    if not getattr(product, 'is_game_pack', False):
+        return ''
+    all_items = list(product.game_pack_items.all().order_by('sort_order', 'id'))
+    items = all_items[:limit]
+    if not items:
+        return ''
+    parts = []
+    for item in items:
+        label = item.title
+        if item.platform:
+            label = f'{label} ({item.platform})'
+        parts.append(label)
+    total_count = len(all_items)
+    if total_count > len(parts):
+        parts.append(f'и ещё {total_count - len(parts)}')
+    return ', '.join(parts)
+
+
+def _commercial_proposal_description(product):
+    description_parts = []
+    if product.description:
+        description_parts.append(product.description.strip())
+    game_pack_preview = _game_pack_preview_text(product, limit=6)
+    if game_pack_preview:
+        description_parts.append(f'Состав пака: {game_pack_preview}.')
+    return '\n'.join(part for part in description_parts if part)
+
+
 def _commercial_proposal_products(request):
     product_ids = request.POST.getlist('products')
     if not product_ids:
@@ -3123,7 +3152,7 @@ def _commercial_proposal_products(request):
     products = (
         Product.objects.filter(pk__in=product_ids)
         .select_related('category')
-        .prefetch_related('variants', 'images')
+        .prefetch_related('variants', 'images', 'game_pack_items')
         .order_by('category__name', 'name')
     )
     rows = []
@@ -3154,7 +3183,7 @@ def _commercial_proposal_products(request):
                 'num': idx,
                 'name': product.name,
                 'category': product.category.name,
-                'description': product.description or '',
+                'description': _commercial_proposal_description(product),
                 'image_url': image_url,
                 'price': price,
                 'qty': qty,
@@ -3174,7 +3203,7 @@ def commercial_proposals_search_view(request):
     products = (
         Product.objects.filter(name__icontains=q)
         .select_related('category')
-        .prefetch_related('variants', 'images')
+        .prefetch_related('variants', 'images', 'game_pack_items')
         .order_by('category__name', 'name')[:15]
     )
     result = []
@@ -3188,6 +3217,9 @@ def commercial_proposals_search_view(request):
                 'price': _manager_price_text(_manager_product_default_price(product)),
                 'category': product.category.name,
                 'image_url': image_url,
+                'is_game_pack': product.is_game_pack,
+                'kind_label': 'Игровой пак' if product.is_game_pack else '',
+                'game_pack_preview': _game_pack_preview_text(product),
             }
         )
     return JsonResponse(result, safe=False, json_dumps_params={'ensure_ascii': False})

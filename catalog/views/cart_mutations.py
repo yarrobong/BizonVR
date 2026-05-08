@@ -7,14 +7,18 @@ from django.views.decorators.http import require_POST
 from django_ratelimit.decorators import ratelimit
 
 from ..cart_services import (
+    _build_game_pack_item_dict,
+    _build_service_item_dict,
+    CART_LINE_CUSTOM_GAME_PACK,
     enrich_cart_items,
     get_cart_count,
     get_cart_items,
+    group_cart_items,
     save_buy_now_checkout_items,
     save_cart_to_db,
     save_cart_to_session,
 )
-from ..models import Product, ProductBundle, ProductVariant
+from ..models import GamePack, Product, ProductBundle, ProductVariant, Service
 from ..pricing import (
     PURCHASE_MODE_ON_REQUEST,
     PURCHASE_MODE_STOCK,
@@ -55,6 +59,7 @@ def _render_cart_error(request, cart_items, message):
     total = sum(i.get('checkout_subtotal', i.get('subtotal', 0)) for i in cart_items)
     resp = render(request, 'catalog/partials/cart_content.html', {
         'cart_items': cart_items,
+        'cart_groups': group_cart_items(cart_items),
         'total': total,
         'cart_error': message,
     })
@@ -153,8 +158,8 @@ def add_to_cart_view(request, product_id):
         i.get('quantity', 0) for i in cart_items
         if _cart_item_matches(i, product_id, variant_id, purchase_mode)
     )
-    stock_total = _get_stock_total(product_id, variant_id)
-    if purchase_mode == PURCHASE_MODE_STOCK and stock_total > 0:
+    stock_total = _get_stock_total(product_id, variant_id) if product.tracks_stock else 0
+    if purchase_mode == PURCHASE_MODE_STOCK and product.tracks_stock and stock_total > 0:
         available = max(0, stock_total - current_in_cart)
         if quantity > available:
             quantity = available
@@ -165,7 +170,7 @@ def add_to_cart_view(request, product_id):
                 message='Недостаточно товара.',
                 fallback_url=product.get_absolute_url(),
             )
-    elif purchase_mode == PURCHASE_MODE_STOCK:
+    elif purchase_mode == PURCHASE_MODE_STOCK and product.tracks_stock:
         return _render_or_redirect_cart_error(
             request,
             cart_items=enrich_cart_items(cart_items),
@@ -246,11 +251,17 @@ def cart_update_view(request):
     Если выбран город — ограничиваем количество остатком.
     """
     product_id = request.POST.get('product_id')
+    game_pack_id = request.POST.get('game_pack_id')
+    service_id = request.POST.get('service_id')
+    line_type = request.POST.get('line_type')
+    custom_key = request.POST.get('custom_key') or ''
     variant_id = request.POST.get('variant_id')
     purchase_mode = _get_requested_purchase_mode(request)
     try:
-        product_id = int(product_id)
         quantity = int(request.POST.get('quantity', 0))
+        game_pack_id = int(game_pack_id) if game_pack_id else None
+        service_id = int(service_id) if service_id else None
+        product_id = int(product_id) if product_id else None
         if variant_id:
             variant_id = int(variant_id)
         else:
@@ -261,70 +272,106 @@ def cart_update_view(request):
         return redirect('catalog:product_list')
 
     cart_items = list(get_cart_items(request))
-    existing_index = next(
-        (
-            idx for idx, item in enumerate(cart_items)
-            if _cart_item_matches(item, product_id, variant_id, purchase_mode)
-        ),
-        None,
-    )
-    existing_item = cart_items[existing_index] if existing_index is not None else None
-    cart_items = [
-        i for i in cart_items
-        if not _cart_item_matches(i, product_id, variant_id, purchase_mode)
-    ]
-    if quantity > 0:
-        product = Product.objects.filter(pk=product_id, is_active=True).first()
-        if product:
-            variant = None
-            if variant_id:
-                variant = ProductVariant.objects.filter(product_id=product_id, pk=variant_id).first()
-                if not variant:
-                    variant_id = None
-            purchase_mode, purchase_mode_error = _resolve_purchase_mode(product, variant, purchase_mode)
-            if purchase_mode_error and existing_item is None:
-                if request.headers.get('HX-Request'):
-                    return _render_cart_error(request, enrich_cart_items(cart_items), purchase_mode_error)
-                return redirect(request.POST.get('next') or request.GET.get('next') or reverse('catalog:cart'))
-            if purchase_mode_error and existing_item is not None:
-                if existing_index is not None and existing_index <= len(cart_items):
-                    cart_items.insert(existing_index, existing_item)
-                else:
-                    cart_items.append(existing_item)
-                quantity = 0
-            stock_total = _get_stock_total(product_id, variant_id)
-            if quantity > 0 and purchase_mode == PURCHASE_MODE_STOCK:
-                if stock_total > 0:
-                    quantity = min(quantity, stock_total)
-                elif existing_item is not None:
-                    if existing_item is not None:
-                        quantity = min(quantity, max(1, int(existing_item.get('quantity') or 1)))
-                else:
-                    quantity = 0
-            display_name = f'{product.name} ({variant.name})' if variant else product.name
-            price_value = resolve_price_for_mode(product, variant, purchase_mode)
-            price = _float_or_none(price_value)
-            if variant and variant.image:
-                image_url = variant.image.url
-            else:
-                image_url = product.image.url if product.image else ''
-            if quantity > 0 and price is not None:
-                updated_item = {
-                    'product_id': product.pk,
-                    'variant_id': variant_id,
-                    'variant_name': variant.name if variant else None,
-                    'name': display_name,
-                    'price': price,
-                    'quantity': quantity,
-                    'image_url': image_url,
-                    'subtotal': price * quantity,
-                    'original_price': _float_or_none(resolve_in_stock_base_price(product, variant)),
-                    'purchase_mode': purchase_mode,
-                }
+    if line_type == CART_LINE_CUSTOM_GAME_PACK:
+        existing_index = next((idx for idx, item in enumerate(cart_items) if item.get('line_type') == CART_LINE_CUSTOM_GAME_PACK and (item.get('custom_key') or item.get('custom_snapshot', {}).get('custom_key', '')) == custom_key), None)
+        existing_item = cart_items[existing_index] if existing_index is not None else None
+        cart_items = [item for item in cart_items if not (item.get('line_type') == CART_LINE_CUSTOM_GAME_PACK and (item.get('custom_key') or item.get('custom_snapshot', {}).get('custom_key', '')) == custom_key)]
+        if quantity > 0 and existing_item:
+            existing_item['quantity'] = quantity
+            existing_item['subtotal'] = (existing_item.get('price') or 0) * quantity
+            cart_items.insert(existing_index if existing_index is not None else len(cart_items), existing_item)
+    elif service_id:
+        existing_index = next((idx for idx, item in enumerate(cart_items) if item.get('service_id') == service_id), None)
+        cart_items = [item for item in cart_items if item.get('service_id') != service_id]
+        if quantity > 0:
+            service = Service.objects.filter(pk=service_id, is_active=True).first()
+            if service:
+                updated_item = _build_service_item_dict(service, quantity)
+                cart_items.insert(existing_index if existing_index is not None else len(cart_items), updated_item)
+    elif game_pack_id:
+        existing_index = next(
+            (
+                idx for idx, item in enumerate(cart_items)
+                if _cart_item_matches_game_pack(item, game_pack_id, purchase_mode)
+            ),
+            None,
+        )
+        cart_items = [
+            item for item in cart_items
+            if not _cart_item_matches_game_pack(item, game_pack_id, purchase_mode)
+        ]
+        if quantity > 0:
+            game_pack = GamePack.objects.filter(pk=game_pack_id, is_active=True).first()
+            if game_pack:
+                updated_item = _build_game_pack_item_dict(game_pack, quantity, purchase_mode=purchase_mode)
                 if existing_index is not None and existing_index <= len(cart_items):
                     cart_items.insert(existing_index, updated_item)
                 else:
                     cart_items.append(updated_item)
+    else:
+        existing_index = next(
+            (
+                idx for idx, item in enumerate(cart_items)
+                if _cart_item_matches(item, product_id, variant_id, purchase_mode)
+            ),
+            None,
+        )
+        existing_item = cart_items[existing_index] if existing_index is not None else None
+        cart_items = [
+            i for i in cart_items
+            if not _cart_item_matches(i, product_id, variant_id, purchase_mode)
+        ]
+        if quantity > 0:
+            product = Product.objects.filter(pk=product_id, is_active=True).first()
+            if product:
+                variant = None
+                if variant_id:
+                    variant = ProductVariant.objects.filter(product_id=product_id, pk=variant_id).first()
+                    if not variant:
+                        variant_id = None
+                purchase_mode, purchase_mode_error = _resolve_purchase_mode(product, variant, purchase_mode)
+                if purchase_mode_error and existing_item is None:
+                    if request.headers.get('HX-Request'):
+                        return _render_cart_error(request, enrich_cart_items(cart_items), purchase_mode_error)
+                    return redirect(request.POST.get('next') or request.GET.get('next') or reverse('catalog:cart'))
+                if purchase_mode_error and existing_item is not None:
+                    if existing_index is not None and existing_index <= len(cart_items):
+                        cart_items.insert(existing_index, existing_item)
+                    else:
+                        cart_items.append(existing_item)
+                    quantity = 0
+                stock_total = _get_stock_total(product_id, variant_id) if product.tracks_stock else 0
+                if quantity > 0 and purchase_mode == PURCHASE_MODE_STOCK and product.tracks_stock:
+                    if stock_total > 0:
+                        quantity = min(quantity, stock_total)
+                    elif existing_item is not None:
+                        quantity = min(quantity, max(1, int(existing_item.get('quantity') or 1)))
+                    else:
+                        quantity = 0
+                display_name = f'{product.name} ({variant.name})' if variant else product.name
+                price_value = resolve_price_for_mode(product, variant, purchase_mode)
+                price = _float_or_none(price_value)
+                if variant and variant.image:
+                    image_url = variant.image.url
+                else:
+                    image_url = product.image.url if product.image else ''
+                if quantity > 0 and price is not None:
+                    updated_item = {
+                        'product_id': product.pk,
+                        'variant_id': variant_id,
+                        'variant_name': variant.name if variant else None,
+                        'name': display_name,
+                        'price': price,
+                        'quantity': quantity,
+                        'image_url': image_url,
+                        'subtotal': price * quantity,
+                        'original_price': _float_or_none(resolve_in_stock_base_price(product, variant)),
+                        'purchase_mode': purchase_mode,
+                    }
+                    if existing_index is not None and existing_index <= len(cart_items):
+                        cart_items.insert(existing_index, updated_item)
+                    else:
+                        cart_items.append(updated_item)
     if request.user.is_authenticated:
         save_cart_to_db(request, cart_items)
     else:
@@ -340,20 +387,36 @@ def cart_update_view(request):
         if from_cart_page:
             if enriched_items:
                 slugs = dict(
-                    Product.objects.filter(pk__in=[i['product_id'] for i in enriched_items]).values_list('pk', 'slug')
+                    Product.objects.filter(pk__in=[i['product_id'] for i in enriched_items if i.get('product_id')]).values_list('pk', 'slug')
+                )
+                game_pack_slugs = dict(
+                    GamePack.objects.filter(pk__in=[i['game_pack_id'] for i in enriched_items if i.get('game_pack_id')]).values_list('pk', 'slug')
                 )
                 for item in enriched_items:
+                    if item.get('game_pack_id'):
+                        item['product_slug'] = ''
+                        item['game_pack_slug'] = game_pack_slugs.get(item['game_pack_id'], '')
+                        item['stock_total'] = 1
+                        continue
+                    if item.get('service_id') or item.get('line_type') == CART_LINE_CUSTOM_GAME_PACK:
+                        item['product_slug'] = ''
+                        item['game_pack_slug'] = ''
+                        item['stock_total'] = 1
+                        continue
                     pid = item['product_id']
                     vid = item.get('variant_id')
                     item['product_slug'] = slugs.get(pid, '')
+                    item['game_pack_slug'] = ''
                     item['stock_total'] = _get_stock_total(pid, vid)
             resp = render(request, 'catalog/partials/cart_page_wrapper.html', {
                 'cart_items': enriched_items,
+                'cart_groups': group_cart_items(enriched_items),
                 'total': total,
             })
         else:
             resp = render(request, 'catalog/partials/cart_content.html', {
                 'cart_items': enriched_items,
+                'cart_groups': group_cart_items(enriched_items),
                 'total': total,
             })
         resp['HX-Trigger'] = json.dumps({'cart-updated': {'count': get_cart_count(request)}})
@@ -548,17 +611,17 @@ def buy_now_product_view(request, product_id):
             message=purchase_mode_error,
             fallback_url=product.get_absolute_url(),
         )
-    stock_total = _get_stock_total(product_id, variant_id)
-    if purchase_mode == PURCHASE_MODE_STOCK and stock_total > 0 and quantity > stock_total:
+    stock_total = _get_stock_total(product_id, variant_id) if product.tracks_stock else 0
+    if purchase_mode == PURCHASE_MODE_STOCK and product.tracks_stock and stock_total > 0 and quantity > stock_total:
         quantity = stock_total
-    if purchase_mode == PURCHASE_MODE_STOCK and stock_total > 0 and quantity <= 0:
+    if purchase_mode == PURCHASE_MODE_STOCK and product.tracks_stock and stock_total > 0 and quantity <= 0:
         return _render_or_redirect_cart_error(
             request,
             cart_items=enrich_cart_items(get_cart_items(request)),
             message='Недостаточно товара.',
             fallback_url=product.get_absolute_url(),
         )
-    if purchase_mode == PURCHASE_MODE_STOCK and stock_total <= 0:
+    if purchase_mode == PURCHASE_MODE_STOCK and product.tracks_stock and stock_total <= 0:
         return _render_or_redirect_cart_error(
             request,
             cart_items=enrich_cart_items(get_cart_items(request)),
@@ -593,4 +656,96 @@ def buy_now_bundle_view(request):
 
     buy_now_items = _build_bundle_cart_items(bundle, items)
     save_buy_now_checkout_items(request, buy_now_items)
+    return redirect(f"{reverse('orders:checkout')}?mode=buy_now")
+
+
+def _cart_item_matches_game_pack(item, game_pack_id, purchase_mode=PURCHASE_MODE_STOCK):
+    return (
+        item.get('game_pack_id') == game_pack_id
+        and normalize_purchase_mode(item.get('purchase_mode')) == normalize_purchase_mode(purchase_mode)
+    )
+
+
+@ratelimit(key='ip', rate='60/m', method='POST')
+@require_POST
+def add_game_pack_to_cart_view(request, game_pack_id):
+    game_pack = get_object_or_404(GamePack, pk=game_pack_id, is_active=True)
+    quantity = _get_requested_quantity(request)
+    purchase_mode, purchase_mode_error = _resolve_purchase_mode(
+        game_pack,
+        None,
+        _get_requested_purchase_mode(request),
+    )
+    if purchase_mode_error:
+        return _render_or_redirect_cart_error(
+            request,
+            cart_items=enrich_cart_items(get_cart_items(request)),
+            message=purchase_mode_error,
+            fallback_url=game_pack.get_absolute_url(),
+        )
+
+    cart_items = list(get_cart_items(request))
+    for item in cart_items:
+        if _cart_item_matches_game_pack(item, game_pack_id, purchase_mode):
+            item['quantity'] = item.get('quantity', 0) + quantity
+            item['subtotal'] = item['price'] * item['quantity']
+            break
+    else:
+        cart_items.append(_build_game_pack_item_dict(game_pack, quantity, purchase_mode=purchase_mode))
+
+    if request.user.is_authenticated:
+        save_cart_to_db(request, cart_items)
+    else:
+        save_cart_to_session(request, cart_items)
+
+    if request.headers.get('HX-Request'):
+        enriched_items = enrich_cart_items(cart_items)
+        total = sum(i.get('checkout_subtotal', i.get('subtotal', 0)) for i in enriched_items)
+        added_item = _build_game_pack_item_dict(game_pack, quantity, purchase_mode=purchase_mode)
+        added_item['image_url'] = request.build_absolute_uri(added_item['image_url']) if added_item.get('image_url') else ''
+        items_preview = [
+            {
+                'name': i['name'],
+                'quantity': i['quantity'],
+                'subtotal': i['subtotal'],
+                'image_url': request.build_absolute_uri(i['image_url']) if i.get('image_url') else '',
+            }
+            for i in reversed(cart_items[-5:])
+        ]
+        resp = render(request, 'catalog/partials/cart_content.html', {
+            'cart_items': enriched_items,
+            'cart_groups': group_cart_items(enriched_items),
+            'total': total,
+        })
+        resp['HX-Trigger'] = json.dumps({
+            'cart-updated': {
+                'count': get_cart_count(request),
+                'total': total,
+                'added_item': added_item,
+                'items': items_preview,
+            }
+        })
+        return resp
+
+    return redirect(_get_next_url(request, game_pack.get_absolute_url()))
+
+
+@ratelimit(key='ip', rate='30/m', method='POST')
+@require_POST
+def buy_now_game_pack_view(request, game_pack_id):
+    game_pack = get_object_or_404(GamePack, pk=game_pack_id, is_active=True)
+    quantity = _get_requested_quantity(request)
+    purchase_mode, purchase_mode_error = _resolve_purchase_mode(
+        game_pack,
+        None,
+        _get_requested_purchase_mode(request),
+    )
+    if purchase_mode_error:
+        return _render_or_redirect_cart_error(
+            request,
+            cart_items=enrich_cart_items(get_cart_items(request)),
+            message=purchase_mode_error,
+            fallback_url=game_pack.get_absolute_url(),
+        )
+    save_buy_now_checkout_items(request, [_build_game_pack_item_dict(game_pack, quantity, purchase_mode=purchase_mode)])
     return redirect(f"{reverse('orders:checkout')}?mode=buy_now")
