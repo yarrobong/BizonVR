@@ -882,6 +882,136 @@
       });
     }
 
+    function syncProductCardGalleryState(gallery, nextIndex) {
+      if (!(gallery instanceof Element)) {
+        return;
+      }
+
+      const images = Array.from(gallery.querySelectorAll('[data-product-card-image]'));
+      const segments = Array.from(gallery.querySelectorAll('[data-product-card-segment]'));
+      if (!images.length) {
+        return;
+      }
+
+      const normalizedIndex = Math.max(0, Math.min(Number(nextIndex) || 0, images.length - 1));
+      gallery.dataset.activeIndex = String(normalizedIndex);
+      gallery.classList.remove('has-broken-active');
+
+      images.forEach((image, index) => {
+        image.classList.toggle('is-active', index === normalizedIndex);
+      });
+      segments.forEach((segment, index) => {
+        segment.classList.toggle('is-active', index === normalizedIndex);
+      });
+
+      if (images[normalizedIndex]?.dataset.imageBroken === '1') {
+        gallery.classList.add('has-broken-active');
+      }
+    }
+
+    function syncProductCardGalleryFallback(gallery) {
+      if (!(gallery instanceof Element)) {
+        return;
+      }
+
+      const images = Array.from(gallery.querySelectorAll('[data-product-card-image]'));
+      const placeholder = gallery.querySelector('[data-product-card-placeholder]');
+      const activeIndex = Number(gallery.dataset.activeIndex || '0');
+      const fallbackIndex = images.findIndex((image) => image.dataset.imageBroken !== '1');
+
+      if (fallbackIndex >= 0) {
+        if (images[activeIndex]?.dataset.imageBroken === '1' && activeIndex !== fallbackIndex) {
+          syncProductCardGalleryState(gallery, fallbackIndex);
+        } else if (images[activeIndex]?.dataset.imageBroken === '1') {
+          gallery.classList.add('has-broken-active');
+        } else {
+          gallery.classList.remove('has-broken-active');
+        }
+
+        if (placeholder) {
+          placeholder.classList.add('hidden');
+          placeholder.classList.remove('flex');
+        }
+        return;
+      }
+
+      gallery.classList.add('has-broken-active');
+      if (placeholder) {
+        placeholder.classList.remove('hidden');
+        placeholder.classList.add('flex');
+      }
+    }
+
+    function initProductCardGalleries(root = document) {
+      const scope = root instanceof Element || root instanceof Document ? root : document;
+      scope.querySelectorAll('[data-product-card-gallery]').forEach((gallery) => {
+        if (gallery.dataset.galleryBound === '1') {
+          syncProductCardGalleryFallback(gallery);
+          return;
+        }
+
+        const images = Array.from(gallery.querySelectorAll('[data-product-card-image]'));
+        const segments = Array.from(gallery.querySelectorAll('[data-product-card-segment]'));
+        gallery.dataset.galleryBound = '1';
+        syncProductCardGalleryState(gallery, 0);
+
+        images.forEach((image) => {
+          if (image.dataset.galleryImageBound === '1') {
+            return;
+          }
+          image.dataset.galleryImageBound = '1';
+          image.addEventListener('error', () => {
+            image.dataset.imageBroken = '1';
+            syncProductCardGalleryFallback(gallery);
+          });
+          image.addEventListener('load', () => {
+            delete image.dataset.imageBroken;
+            syncProductCardGalleryFallback(gallery);
+          });
+        });
+
+        if (!segments.length) {
+          syncProductCardGalleryFallback(gallery);
+          return;
+        }
+
+        gallery.addEventListener('mouseenter', () => {
+          gallery.classList.add('is-hovering');
+        });
+        gallery.addEventListener('mouseleave', () => {
+          gallery.classList.remove('is-hovering');
+          syncProductCardGalleryState(gallery, 0);
+          syncProductCardGalleryFallback(gallery);
+        });
+
+        segments.forEach((segment, index) => {
+          segment.addEventListener('mouseenter', () => {
+            syncProductCardGalleryState(gallery, index);
+            syncProductCardGalleryFallback(gallery);
+          });
+        });
+
+        const segmentsWrap = gallery.querySelector('[data-product-card-segments]');
+        if (segmentsWrap) {
+          segmentsWrap.addEventListener('mousemove', (event) => {
+            const bounds = segmentsWrap.getBoundingClientRect();
+            if (!bounds.width) {
+              return;
+            }
+            const offsetX = Math.max(0, Math.min(event.clientX - bounds.left, bounds.width));
+            const nextIndex = Math.min(
+              segments.length - 1,
+              Math.floor((offsetX / bounds.width) * segments.length)
+            );
+            syncProductCardGalleryState(gallery, nextIndex);
+            syncProductCardGalleryFallback(gallery);
+          });
+        }
+
+        syncProductCardGalleryFallback(gallery);
+      });
+    }
+
     function initCookieConsentBanner() {
       const banner = document.getElementById('cookie-consent-banner');
       const acceptBtn = document.getElementById('cookie-consent-accept');
@@ -1088,6 +1218,7 @@
       }
       initPhoneMasks(document);
       wireLiveSearch(document);
+      initProductCardGalleries(document);
       initCookieConsentBanner();
       syncLayoutState();
       // Проверяем, что body уже существует
@@ -1147,6 +1278,7 @@
             mainContent.style.minHeight = '';
           }
           wireLiveSearch(document);
+          initProductCardGalleries(document);
           // Обновляем активную вкладку в мобильном меню
           updateActiveDockItem();
         }
@@ -1170,6 +1302,7 @@
           initPhoneMasks(document);
           wireLiveSearch(document);
         }
+        initProductCardGalleries(swapTarget);
       });
       
       // Обновляем активную вкладку при первой загрузке

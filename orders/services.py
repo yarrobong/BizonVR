@@ -188,7 +188,7 @@ def decrease_stock_for_order(order):
             order.save(update_fields=['stock_decreased'])
             return
         for item in order.items.select_related('product').all():
-            if item.is_on_request or not item.product_id:
+            if item.is_on_request or not item.product_id or (item.product and not item.product.tracks_stock):
                 continue
             product_id = item.product_id
             qty = item.quantity

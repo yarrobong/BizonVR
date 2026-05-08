@@ -676,7 +676,11 @@ def order_supply_state_snapshot(order):
     }
 
     for item in order_items:
-        is_supply_tracked = item.line_type == OrderItem.LINE_TYPE_CATALOG and bool(item.product_id)
+        is_supply_tracked = (
+            item.line_type == OrderItem.LINE_TYPE_CATALOG
+            and bool(item.product_id)
+            and bool(getattr(item.product, 'tracks_stock', True))
+        )
         ordered_quantity = int(item.active_quantity or 0)
         reserved_quantity = int(reserved_by_item.get(item.id, 0))
         reserved_stock_quantity = int(reserved_stock_by_item.get(item.id, 0))
@@ -1556,7 +1560,12 @@ def _deal_can_confirm_availability(deal):
     inventory_totals = _inventory_totals_map()
     has_catalog_items = False
     for item in deal.order.items.select_related('product', 'variant'):
-        if item.line_type != OrderItem.LINE_TYPE_CATALOG or item.is_on_request or not item.product_id:
+        if (
+            item.line_type != OrderItem.LINE_TYPE_CATALOG
+            or item.is_on_request
+            or not item.product_id
+            or not getattr(item.product, 'tracks_stock', True)
+        ):
             continue
         has_catalog_items = True
         available = inventory_totals.get((item.product_id, item.variant_id or 0), 0)

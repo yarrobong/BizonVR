@@ -1,4 +1,4 @@
-import html
+﻿import html
 import re
 from decimal import Decimal
 from urllib.parse import urlparse
@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 import requests
 
 from django.conf import settings
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.urls import reverse
@@ -224,6 +224,13 @@ def _fetch_rutube_video_metadata(normalized_url, fallback_embed_url):
 
 class Product(models.Model):
     """Товар в каталоге."""
+    PRODUCT_KIND_PHYSICAL = 'physical'
+    PRODUCT_KIND_GAME_PACK = 'game_pack'
+    PRODUCT_KIND_CHOICES = [
+        (PRODUCT_KIND_PHYSICAL, 'Обычный товар'),
+        (PRODUCT_KIND_GAME_PACK, 'Пак игр'),
+    ]
+
     category = models.ForeignKey(
         Category,
         on_delete=models.CASCADE,
@@ -240,6 +247,14 @@ class Product(models.Model):
     )
     slug = models.SlugField('Slug', max_length=300, unique=True, blank=True)
     description = models.TextField('Описание', blank=True)
+    product_kind = models.CharField(
+        'Тип товара',
+        max_length=20,
+        choices=PRODUCT_KIND_CHOICES,
+        default=PRODUCT_KIND_PHYSICAL,
+        db_index=True,
+        help_text='Пак игр не использует складские остатки и продаётся как одна позиция.',
+    )
     price = models.DecimalField('Цена из наличия', max_digits=12, decimal_places=2, null=True, blank=True)
     discount_percent = models.DecimalField(
         'Скидка, %',
@@ -354,6 +369,23 @@ class Product(models.Model):
     @property
     def has_on_request_price(self):
         return self.on_request_price is not None
+
+    @property
+    def is_game_pack(self):
+        return self.product_kind == self.PRODUCT_KIND_GAME_PACK
+
+    @property
+    def is_game_product(self):
+        if self.is_game_pack:
+            return True
+        try:
+            return bool(self.game_metadata.is_active)
+        except ObjectDoesNotExist:
+            return False
+
+    @property
+    def tracks_stock(self):
+        return not self.is_game_product
 
 class ProductVariant(models.Model):
     """Вариант товара: цвет, размер, модель и т.п. Своё фото и цена (опционально)."""
@@ -1236,6 +1268,290 @@ class ProductBundleItem(models.Model):
     def __str__(self):
         return f'{self.product.name} × {self.quantity} — {format_currency_amount(self.effective_price)}'
 
+class GamePack(models.Model):
+    """Standalone catalog entity for a game pack."""
+
+    TARIFF_NONE = ''
+    TARIFF_START = 'start'
+    TARIFF_CLUB = 'club'
+    TARIFF_MAXIMUM = 'maximum'
+    TARIFF_CUSTOM = 'custom'
+    TARIFF_CHOICES = [
+        (TARIFF_NONE, 'Не тариф'),
+        (TARIFF_START, 'Старт'),
+        (TARIFF_CLUB, 'Клуб'),
+        (TARIFF_MAXIMUM, 'Максимум'),
+        (TARIFF_CUSTOM, 'Индивидуальный'),
+    ]
+
+    category = models.ForeignKey(
+        Category,
+        on_delete=models.PROTECT,
+        related_name='game_packs',
+        verbose_name='Игровой раздел',
+    )
+    name = models.CharField('Название пака', max_length=300)
+    slug = models.SlugField('Slug', max_length=300, unique=True, blank=True)
+    description = models.TextField('Описание', blank=True)
+    image = models.ImageField('Изображение', upload_to='game_packs/', blank=True, null=True)
+    price = models.DecimalField('Цена из наличия', max_digits=12, decimal_places=2, null=True, blank=True)
+    discount_percent = models.DecimalField(
+        'Скидка, %',
+        max_digits=5,
+        decimal_places=2,
+        default=0,
+        validators=[MinValueValidator(0), MaxValueValidator(100)],
+    )
+    price_on_request = models.DecimalField('Цена под заказ', max_digits=12, decimal_places=2, null=True, blank=True)
+    is_active = models.BooleanField('Активен', default=True)
+    allow_order_on_request = models.BooleanField('Разрешён заказ под запрос', default=True)
+    vr_club_tariff = models.CharField(
+        'Тариф для VR-клубов',
+        max_length=20,
+        choices=TARIFF_CHOICES,
+        default=TARIFF_NONE,
+        blank=True,
+        db_index=True,
+    )
+    show_on_vr_club_page = models.BooleanField(
+        'Показывать в разделе VR-клубов',
+        default=False,
+        db_index=True,
+    )
+    club_format = models.CharField('Формат клуба', max_length=120, blank=True)
+    devices = models.CharField('Устройства', max_length=255, blank=True, help_text='Через запятую: Quest, Pico, PCVR')
+    genres = models.CharField('Жанры', max_length=255, blank=True, help_text='Через запятую')
+    age_rating = models.CharField('Возраст', max_length=40, blank=True)
+    players_count = models.PositiveIntegerField('Игроков до', null=True, blank=True)
+    play_places_count = models.PositiveIntegerField('Игровых мест', null=True, blank=True)
+    commercial_pitch = models.TextField('Коммерческий тезис', blank=True)
+    included_summary = models.TextField('Что входит', blank=True)
+    tags = models.ManyToManyField(ProductTag, related_name='game_packs', verbose_name='Теги', blank=True)
+    views_count = models.PositiveIntegerField('Просмотры', default=0)
+    created_at = models.DateTimeField('Создан', auto_now_add=True)
+    updated_at = models.DateTimeField('Обновлён', auto_now=True)
+
+    class Meta:
+        verbose_name = 'Игровой пак'
+        verbose_name_plural = 'Игровые паки'
+        ordering = ('-created_at',)
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            base = slugify(self.name, allow_unicode=True)
+            self.slug = base
+            suffix = 1
+            while GamePack.objects.filter(slug=self.slug).exclude(pk=self.pk).exists():
+                self.slug = f'{base}-{suffix}'
+                suffix += 1
+        super().save(*args, **kwargs)
+
+    def get_absolute_url(self):
+        return reverse('catalog:game_pack_detail', kwargs={'slug': self.slug})
+
+    def get_display_image(self):
+        if self.image:
+            return self.image
+        for entry in self.entries.select_related('product').all():
+            if not entry.product_id:
+                continue
+            image = entry.product.get_display_image()
+            if image:
+                return image
+        return None
+
+    def get_in_stock_base_price(self):
+        total = Decimal('0')
+        has_priced_items = False
+
+        for entry in self.entries.select_related('product').all():
+            if not entry.product_id:
+                continue
+            price = resolve_in_stock_price(entry.product)
+            if price is None:
+                continue
+            total += Decimal(str(price)) * entry.quantity
+            has_priced_items = True
+
+        for entry in self.service_entries.select_related('service').all():
+            price = entry.effective_price
+            if price is None:
+                continue
+            total += Decimal(str(price)) * entry.quantity
+            has_priced_items = True
+
+        if has_priced_items:
+            return total.quantize(Decimal('0.01'))
+        return self.price
+
+    @property
+    def in_stock_price(self):
+        return resolve_in_stock_price(self)
+
+    @property
+    def on_request_price(self):
+        return resolve_on_request_price(self)
+
+    @property
+    def has_on_request_price(self):
+        return self.on_request_price is not None
+
+    @property
+    def is_game_pack(self):
+        return True
+
+    @property
+    def tracks_stock(self):
+        return False
+
+
+class GamePackEntry(models.Model):
+    """One entry inside a game pack."""
+
+    game_pack = models.ForeignKey(
+        GamePack,
+        on_delete=models.CASCADE,
+        related_name='entries',
+        verbose_name='Игровой пак',
+    )
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.PROTECT,
+        related_name='game_pack_entries',
+        verbose_name='Связанный товар',
+        null=True,
+        blank=True,
+        limit_choices_to={'is_active': True},
+    )
+    quantity = models.PositiveIntegerField('Количество', default=1)
+    note = models.CharField('Примечание', max_length=255, blank=True)
+    sort_order = models.PositiveIntegerField('Порядок', default=0)
+    unresolved_title = models.CharField('Legacy title without Product match', max_length=255, blank=True)
+
+    class Meta:
+        verbose_name = 'Позиция игрового пака'
+        verbose_name_plural = 'Позиции игрового пака'
+        ordering = ('sort_order', 'id')
+
+    def __str__(self):
+        title = self.product.name if self.product_id else self.unresolved_title or 'Unresolved entry'
+        return f'{title} x {self.quantity}'
+
+
+class GamePackServiceEntry(models.Model):
+    """Included service inside a game pack."""
+
+    game_pack = models.ForeignKey(
+        GamePack,
+        on_delete=models.CASCADE,
+        related_name='service_entries',
+        verbose_name='Игровой пак',
+    )
+    service = models.ForeignKey(
+        'Service',
+        on_delete=models.PROTECT,
+        related_name='game_pack_entries',
+        verbose_name='Услуга',
+        null=True,
+        blank=True,
+        limit_choices_to={'is_active': True},
+    )
+    title = models.CharField('Название услуги вручную', max_length=255, blank=True)
+    quantity = models.PositiveIntegerField('Количество', default=1)
+    price = models.DecimalField('Цена в составе пака', max_digits=12, decimal_places=2, null=True, blank=True)
+    note = models.CharField('Примечание', max_length=255, blank=True)
+    sort_order = models.PositiveIntegerField('Порядок', default=0)
+
+    class Meta:
+        verbose_name = 'Услуга игрового пака'
+        verbose_name_plural = 'Услуги игрового пака'
+        ordering = ('sort_order', 'id')
+
+    @property
+    def display_title(self):
+        if self.service_id:
+            return self.service.name
+        return self.title or 'Услуга'
+
+    @property
+    def effective_price(self):
+        if self.price is not None:
+            return self.price
+        if self.service_id:
+            return self.service.price
+        return None
+
+    def __str__(self):
+        return f'{self.display_title} x {self.quantity}'
+
+
+class ProductGameMetadata(models.Model):
+    """B2B metadata for game products used by the VR-club constructor."""
+
+    FORMAT_ARCADE = 'arcade'
+    FORMAT_CLUB = 'club'
+    FORMAT_ARENA = 'arena'
+    FORMAT_MOBILE = 'mobile'
+    FORMAT_CHOICES = [
+        (FORMAT_ARCADE, 'Аркада / ТЦ'),
+        (FORMAT_CLUB, 'VR-клуб'),
+        (FORMAT_ARENA, 'Арена'),
+        (FORMAT_MOBILE, 'Выездной формат'),
+    ]
+
+    product = models.OneToOneField(
+        Product,
+        on_delete=models.CASCADE,
+        related_name='game_metadata',
+        verbose_name='Игра',
+        limit_choices_to={'is_active': True},
+    )
+    devices = models.CharField('Устройства', max_length=255, blank=True, help_text='Через запятую: Quest, Pico, PCVR')
+    genres = models.CharField('Жанры', max_length=255, blank=True, help_text='Через запятую')
+    min_players = models.PositiveIntegerField('Минимум игроков', default=1)
+    max_players = models.PositiveIntegerField('Максимум игроков', default=1)
+    age_rating = models.CharField('Возраст', max_length=40, blank=True)
+    club_format = models.CharField('Формат клуба', max_length=40, choices=FORMAT_CHOICES, blank=True)
+    is_pcvr = models.BooleanField('PCVR', default=False)
+    is_standalone = models.BooleanField('Standalone', default=True)
+    is_multiplayer = models.BooleanField('Multiplayer', default=False)
+    b2b_note = models.CharField('B2B-смысл', max_length=255, blank=True)
+    is_active = models.BooleanField('Показывать в конструкторе', default=True, db_index=True)
+    sort_order = models.PositiveIntegerField('Порядок', default=0, db_index=True)
+
+    class Meta:
+        verbose_name = 'B2B-метаданные игры'
+        verbose_name_plural = 'B2B-метаданные игр'
+        ordering = ('sort_order', 'product__name')
+
+    def __str__(self):
+        return self.product.name
+
+class GamePackItem(models.Model):
+    """Текстовый состав игрового пака на карточке товара."""
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE,
+        related_name='game_pack_items',
+        limit_choices_to={'product_kind': Product.PRODUCT_KIND_GAME_PACK},
+        verbose_name='Пак игр',
+    )
+    title = models.CharField('Название игры', max_length=255)
+    platform = models.CharField('Платформа', max_length=120, blank=True)
+    note = models.CharField('Примечание', max_length=255, blank=True)
+    sort_order = models.PositiveIntegerField('Порядок', default=0)
+
+    class Meta:
+        verbose_name = 'Игра в паке'
+        verbose_name_plural = 'Игры в паке'
+        ordering = ('sort_order', 'id')
+
+    def __str__(self):
+        return self.title
+
 
 class City(models.Model):
     """Город с офлайн-точками выдачи."""
@@ -1401,7 +1717,19 @@ class CatalogImportConflict(models.Model):
 
 
 class CartItem(models.Model):
-    """Позиция корзины: привязка к пользователю для сохранения между сессиями."""
+    """Cart item persisted for an authenticated user."""
+
+    LINE_TYPE_EQUIPMENT = 'equipment'
+    LINE_TYPE_GAME = 'game'
+    LINE_TYPE_SERVICE = 'service'
+    LINE_TYPE_CUSTOM_GAME_PACK = 'custom_game_pack'
+    LINE_TYPE_CHOICES = [
+        (LINE_TYPE_EQUIPMENT, 'Оборудование'),
+        (LINE_TYPE_GAME, 'Игры'),
+        (LINE_TYPE_SERVICE, 'Услуга'),
+        (LINE_TYPE_CUSTOM_GAME_PACK, 'Индивидуальный игровой комплект'),
+    ]
+
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -1413,6 +1741,8 @@ class CartItem(models.Model):
         on_delete=models.CASCADE,
         related_name='cart_items',
         verbose_name='Товар',
+        null=True,
+        blank=True,
     )
     variant = models.ForeignKey(
         ProductVariant,
@@ -1422,6 +1752,35 @@ class CartItem(models.Model):
         related_name='cart_items',
         verbose_name='Вариант',
     )
+    game_pack = models.ForeignKey(
+        GamePack,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='cart_items',
+        verbose_name='Игровой пак',
+    )
+    service = models.ForeignKey(
+        'Service',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='cart_items',
+        verbose_name='Услуга',
+    )
+    line_type = models.CharField(
+        'Тип строки',
+        max_length=24,
+        choices=LINE_TYPE_CHOICES,
+        default=LINE_TYPE_EQUIPMENT,
+        db_index=True,
+    )
+    custom_snapshot = models.JSONField(
+        'Снапшот произвольной строки',
+        default=dict,
+        blank=True,
+        help_text='Состав индивидуального игрового комплекта или служебные данные услуги.',
+    )
     quantity = models.PositiveIntegerField('Количество', default=1)
     bundle = models.ForeignKey(
         ProductBundle,
@@ -1429,7 +1788,7 @@ class CartItem(models.Model):
         null=True,
         blank=True,
         related_name='cart_items',
-        verbose_name='Входит в комплект',
+        verbose_name='Набор в корзине',
     )
     price_override = models.DecimalField(
         'Цена (override)',
@@ -1437,7 +1796,7 @@ class CartItem(models.Model):
         decimal_places=2,
         null=True,
         blank=True,
-        help_text='Если задана — в корзине используется эта цена вместо текущей цены товара.',
+        help_text='Используется, если в корзине была сохранена отличающаяся публичная цена.',
     )
     purchase_mode = models.CharField(
         'Режим покупки',
@@ -1445,14 +1804,13 @@ class CartItem(models.Model):
         choices=PURCHASE_MODE_CHOICES,
         default=PURCHASE_MODE_STOCK,
     )
-
     class Meta:
         verbose_name = 'Позиция корзины'
         verbose_name_plural = 'Позиции корзины'
         constraints = [
             models.UniqueConstraint(
                 fields=['user', 'product', 'variant', 'purchase_mode'],
-                condition=models.Q(bundle__isnull=True),
+                condition=models.Q(bundle__isnull=True, game_pack__isnull=True),
                 name='catalog_cartitem_standalone_unique',
             ),
             models.UniqueConstraint(
@@ -1460,15 +1818,26 @@ class CartItem(models.Model):
                 condition=models.Q(bundle__isnull=False),
                 name='catalog_cartitem_bundle_unique',
             ),
+            models.UniqueConstraint(
+                fields=['user', 'game_pack', 'purchase_mode'],
+                condition=models.Q(game_pack__isnull=False),
+                name='catalog_cartitem_game_pack_unique',
+            ),
+            models.UniqueConstraint(
+                fields=['user', 'service'],
+                condition=models.Q(service__isnull=False),
+                name='catalog_cartitem_service_unique',
+            ),
         ]
-        ordering = ['product', 'variant']
-
+        ordering = ['product', 'variant', 'game_pack']
     def __str__(self):
+        if self.service_id:
+            return f'{self.user} ? {self.service.name} x {self.quantity}'
+        if self.game_pack_id:
+            return f'{self.user} ? {self.game_pack.name} x {self.quantity}'
         if self.variant:
-            return f'{self.user} — {self.product.name} ({self.variant.name}) x {self.quantity}'
-        return f'{self.user} — {self.product.name} x {self.quantity}'
-
-
+            return f'{self.user} ? {self.product.name} ({self.variant.name}) x {self.quantity}'
+        return f'{self.user} ? {self.product.name} x {self.quantity}'
 class CartShare(models.Model):
     """Сохранённая ссылка на набор позиций корзины для шаринга."""
     code = models.CharField('Код', max_length=7, unique=True, db_index=True)
@@ -1523,6 +1892,26 @@ class Favorite(models.Model):
 
 class Service(models.Model):
     """Услуга компании (страница услуг)."""
+
+    KIND_GENERAL = 'general'
+    KIND_INSTALLATION = 'installation'
+    KIND_HEADSET_SETUP = 'headset_setup'
+    KIND_ACCOUNTS = 'accounts'
+    KIND_PCVR = 'pcvr'
+    KIND_MULTIPLAYER = 'multiplayer'
+    KIND_STAFF_TRAINING = 'staff_training'
+    KIND_SUPPORT = 'support'
+    KIND_CHOICES = [
+        (KIND_GENERAL, 'Общая услуга'),
+        (KIND_INSTALLATION, 'Установка'),
+        (KIND_HEADSET_SETUP, 'Настройка шлемов'),
+        (KIND_ACCOUNTS, 'Аккаунты'),
+        (KIND_PCVR, 'PCVR'),
+        (KIND_MULTIPLAYER, 'Multiplayer'),
+        (KIND_STAFF_TRAINING, 'Инструкция персоналу'),
+        (KIND_SUPPORT, 'Поддержка'),
+    ]
+
     name = models.CharField('Название', max_length=200)
     short_description = models.CharField('Краткое описание', max_length=255, blank=True)
     description = models.TextField('Подробное описание', blank=True)
@@ -1539,6 +1928,9 @@ class Service(models.Model):
         blank=True,
         help_text='Например: от 15 000 ₽ или Индивидуально',
     )
+    price = models.DecimalField('Цена для корзины', max_digits=12, decimal_places=2, null=True, blank=True)
+    service_kind = models.CharField('Тип услуги', max_length=32, choices=KIND_CHOICES, default=KIND_GENERAL, db_index=True)
+    is_vr_club_service = models.BooleanField('Услуга для VR-клубов', default=False, db_index=True)
     order = models.PositiveIntegerField('Порядок', default=0)
     is_active = models.BooleanField('Активна', default=True)
     created_at = models.DateTimeField('Создано', auto_now_add=True)
@@ -1551,6 +1943,34 @@ class Service(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class VRClubQuizRequest(models.Model):
+    """Lead from the VR-club games подбор quiz."""
+
+    name = models.CharField('Имя', max_length=150)
+    phone = models.CharField('Телефон', max_length=40)
+    email = models.EmailField('Email', blank=True)
+    club_format = models.CharField('Формат клуба', max_length=120, blank=True)
+    devices = models.CharField('Устройства', max_length=255, blank=True)
+    headsets_count = models.PositiveIntegerField('Количество шлемов', null=True, blank=True)
+    play_places_count = models.PositiveIntegerField('Игровых мест', null=True, blank=True)
+    audience = models.CharField('Аудитория', max_length=255, blank=True)
+    budget = models.CharField('Бюджет', max_length=120, blank=True)
+    comment = models.TextField('Комментарий', blank=True)
+    legal_accepted_at = models.DateTimeField('Согласие с юр. документами', null=True, blank=True)
+    legal_docs_version = models.CharField('Версия юр. документов', max_length=32, blank=True)
+    legal_acceptance_ip = models.GenericIPAddressField('IP при согласии', null=True, blank=True)
+    legal_acceptance_user_agent = models.CharField('User-Agent', max_length=512, blank=True)
+    created_at = models.DateTimeField('Создано', auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Заявка квиза VR-клуба'
+        verbose_name_plural = 'Заявки квиза VR-клуба'
+        ordering = ('-created_at',)
+
+    def __str__(self):
+        return f'{self.name} — {self.created_at:%d.%m.%Y %H:%M}'
 
 
 class ContactRequest(models.Model):
@@ -1592,3 +2012,5 @@ class CallbackRequest(models.Model):
 
     def __str__(self):
         return f'{self.phone} — {self.created_at:%d.%m.%Y %H:%M}'
+
+

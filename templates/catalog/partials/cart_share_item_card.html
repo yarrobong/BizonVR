@@ -12,7 +12,9 @@
     </div>
 
     <div class="csm-item-content">
-      {% if item.product_slug %}
+      {% if item.game_pack_slug %}
+        <a href="{% url 'catalog:game_pack_detail' item.game_pack_slug %}" class="csm-item-title">{{ item.name }}</a>
+      {% elif item.product_slug %}
         <a href="{% url 'catalog:product_detail' item.product_slug %}" class="csm-item-title">{{ item.name }}</a>
       {% else %}
         <p class="csm-item-title">{{ item.name }}</p>
@@ -23,12 +25,24 @@
       {% endif %}
       <p class="csm-item-qty">{{ item.quantity }} ед</p>
 
-      {% if item.stock_total > 0 and item.stock_total < 10 %}
+      {% if not item.is_game_pack and item.stock_total > 0 and item.stock_total < 10 %}
         <p class="csm-item-stock-note">Количество ограничено</p>
       {% endif %}
 
       {% if modal_mode == 'recipient' and not share_invalid %}
         <div class="csm-item-actions">
+          {% if item.is_game_pack %}
+          <form action="{% url 'catalog:add_game_pack_to_cart' item.game_pack_id %}" method="post"
+                hx-post="{% url 'catalog:add_game_pack_to_cart' item.game_pack_id %}"
+                hx-target="#cart-modal-content"
+                hx-swap="none"
+                hx-push-url="false">
+            {% csrf_token %}
+            <input type="hidden" name="quantity" value="{{ item.quantity }}" />
+            <input type="hidden" name="next" value="{% url 'catalog:cart' %}" />
+            <button type="submit" class="csm-action-btn csm-action-btn-primary">В корзину</button>
+          </form>
+          {% elif item.product_id %}
           <form action="{% url 'catalog:add_to_cart' item.product_id %}" method="post"
                 hx-post="{% url 'catalog:add_to_cart' item.product_id %}"
                 hx-target="#cart-modal-content"
@@ -48,12 +62,13 @@
             {% csrf_token %}
             <button type="submit" class="csm-action-btn csm-action-btn-secondary">В избранное</button>
           </form>
+          {% endif %}
         </div>
       {% endif %}
     </div>
 
     <div class="csm-price-col">
-      {% if item.stock_total > 0 and item.stock_total < 10 %}
+      {% if not item.is_game_pack and item.stock_total > 0 and item.stock_total < 10 %}
         <p class="csm-item-price csm-item-price-low">{{ item.subtotal|price_format }} ₽</p>
       {% else %}
         <p class="csm-item-price csm-item-price-ok">{{ item.subtotal|price_format }} ₽</p>

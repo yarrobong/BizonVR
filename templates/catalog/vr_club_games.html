@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% load catalog_tags %}
+
+{% block title %}Игры и настройка для VR-клубов — BizonVR{% endblock %}
+
+{% block content %}
+<style>
+  .club-games { color: #f8fafc; background: radial-gradient(circle at top left, rgba(34,211,238,.18), transparent 34%), linear-gradient(180deg, #070a10 0%, #10131b 100%); }
+  .club-wrap { max-width: 1180px; margin: 0 auto; padding: 28px 16px 56px; }
+  .club-hero, .club-panel { border: 1px solid rgba(148,163,184,.18); background: rgba(15,23,42,.72); border-radius: 28px; box-shadow: 0 24px 80px rgba(2,6,23,.32); }
+  .club-hero { padding: clamp(24px, 5vw, 56px); overflow: hidden; position: relative; }
+  .club-hero:after { content: ""; position: absolute; inset: auto -10% -35% 45%; height: 260px; background: radial-gradient(circle, rgba(250,204,21,.24), transparent 62%); pointer-events: none; }
+  .club-kicker { color: #67e8f9; text-transform: uppercase; letter-spacing: .24em; font-size: 12px; font-weight: 800; }
+  .club-title { margin: 14px 0 0; max-width: 820px; font-size: clamp(34px, 6vw, 72px); line-height: .95; font-weight: 900; letter-spacing: -.05em; }
+  .club-lead { max-width: 740px; margin-top: 18px; color: #cbd5e1; font-size: 18px; line-height: 1.6; }
+  .club-actions, .club-grid, .club-filters, .club-services { display: grid; gap: 14px; }
+  .club-actions { margin-top: 28px; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+  .club-action { min-height: 96px; border-radius: 22px; padding: 18px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); text-decoration: none; color: white; transition: transform .2s ease, border-color .2s ease; }
+  .club-action:hover { transform: translateY(-2px); border-color: rgba(34,211,238,.55); }
+  .club-section { margin-top: 28px; }
+  .club-section-head { display: flex; align-items: end; justify-content: space-between; gap: 18px; margin-bottom: 14px; }
+  .club-section h2 { margin: 0; font-size: clamp(24px, 3vw, 38px); font-weight: 850; letter-spacing: -.03em; }
+  .club-muted { color: #94a3b8; }
+  .club-grid { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+  .club-card { border: 1px solid rgba(148,163,184,.18); background: rgba(15,23,42,.82); border-radius: 24px; padding: 20px; }
+  .club-card.is-featured { border-color: rgba(34,211,238,.55); background: linear-gradient(180deg, rgba(8,145,178,.22), rgba(15,23,42,.86)); }
+  .club-card h3 { margin: 10px 0 8px; font-size: 22px; font-weight: 800; }
+  .club-price { color: #22d3ee; font-size: 26px; font-weight: 900; }
+  .club-pill { display: inline-flex; border-radius: 999px; padding: 6px 10px; background: rgba(34,211,238,.12); border: 1px solid rgba(34,211,238,.28); color: #a5f3fc; font-size: 12px; font-weight: 800; }
+  .club-btn { display: inline-flex; justify-content: center; align-items: center; min-height: 44px; border-radius: 14px; border: 0; background: #22d3ee; color: #06121d; font-weight: 900; padding: 0 18px; text-decoration: none; cursor: pointer; }
+  .club-btn.secondary { background: rgba(255,255,255,.07); color: #fff; border: 1px solid rgba(255,255,255,.14); }
+  .club-panel { padding: 20px; }
+  .club-filters { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); margin-bottom: 18px; }
+  .club-input { width: 100%; border: 1px solid rgba(148,163,184,.22); background: rgba(2,6,23,.55); color: white; border-radius: 14px; padding: 11px 12px; }
+  .club-game { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: start; }
+  .club-game input { margin-top: 6px; accent-color: #22d3ee; }
+  .club-game-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+  .club-game-meta span { border-radius: 999px; background: rgba(255,255,255,.07); padding: 4px 8px; color: #cbd5e1; font-size: 12px; }
+  .club-services { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .club-checkbox { display: flex; gap: 10px; align-items: flex-start; border: 1px solid rgba(148,163,184,.16); border-radius: 18px; padding: 14px; background: rgba(255,255,255,.05); }
+  .club-quiz { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  @media (max-width: 720px) { .club-section-head { display: block; } }
+</style>
+
+<main class="club-games">
+  <div class="club-wrap">
+    <section class="club-hero">
+      <p class="club-kicker">B2B запуск VR-клуба</p>
+      <h1 class="club-title">Игры и настройка для VR-клубов</h1>
+      <p class="club-lead">Продаем не “набор игр”, а готовый игровой комплект для коммерческого VR: библиотека под ваши шлемы, настройка аккаунтов, multiplayer, PCVR, обучение персонала и поддержка запуска.</p>
+      <div class="club-actions">
+        <a class="club-action" href="#tariffs"><strong>1. Купить готовый пакет</strong><br><span class="club-muted">Старт, Клуб или Максимум с понятным составом.</span></a>
+        <a class="club-action" href="#constructor"><strong>2. Собрать свой набор игр</strong><br><span class="club-muted">Фильтры по устройствам, жанрам, игрокам и возрасту.</span></a>
+        <a class="club-action" href="#quiz"><strong>3. Получить подбор от специалиста</strong><br><span class="club-muted">Расскажите формат клуба, мы соберем коммерческий комплект.</span></a>
+      </div>
+    </section>
+
+    <section id="tariffs" class="club-section">
+      <div class="club-section-head">
+        <div>
+          <p class="club-kicker">Готовые тарифы</p>
+          <h2>Пакеты под запуск, а не витрина отдельных игр</h2>
+        </div>
+        <p class="club-muted">Менеджер финально проверит совместимость с вашими шлемами.</p>
+      </div>
+      <div class="club-grid">
+        {% for pack in tariff_packs %}
+          <article class="club-card {% if pack.vr_club_tariff == 'club' %}is-featured{% endif %}">
+            <span class="club-pill">{{ pack.get_vr_club_tariff_display|default:"Игровой пакет" }}</span>
+            <h3>{{ pack.name }}</h3>
+            <p class="club-muted">{{ pack.commercial_pitch|default:pack.description|truncatechars:180 }}</p>
+            <p class="club-price">{% if pack.in_stock_price %}{{ pack.in_stock_price|rub }}{% else %}По запросу{% endif %}</p>
+            {% if pack.included_summary %}<p class="club-muted">{{ pack.included_summary|linebreaksbr }}</p>{% endif %}
+            <form action="{% url 'catalog:add_game_pack_to_cart' pack.pk %}" method="post">
+              {% csrf_token %}
+              <input type="hidden" name="next" value="{{ request.get_full_path }}">
+              <button class="club-btn" type="submit">Добавить пакет</button>
+            </form>
+          </article>
+        {% empty %}
+          <article class="club-card"><h3>Старт</h3><p class="club-muted">Добавьте тарифные GamePack в админке и включите показ в разделе VR-клубов.</p></article>
+          <article class="club-card is-featured"><h3>Клуб</h3><p class="club-muted">Основной коммерческий пакет для потока гостей и multiplayer-сессий.</p></article>
+          <article class="club-card"><h3>Максимум</h3><p class="club-muted">Расширенная библиотека, PCVR, обучение и поддержка.</p></article>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section id="constructor" class="club-section club-panel">
+      <div class="club-section-head">
+        <div>
+          <p class="club-kicker">Конструктор</p>
+          <h2>Соберите игровой комплект</h2>
+        </div>
+      </div>
+      <form method="get" class="club-filters">
+        <select class="club-input" name="device"><option value="">Устройство</option>{% for value in devices %}<option value="{{ value }}" {% if selected_filters.device == value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select>
+        <select class="club-input" name="genre"><option value="">Жанр</option>{% for value in genres %}<option value="{{ value }}" {% if selected_filters.genre == value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select>
+        <select class="club-input" name="players"><option value="">Игроков</option>{% for value in "123456789"|make_list %}<option value="{{ value }}" {% if selected_filters.players == value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select>
+        <select class="club-input" name="age"><option value="">Возраст</option>{% for value in ages %}<option value="{{ value }}" {% if selected_filters.age == value %}selected{% endif %}>{{ value }}</option>{% endfor %}</select>
+        <select class="club-input" name="club_format"><option value="">Формат клуба</option>{% for key, label in formats %}<option value="{{ key }}" {% if selected_filters.club_format == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+        <button class="club-btn secondary" type="submit">Показать игры</button>
+      </form>
+
+      <form action="{% url 'catalog:add_vr_club_custom_pack' %}" method="post">
+        {% csrf_token %}
+        <div class="club-grid">
+          {% for game in games %}
+            <label class="club-card club-game">
+              <input type="checkbox" name="game_ids" value="{{ game.pk }}">
+              <span>
+                <strong>{{ game.name }}</strong>
+                <span class="club-muted block">{{ game.game_metadata.b2b_note|default:game.description|truncatechars:130 }}</span>
+                <span class="club-game-meta">
+                  {% if game.game_metadata.devices %}<span>{{ game.game_metadata.devices }}</span>{% endif %}
+                  {% if game.game_metadata.genres %}<span>{{ game.game_metadata.genres }}</span>{% endif %}
+                  <span>{{ game.game_metadata.min_players }}-{{ game.game_metadata.max_players }} игроков</span>
+                  {% if game.game_metadata.age_rating %}<span>{{ game.game_metadata.age_rating }}</span>{% endif %}
+                  {% if game.game_metadata.is_multiplayer %}<span>multiplayer</span>{% endif %}
+                </span>
+              </span>
+            </label>
+          {% empty %}
+            <div class="club-card"><h3>Игры пока не настроены</h3><p class="club-muted">Добавьте `ProductGameMetadata` для игровых товаров, и они появятся в конструкторе.</p></div>
+          {% endfor %}
+        </div>
+
+        <div class="club-section">
+          <h2>Услуги запуска</h2>
+          <div class="club-services">
+            {% for service in services %}
+              <label class="club-checkbox">
+                <input type="checkbox" name="service_ids" value="{{ service.pk }}">
+                <span><strong>{{ service.name }}</strong><br><span class="club-muted">{{ service.short_description }} {% if service.price %}· {{ service.price|rub }}{% else %}· по запросу{% endif %}</span></span>
+              </label>
+            {% empty %}
+              <p class="club-muted">Добавьте услуги VR-клубов в админке.</p>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="club-section club-grid">
+          <input class="club-input" name="headset_count" type="number" min="1" value="{{ selected_filters.headsets|default:'4' }}" placeholder="Количество шлемов">
+          <input class="club-input" name="devices" value="{{ selected_filters.device }}" placeholder="Устройства">
+          <input class="club-input" name="club_format" value="{{ selected_filters.club_format }}" placeholder="Формат клуба">
+          <button class="club-btn" type="submit">Добавить комплект в корзину</button>
+        </div>
+      </form>
+    </section>
+
+    <section id="quiz" class="club-section club-panel">
+      <p class="club-kicker">Квиз</p>
+      <h2>Подобрать игры для моего клуба</h2>
+      {% if quiz_sent %}
+        <div class="club-card is-featured"><strong>Заявка отправлена.</strong><br><span class="club-muted">Специалист соберет подбор под ваш формат клуба.</span></div>
+      {% endif %}
+      <form method="post" class="club-quiz">
+        {% csrf_token %}
+        <input class="club-input" name="name" placeholder="Имя" required>
+        <input class="club-input" name="phone" placeholder="Телефон" required>
+        <input class="club-input" name="email" placeholder="Email">
+        <input class="club-input" name="club_format" placeholder="Формат клуба">
+        <input class="club-input" name="devices" placeholder="Какие шлемы / PCVR">
+        <input class="club-input" name="headsets_count" type="number" min="1" placeholder="Количество шлемов">
+        <input class="club-input" name="play_places_count" type="number" min="1" placeholder="Игровых мест">
+        <input class="club-input" name="audience" placeholder="Аудитория: дети, семьи, взрослые">
+        <input class="club-input" name="budget" placeholder="Бюджет">
+        <textarea class="club-input" name="comment" rows="3" placeholder="Что уже есть и что нужно запустить"></textarea>
+        <label class="club-checkbox"><input type="checkbox" name="agree_personal_data" required><span>Согласен на обработку персональных данных</span></label>
+        <button class="club-btn" type="submit">Получить подбор</button>
+      </form>
+    </section>
+  </div>
+</main>
+{% endblock %}

@@ -283,7 +283,7 @@ def build_pdp_recommendations(request, product: Product) -> dict:
         Product.objects.filter(is_active=True)
         .exclude(pk__in=excluded_ids)
         .select_related('category')
-        .prefetch_related('characteristics', 'variants', 'tags')
+        .prefetch_related('characteristics', 'variants', 'tags', 'images')
     )
 
     if not candidates:
@@ -397,8 +397,11 @@ def build_pdp_recommendations(request, product: Product) -> dict:
             if p.pk not in final_ids:
                 final_ids.append(p.pk)
 
-    final_total_map = {product_id: total_map.get(product_id, 0) for product_id in final_ids}
     final_products = [p for sec in sections for p in sec['products']]
+    final_total_map = {product_id: total_map.get(product_id, 0) for product_id in final_ids}
+    for product in final_products:
+        if not getattr(product, 'tracks_stock', True):
+            final_total_map[product.pk] = max(999, int(final_total_map.get(product.pk, 0) or 0))
     variant_ids = _build_first_variant_map_from_products(final_products)
 
     return {

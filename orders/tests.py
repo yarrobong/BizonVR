@@ -11,7 +11,7 @@ from django.utils import timezone
 from unittest.mock import Mock, patch
 
 from accounts.models import NotificationPreference, Profile
-from catalog.models import CartItem, Category, City, PickupPoint, Product, ProductStock
+from catalog.models import CartItem, Category, City, GamePack, GamePackEntry, GamePackItem, GamePackServiceEntry, PickupPoint, Product, ProductGameMetadata, ProductStock, Service
 from config.legal_docs import LEGAL_BUNDLE_VERSION
 from manager_portal.models import ManagerClient, ManagerDeal, SaleLineAllocation
 from payments.models import Payment
@@ -101,6 +101,8 @@ class CheckoutTest(TestCase):
             'business_phone': '',
             'business_telegram': '',
             'business_whatsapp': '',
+            'website': '',
+            'form_started_at': str(int(timezone.now().timestamp()) - 5),
         }
         payload.update(overrides)
         return payload
@@ -310,6 +312,67 @@ class CheckoutTest(TestCase):
         self.assertEqual(self.client.session.get('cart_items', []), [])
         self.assertEqual(PurchaseRequest.objects.count(), 0)
         self.assertEqual(Payment.objects.filter(order=order).count(), 0)
+
+    def test_checkout_creates_custom_game_pack_and_service_lines(self):
+        game = Product.objects.create(
+            category=self.product.category,
+            name='Командная VR игра',
+            slug='team-vr-game',
+            price=Decimal('1000.00'),
+            is_active=True,
+        )
+        ProductGameMetadata.objects.create(product=game, devices='Quest', genres='PvP', min_players=2, max_players=6)
+        service = Service.objects.create(
+            name='Инструкция персоналу',
+            price=Decimal('2500.00'),
+            service_kind=Service.KIND_STAFF_TRAINING,
+            is_vr_club_service=True,
+            is_active=True,
+        )
+        session = self.client.session
+        session['cart_items'] = [
+            {
+                'product_id': None,
+                'variant_id': None,
+                'game_pack_id': None,
+                'service_id': None,
+                'name': 'Индивидуальный комплект игр для VR-клуба',
+                'price': 1000.0,
+                'quantity': 1,
+                'subtotal': 1000.0,
+                'purchase_mode': 'stock',
+                'line_type': 'custom_game_pack',
+                'custom_key': 'custom-games-test',
+                'custom_snapshot': {'custom_key': 'custom-games-test', 'games': [{'id': game.pk, 'name': game.name}]},
+            },
+            {
+                'product_id': None,
+                'variant_id': None,
+                'game_pack_id': None,
+                'service_id': service.pk,
+                'name': service.name,
+                'price': 2500.0,
+                'quantity': 1,
+                'subtotal': 2500.0,
+                'purchase_mode': 'stock',
+                'line_type': 'service',
+                'custom_key': '',
+                'custom_snapshot': {'service_kind': service.service_kind},
+            },
+        ]
+        session.save()
+
+        response = self.client.post(reverse('orders:checkout'), self._checkout_payload())
+
+        self.assertEqual(response.status_code, 302)
+        order = Order.objects.latest('id')
+        self.assertEqual(order.items.count(), 2)
+        names = set(order.items.values_list('product_name', flat=True))
+        self.assertIn('Индивидуальный комплект игр для VR-клуба', names)
+        self.assertIn(service.name, names)
+        custom_line = order.items.get(product_name='Индивидуальный комплект игр для VR-клуба')
+        self.assertEqual(custom_line.line_type, OrderItem.LINE_TYPE_CUSTOM)
+        self.assertEqual(custom_line.metadata['custom_key'], 'custom-games-test')
 
     @override_settings(CRM_LEADS_EMAIL='crm@example.com')
     def test_checkout_sends_crm_email_after_creating_order(self):
@@ -747,6 +810,68 @@ class CheckoutTest(TestCase):
         order = Order.objects.get()
         self.assertEqual(order.contact_channel, Order.CONTACT_CHANNEL_WHATSAPP)
         self.assertEqual(order.contact_handle, '+7 999 555 44 33')
+
+    def test_product_detail_shows_game_pack_composition(self):
+        game_pack = Product.objects.create(
+            category=self.product.category,
+            name='Пак VR Quest',
+            slug='vr-quest-pack',
+            product_kind=Product.PRODUCT_KIND_GAME_PACK,
+            price=Decimal('4900.00'),
+            is_active=True,
+            allow_order_on_request=False,
+        )
+        GamePackItem.objects.create(product=game_pack, title='Beat Saber', platform='Meta Quest')
+        GamePackItem.objects.create(product=game_pack, title='Pistol Whip', platform='Meta Quest', note='Подходит для вечеринок')
+
+        response = self.client.get(game_pack.get_absolute_url())
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Состав пака')
+        self.assertContains(response, 'Beat Saber')
+        self.assertContains(response, 'Pistol Whip')
+        self.assertContains(response, 'Цифровой пакет')
+
+    def test_add_to_cart_allows_game_pack_without_stock(self):
+        game_pack = Product.objects.create(
+            category=self.product.category,
+            name='Пак VR Start',
+            slug='vr-start-pack',
+            product_kind=Product.PRODUCT_KIND_GAME_PACK,
+            price=Decimal('3900.00'),
+            is_active=True,
+            allow_order_on_request=False,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse('catalog:add_to_cart', kwargs={'product_id': game_pack.pk}),
+            {'quantity': 1},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(CartItem.objects.filter(user=self.user, product=game_pack, quantity=1).exists())
+
+    def test_checkout_creates_order_for_game_pack_without_stock(self):
+        game_pack = Product.objects.create(
+            category=self.product.category,
+            name='Пак VR Pro',
+            slug='vr-pro-pack',
+            product_kind=Product.PRODUCT_KIND_GAME_PACK,
+            price=Decimal('5900.00'),
+            is_active=True,
+            allow_order_on_request=False,
+        )
+        self.client.force_login(self.user)
+        self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': game_pack.pk}), {'quantity': 1})
+
+        response = self.client.post(reverse('orders:checkout'), self._checkout_payload())
+
+        self.assertEqual(response.status_code, 302)
+        order = Order.objects.get()
+        self.assertEqual(order.items.count(), 1)
+        self.assertEqual(order.items.first().product, game_pack)
+        self.assertFalse(order.items.first().is_on_request)
 
     def test_checkout_requires_pvz_code(self):
         self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
@@ -1295,3 +1420,116 @@ class OrderLifecycleUiTest(TestCase):
         self.assertContains(response, 'Готов к выдаче')
         self.assertContains(response, 'Оплачено')
         self.assertContains(response, 'можно приехать', html=False)
+
+
+class StandaloneGamePackCheckoutTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(username='79990001122', password='pass12345')
+        self.category = Category.objects.create(name='??????? ????', slug='game-pack-orders')
+        self.games_category = Category.objects.create(name='???? ??? ?????', slug='games-for-packs')
+        self.game = Product.objects.create(
+            category=self.games_category,
+            name='Arizona Sunshine',
+            slug='arizona-sunshine',
+            price=Decimal('1590.00'),
+            is_active=True,
+        )
+        self.training_service = Service.objects.create(
+            name='Обучение персонала',
+            short_description='Стартовое обучение',
+            price=Decimal('3000.00'),
+            service_kind=Service.KIND_STAFF_TRAINING,
+            is_active=True,
+        )
+        self.game_pack = GamePack.objects.create(
+            category=self.category,
+            name='Party VR Pack',
+            slug='party-vr-pack',
+            price=Decimal('7990.00'),
+            is_active=True,
+            allow_order_on_request=False,
+        )
+        GamePackEntry.objects.create(game_pack=self.game_pack, product=self.game, quantity=1, sort_order=0)
+        GamePackServiceEntry.objects.create(game_pack=self.game_pack, service=self.training_service, quantity=1, price=Decimal('3000.00'))
+        self.client.force_login(self.user)
+
+    def _checkout_payload(self):
+        return {
+            'promo_code': '',
+            'first_name': 'Ivan',
+            'last_name': 'Petrov',
+            'phone': '+79990001122',
+            'email': 'ivan@example.com',
+            'contact_channel': Order.CONTACT_CHANNEL_CALL,
+            'contact_handle': '',
+            'delivery_type': Order.DELIVERY_CDEK_PVZ,
+            'city_text': '',
+            'address_line': '',
+            'delivery_comment': '',
+            'cdek_office_snapshot_raw': json.dumps({'code': 'TEST1', 'city': 'Moscow', 'name': 'PVZ Test', 'address': 'Test address', 'postal_code': '101000'}),
+            'cdek_tariff_snapshot_raw': json.dumps({'tariff_code': 136, 'delivery_sum': 0}),
+            'recipient_is_customer': 'on',
+            'payment_method': Order.PAYMENT_METHOD_MANAGER_CONTACT,
+            'comment': '',
+            'agree_personal_data': 'on',
+            'agree_offer': 'on',
+            'business_company_name': '',
+            'business_checking_account': '',
+            'business_inn': '',
+            'business_kpp': '',
+            'business_bank_name': '',
+            'business_bik': '',
+            'business_correspondent_account': '',
+            'business_phone': '',
+            'business_telegram': '',
+            'business_whatsapp': '',
+            'website': '',
+            'form_started_at': str(int(timezone.now().timestamp()) - 5),
+        }
+
+    def test_add_game_pack_to_cart_creates_standalone_cart_item(self):
+        response = self.client.post(
+            reverse('catalog:add_game_pack_to_cart', kwargs={'game_pack_id': self.game_pack.pk}),
+            {'quantity': 1},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        cart_item = CartItem.objects.get(user=self.user)
+        self.assertEqual(cart_item.game_pack, self.game_pack)
+        self.assertIsNone(cart_item.product)
+        self.assertEqual(cart_item.quantity, 1)
+        self.assertEqual(cart_item.price_override, Decimal('4590.00'))
+
+    def test_game_pack_price_is_sum_of_games_and_services(self):
+        self.assertEqual(self.game_pack.in_stock_price, Decimal('4590.00'))
+
+    def test_checkout_creates_order_item_for_game_pack(self):
+        self.client.post(reverse('catalog:add_game_pack_to_cart', kwargs={'game_pack_id': self.game_pack.pk}), {'quantity': 1})
+
+        response = self.client.post(reverse('orders:checkout'), self._checkout_payload())
+
+        self.assertEqual(response.status_code, 302)
+        order_item = OrderItem.objects.get()
+        self.assertEqual(order_item.game_pack, self.game_pack)
+        self.assertIsNone(order_item.product)
+        self.assertEqual(order_item.product_name, self.game_pack.name)
+        self.assertEqual(order_item.price, Decimal('4590.00'))
+        self.assertEqual(order_item.metadata['games'][0]['name'], self.game.name)
+        self.assertEqual(order_item.metadata['services'][0]['name'], self.training_service.name)
+
+    def test_game_pack_card_shows_games_and_included_services(self):
+        response = self.client.get(f"{reverse('catalog:product_list')}?category={self.category.slug}")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Игры:')
+        self.assertContains(response, self.game.name)
+        self.assertContains(response, 'Доп. услуги включены:')
+        self.assertContains(response, self.training_service.name)
+
+    def test_game_pack_price_filter_uses_computed_price(self):
+        response = self.client.get(f"{reverse('catalog:product_list')}?category={self.category.slug}&price_min=4500&price_max=4700")
+        self.assertContains(response, self.game_pack.name)
+
+        response = self.client.get(f"{reverse('catalog:product_list')}?category={self.category.slug}&price_min=7900&price_max=8100")
+        self.assertNotContains(response, self.game_pack.name)

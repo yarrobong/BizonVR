@@ -51,6 +51,10 @@ def apply_product_discount(price, product):
 def resolve_in_stock_base_price(product, variant=None):
     if variant is not None and getattr(variant, 'price_override', None) is not None:
         return variant.price_override
+    if variant is None:
+        custom_resolver = getattr(product, 'get_in_stock_base_price', None)
+        if callable(custom_resolver):
+            return custom_resolver()
     return product.price
 
 
@@ -82,6 +86,8 @@ def resolve_price_for_mode(product, variant=None, purchase_mode=PURCHASE_MODE_ST
 
 
 def resolve_public_purchase_mode(product, variant=None, *, stock_total=0):
+    if not getattr(product, 'tracks_stock', True) and has_explicit_in_stock_price(product, variant):
+        return PURCHASE_MODE_STOCK
     if stock_total > 0 and has_explicit_in_stock_price(product, variant):
         return PURCHASE_MODE_STOCK
     if getattr(product, 'allow_order_on_request', True) and has_explicit_on_request_price(product, variant):

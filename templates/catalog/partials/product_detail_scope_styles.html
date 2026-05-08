@@ -1986,6 +1986,210 @@
     padding: 8px 4px;
   }
 
+  .product-detail-scope .product-bundles-block--game-pack .rec-panel {
+    margin-bottom: 24px;
+  }
+
+  .product-detail-scope .product-bundles-block--game-pack .rec-caption {
+    margin-bottom: 14px;
+  }
+
+  .product-detail-scope .product-bundles-block--game-pack .rec-caption > div:first-child p {
+    color: rgba(103, 232, 249, 0.82);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+  }
+
+  .product-detail-scope .product-bundles-block--game-pack .rec-caption > div:first-child h2 {
+    margin-top: 8px;
+    color: #ffffff;
+    font-size: 26px;
+    line-height: 1.15;
+    font-weight: 700;
+  }
+
+  .product-detail-scope .product-bundles-block--game-pack .rec-caption > div:last-child {
+    flex-shrink: 0;
+    color: rgba(148, 163, 184, 0.95);
+    font-size: 14px;
+    line-height: 1.4;
+    padding-top: 4px;
+  }
+
+  .product-detail-scope .game-pack-items-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+
+  .product-detail-scope .game-pack-item-card {
+    border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background:
+      radial-gradient(circle at top right, rgba(0,212,255,0.14), transparent 34%),
+      linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.025)),
+      rgba(255,255,255,0.02);
+    padding: 18px 18px 16px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+    transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+  }
+
+  .product-detail-scope .game-pack-item-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(34, 211, 238, 0.22);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.05),
+      0 16px 28px rgba(0,0,0,0.22);
+  }
+
+  .product-detail-scope .game-pack-item-card__media {
+    position: relative;
+    margin: -18px -18px 16px;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    border-radius: 20px 20px 14px 14px;
+    background:
+      linear-gradient(135deg, rgba(8,47,73,0.92), rgba(15,23,42,0.98));
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+
+  .product-detail-scope .game-pack-item-card__media-link {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  .product-detail-scope .game-pack-item-card__image,
+  .product-detail-scope .game-pack-item-card__image-placeholder {
+    width: 100%;
+    height: 100%;
+  }
+
+  .product-detail-scope .game-pack-item-card__image {
+    display: block;
+    object-fit: cover;
+  }
+
+  .product-detail-scope .game-pack-item-card__image-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255,255,255,0.82);
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .product-detail-scope .game-pack-item-card__body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .product-detail-scope .game-pack-item-card__head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .product-detail-scope .game-pack-item-card__title {
+    color: #ffffff;
+    font-size: 17px;
+    line-height: 1.35;
+    font-weight: 700;
+  }
+
+  .product-detail-scope .game-pack-item-card__title-link {
+    color: inherit;
+    transition: color 180ms ease;
+  }
+
+  .product-detail-scope .game-pack-item-card__title-link:hover {
+    color: #8be9ff;
+  }
+
+  .product-detail-scope .game-pack-item-card__genre {
+    margin-top: 6px;
+    color: rgba(255,255,255,0.72);
+    font-size: 12px;
+    line-height: 1.45;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .product-detail-scope .game-pack-item-card__platform {
+    margin-top: 6px;
+    color: rgba(165, 243, 252, 0.9);
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  .product-detail-scope .game-pack-item-card__badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 28px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(34, 211, 238, 0.24);
+    background: rgba(34, 211, 238, 0.10);
+    color: rgba(207, 250, 254, 0.98);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    backdrop-filter: blur(10px);
+  }
+
+  .product-detail-scope .game-pack-item-card__meta-list {
+    display: grid;
+    gap: 8px;
+  }
+
+  .product-detail-scope .game-pack-item-card__meta-row {
+    display: grid;
+    gap: 4px;
+    padding: 10px 12px;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.035);
+    border: 1px solid rgba(255,255,255,0.06);
+  }
+
+  .product-detail-scope .game-pack-item-card__meta-label {
+    color: rgba(148, 163, 184, 0.95);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .product-detail-scope .game-pack-item-card__meta-value {
+    color: rgba(241, 245, 249, 0.96);
+    font-size: 14px;
+    line-height: 1.55;
+  }
+
+  .product-detail-scope .game-pack-item-card__note {
+    color: rgba(203, 213, 225, 0.96);
+    font-size: 14px;
+    line-height: 1.65;
+  }
+
+  @media (max-width: 900px) {
+    .product-detail-scope .game-pack-items-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
   @media (max-width: 767px) {
     .product-detail-scope .container {
       margin-top: 0;
@@ -2000,6 +2204,29 @@
       margin-left: 0;
       border-top-left-radius: 0;
       border-top-right-radius: 0;
+    }
+
+    .product-detail-scope .game-pack-item-card {
+      padding: 16px;
+    }
+
+    .product-detail-scope .game-pack-item-card__media {
+      margin: -16px -16px 14px;
+    }
+
+    .product-detail-scope .game-pack-item-card__head {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .product-detail-scope .product-bundles-block--game-pack .rec-caption {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 10px;
+    }
+
+    .product-detail-scope .product-bundles-block--game-pack .rec-caption > div:first-child h2 {
+      font-size: 22px;
     }
   }
 </style>

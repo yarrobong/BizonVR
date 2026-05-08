@@ -40,7 +40,7 @@ from config.legal_docs import LEGAL_BUNDLE_VERSION
 from config.utils.spam_protection import is_spam_request
 from orders.models import Order, OrderItem
 
-from .cart_services import get_cart_count, get_cart_items, get_favorite_product_ids
+from .cart_services import get_cart_count, get_cart_items, get_favorite_product_ids, group_cart_items
 from .characteristic_normalization import normalize_characteristic_value
 from .context_processors import catalog_menu
 from .filter_audit import (
@@ -58,7 +58,9 @@ from .import_workflow import CatalogImportWorkflowService, make_direct_target_re
 from .importers import CatalogDataImporter
 from .image_utils import build_responsive_image_data
 from .product_descriptions import build_admin_constructor_state, migrate_legacy_blocks
-from .pricing import resolve_in_stock_price
+from .pricing import PURCHASE_MODE_STOCK, resolve_in_stock_price, resolve_public_purchase_mode
+from .stock import public_product_stock_status
+from .templatetags.catalog_tags import build_product_card_gallery_images
 from .models import (
     CartItem,
     CartShare,
@@ -77,6 +79,9 @@ from .models import (
     DescriptionTemplateSlot,
     Favorite,
     FilterConfig,
+    GamePack,
+    GamePackEntry,
+    GamePackItem,
     PickupPoint,
     Product,
     ProductBundle,
@@ -85,12 +90,14 @@ from .models import (
     ProductContentBlock,
     ProductDescription,
     ProductDescriptionBlock,
+    ProductGameMetadata,
     ProductImage,
     ProductStock,
     ProductTag,
     ProductVideo,
     ProductVariant,
     Service,
+    VRClubQuizRequest,
 )
 from .views import feeds as feed_views
 from .views.feeds import vr_attractions_yml_feed_view
@@ -98,6 +105,106 @@ from .admin.filters import CharacteristicDefinitionAdminForm
 from .admin.products import ProductAdmin, ProductAdminForm, ProductContentBlockAdmin, ProductContentBlockInline, ProductImageInline
 
 User = get_user_model()
+
+
+class VRClubGamesB2BTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.category = Category.objects.create(name='Игры', slug='games')
+        self.headset_category = Category.objects.create(name='VR шлемы', slug='vr-headsets')
+        self.game = Product.objects.create(
+            category=self.category,
+            name='Arena Heroes',
+            slug='arena-heroes',
+            price=Decimal('1000.00'),
+            is_active=True,
+        )
+        ProductGameMetadata.objects.create(
+            product=self.game,
+            devices='Quest, Pico',
+            genres='PvP, Arcade',
+            min_players=2,
+            max_players=6,
+            age_rating='12+',
+            club_format=ProductGameMetadata.FORMAT_CLUB,
+            is_multiplayer=True,
+            b2b_note='Командная игра для коммерческих сессий.',
+        )
+        self.pack = GamePack.objects.create(
+            category=self.category,
+            name='Клуб',
+            slug='club-pack',
+            price=Decimal('5000.00'),
+            is_active=True,
+            show_on_vr_club_page=True,
+            vr_club_tariff=GamePack.TARIFF_CLUB,
+        )
+        GamePackEntry.objects.create(game_pack=self.pack, product=self.game, quantity=1)
+        self.service = Service.objects.create(
+            name='Настройка multiplayer',
+            short_description='Соберем сетевую игру под клуб.',
+            price=Decimal('2500.00'),
+            service_kind=Service.KIND_MULTIPLAYER,
+            is_vr_club_service=True,
+            is_active=True,
+        )
+
+    def test_vr_club_games_page_shows_three_scenarios_and_filters_games(self):
+        resp = self.client.get(reverse('catalog:vr_club_games'), {'device': 'Quest', 'players': '4'})
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Купить готовый пакет')
+        self.assertContains(resp, 'Собрать свой набор')
+        self.assertContains(resp, 'Получить подбор')
+        self.assertContains(resp, self.game.name)
+        self.assertContains(resp, self.service.name)
+
+    def test_custom_game_pack_with_service_is_added_to_cart_blocks(self):
+        resp = self.client.post(reverse('catalog:add_vr_club_custom_pack'), {
+            'game_ids': [str(self.game.pk)],
+            'service_ids': [str(self.service.pk)],
+            'headset_count': '4',
+            'devices': 'Quest',
+            'club_format': ProductGameMetadata.FORMAT_CLUB,
+        })
+
+        self.assertRedirects(resp, reverse('catalog:cart'))
+        items = get_cart_items(resp.wsgi_request)
+        self.assertTrue(any(item.get('line_type') == 'custom_game_pack' for item in items))
+        self.assertTrue(any(item.get('line_type') == 'service' for item in items))
+        groups = group_cart_items(items)
+        self.assertEqual([group['title'] for group in groups], ['Игры', 'Услуги'])
+        self.assertEqual(sum(group['subtotal'] for group in groups), 3500.0)
+
+    def test_game_product_is_available_without_physical_stock(self):
+        self.assertFalse(self.game.tracks_stock)
+        self.assertEqual(resolve_public_purchase_mode(self.game, stock_total=0), PURCHASE_MODE_STOCK)
+        self.assertEqual(public_product_stock_status(self.game, 0)['label'], 'В наличии')
+
+        resp = self.client.post(reverse('catalog:add_to_cart', args=[self.game.pk]), {'quantity': '1'}, follow=True)
+
+        self.assertEqual(resp.status_code, 200)
+        items = get_cart_items(resp.wsgi_request)
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]['product_id'], self.game.pk)
+
+    def test_quiz_creates_request(self):
+        resp = self.client.post(reverse('catalog:vr_club_games'), {
+            'name': 'Иван',
+            'phone': '+7 999 111-22-33',
+            'email': 'club@example.com',
+            'club_format': 'VR-клуб',
+            'devices': 'Quest',
+            'headsets_count': '6',
+            'play_places_count': '6',
+            'audience': 'семьи',
+            'budget': 'до 200 000',
+            'comment': 'Нужен запуск под ключ',
+            'agree_personal_data': 'on',
+        })
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(VRClubQuizRequest.objects.filter(phone='+7 999 111-22-33').exists())
 
 
 def _build_test_uploaded_image(name='test.jpg', *, size=(1600, 1200), image_format='JPEG', color='#22c55e'):
@@ -421,6 +528,57 @@ class SpamProtectionHelperTest(TestCase):
         request = self.factory.post('/contacts/', {'form_started_at': str(int(time.time()))})
         self.assertTrue(is_spam_request(request))
 
+
+class SeedStarvrPacksCommandTest(TestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    def test_command_creates_games_and_packs(self):
+        call_command('seed_starvr_packs')
+
+        section = CatalogSection.objects.get(slug='vr-games-and-packs')
+        games_category = Category.objects.get(slug='mr-vr-games', section=section)
+        packs_category = Category.objects.get(slug='vr-zone-packs', section=section)
+
+        self.assertEqual(Product.objects.filter(category=games_category, is_active=True).count(), 5)
+        self.assertEqual(
+            Product.objects.filter(
+                category=packs_category,
+                product_kind=Product.PRODUCT_KIND_GAME_PACK,
+                is_active=True,
+            ).count(),
+            3,
+        )
+
+        base_pack = Product.objects.get(sku='STARVR-PACK-BASE')
+        universal_pack = Product.objects.get(sku='STARVR-PACK-UNIVERSAL')
+        all_in_pack = Product.objects.get(sku='STARVR-PACK-ALL-IN')
+
+        self.assertEqual(base_pack.price, Decimal('6990.00'))
+        self.assertFalse(base_pack.allow_order_on_request)
+        self.assertEqual(base_pack.game_pack_items.count(), 5)
+
+        self.assertEqual(universal_pack.price, Decimal('8990.00'))
+        self.assertTrue(
+            universal_pack.game_pack_items.filter(title='Настройка шлема', platform='Сервис').exists()
+        )
+
+        self.assertEqual(all_in_pack.price, Decimal('9990.00'))
+        self.assertTrue(
+            all_in_pack.game_pack_items.filter(
+                title='Игры для VR-зон (20 штук на выбор, или из каталога)',
+                platform='Доп. библиотека',
+            ).exists()
+        )
+
+        self.assertTrue(
+            GamePackItem.objects.filter(
+                product=base_pack,
+                title='House Defender: Mixed Reality',
+                platform='Meta Quest / MR',
+            ).exists()
+        )
+
     def test_missing_form_started_at_does_not_block(self):
         request = self.factory.post('/contacts/', {'message': 'Нужна консультация'})
         self.assertFalse(is_spam_request(request))
@@ -460,6 +618,35 @@ class SpamProtectionHelperTest(TestCase):
             'form_started_at': str(int(time.time()) - 3),
         })
         self.assertFalse(is_spam_request(request))
+
+
+class GamePackDetailRegressionTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.category = Category.objects.create(name='Тест', slug='test-game-pack-detail')
+
+    def test_product_detail_opens_when_pack_contains_non_catalog_items(self):
+        product = Product.objects.create(
+            category=self.category,
+            name='Пак MR Zone',
+            slug='mr-zone-pack',
+            product_kind=Product.PRODUCT_KIND_GAME_PACK,
+            price=Decimal('9990.00'),
+            is_active=True,
+            allow_order_on_request=False,
+        )
+        GamePackItem.objects.create(product=product, title='Настройка шлема', platform='Сервис')
+        GamePackItem.objects.create(
+            product=product,
+            title='Игры для VR-зон (20 штук на выбор, или из каталога)',
+            platform='Доп. библиотека',
+        )
+
+        response = self.client.get(product.get_absolute_url())
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Состав пака')
+        self.assertContains(response, 'Настройка шлема')
 
 
 @override_settings(
@@ -710,6 +897,50 @@ class VariantGalleryAndCatalogCardsTest(TestCase):
         self.assertIn('lucide-icon--image-off', html)
         self.assertNotIn('data-lucide="image-off"', html)
         self.assertNotIn('lucide.createIcons()', html)
+
+    def test_product_card_gallery_images_puts_variant_first_and_removes_duplicates(self):
+        primary = _build_test_uploaded_image('product-primary.jpg')
+        extra = _build_test_uploaded_image('product-extra.jpg')
+        variant_image = _build_test_uploaded_image('variant-image.jpg')
+        self.product.image = primary
+        self.product.save(update_fields=['image'])
+        self.product.images.create(image=primary, order=0)
+        self.product.images.create(image=extra, order=1)
+        variant = ProductVariant.objects.create(product=self.product, name='512 GB', image=variant_image)
+        extra_saved_name = self.product.images.order_by('order', 'id')[1].image.name
+
+        gallery_images = build_product_card_gallery_images(self.product, variant)
+
+        self.assertEqual(
+            [image.name for image in gallery_images],
+            [variant.image.name, self.product.image.name, extra_saved_name],
+        )
+
+    def test_catalog_product_card_renders_gallery_segments_for_multiple_images(self):
+        request = RequestFactory().get(reverse('catalog:product_list'))
+        self.product.image = _build_test_uploaded_image('gallery-primary.jpg')
+        self.product.save(update_fields=['image'])
+        self.product.images.create(image=_build_test_uploaded_image('gallery-extra-1.jpg'), order=0)
+        self.product.images.create(image=_build_test_uploaded_image('gallery-extra-2.jpg'), order=1)
+
+        html = Template('{% include "catalog/_product_card.html" %}').render(
+            Context(
+                {
+                    'request': request,
+                    'product': self.product,
+                    'show_favorite': False,
+                    'show_add_button': False,
+                    'favorite_product_ids': None,
+                    'product_stock_total': {},
+                    'variant_stock_total': {},
+                    'recommended_variant_ids': {},
+                    'from_favorites_page': False,
+                }
+            )
+        )
+
+        self.assertIn('data-product-card-gallery', html)
+        self.assertEqual(html.count('data-product-card-segment') - html.count('data-product-card-segments'), 3)
 
     def test_home_page_footer_mobile_dock_uses_inline_home_icon(self):
         response = self.client.get(reverse('home'))
@@ -6350,3 +6581,45 @@ class AdminImportJsonSecurityTest(TestCase):
 
         self.assertEqual(resolution_response.status_code, 200)
         self.assertContains(resolution_response, 'Разрешённые конфликты')
+
+
+class StandaloneGamePackCatalogTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.section = CatalogSection.objects.create(name='??????? ??? ???????', slug='biz')
+        self.category = Category.objects.create(
+            section=self.section,
+            name='??????? ????',
+            slug='game-packs',
+        )
+        self.games_category = Category.objects.create(name='????', slug='games')
+        self.game = Product.objects.create(
+            category=self.games_category,
+            name='Beat Saber',
+            slug='beat-saber',
+            price=Decimal('1990.00'),
+            is_active=True,
+        )
+        self.game_pack = GamePack.objects.create(
+            category=self.category,
+            name='Quest Arcade Pack',
+            slug='quest-arcade-pack',
+            price=Decimal('4990.00'),
+            is_active=True,
+            allow_order_on_request=False,
+        )
+        GamePackEntry.objects.create(game_pack=self.game_pack, product=self.game, quantity=1, sort_order=0)
+
+    def test_category_page_renders_game_packs_instead_of_products(self):
+        response = self.client.get(reverse('catalog:product_list'), {'category': self.category.slug})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context['is_game_packs_category'])
+        self.assertContains(response, self.game_pack.name)
+
+    def test_game_pack_detail_page_renders_entries(self):
+        response = self.client.get(reverse('catalog:game_pack_detail', kwargs={'slug': self.game_pack.slug}))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, self.game_pack.name)
+        self.assertContains(response, self.game.name)

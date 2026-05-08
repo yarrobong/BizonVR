@@ -441,7 +441,10 @@
           category: product.category || '',
           image_url: product.image_url || '',
           price: product.price != null ? String(product.price) : '',
-          base_price: product.base_price != null ? String(product.base_price) : (product.price != null ? String(product.price) : '')
+          base_price: product.base_price != null ? String(product.base_price) : (product.price != null ? String(product.price) : ''),
+          is_game_pack: Boolean(product.is_game_pack),
+          kind_label: product.kind_label || '',
+          game_pack_preview: product.game_pack_preview || ''
         }));
         resultsContainer.innerHTML = '';
 
@@ -457,11 +460,19 @@
           const imageHtml = product.image_url
             ? '<img src="' + escapeHtml(product.image_url) + '" alt="">'
             : '<div class="manager-proposal-thumb-placeholder">Нет фото</div>';
+          const kindBadge = product.kind_label
+            ? '<div class="mt-2"><span class="manager-pill">' + escapeHtml(product.kind_label) + '</span></div>'
+            : '';
+          const packPreview = product.game_pack_preview
+            ? '<div class="mt-2 text-xs text-slate-400">' + escapeHtml(product.game_pack_preview) + '</div>'
+            : '';
           card.innerHTML =
             '<div class="manager-proposal-thumb manager-proposal-result-thumb">' + imageHtml + '</div>' +
             '<div class="manager-proposal-result-info">' +
               '<div class="manager-proposal-result-name">' + escapeHtml(product.name) + '</div>' +
               '<div class="manager-proposal-result-meta">' + escapeHtml(product.category) + '</div>' +
+              kindBadge +
+              packPreview +
               '<div class="manager-proposal-result-price">Базовая цена: ' + formatPriceLabel(product.base_price) + '</div>' +
             '</div>' +
             '<button type="button" class="manager-proposal-result-button' + (isSelected ? ' is-selected' : '') + '">' +
@@ -520,7 +531,10 @@
           category: product.category || '',
           image_url: product.image_url || '',
           price: product.price != null ? String(product.price) : '',
-          base_price: product.base_price != null ? String(product.base_price) : (product.price != null ? String(product.price) : '')
+          base_price: product.base_price != null ? String(product.base_price) : (product.price != null ? String(product.price) : ''),
+          is_game_pack: Boolean(product.is_game_pack),
+          kind_label: product.kind_label || '',
+          game_pack_preview: product.game_pack_preview || ''
         };
 
         if (selected.has(normalizedProduct.id)) {
@@ -554,11 +568,19 @@
         const imageHtml = normalizedProduct.image_url
           ? '<img src="' + escapeHtml(normalizedProduct.image_url) + '" alt="">'
           : '<div class="manager-proposal-thumb-placeholder">Нет фото</div>';
+        const metaParts = [escapeHtml(normalizedProduct.category), 'базовая: ' + formatPriceLabel(normalizedProduct.base_price)];
+        if (normalizedProduct.kind_label) {
+          metaParts.unshift(escapeHtml(normalizedProduct.kind_label));
+        }
+        const packPreview = normalizedProduct.game_pack_preview
+          ? '<div class="mt-1 text-xs text-slate-400">' + escapeHtml(normalizedProduct.game_pack_preview) + '</div>'
+          : '';
         card.innerHTML =
           '<div class="manager-proposal-thumb">' + imageHtml + '</div>' +
           '<div class="manager-proposal-info">' +
             '<div class="manager-proposal-name">' + escapeHtml(normalizedProduct.name) + '</div>' +
-            '<div class="manager-proposal-meta">' + escapeHtml(normalizedProduct.category) + ' · базовая: ' + formatPriceLabel(normalizedProduct.base_price) + '</div>' +
+            '<div class="manager-proposal-meta">' + metaParts.join(' · ') + '</div>' +
+            packPreview +
           '</div>' +
           '<div class="manager-proposal-field manager-proposal-field-qty"><label>Кол-во</label><input type="number" name="qty_' + normalizedProduct.id + '" value="' + qtyValue + '" min="1"></div>' +
           '<div class="manager-proposal-field manager-proposal-field-price"><label>Цена за шт.</label><input type="number" name="price_' + normalizedProduct.id + '" value="' + priceValue + '" min="0" step="0.01"></div>' +
@@ -609,6 +631,9 @@
             name: product.name,
             category: product.category,
             image_url: product.image_url,
+            is_game_pack: Boolean(product.is_game_pack),
+            kind_label: product.kind_label || '',
+            game_pack_preview: product.game_pack_preview || '',
             base_price: product.base_price || product.price,
             price: formatInputNumber(Math.max(0, parseMoneyInput(priceInput.value))),
             qty: sanitizeQtyValue(qtyInput.value)

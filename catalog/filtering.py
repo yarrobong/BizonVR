@@ -38,6 +38,9 @@ from .models import (
     CharacteristicSourceAlias,
     CharacteristicValueAlias,
     FilterConfig,
+    GamePack,
+    GamePackEntry,
+    GamePackServiceEntry,
     Product,
     ProductBundleItem,
     ProductBundle,
@@ -150,8 +153,14 @@ class CatalogFilterService:
         self.request = request
 
     def annotate_catalog_pricing(self, qs):
+        stock_sum = Coalesce(Sum('stocks__quantity'), Value(0))
         return qs.annotate(
-            catalog_stock_total=Coalesce(Sum('stocks__quantity'), Value(0)),
+            catalog_stock_total=Case(
+                When(product_kind=Product.PRODUCT_KIND_GAME_PACK, then=Value(999)),
+                When(game_metadata__is_active=True, then=Value(999)),
+                default=stock_sum,
+                output_field=IntegerField(),
+            ),
         ).annotate(
             catalog_effective_price=build_catalog_effective_price_expression(
                 stock_total_field='catalog_stock_total',
@@ -182,6 +191,59 @@ class CatalogFilterService:
             bundle_total_price=Coalesce(
                 Subquery(bundle_total_subquery, output_field=self.MONEY_FIELD),
                 Value(0, output_field=self.MONEY_FIELD),
+            ),
+        )
+
+    def annotate_game_pack_pricing(self, qs):
+        game_item_total = ExpressionWrapper(
+            Coalesce(F('product__price'), Value(0, output_field=self.MONEY_FIELD))
+            * (Value(100, output_field=self.MONEY_FIELD) - Coalesce(F('product__discount_percent'), Value(0, output_field=self.MONEY_FIELD)))
+            / Value(100, output_field=self.MONEY_FIELD)
+            * Coalesce(F('quantity'), Value(0)),
+            output_field=self.MONEY_FIELD,
+        )
+        game_total_subquery = (
+            GamePackEntry.objects
+            .filter(game_pack=OuterRef('pk'))
+            .values('game_pack')
+            .annotate(total=Sum(game_item_total, output_field=self.MONEY_FIELD))
+            .values('total')[:1]
+        )
+        service_item_total = ExpressionWrapper(
+            Coalesce(F('price'), F('service__price'), Value(0, output_field=self.MONEY_FIELD))
+            * Coalesce(F('quantity'), Value(0)),
+            output_field=self.MONEY_FIELD,
+        )
+        service_total_subquery = (
+            GamePackServiceEntry.objects
+            .filter(game_pack=OuterRef('pk'))
+            .values('game_pack')
+            .annotate(total=Sum(service_item_total, output_field=self.MONEY_FIELD))
+            .values('total')[:1]
+        )
+        computed_base_price = ExpressionWrapper(
+            Coalesce(Subquery(game_total_subquery, output_field=self.MONEY_FIELD), Value(0, output_field=self.MONEY_FIELD))
+            + Coalesce(Subquery(service_total_subquery, output_field=self.MONEY_FIELD), Value(0, output_field=self.MONEY_FIELD)),
+            output_field=self.MONEY_FIELD,
+        )
+        computed_price = ExpressionWrapper(
+            F('game_pack_computed_base_price')
+            * (Value(100, output_field=self.MONEY_FIELD) - Coalesce(F('discount_percent'), Value(0, output_field=self.MONEY_FIELD)))
+            / Value(100, output_field=self.MONEY_FIELD),
+            output_field=self.MONEY_FIELD,
+        )
+        fallback_price = build_catalog_effective_price_expression(
+            stock_total_field='catalog_stock_total',
+        )
+        return qs.annotate(
+            catalog_stock_total=Value(1, output_field=IntegerField()),
+            game_pack_computed_base_price=computed_base_price,
+        ).annotate(
+            game_pack_computed_price=computed_price,
+            catalog_effective_price=Case(
+                When(game_pack_computed_base_price__gt=0, then=F('game_pack_computed_price')),
+                default=fallback_price,
+                output_field=self.MONEY_FIELD,
             ),
         )
 
@@ -231,6 +293,14 @@ class CatalogFilterService:
     @cached_property
     def is_bundle_mode(self) -> bool:
         return bool(self.selected_category and getattr(self.selected_category, 'is_bundles_category', False))
+
+    @cached_property
+    def is_game_pack_mode(self) -> bool:
+        if not self.selected_category:
+            return False
+        if getattr(self.selected_category, 'is_bundles_category', False):
+            return False
+        return GamePack.objects.filter(category=self.selected_category, is_active=True).exists()
 
     @cached_property
     def effective_section_slug(self) -> str:
@@ -452,6 +522,82 @@ class CatalogFilterService:
 
         return qs.distinct()
 
+    def build_game_pack_filter_queryset(
+        self,
+        *,
+        ignore_category=False,
+        ignore_section=False,
+        ignore_tag=False,
+        ignore_price=False,
+        include_char_filters=False,
+        exclude_char_key=None,
+    ):
+        qs = (
+            GamePack.objects
+            .filter(is_active=True)
+            .select_related('category')
+            .order_by()
+        )
+        qs = self.annotate_game_pack_pricing(qs)
+        search_query = (self.request.GET.get('q') or '').strip()
+        if search_query:
+            qs = qs.filter(
+                Q(name__icontains=search_query)
+                | Q(description__icontains=search_query)
+                | Q(entries__product__name__icontains=search_query)
+                | Q(entries__product__description__icontains=search_query)
+            )
+
+        if self.current_category_slug and not ignore_category:
+            if self.is_game_pack_mode:
+                qs = qs.filter(category__slug=self.current_category_slug)
+            else:
+                qs = qs.none()
+
+        if self.current_section_slug and not ignore_section:
+            qs = qs.filter(category__section__slug=self.current_section_slug)
+
+        tag_slug = (self.request.GET.get('tag') or '').strip()
+        if tag_slug and not ignore_tag:
+            qs = qs.filter(tags__slug=tag_slug)
+
+        if not ignore_price:
+            price_min = self.request.GET.get('price_min')
+            if price_min:
+                try:
+                    qs = qs.filter(catalog_effective_price__gte=float(price_min))
+                except (TypeError, ValueError):
+                    pass
+            price_max = self.request.GET.get('price_max')
+            if price_max:
+                try:
+                    qs = qs.filter(catalog_effective_price__lte=float(price_max))
+                except (TypeError, ValueError):
+                    pass
+
+        if include_char_filters:
+            for active_filter in self.active_characteristic_filters:
+                if exclude_char_key and active_filter.canonical_key == exclude_char_key:
+                    continue
+                if active_filter.definition is not None:
+                    allowed_values = set(
+                        self._get_alias_bundle(active_filter.definition)['normalized_to_raws'].get(
+                            active_filter.selected_value,
+                            set(),
+                        )
+                    )
+                    allowed_values.add(active_filter.selected_value)
+                    qs = qs.filter(
+                        entries__product__characteristics__name__in=get_definition_source_names(active_filter.definition),
+                        entries__product__characteristics__value__in=allowed_values,
+                    )
+                else:
+                    qs = qs.filter(
+                        entries__product__characteristics__name=active_filter.canonical_key,
+                        entries__product__characteristics__value=active_filter.selected_value,
+                    )
+        return qs.distinct()
+
     def build_bundle_filter_queryset(
         self,
         *,
@@ -541,7 +687,12 @@ class CatalogFilterService:
         include_char_filters=False,
         exclude_char_key=None,
     ):
-        builder = self.build_bundle_filter_queryset if self.is_bundle_mode else self.build_product_filter_queryset
+        if self.is_bundle_mode:
+            builder = self.build_bundle_filter_queryset
+        elif self.is_game_pack_mode:
+            builder = self.build_game_pack_filter_queryset
+        else:
+            builder = self.build_product_filter_queryset
         return builder(
             ignore_category=ignore_category,
             ignore_section=ignore_section,
@@ -579,6 +730,14 @@ class CatalogFilterService:
                 .order_by('order', 'name')
                 .distinct()
             )
+        elif self.is_game_pack_mode:
+            tags_qs = (
+                ProductTag.objects
+                .filter(game_packs__in=tags_base_qs)
+                .annotate(result_count=Count('game_packs', filter=Q(game_packs__in=tags_base_qs), distinct=True))
+                .order_by('order', 'name')
+                .distinct()
+            )
         else:
             tags_qs = (
                 ProductTag.objects
@@ -603,8 +762,13 @@ class CatalogFilterService:
             .values('category_id', 'category__section__slug')
             .annotate(total=Count('id', distinct=True))
         )
+        game_pack_counts_qs = (
+            self.build_game_pack_filter_queryset(ignore_category=True, ignore_section=True, include_char_filters=True)
+            .values('category_id', 'category__section__slug')
+            .annotate(total=Count('id', distinct=True))
+        )
 
-        for counts_qs in (product_counts_qs, bundle_counts_qs):
+        for counts_qs in (product_counts_qs, bundle_counts_qs, game_pack_counts_qs):
             for row in counts_qs:
                 category_id = row['category_id']
                 section_slug = row['category__section__slug']
@@ -863,6 +1027,14 @@ class CatalogFilterService:
                     .annotate(total=Count('product__bundle_items__bundle', distinct=True))
                     .order_by('name', 'value')
                 )
+            elif self.is_game_pack_mode:
+                rows = (
+                    ProductCharacteristic.objects
+                    .filter(product__game_pack_entries__game_pack__in=self.get_filter_base_queryset())
+                    .values('name', 'value')
+                    .annotate(total=Count('product__game_pack_entries__game_pack', distinct=True))
+                    .order_by('name', 'value')
+                )
             else:
                 rows = (
                     ProductCharacteristic.objects
@@ -886,6 +1058,14 @@ class CatalogFilterService:
             char_names = (
                 ProductCharacteristic.objects
                 .filter(product__bundle_items__bundle__in=self.get_filter_base_queryset())
+                .values_list('name', flat=True)
+                .distinct()
+                .order_by('name')
+            )
+        elif self.is_game_pack_mode:
+            char_names = (
+                ProductCharacteristic.objects
+                .filter(product__game_pack_entries__game_pack__in=self.get_filter_base_queryset())
                 .values_list('name', flat=True)
                 .distinct()
                 .order_by('name')

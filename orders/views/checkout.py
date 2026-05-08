@@ -21,13 +21,16 @@ except ImportError:
 from accounts.models import SavedAddress
 from accounts.services import ensure_profile, get_user_phone
 from catalog.cart_services import (
+    CART_LINE_CUSTOM_GAME_PACK,
+    CART_LINE_SERVICE,
     clear_buy_now_checkout_items,
     enrich_cart_items,
     get_buy_now_checkout_items,
     get_cart_items,
+    group_cart_items,
     remove_cart_items,
 )
-from catalog.models import City, Product, ProductVariant
+from catalog.models import City, GamePack, Product, ProductVariant, Service
 from catalog.pricing import (
     PURCHASE_MODE_ON_REQUEST,
     PURCHASE_MODE_REQUEST_ONLY,
@@ -219,6 +222,7 @@ def _build_checkout_pricing_context(request, cart_items, items_source, *, promo_
 
     return {
         'cart_items': display_items,
+        'cart_groups': group_cart_items(display_items),
         'cart_total': cart_total,
         'online_total': grand_total,
         'grand_total': grand_total,
@@ -305,30 +309,121 @@ def _get_checkout_step(form):
 def _get_cart_catalog_objects(cart_items):
     product_ids = [item.get('product_id') for item in cart_items if item.get('product_id')]
     variant_ids = [item.get('variant_id') for item in cart_items if item.get('variant_id')]
+    game_pack_ids = [item.get('game_pack_id') for item in cart_items if item.get('game_pack_id')]
+    service_ids = [item.get('service_id') for item in cart_items if item.get('service_id')]
     products = Product.objects.filter(pk__in=product_ids, is_active=True).in_bulk()
     variants = ProductVariant.objects.filter(pk__in=variant_ids, product_id__in=product_ids).select_related('product').in_bulk()
-    return products, variants
+    game_packs = GamePack.objects.filter(pk__in=game_pack_ids, is_active=True).in_bulk()
+    services = Service.objects.filter(pk__in=service_ids, is_active=True).in_bulk()
+    return products, variants, game_packs, services
 
 
 def _build_checkout_lines(cart_items):
-    products, variants = _get_cart_catalog_objects(cart_items)
+    products, variants, game_packs, services = _get_cart_catalog_objects(cart_items)
     lines = []
     unavailable_lines = []
 
     for item in cart_items:
+        quantity = int(item.get('quantity') or 0)
+        if quantity <= 0:
+            continue
+
+        if item.get('line_type') == CART_LINE_CUSTOM_GAME_PACK:
+            item_price = Decimal(str(item.get('price') or 0))
+            lines.append({
+                'product': None,
+                'game_pack': None,
+                'variant': None,
+                'quantity': quantity,
+                'price': item_price,
+                'variant_name': '',
+                'is_on_request': False,
+                'purchase_mode': PURCHASE_MODE_ON_REQUEST if item_price <= 0 else normalize_purchase_mode(item.get('purchase_mode')),
+                'bundle_id': None,
+                'line_type': CART_LINE_CUSTOM_GAME_PACK,
+                'product_name': item.get('name') or 'Индивидуальный комплект игр для VR-клуба',
+                'metadata': item.get('custom_snapshot') or {},
+                'product_id': None,
+                'game_pack_id': None,
+                'service_id': None,
+                'custom_key': item.get('custom_key') or item.get('custom_snapshot', {}).get('custom_key', ''),
+            })
+            continue
+
+        service_id = item.get('service_id')
+        if service_id:
+            service = services.get(service_id)
+            if not service or service.price is None:
+                unavailable_lines.append(item.get('name') or 'Услуга')
+                continue
+            item_price = Decimal(str(service.price))
+            lines.append({
+                'product': None,
+                'game_pack': None,
+                'variant': None,
+                'quantity': quantity,
+                'price': item_price,
+                'variant_name': '',
+                'is_on_request': False,
+                'purchase_mode': normalize_purchase_mode(item.get('purchase_mode')),
+                'bundle_id': None,
+                'line_type': CART_LINE_SERVICE,
+                'product_name': service.name,
+                'metadata': item.get('custom_snapshot') or {'service_kind': service.service_kind},
+                'product_id': None,
+                'game_pack_id': None,
+                'service_id': service.pk,
+                'custom_key': '',
+            })
+            continue
+
+        game_pack_id = item.get('game_pack_id')
+        if game_pack_id:
+            game_pack = game_packs.get(game_pack_id)
+            if not game_pack:
+                continue
+            purchase_mode = normalize_purchase_mode(item.get('purchase_mode'))
+            is_on_request = purchase_mode == PURCHASE_MODE_ON_REQUEST
+            in_stock_price = resolve_in_stock_price(game_pack)
+            on_request_price = resolve_on_request_price(game_pack)
+            if is_on_request and on_request_price is None:
+                unavailable_lines.append(item.get('name') or game_pack.name)
+                continue
+            if not is_on_request and in_stock_price is None:
+                unavailable_lines.append(item.get('name') or game_pack.name)
+                continue
+            item_price = Decimal(str(on_request_price if is_on_request else item.get('price', in_stock_price) or in_stock_price))
+            lines.append({
+                'product': None,
+                'game_pack': game_pack,
+                'variant': None,
+                'quantity': quantity,
+                'price': item_price,
+                'variant_name': '',
+                'is_on_request': is_on_request,
+                'purchase_mode': purchase_mode,
+                'bundle_id': None,
+                'line_type': 'game',
+                'product_name': game_pack.name,
+                'metadata': item.get('custom_snapshot') or {},
+                'product_id': None,
+                'game_pack_id': game_pack.pk,
+                'service_id': None,
+                'custom_key': '',
+            })
+            continue
+
         product_id = item.get('product_id')
         variant_id = item.get('variant_id')
-        quantity = int(item.get('quantity') or 0)
         product = products.get(product_id)
         variant = variants.get(variant_id) if variant_id else None
-
-        if not product or quantity <= 0:
+        if not product:
             continue
         if variant_id and not variant:
             unavailable_lines.append(item.get('name') or product.name)
             continue
 
-        stock_total = _get_stock_total(product_id, variant_id)
+        stock_total = _get_stock_total(product_id, variant_id) if product.tracks_stock else 0
         purchase_mode = normalize_purchase_mode(item.get('purchase_mode'))
         is_on_request = purchase_mode == PURCHASE_MODE_ON_REQUEST
         in_stock_price = resolve_in_stock_price(product, variant)
@@ -342,7 +437,7 @@ def _build_checkout_lines(cart_items):
         elif in_stock_price is None:
             unavailable_lines.append(item.get('name') or product.name)
             continue
-        elif stock_total < quantity or stock_total <= 0:
+        elif product.tracks_stock and (stock_total < quantity or stock_total <= 0):
             if product.allow_order_on_request and has_explicit_on_request_price(product, variant):
                 is_on_request = True
                 purchase_mode = PURCHASE_MODE_ON_REQUEST
@@ -351,12 +446,11 @@ def _build_checkout_lines(cart_items):
                 continue
         else:
             item_price = Decimal(str(item.get('price', in_stock_price) or in_stock_price))
-
-        if is_on_request and (stock_total < quantity or stock_total <= 0):
+        if is_on_request and product.tracks_stock and (stock_total < quantity or stock_total <= 0):
             item_price = Decimal(str(on_request_price))
-
         lines.append({
             'product': product,
+            'game_pack': None,
             'variant': variant,
             'quantity': quantity,
             'price': item_price,
@@ -364,6 +458,13 @@ def _build_checkout_lines(cart_items):
             'is_on_request': is_on_request,
             'purchase_mode': purchase_mode,
             'bundle_id': item.get('bundle_id'),
+            'line_type': 'equipment',
+            'product_name': product.name,
+            'metadata': {},
+            'product_id': product.pk,
+            'game_pack_id': None,
+            'service_id': None,
+            'custom_key': '',
         })
 
     return lines, unavailable_lines
@@ -608,14 +709,23 @@ def checkout_view(request):
         OrderItem.objects.bulk_create([
             OrderItem(
                 order=order,
+                line_type=OrderItem.LINE_TYPE_CATALOG if line['product'] or line.get('game_pack') else OrderItem.LINE_TYPE_CUSTOM,
                 product=line['product'],
-                product_name=line['product'].name,
-                product_image_url=resolve_order_item_image_url(product=line['product'], variant=line['variant']),
+                game_pack=line.get('game_pack'),
+                product_name=line.get('product_name') or (line['product'].name if line['product'] else line['game_pack'].name),
+                product_image_url=(
+                    resolve_order_item_image_url(product=line['product'], variant=line['variant'])
+                    if line['product'] else (
+                        resolve_order_item_image_url(product=line['game_pack'])
+                        if line.get('game_pack') else ''
+                    )
+                ),
                 variant=line['variant'],
                 quantity=line['quantity'],
                 price=line['price'],
                 is_on_request=line['is_on_request'],
                 variant_name=line['variant_name'],
+                metadata=line.get('metadata') or {},
             )
             for line in lines
         ])

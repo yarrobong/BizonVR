@@ -61,6 +61,32 @@
       <p>Наборов пока нет.</p>
     </div>
   {% endif %}
+{% elif is_game_packs_category %}
+  {% if game_packs %}
+    <div class="mobile-card-grid grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 md:gap-3">
+      {% for game_pack in game_packs %}
+        {% include "catalog/_game_pack_card.html" %}
+      {% endfor %}
+    </div>
+    {% if game_pack_page_obj.has_other_pages %}
+      <nav class="flex justify-center gap-2 mt-12 flex-wrap">
+        {% if game_pack_page_obj.has_previous %}
+          <a href="{% url 'catalog:product_list' %}{% filter_url_pagination game_pack_page_obj.previous_page_number %}"
+             class="px-4 py-2 rounded-lg bg-dark-700 text-gray-300 hover:text-white hover:bg-dark-600 transition-colors text-sm">← Назад</a>
+        {% endif %}
+        <span class="px-4 py-2 text-gray-400 text-sm self-center">Стр. {{ game_pack_page_obj.number }} из {{ game_pack_page_obj.paginator.num_pages }}</span>
+        {% if game_pack_page_obj.has_next %}
+          <a href="{% url 'catalog:product_list' %}{% filter_url_pagination game_pack_page_obj.next_page_number %}"
+             class="px-4 py-2 rounded-lg bg-dark-700 text-gray-300 hover:text-white hover:bg-dark-600 transition-colors text-sm">Вперёд →</a>
+        {% endif %}
+      </nav>
+    {% endif %}
+  {% else %}
+    <div class="text-center py-16 text-gray-400">
+      {% lucide_icon "package" "w-16 h-16 mx-auto mb-4 opacity-50" %}
+      <p>Игровых паков пока нет.</p>
+    </div>
+  {% endif %}
 {% elif products %}
   <div class="mobile-card-grid grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 md:gap-3">
     {% for product in products %}

@@ -24,6 +24,8 @@ from ..image_utils import (
 )
 from ..models import (
     Category,
+    GamePack,
+    GamePackEntry,
     ProductDescriptionBlock,
     Product,
     ProductBundle,
@@ -45,8 +47,14 @@ from ..pricing import (
     resolve_public_purchase_mode,
 )
 from ..recommendations import build_pdp_recommendations
-from ..stock import public_stock_status
-from .common import _get_stock_total, _product_stock_totals, _variant_stock_totals
+from ..stock import public_product_stock_status, public_stock_status
+from .common import (
+    ALWAYS_AVAILABLE_STOCK_TOTAL,
+    _get_stock_total,
+    _product_stock_totals,
+    _variant_stock_totals,
+    _with_game_pack_availability,
+)
 
 LIVE_SEARCH_MIN_QUERY_LENGTH = 2
 LIVE_SEARCH_MAX_QUERY_LENGTH = 80
@@ -119,6 +127,7 @@ def _resolve_short_status(stock_total, *, allow_order_on_request=True):
 def _serialize_product_suggestion(request, product, stock_total):
     image = _resolve_product_display_image(product)
     price = resolve_catalog_effective_price(product, stock_total=stock_total)
+    status = public_product_stock_status(product, stock_total)
     return {
         'type': 'product',
         'title': product.name,
@@ -126,7 +135,7 @@ def _serialize_product_suggestion(request, product, stock_total):
         'url': product.get_absolute_url(),
         'image_url': _build_media_url(request, image),
         'price_label': _format_price_label(price),
-        'status_label': _resolve_short_status(
+        'status_label': status['label'] if not product.tracks_stock else _resolve_short_status(
             stock_total,
             allow_order_on_request=product.allow_order_on_request,
         ),
@@ -323,6 +332,20 @@ class BundleDetailView(DetailView):
         context = self.get_context_data(object=self.object)
         return self.render_to_response(context)
 
+    def _sort_game_pack_queryset(self, qs):
+        sort, search_query = self._get_resolved_sort()
+        if sort == 'relevance' and search_query:
+            return qs.order_by('-created_at')
+        if sort == 'price_asc':
+            return qs.order_by(F('catalog_effective_price').asc(), '-created_at')
+        if sort == 'price_desc':
+            return qs.order_by(F('catalog_effective_price').desc(), '-created_at')
+        if sort == 'name':
+            return qs.order_by('name', '-created_at')
+        if sort == 'popularity':
+            return qs.order_by('-views_count', '-created_at')
+        return qs.order_by('-created_at')
+
     def get_queryset(self):
         return ProductBundle.objects.select_related('category').prefetch_related(
             'items__product', 'items__product__images'
@@ -342,6 +365,38 @@ class BundleDetailView(DetailView):
         return context
 
 
+class GamePackDetailView(DetailView):
+    model = GamePack
+    context_object_name = 'game_pack'
+    slug_url_kwarg = 'slug'
+    template_name = 'catalog/game_pack_detail.html'
+
+    def get(self, request, *args, **kwargs):
+        self.object = self.get_object()
+        GamePack.objects.filter(pk=self.object.pk).update(views_count=F('views_count') + 1)
+        context = self.get_context_data(object=self.object)
+        return self.render_to_response(context)
+
+    def get_queryset(self):
+        return GamePack.objects.select_related('category').prefetch_related(
+            'tags',
+            Prefetch('entries', queryset=GamePackEntry.objects.select_related('product', 'product__category').order_by('sort_order', 'id')),
+            'entries__product__images',
+            'entries__product__characteristics',
+            'service_entries__service',
+        ).filter(is_active=True)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        game_pack = self.object
+        context['bundle_items'] = []
+        context['game_pack_entries'] = list(game_pack.entries.all())
+        context['game_pack_service_entries'] = list(game_pack.service_entries.all())
+        context['stock_total'] = 1
+        context['stock_status'] = 'digital_pack'
+        return context
+
+
 class ProductListView(HtmxPartialResponseMixin, ListView):
     """Список товаров с фильтрацией по категории, пагинацией и сортировкой."""
     model = Product
@@ -357,6 +412,20 @@ class ProductListView(HtmxPartialResponseMixin, ListView):
 
     def get_htmx_page_title(self):
         return 'Каталог — BizonVR'
+
+    def _sort_game_pack_queryset(self, qs):
+        sort, search_query = self._get_resolved_sort()
+        if sort == 'relevance' and search_query:
+            return qs.order_by('-created_at')
+        if sort == 'price_asc':
+            return qs.order_by(F('catalog_effective_price').asc(), '-created_at')
+        if sort == 'price_desc':
+            return qs.order_by(F('catalog_effective_price').desc(), '-created_at')
+        if sort == 'name':
+            return qs.order_by('name', '-created_at')
+        if sort == 'popularity':
+            return qs.order_by('-views_count', '-created_at')
+        return qs.order_by('-created_at')
 
     def _build_query_string(self, **updates):
         return self.filter_service.build_query_string(**updates)
@@ -477,13 +546,13 @@ class ProductListView(HtmxPartialResponseMixin, ListView):
         return qs.order_by('-created_at')
 
     def get_queryset(self):
-        if self.filter_service.is_bundle_mode:
+        if self.filter_service.is_bundle_mode or self.filter_service.is_game_pack_mode:
             return Product.objects.none()
 
         qs = (
             self._build_filter_queryset(include_char_filters=True)
             .select_related('category')
-            .prefetch_related('tags', 'variants')
+            .prefetch_related('tags', 'variants', 'images')
         )
         return self._sort_product_queryset(qs)
 
@@ -500,11 +569,14 @@ class ProductListView(HtmxPartialResponseMixin, ListView):
         bundle_category_ids = set(
             ProductBundle.objects.filter(category__isnull=False).values_list('category_id', flat=True).distinct()
         )
-        context['category_ids_to_show'] = list(category_ids_with_products | bundle_category_ids)
+        game_pack_category_ids = set(
+            GamePack.objects.filter(category__isnull=False, is_active=True).values_list('category_id', flat=True).distinct()
+        )
+        context['category_ids_to_show'] = list(category_ids_with_products | bundle_category_ids | game_pack_category_ids)
         section_slugs_to_show = set()
         for section in context['catalog_sections']:
             for cat in section.categories.all():
-                if cat.pk in category_ids_with_products or cat.pk in bundle_category_ids:
+                if cat.pk in category_ids_with_products or cat.pk in bundle_category_ids or cat.pk in game_pack_category_ids:
                     section_slugs_to_show.add(section.slug)
                     break
         context['section_slugs_to_show'] = list(section_slugs_to_show)
@@ -521,6 +593,7 @@ class ProductListView(HtmxPartialResponseMixin, ListView):
         context['current_section_effective'] = effective_section_slug
         context['current_category_obj'] = selected_category
         context['is_bundles_category'] = self.filter_service.is_bundle_mode
+        context['is_game_packs_category'] = self.filter_service.is_game_pack_mode
 
         if context['is_bundles_category']:
             bundles_qs = (
@@ -543,6 +616,21 @@ class ProductListView(HtmxPartialResponseMixin, ListView):
         else:
             context['bundles'] = []
             context['bundle_page_obj'] = None
+
+        if context['is_game_packs_category']:
+            game_packs_qs = self._sort_game_pack_queryset(self._build_filter_queryset(include_char_filters=True)).prefetch_related('tags', 'entries__product', 'service_entries__service')
+            paginator = Paginator(game_packs_qs, self.paginate_by)
+            page_number = self.request.GET.get('page', 1)
+            try:
+                page_number = max(1, int(page_number))
+            except (TypeError, ValueError):
+                page_number = 1
+            game_pack_page = paginator.get_page(page_number)
+            context['game_packs'] = game_pack_page.object_list
+            context['game_pack_page_obj'] = game_pack_page
+        else:
+            context['game_packs'] = []
+            context['game_pack_page_obj'] = None
 
         applied_qs = self._build_filter_queryset(include_char_filters=True)
         context.update(self.filter_service.get_price_bounds())
@@ -593,6 +681,8 @@ class ProductListView(HtmxPartialResponseMixin, ListView):
         )
         if context['is_bundles_category'] and context['bundle_page_obj'] is not None:
             context['results_count'] = context['bundle_page_obj'].paginator.count
+        elif context['is_game_packs_category'] and context['game_pack_page_obj'] is not None:
+            context['results_count'] = context['game_pack_page_obj'].paginator.count
         else:
             context['results_count'] = applied_qs.count()
         context['active_filter_chips'] = self._build_active_filter_chips(context)
@@ -601,7 +691,10 @@ class ProductListView(HtmxPartialResponseMixin, ListView):
 
         context['favorite_product_ids'] = get_favorite_product_ids(self.request)
         product_ids = [product.pk for product in context['products']]
-        context['product_stock_total'] = _product_stock_totals(product_ids)
+        context['product_stock_total'] = _with_game_pack_availability(
+            _product_stock_totals(product_ids),
+            context['products'],
+        )
         context['variant_stock_total'] = _variant_stock_totals(product_ids)
         return context
 
@@ -654,6 +747,7 @@ class ProductDetailView(HtmxPartialResponseMixin, DetailView):
                     .order_by('sort_order', 'id')
                 ),
             ),
+            'game_pack_items',
         ).select_related('category', 'product_description', 'product_description__template')
 
     def get_context_data(self, **kwargs):
@@ -668,17 +762,32 @@ class ProductDetailView(HtmxPartialResponseMixin, DetailView):
         context['favorite_product_ids'] = get_favorite_product_ids(self.request)
 
         variants = list(self.object.variants.all())
-        if variants:
+        if not self.object.tracks_stock:
+            context['stock_total'] = ALWAYS_AVAILABLE_STOCK_TOTAL
+            context['stock_by_variant'] = {}
+        elif variants:
             context['stock_by_variant'] = _variant_stock_totals([self.object.pk])
             context['stock_total'] = None
         else:
             context['stock_total'] = _get_stock_total(self.object.pk)
             context['stock_by_variant'] = {}
         context['stock_status_by_variant'] = {
-            variant.pk: public_stock_status(context['stock_by_variant'].get(variant.pk, 0))['code']
+            variant.pk: public_product_stock_status(self.object, context['stock_by_variant'].get(variant.pk, 0))['code']
             for variant in variants
         }
-        context['stock_status'] = public_stock_status(context['stock_total'])['code']
+        context['stock_status'] = public_product_stock_status(self.object, context['stock_total'])['code']
+        context['game_pack_items'] = list(self.object.game_pack_items.all()) if self.object.is_game_pack else []
+        category_name = (self.object.category.name or '').lower() if self.object.category_id else ''
+        product_name = (self.object.name or '').lower()
+        context['show_vr_club_games_upsell'] = (
+            not self.object.is_game_pack
+            and any(token in f'{category_name} {product_name}' for token in ('шлем', 'quest', 'pico', 'vr headset', 'очки vr'))
+        )
+        context['vr_club_recommended_packs'] = list(
+            GamePack.objects
+            .filter(is_active=True, show_on_vr_club_page=True)
+            .order_by('vr_club_tariff', '-created_at')[:3]
+        )
 
         rec_data = build_pdp_recommendations(self.request, self.object)
         context['recommendation_sections'] = rec_data['sections']
@@ -753,6 +862,51 @@ class ProductDetailView(HtmxPartialResponseMixin, DetailView):
                 request=self.request,
                 sizes=sizes,
             )
+
+        def _characteristic_value(product, name):
+            for characteristic in product.characteristics.all():
+                if characteristic.name == name:
+                    return characteristic.value
+            return ''
+
+        if self.object.is_game_pack and context['game_pack_items']:
+            linked_game_titles = [item.title for item in context['game_pack_items'] if item.title]
+            linked_games = (
+                Product.objects.filter(is_active=True, name__in=linked_game_titles)
+                .prefetch_related('characteristics', 'images')
+            )
+            linked_games_by_title = {product.name: product for product in linked_games}
+            enriched_game_pack_items = []
+            for item in context['game_pack_items']:
+                linked_product = linked_games_by_title.get(item.title)
+                image_url = ''
+                detail_url = ''
+                genre = ''
+                modes = ''
+                devices = ''
+                if linked_product is not None:
+                    linked_image = _serialize_responsive_image(
+                        linked_product.image or linked_product.get_display_image(),
+                        widths=RESPONSIVE_GALLERY_WIDTHS,
+                        default_width=480,
+                        sizes='(min-width: 1024px) 240px, (min-width: 768px) 33vw, 100vw',
+                    )
+                    image_url = linked_image.get('src') or _safe_image_url(linked_product.get_display_image())
+                    detail_url = linked_product.get_absolute_url()
+                    genre = _characteristic_value(linked_product, 'Жанр')
+                    modes = _characteristic_value(linked_product, 'Игровые режимы')
+                    devices = _characteristic_value(linked_product, 'Совместимые устройства')
+                enriched_game_pack_items.append({
+                    'title': item.title,
+                    'platform': item.platform,
+                    'note': item.note,
+                    'image_url': image_url,
+                    'detail_url': detail_url,
+                    'genre': genre,
+                    'modes': modes,
+                    'devices': devices,
+                })
+            context['game_pack_items'] = enriched_game_pack_items
 
         gallery = []
         product_media = []
@@ -929,6 +1083,15 @@ class ProductDetailView(HtmxPartialResponseMixin, DetailView):
                 'request_only': PURCHASE_MODE_REQUEST_ONLY,
             },
             'allowOrderOnRequest': self.object.allow_order_on_request,
+            'isGamePack': self.object.is_game_pack,
+            'gamePackItems': [
+                {
+                    'title': item.get('title', '') if hasattr(item, 'get') else getattr(item, 'title', ''),
+                    'platform': item.get('platform', '') if hasattr(item, 'get') else getattr(item, 'platform', ''),
+                    'note': item.get('note', '') if hasattr(item, 'get') else getattr(item, 'note', ''),
+                }
+                for item in context['game_pack_items']
+            ],
         }
         context['form_started_at'] = int(time.time())
         context['purchase_request_source_path'] = purchase_request_source_path

@@ -1,5 +1,6 @@
 """Шаблонные теги для каталога."""
 import json
+import re
 from functools import lru_cache
 
 from django import template
@@ -13,7 +14,7 @@ from config.formatting import format_amount, format_currency_amount, format_deci
 from ..filtering import sanitize_catalog_query_params
 from ..image_utils import build_responsive_image_data
 from ..pricing import get_purchase_mode_label
-from ..stock import public_stock_status
+from ..stock import public_product_stock_status, public_stock_status
 
 register = template.Library()
 
@@ -271,6 +272,40 @@ def filter_url_set(context, key, value):
     )
 
 
+def build_product_card_gallery_images(product, card_variant=None):
+    images = []
+    seen_keys = set()
+
+    def build_image_key(image_field):
+        if not image_field:
+            return ''
+        name = getattr(image_field, 'name', '') or ''
+        return re.sub(r'_[A-Za-z0-9]{7}(?=\.[^.]+$)', '', name)
+
+    def add_image(image_field):
+        if not image_field:
+            return
+        key = build_image_key(image_field)
+        if not key:
+            return
+        if key in seen_keys:
+            return
+        seen_keys.add(key)
+        images.append(image_field)
+
+    if card_variant is not None:
+        add_image(getattr(card_variant, 'image', None))
+    add_image(getattr(product, 'image', None))
+    for extra_image in getattr(product, 'images', []).all() if hasattr(getattr(product, 'images', None), 'all') else []:
+        add_image(getattr(extra_image, 'image', None))
+    return images
+
+
+@register.simple_tag
+def product_card_gallery_images(product, card_variant=None):
+    return build_product_card_gallery_images(product, card_variant=card_variant)
+
+
 @register.simple_tag(takes_context=True)
 def filter_url_unset(context, key):
     """Строит query string без указанного параметра."""
@@ -430,6 +465,12 @@ def to_json(value):
 def stock_status(quantity):
     """Публичный статус наличия по количеству."""
     return public_stock_status(quantity)
+
+
+@register.simple_tag
+def product_stock_status(product, quantity):
+    """Публичный статус наличия с учётом типа товара."""
+    return public_product_stock_status(product, quantity)
 
 
 @register.filter
