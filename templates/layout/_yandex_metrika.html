@@ -5,6 +5,7 @@
         var scriptSrc = 'https://mc.yandex.ru/metrika/tag.js?id=' + counterId;
         var hasScheduledLoad = false;
         var trackerLoader = w.BizonVRTrackerLoader;
+        var isHeavyCatalogPage = {{ defer_public_tracking_heavily|yesno:"true,false" }};
         var webvisorAllowedPrefixes = [
             '/',
             '/catalog/',
@@ -117,15 +118,15 @@
                 })(interactionEvents[i]);
             }
 
-            w.setTimeout(run, 8000);
+            w.setTimeout(run, isHeavyCatalogPage ? 15000 : 8000);
         }
 
         function scheduleMetrika() {
             var deferInit = function() {
                 if (trackerLoader) {
                     trackerLoader.afterRender(initMetrika, {
-                        idleTimeout: 5000,
-                        delay: 2500
+                        idleTimeout: isHeavyCatalogPage ? 9000 : 5000,
+                        delay: isHeavyCatalogPage ? 4500 : 2500
                     });
                     return;
                 }
@@ -133,11 +134,11 @@
                 if ('requestIdleCallback' in w) {
                     w.requestIdleCallback(function() {
                         w.setTimeout(initMetrika, 0);
-                    }, {timeout: 5000});
+                    }, {timeout: isHeavyCatalogPage ? 9000 : 5000});
                     return;
                 }
 
-                w.setTimeout(initMetrika, 2500);
+                w.setTimeout(initMetrika, isHeavyCatalogPage ? 4500 : 2500);
             };
 
             scheduleAfterFirstInteraction(deferInit);

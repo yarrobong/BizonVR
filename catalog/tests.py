@@ -82,6 +82,7 @@ from .models import (
     GamePack,
     GamePackEntry,
     GamePackItem,
+    GamePackServiceEntry,
     PickupPoint,
     Product,
     ProductBundle,
@@ -566,7 +567,7 @@ class SeedStarvrPacksCommandTest(TestCase):
         self.assertEqual(all_in_pack.price, Decimal('9990.00'))
         self.assertTrue(
             all_in_pack.game_pack_items.filter(
-                title='Игры для VR-зон (20 штук на выбор, или из каталога)',
+                title='Игры для VR-Зон (20 штук на выбор, или из каталога)',
                 platform='Доп. библиотека',
             ).exists()
         )
@@ -577,6 +578,70 @@ class SeedStarvrPacksCommandTest(TestCase):
                 title='House Defender: Mixed Reality',
                 platform='Meta Quest / MR',
             ).exists()
+        )
+
+        self.assertEqual(ProductGameMetadata.objects.filter(is_active=True).count(), 5)
+        self.assertTrue(
+            ProductGameMetadata.objects.filter(
+                product__sku='STARVR-GAME-LASERTAG',
+                club_format=ProductGameMetadata.FORMAT_CLUB,
+                is_multiplayer=True,
+            ).exists()
+        )
+
+        self.assertTrue(
+            Service.objects.filter(
+                name='Настройка шлема',
+                price=Decimal('2000.00'),
+                is_vr_club_service=True,
+                is_active=True,
+            ).exists()
+        )
+        self.assertTrue(
+            Service.objects.filter(
+                name='Игры для VR-Зон (20 штук на выбор, или из каталога)',
+                price=Decimal('1000.00'),
+                is_vr_club_service=True,
+                is_active=True,
+            ).exists()
+        )
+
+        club_pack = GamePack.objects.get(slug='starvr-universal')
+        maximum_pack = GamePack.objects.get(slug='starvr-all-inclusive')
+        self.assertEqual(club_pack.vr_club_tariff, GamePack.TARIFF_CLUB)
+        self.assertTrue(club_pack.show_on_vr_club_page)
+        self.assertEqual(club_pack.in_stock_price, Decimal('8990.00'))
+        self.assertTrue(
+            GamePackServiceEntry.objects.filter(
+                game_pack=club_pack,
+                service__name='Настройка шлема',
+            ).exists()
+        )
+        self.assertTrue(
+            GamePackServiceEntry.objects.filter(
+                game_pack=maximum_pack,
+                service__name='Игры для VR-Зон (20 штук на выбор, или из каталога)',
+            ).exists()
+        )
+
+    def test_command_is_idempotent(self):
+        call_command('seed_starvr_packs')
+        call_command('seed_starvr_packs')
+
+        self.assertEqual(Product.objects.filter(sku__startswith='STARVR-GAME-').count(), 5)
+        self.assertEqual(Product.objects.filter(sku__startswith='STARVR-PACK-').count(), 3)
+        self.assertEqual(
+            Service.objects.filter(
+                name__in=[
+                    'Настройка шлема',
+                    'Игры для VR-Зон (20 штук на выбор, или из каталога)',
+                ]
+            ).count(),
+            2,
+        )
+        self.assertEqual(
+            GamePack.objects.filter(show_on_vr_club_page=True, category__slug='vr-zone-packs').count(),
+            3,
         )
 
     def test_missing_form_started_at_does_not_block(self):
@@ -814,6 +879,12 @@ class VariantGalleryAndCatalogCardsTest(TestCase):
         self.assertIn('class="pd-mobile-icon-btn pd-mobile-back-btn"', html)
         self.assertIn('aria-label="Назад"', html)
         self.assertNotIn('pd-mobile-back-btn__label', html)
+
+    def test_product_detail_hides_footer_products_feed(self):
+        resp = self.client.get(reverse('catalog:product_detail', kwargs={'slug': self.product.slug}))
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotContains(resp, 'id="footer-products-feed"', html=False)
 
     def test_product_detail_htmx_response_keeps_selected_content_only(self):
         resp = self.client.get(
@@ -3716,6 +3787,15 @@ class HomeFeaturedProductsTest(TestCase):
         self.assertIn(self.sale_product.slug, shown_slugs)
         self.assertNotIn(self.regular_product.slug, shown_slugs)
 
+    def test_home_marketing_tiles_use_optimized_webp_assets(self):
+        resp = self.client.get(reverse('home'))
+
+        self.assertEqual(resp.status_code, 200)
+        marketing_tiles = {tile['key']: tile for tile in resp.context['marketing_tiles']}
+        self.assertTrue(marketing_tiles['unitree_robot']['bg_url'].endswith('image-Photoroom_20_4RdGPzn.webp'))
+        self.assertTrue(marketing_tiles['portable_consoles']['bg_url'].endswith('image-Photoroom_3.webp'))
+        self.assertTrue(marketing_tiles['vr_attractions']['bg_url'].endswith('Two-person_360_flight_simulator.webp'))
+
 
 class CatalogMenuCacheTest(TestCase):
     def setUp(self):
@@ -6607,8 +6687,21 @@ class StandaloneGamePackCatalogTest(TestCase):
             price=Decimal('4990.00'),
             is_active=True,
             allow_order_on_request=False,
+            description='Большой набор игр для VR-клуба.',
         )
         GamePackEntry.objects.create(game_pack=self.game_pack, product=self.game, quantity=1, sort_order=0)
+        self.training_service = Service.objects.create(
+            name='Настройка зала',
+            price=Decimal('1500.00'),
+            is_active=True,
+        )
+        GamePackServiceEntry.objects.create(
+            game_pack=self.game_pack,
+            service=self.training_service,
+            quantity=2,
+            note='С выездом специалиста',
+            sort_order=0,
+        )
 
     def test_category_page_renders_game_packs_instead_of_products(self):
         response = self.client.get(reverse('catalog:product_list'), {'category': self.category.slug})
@@ -6623,3 +6716,28 @@ class StandaloneGamePackCatalogTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, self.game_pack.name)
         self.assertContains(response, self.game.name)
+
+    def test_game_pack_detail_page_uses_product_detail_sections(self):
+        response = self.client.get(reverse('catalog:game_pack_detail', kwargs={'slug': self.game_pack.slug}))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Описание')
+        self.assertContains(response, 'Доп. услуги')
+        self.assertContains(response, 'В комплекте')
+        self.assertContains(response, self.training_service.name)
+        self.assertContains(response, '2 шт.')
+        self.assertContains(response, 'С выездом специалиста')
+
+    def test_game_pack_detail_page_shows_services_empty_state(self):
+        self.game_pack.service_entries.all().delete()
+
+        response = self.client.get(reverse('catalog:game_pack_detail', kwargs={'slug': self.game_pack.slug}))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Доп. услуги для этого пака пока не указаны.')
+
+    def test_game_pack_detail_page_hides_footer_products_feed(self):
+        response = self.client.get(reverse('catalog:game_pack_detail', kwargs={'slug': self.game_pack.slug}))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'id="footer-products-feed"', html=False)

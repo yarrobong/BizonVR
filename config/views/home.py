@@ -77,7 +77,7 @@ def _home_view_impl(request):
         },
         {
             'key': 'unitree_robot',
-            'bg_url': build_media_url('products/image-Photoroom_20_4RdGPzn.png'),
+            'bg_url': build_media_url('products/image-Photoroom_20_4RdGPzn.webp'),
             'url': catalog_url,
         },
         {
@@ -87,12 +87,12 @@ def _home_view_impl(request):
         },
         {
             'key': 'portable_consoles',
-            'bg_url': build_media_url('products/image-Photoroom_3.png'),
+            'bg_url': build_media_url('products/image-Photoroom_3.webp'),
             'url': catalog_url,
         },
         {
             'key': 'vr_attractions',
-            'bg_url': build_media_url('products/Two-person_360_flight_simulator.png'),
+            'bg_url': build_media_url('products/Two-person_360_flight_simulator.webp'),
             'url': f'{catalog_url}?section=vr-attrakciony',
         },
         {

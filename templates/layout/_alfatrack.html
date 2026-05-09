@@ -8,6 +8,7 @@
   <script>
     (function (w) {
       var trackerLoader = w.BizonVRTrackerLoader;
+      var isHeavyCatalogPage = {{ defer_public_tracking_heavily|yesno:"true,false" }};
       var version = Math.floor(Date.now() / 3600000);
       var mirrors = [
         'https://cloud.emailtracking.ru/gtm/script.js',
@@ -53,8 +54,8 @@
       trackerLoader.afterRender(function () {
         tryLoadMirror(0);
       }, {
-        idleTimeout: 3000,
-        delay: 1000
+        idleTimeout: isHeavyCatalogPage ? 7000 : 3000,
+        delay: isHeavyCatalogPage ? 3000 : 1000
       });
     })(window);
   </script>

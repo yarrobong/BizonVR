@@ -83,7 +83,15 @@ def robots_txt_view(request):
 
 def serve_media(request, path):
     """Раздача медиа при DEBUG или SERVE_MEDIA=1."""
-    return _serve_public_directory_file(settings.MEDIA_ROOT, path)
+    response = _serve_public_directory_file(settings.MEDIA_ROOT, path)
+    normalized_path = (path or '').lstrip('/').lower()
+    if normalized_path.startswith('cache/responsive/'):
+        response['Cache-Control'] = 'public, max-age=31536000, immutable'
+    elif normalized_path.endswith(('.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg', '.avif', '.mp4', '.webm')):
+        response['Cache-Control'] = 'public, max-age=2592000'
+    else:
+        response['Cache-Control'] = 'public, max-age=300'
+    return response
 
 
 def conference_attractions_view(request, path=''):

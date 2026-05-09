@@ -1,3 +1,6 @@
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
 from django.urls import reverse
 
 from django.conf import settings
@@ -5,7 +8,7 @@ from django.contrib.auth.models import AnonymousUser
 from django.test import RequestFactory, SimpleTestCase, TestCase
 from django.test.utils import override_settings
 
-from config.views.static_pages import not_found_view
+from config.views.static_pages import not_found_view, serve_media
 from manager_portal.single_db_contract import collect_single_db_contract_violations
 
 
@@ -356,6 +359,7 @@ class PublicSiteMetrikaTemplateTests(TestCase):
         self.assertContains(response, 'https://mc.yandex.ru/metrika/tag.js?id=', html=False)
         self.assertContains(response, "requestIdleCallback", html=False)
         self.assertContains(response, "BizonVRTrackerLoader", html=False)
+        self.assertContains(response, "var isHeavyCatalogPage = false;", html=False)
         self.assertContains(response, "addEventListener('DOMContentLoaded', scheduleMetrika, {once: true})", html=False)
         self.assertContains(response, 'https://mc.yandex.ru/watch/108292006', html=False)
         self.assertContains(response, 'https://mod.calltouch.ru/', html=False)
@@ -363,6 +367,22 @@ class PublicSiteMetrikaTemplateTests(TestCase):
         self.assertNotContains(response, 'https://cloud.alfa-track.com/gtm/script.js', html=False)
         self.assertNotContains(response, 'tryLoadMirror(0)', html=False)
         self.assertNotContains(response, 'mirrors.forEach(', html=False)
+
+    def test_catalog_page_defers_public_trackers_more_aggressively(self):
+        response = self.client.get(reverse('catalog:product_list'))
+
+        self.assertContains(response, "var isHeavyCatalogPage = true;", html=False)
+        self.assertContains(response, 'w.setTimeout(run, isHeavyCatalogPage ? 15000 : 8000);', html=False)
+        self.assertContains(
+            response,
+            'idleTimeout: isHeavyCatalogPage ? 9000 : 5000,',
+            html=False,
+        )
+        self.assertContains(
+            response,
+            'delay: isHeavyCatalogPage ? 3200 : 900',
+            html=False,
+        )
 
     @override_settings(ENABLE_ALFATRACK=True)
     def test_home_page_includes_alfatrack_when_enabled(self):
@@ -393,3 +413,41 @@ class PublicSiteMetrikaTemplateTests(TestCase):
         self.assertIn('webvisorAllowedPrefixes', html)
         self.assertIn('webvisor: shouldEnableWebvisor(w.location && w.location.pathname)', html)
         self.assertNotIn('webvisor: true', html)
+
+
+class PublicMediaCacheHeadersTests(SimpleTestCase):
+    def test_responsive_media_uses_immutable_cache_header(self):
+        with TemporaryDirectory() as temp_media_root:
+            target = Path(temp_media_root) / 'cache' / 'responsive' / 'hero.webp'
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(b'fake-webp')
+
+            with override_settings(MEDIA_ROOT=temp_media_root):
+                response = serve_media(RequestFactory().get('/media/cache/responsive/hero.webp'), 'cache/responsive/hero.webp')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Cache-Control'], 'public, max-age=31536000, immutable')
+
+    def test_regular_media_uses_long_but_mutable_cache_header(self):
+        with TemporaryDirectory() as temp_media_root:
+            target = Path(temp_media_root) / 'products' / 'hero.png'
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(b'fake-png')
+
+            with override_settings(MEDIA_ROOT=temp_media_root):
+                response = serve_media(RequestFactory().get('/media/products/hero.png'), 'products/hero.png')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Cache-Control'], 'public, max-age=2592000')
+
+    def test_non_media_binary_falls_back_to_short_cache_header(self):
+        with TemporaryDirectory() as temp_media_root:
+            target = Path(temp_media_root) / 'docs' / 'price-list.bin'
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(b'fake-bin')
+
+            with override_settings(MEDIA_ROOT=temp_media_root):
+                response = serve_media(RequestFactory().get('/media/docs/price-list.bin'), 'docs/price-list.bin')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Cache-Control'], 'public, max-age=300')
