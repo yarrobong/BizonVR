@@ -9,7 +9,7 @@ from .cache_utils import (
     get_catalog_section_landing_categories,
     get_catalog_sections,
 )
-from .cart_services import get_cart_items, get_favorite_product_ids
+from .cart_services import get_cart_count, get_favorite_product_ids
 
 
 def _get_active_section(request):
@@ -36,6 +36,31 @@ def _get_active_section(request):
     return 'home'
 
 
+def _should_auto_hide_footer_products(request):
+    path = request.path or '/'
+    hidden_prefixes = (
+        '/catalog/product/',
+        '/catalog/game-pack/',
+        '/catalog/bundle/',
+        '/catalog/cart/',
+        '/catalog/favorites/',
+        '/orders/',
+        '/accounts/',
+        '/payments/',
+        '/manager/',
+    )
+    return any(path.startswith(prefix) for prefix in hidden_prefixes)
+
+
+def _should_defer_public_tracking_heavily(request):
+    path = request.path or '/'
+    heavy_prefixes = (
+        '/catalog/',
+        '/orders/',
+    )
+    return any(path.startswith(prefix) for prefix in heavy_prefixes)
+
+
 def catalog_menu(request):
     """Разделы каталога с категориями для выпадающего меню в шапке; счётчик корзины; города."""
     sections = get_catalog_sections()
@@ -44,14 +69,14 @@ def catalog_menu(request):
     result['catalog_section_landing_categories'] = get_catalog_section_landing_categories()
 
     favorite_product_ids = get_favorite_product_ids(request)
-    items = get_cart_items(request)
 
     result['favorites_count'] = len(favorite_product_ids)
-    result['cart_count'] = sum(item.get('quantity', 0) for item in items)
-    result['cart_total'] = sum(i.get('subtotal', 0) for i in items)
+    result['cart_count'] = get_cart_count(request)
 
     # Активная секция для подсветки в мобильном меню
     result['active_section'] = _get_active_section(request)
+    result['auto_hide_footer_products'] = _should_auto_hide_footer_products(request)
+    result['defer_public_tracking_heavily'] = _should_defer_public_tracking_heavily(request)
 
     # Общие публичные данные сайта для шаблонов
     result['site_brand'] = getattr(settings, 'SITE_BRAND', 'BizonVR')

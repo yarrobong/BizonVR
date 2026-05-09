@@ -246,6 +246,24 @@
       });
     };
 
-    loadChunk(baseUrl + '?page=1&layout=' + encodeURIComponent(layout), feed, false);
+    const bootLoad = () => {
+      if (feed.dataset.started === '1') return;
+      feed.dataset.started = '1';
+      loadChunk(baseUrl + '?page=1&layout=' + encodeURIComponent(layout), feed, false);
+    };
+
+    if ('IntersectionObserver' in window) {
+      const initialObserver = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          initialObserver.disconnect();
+          bootLoad();
+        });
+      }, { threshold: 0.01, rootMargin: '0px 0px 600px 0px' });
+      initialObserver.observe(feed);
+      return;
+    }
+
+    bootLoad();
   })();
 </script>

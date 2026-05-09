@@ -20,6 +20,8 @@
       return;
     }
 
+    var isHeavyCatalogPage = {{ defer_public_tracking_heavily|yesno:"true,false" }};
+
     trackerLoader.afterRender(function () {
       var scriptName = typeof Array.prototype.find === 'function' ? 'init-min.js' : 'init.js';
       var scriptSrc = 'https://mod.calltouch.ru/' + scriptName + '?id=' + counterId;
@@ -30,8 +32,8 @@
         referrerPolicy: 'strict-origin-when-cross-origin'
       });
     }, {
-      idleTimeout: 2500,
-      delay: 900
+      idleTimeout: isHeavyCatalogPage ? 7000 : 2500,
+      delay: isHeavyCatalogPage ? 3200 : 900
     });
   })(window);
 </script>

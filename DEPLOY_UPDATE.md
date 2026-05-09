@@ -35,6 +35,7 @@ mkdir -p backups
 PGPASSWORD="$DB_PASSWORD" pg_dump -h "${DB_HOST:-127.0.0.1}" -p "${DB_PORT:-5432}" -U "$DB_USER" -Fc "$DB_NAME" > "backups/bizon_$(date +%F_%H%M).dump"
 .venv/bin/python manage.py migrate
 .venv/bin/python manage.py migrate --check
+.venv/bin/python manage.py seed_starvr_packs
 .venv/bin/python manage.py collectstatic --noinput
 sudo systemctl restart bizonvr
 sudo systemctl reload nginx
@@ -51,6 +52,7 @@ sudo systemctl reload nginx
 - `pg_dump ... > backups/...dump` — делает backup PostgreSQL перед миграциями.
 - `.venv/bin/python manage.py migrate` — применяет новые миграции.
 - `.venv/bin/python manage.py migrate --check` — подтверждает, что после миграции не осталось неприменённых миграций.
+- `.venv/bin/python manage.py seed_starvr_packs` — синхронизирует каталог VR-зон: 5 игр, 2 услуги и 3 готовых пака. Команда idempotent, но перезаписывает эти managed-позиции значениями из репозитория.
 - `.venv/bin/python manage.py collectstatic --noinput` — собирает статику в `staticfiles/` из уже закоммиченных файлов репозитория.
 - `sudo systemctl restart bizonvr` — перезапускает Gunicorn/Django.
 - `sudo systemctl reload nginx` — перечитывает конфигурацию Nginx без полного рестарта.

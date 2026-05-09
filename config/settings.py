@@ -338,6 +338,9 @@ STORAGES = {
     },
 }
 
+# WhiteNoise cache policy for locally/proxy-served static assets.
+WHITENOISE_MAX_AGE = 3600 if DEBUG else 31536000
+
 # Безопасность для продакшена (HTTPS, HSTS, cookies).
 # USE_HTTPS=False — локальный HTTP. USE_HTTPS=True — запуск за Nginx с SSL.
 _use_https = config_bool('USE_HTTPS', default=False)

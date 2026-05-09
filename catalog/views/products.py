@@ -389,11 +389,129 @@ class GamePackDetailView(DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         game_pack = self.object
+        game_pack_entries = list(game_pack.entries.all())
+        game_pack_service_entries = list(game_pack.service_entries.all())
+
         context['bundle_items'] = []
-        context['game_pack_entries'] = list(game_pack.entries.all())
-        context['game_pack_service_entries'] = list(game_pack.service_entries.all())
-        context['stock_total'] = 1
+        context['game_pack_entries'] = game_pack_entries
+        context['game_pack_service_entries'] = game_pack_service_entries
+        context['stock_total'] = ALWAYS_AVAILABLE_STOCK_TOTAL
         context['stock_status'] = 'digital_pack'
+
+        def _safe_image_url(img_field):
+            try:
+                return self.request.build_absolute_uri(img_field.url) if img_field else ''
+            except (ValueError, OSError):
+                return ''
+
+        def _safe_image_dimensions(img_field):
+            try:
+                if not img_field:
+                    return None, None
+                width = int(getattr(img_field, 'width', 0) or 0)
+                height = int(getattr(img_field, 'height', 0) or 0)
+            except (ValueError, OSError, FileNotFoundError):
+                return None, None
+            if width <= 0 or height <= 0:
+                return None, None
+            return width, height
+
+        def _serialize_responsive_image(img_field, *, widths, default_width, sizes=''):
+            return build_responsive_image_data(
+                img_field,
+                widths=widths,
+                default_width=default_width,
+                request=self.request,
+                sizes=sizes,
+            )
+
+        display_image = game_pack.get_display_image()
+        display_image_width, display_image_height = _safe_image_dimensions(display_image)
+        hero_image = _serialize_responsive_image(
+            display_image,
+            widths=RESPONSIVE_HERO_WIDTHS,
+            default_width=960,
+            sizes='(min-width: 1280px) 42vw, (min-width: 768px) 50vw, 100vw',
+        )
+        thumbnail_image = _serialize_responsive_image(
+            display_image,
+            widths=RESPONSIVE_GALLERY_WIDTHS,
+            default_width=240,
+            sizes='96px',
+        )
+
+        game_pack_media = []
+        game_pack_gallery = []
+        if display_image:
+            hero_image_url = hero_image.get('src') or _safe_image_url(display_image)
+            thumbnail_image_url = thumbnail_image.get('src') or hero_image_url
+            if hero_image_url:
+                game_pack_gallery.append(hero_image_url)
+                game_pack_media.append({
+                    'type': 'image',
+                    'imageUrl': hero_image_url,
+                    'imageSrcset': hero_image.get('srcset', ''),
+                    'imageSizes': hero_image.get('sizes', ''),
+                    'thumbnailUrl': thumbnail_image_url,
+                    'thumbnailSrcset': thumbnail_image.get('srcset', ''),
+                    'thumbnailSizes': thumbnail_image.get('sizes', ''),
+                    'title': game_pack.name,
+                    'width': display_image_width,
+                    'height': display_image_height,
+                })
+
+        product_in_stock_price = resolve_in_stock_price(game_pack)
+        product_on_request_price = resolve_on_request_price(game_pack)
+        product_public_purchase_mode = resolve_public_purchase_mode(
+            game_pack,
+            stock_total=context['stock_total'],
+        )
+        default_purchase_mode = PURCHASE_MODE_STOCK
+        if product_public_purchase_mode == PURCHASE_MODE_ON_REQUEST:
+            default_purchase_mode = PURCHASE_MODE_ON_REQUEST
+
+        cart_qty_product = {
+            PURCHASE_MODE_STOCK: 0,
+            PURCHASE_MODE_ON_REQUEST: 0,
+        }
+        for item in get_cart_items(self.request):
+            if item.get('game_pack_id') != game_pack.pk:
+                continue
+            quantity = max(0, int(item.get('quantity') or 0))
+            purchase_mode = item.get('purchase_mode') or PURCHASE_MODE_STOCK
+            cart_qty_product[purchase_mode] = cart_qty_product.get(purchase_mode, 0) + quantity
+
+        context['game_pack_media'] = game_pack_media
+        context['game_pack_gallery'] = game_pack_gallery
+        context['game_pack_detail_data'] = {
+            'productImage': hero_image.get('src') or _safe_image_url(display_image),
+            'productPrice': _float_or_none(game_pack.price),
+            'productDiscountPercent': _float_or_none(game_pack.discount_percent),
+            'productRegularInStockPrice': _float_or_none(resolve_in_stock_base_price(game_pack)),
+            'productInStockPrice': _float_or_none(product_in_stock_price),
+            'productOnRequestPrice': _float_or_none(product_on_request_price),
+            'productHasInStockPrice': has_explicit_in_stock_price(game_pack),
+            'productHasOnRequestPrice': has_explicit_on_request_price(game_pack),
+            'productPublicPurchaseMode': product_public_purchase_mode,
+            'productEffectivePrice': _float_or_none(
+                resolve_catalog_effective_price(
+                    game_pack,
+                    stock_total=context['stock_total'],
+                )
+            ),
+            'productGallery': game_pack_gallery,
+            'productMedia': game_pack_media,
+            'stockTotalProduct': context['stock_total'],
+            'stockStatusProduct': context['stock_status'],
+            'defaultPurchaseMode': default_purchase_mode,
+            'allowOrderOnRequest': game_pack.allow_order_on_request,
+            'isGamePack': True,
+            'cartQtyProduct': cart_qty_product,
+        }
+        context['game_pack_detail_data_json'] = json.dumps(
+            context['game_pack_detail_data'],
+            ensure_ascii=False,
+        )
         return context
 
 
