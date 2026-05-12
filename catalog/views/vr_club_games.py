@@ -51,6 +51,37 @@ def _filter_games(request):
     return qs
 
 
+def _filter_packs(request):
+    qs = (
+        GamePack.objects
+        .filter(is_active=True, show_on_vr_club_page=True)
+        .select_related('category')
+        .prefetch_related('entries__product', 'service_entries__service', 'tags')
+        .order_by('sort_order', 'vr_club_tariff', '-created_at')
+    )
+    device = (request.GET.get('device') or '').strip()
+    genre = (request.GET.get('genre') or '').strip()
+    club_format = (request.GET.get('club_format') or '').strip()
+    package_format = (request.GET.get('package_format') or '').strip()
+    players = (request.GET.get('players') or '').strip()
+    if device:
+        qs = qs.filter(devices__icontains=device)
+    if genre:
+        qs = qs.filter(genres__icontains=genre)
+    if club_format:
+        qs = qs.filter(Q(club_format__icontains=club_format) | Q(club_format=''))
+    if package_format:
+        qs = qs.filter(package_format=package_format)
+    if players:
+        try:
+            players_count = int(players)
+        except (TypeError, ValueError):
+            players_count = None
+        if players_count:
+            qs = qs.filter(Q(players_count__gte=players_count) | Q(players_count__isnull=True))
+    return qs
+
+
 def vr_club_games_view(request):
     quiz_sent = False
     quiz_form = VRClubQuizForm()
@@ -73,29 +104,27 @@ def vr_club_games_view(request):
             quiz_form = VRClubQuizForm()
             quiz_sent = True
 
-    tariff_packs = list(
-        GamePack.objects
-        .filter(is_active=True, show_on_vr_club_page=True)
-        .select_related('category')
-        .prefetch_related('entries__product', 'tags')
-        .order_by('vr_club_tariff', '-created_at')[:6]
-    )
+    tariff_packs = list(_filter_packs(request)[:6])
     if not tariff_packs:
         tariff_packs = list(
             GamePack.objects
             .filter(is_active=True)
             .select_related('category')
-            .prefetch_related('entries__product', 'tags')
-            .order_by('-created_at')[:3]
+            .prefetch_related('entries__product', 'service_entries__service', 'tags')
+            .order_by('sort_order', '-created_at')[:3]
         )
 
     games = list(_filter_games(request)[:60])
     services = list(Service.objects.filter(is_active=True, is_vr_club_service=True).order_by('order', 'name'))
-    metadata_values = ProductGameMetadata.objects.filter(is_active=True).values_list('devices', 'genres', 'age_rating', 'club_format')
+    metadata_values = ProductGameMetadata.objects.filter(is_active=True).values_list(
+        'devices',
+        'genres',
+        'age_rating',
+        'club_format',
+    )
     devices = sorted({item for row in metadata_values for item in _split_filter(row[0])})
     genres = sorted({item for row in metadata_values for item in _split_filter(row[1])})
     ages = sorted({row[2] for row in metadata_values if row[2]})
-    formats = ProductGameMetadata.FORMAT_CHOICES
 
     return render(request, 'catalog/vr_club_games.html', {
         'tariff_packs': tariff_packs,
@@ -106,7 +135,8 @@ def vr_club_games_view(request):
         'devices': devices,
         'genres': genres,
         'ages': ages,
-        'formats': formats,
+        'formats': ProductGameMetadata.FORMAT_CHOICES,
+        'package_formats': GamePack.FORMAT_CHOICES,
         'selected_filters': request.GET,
     })
 
@@ -127,7 +157,6 @@ def add_vr_club_custom_pack_to_cart_view(request):
         messages.warning(request, 'Выберите хотя бы одну игру для комплекта.')
         return redirect(f"{reverse('catalog:vr_club_games')}#constructor")
 
-    service_ids = []
     try:
         service_ids = [int(value) for value in request.POST.getlist('service_ids')]
     except (TypeError, ValueError):

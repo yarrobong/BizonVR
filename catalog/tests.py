@@ -154,8 +154,8 @@ class VRClubGamesB2BTest(TestCase):
         resp = self.client.get(reverse('catalog:vr_club_games'), {'device': 'Quest', 'players': '4'})
 
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, 'Купить готовый пакет')
-        self.assertContains(resp, 'Собрать свой набор')
+        self.assertContains(resp, 'Готовые паки')
+        self.assertContains(resp, 'Конструктор игр')
         self.assertContains(resp, 'Получить подбор')
         self.assertContains(resp, self.game.name)
         self.assertContains(resp, self.service.name)

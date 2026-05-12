@@ -1,0 +1,452 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - link "Авито" [ref=e6] [cursor=pointer]:
+          - /url: https://www.avito.ru/user/a933d26a360016c146b6326f33aa18d1/profile?src=search_seller_info&iid=7888196703
+          - img [ref=e7]
+          - generic [ref=e11]: Авито
+        - link "Telegram" [ref=e12] [cursor=pointer]:
+          - /url: https://t.me/bizon_order_manager
+          - img [ref=e13]
+          - generic [ref=e16]: Telegram
+      - generic [ref=e17]:
+        - generic [ref=e18]:
+          - img [ref=e19]
+          - link "+7 (932) 491-04-82" [ref=e21] [cursor=pointer]:
+            - /url: tel:+79324910482
+          - link "ЗАКАЗАТЬ ЗВОНОК" [ref=e22] [cursor=pointer]:
+            - /url: /uslugi/#contacts
+        - link "ВОЙТИ" [ref=e23] [cursor=pointer]:
+          - /url: /accounts/login/
+          - generic [ref=e25]: ВОЙТИ
+    - generic [ref=e27]:
+      - link "BizonVR" [ref=e28] [cursor=pointer]:
+        - /url: /
+        - heading "BizonVR" [level=1] [ref=e29]
+      - button "КАТАЛОГ" [ref=e30] [cursor=pointer]:
+        - img [ref=e32]
+        - generic [ref=e37]: КАТАЛОГ
+      - generic [ref=e38]:
+        - searchbox "Поиск по товарам" [ref=e39]
+        - button [ref=e40] [cursor=pointer]:
+          - img [ref=e41]
+      - generic [ref=e44]:
+        - link "Избранное" [ref=e45] [cursor=pointer]:
+          - /url: /catalog/favorites/
+          - generic [ref=e46]:
+            - img
+        - link "Войти" [ref=e47] [cursor=pointer]:
+          - /url: /accounts/login/
+          - img
+        - link "Корзина" [ref=e49] [cursor=pointer]:
+          - /url: /catalog/cart/
+          - generic [ref=e50]:
+            - img
+            - generic [ref=e51]: "0"
+    - navigation [ref=e54]:
+      - list [ref=e56]:
+        - listitem [ref=e57]:
+          - link "Аренда" [ref=e58] [cursor=pointer]:
+            - /url: /arenda/
+        - listitem [ref=e59]:
+          - link "Услуги" [ref=e60] [cursor=pointer]:
+            - /url: /uslugi/
+        - listitem [ref=e61]:
+          - link "Контакты" [ref=e62] [cursor=pointer]:
+            - /url: /contacts/
+  - main [ref=e63]:
+    - generic [ref=e65]:
+      - generic [ref=e66]:
+        - generic [ref=e67]:
+          - generic [ref=e71]:
+            - heading "Компактная VR-арена" [level=2] [ref=e72]
+            - paragraph [ref=e73]: "Компактный формат запуска VR-локации под ключ: от 62 м², лизинг или покупка, гарантия 36 месяцев."
+            - link "Подробнее" [ref=e74] [cursor=pointer]:
+              - /url: /compact-vr/
+          - generic [ref=e78]:
+            - heading "Цифровой магазин" [level=2] [ref=e79]
+            - paragraph [ref=e80]: Цифровые товары и контент для VR. Ключи, подписки и лицензии в одном месте.
+            - link "В каталог" [ref=e81] [cursor=pointer]:
+              - /url: /catalog/?section=cifrovye-tovary
+          - generic [ref=e85]:
+            - heading "Трейд-ин" [level=2] [ref=e86]
+            - paragraph [ref=e87]: Сдайте старый шлем и получите скидку на новое оборудование. Выгодный обмен и быстрая оценка.
+            - link "Подробнее" [ref=e88] [cursor=pointer]:
+              - /url: /catalog/
+          - generic [ref=e92]:
+            - heading "VR Аттракционы" [level=2] [ref=e93]
+            - paragraph [ref=e94]: "Коммерческие VR-аттракционы: гонки 5D, хоррор-комнаты, сферические симуляторы для парков и ТЦ."
+            - link "Аттракционы" [ref=e95] [cursor=pointer]:
+              - /url: /catalog/?section=vr-attrakciony
+        - generic:
+          - button "Предыдущий слайд" [ref=e96] [cursor=pointer]:
+            - img [ref=e97]
+          - button "Следующий слайд" [ref=e99] [cursor=pointer]:
+            - img [ref=e100]
+      - generic [ref=e102]:
+        - button "Слайд 1" [ref=e103] [cursor=pointer]
+        - button "Слайд 2" [ref=e104] [cursor=pointer]
+        - button "Слайд 3" [ref=e105] [cursor=pointer]
+        - button "Слайд 4" [ref=e106] [cursor=pointer]
+    - generic [ref=e107]:
+      - generic [ref=e109]:
+        - article [ref=e111]:
+          - generic [ref=e112]:
+            - generic [ref=e114]: Хит
+            - button "Добавить в избранное" [ref=e117] [cursor=pointer]:
+              - img [ref=e118]
+            - link "Крепление \"Монстр\" c АКБ" [ref=e120] [cursor=pointer]:
+              - /url: /catalog/product/kreplenie-monstr/
+              - img "Крепление \"Монстр\" c АКБ" [ref=e122]
+          - generic [ref=e123]:
+            - heading "Крепление \"Монстр\" c АКБ" [level=3] [ref=e124]:
+              - link "Крепление \"Монстр\" c АКБ" [ref=e125] [cursor=pointer]:
+                - /url: /catalog/product/kreplenie-monstr/
+            - generic [ref=e126]:
+              - generic [ref=e127]: 3 490 ₽
+              - generic [ref=e128]:
+                - generic [ref=e130]: В наличии
+                - generic [ref=e131]: Много
+              - paragraph [ref=e132]: Доставка за 5 дней
+              - paragraph [ref=e133]: Под заказ — 2 790 ₽
+              - paragraph [ref=e134]: "Срок поставки: до 35 дней"
+        - article [ref=e136]:
+          - generic [ref=e137]:
+            - generic [ref=e139]: Хит
+            - button "Добавить в избранное" [ref=e142] [cursor=pointer]:
+              - img [ref=e143]
+            - link "VR Аттракцион Dual-Person Egg Chair" [ref=e145] [cursor=pointer]:
+              - /url: /catalog/product/vr-attrakcion-dual-person-egg-chair/
+              - img "VR Аттракцион Dual-Person Egg Chair" [ref=e147]
+          - generic [ref=e148]:
+            - heading "VR Аттракцион Dual-Person Egg Chair" [level=3] [ref=e149]:
+              - link "VR Аттракцион Dual-Person Egg Chair" [ref=e150] [cursor=pointer]:
+                - /url: /catalog/product/vr-attrakcion-dual-person-egg-chair/
+            - generic [ref=e151]:
+              - generic [ref=e152]: 697 490 ₽
+              - generic [ref=e155]: Под заказ
+              - paragraph [ref=e156]: "Срок поставки: до 35 дней"
+        - article [ref=e158]:
+          - generic [ref=e159]:
+            - generic [ref=e160]:
+              - generic [ref=e161]: Бестселлер
+              - generic [ref=e162]: Выбор экспертов
+            - button "Добавить в избранное" [ref=e165] [cursor=pointer]:
+              - img [ref=e166]
+            - link "Pico 4 Ultra Pico 4 Ultra Pico 4 Ultra Pico 4 Ultra Pico 4 Ultra" [ref=e168] [cursor=pointer]:
+              - /url: /catalog/product/pico-4-ultra/
+              - generic [ref=e169]:
+                - img "Pico 4 Ultra" [ref=e170]
+                - img "Pico 4 Ultra" [ref=e171]
+                - img "Pico 4 Ultra" [ref=e172]
+                - img "Pico 4 Ultra" [ref=e173]
+                - img "Pico 4 Ultra" [ref=e174]
+          - generic [ref=e175]:
+            - heading "Pico 4 Ultra" [level=3] [ref=e176]:
+              - link "Pico 4 Ultra" [ref=e177] [cursor=pointer]:
+                - /url: /catalog/product/pico-4-ultra/
+            - generic [ref=e178]:
+              - generic [ref=e179]: 41 990 ₽
+              - generic [ref=e182]: Под заказ
+              - paragraph [ref=e183]: "Срок поставки: до 35 дней"
+        - article [ref=e185]:
+          - generic [ref=e186]:
+            - generic [ref=e188]: Выбор экспертов
+            - button "Добавить в избранное" [ref=e191] [cursor=pointer]:
+              - img [ref=e192]
+            - link "Meta Quest 3 512GB Meta Quest 3 512GB Meta Quest 3 512GB Meta Quest 3 512GB" [ref=e194] [cursor=pointer]:
+              - /url: /catalog/product/meta-quest-3-512gb/
+              - generic [ref=e195]:
+                - img "Meta Quest 3 512GB" [ref=e196]
+                - img "Meta Quest 3 512GB" [ref=e197]
+                - img "Meta Quest 3 512GB" [ref=e198]
+                - img "Meta Quest 3 512GB" [ref=e199]
+          - generic [ref=e200]:
+            - heading "Meta Quest 3 512GB" [level=3] [ref=e201]:
+              - link "Meta Quest 3 512GB" [ref=e202] [cursor=pointer]:
+                - /url: /catalog/product/meta-quest-3-512gb/
+            - generic [ref=e203]:
+              - generic [ref=e204]: 43 490 ₽
+              - generic [ref=e205]:
+                - generic [ref=e207]: В наличии
+                - generic [ref=e208]: Много
+              - paragraph [ref=e209]: Доставка за 5 дней
+              - paragraph [ref=e210]: Под заказ — 39 990 ₽
+              - paragraph [ref=e211]: "Срок поставки: до 35 дней"
+        - article [ref=e213]:
+          - generic [ref=e214]:
+            - generic [ref=e216]: Бестселлер
+            - button "Добавить в избранное" [ref=e219] [cursor=pointer]:
+              - img [ref=e220]
+            - link "Meta Quest 3S Meta Quest 3S Meta Quest 3S Meta Quest 3S Meta Quest 3S Meta Quest 3S Meta Quest 3S Meta Quest 3S Meta Quest 3S" [ref=e222] [cursor=pointer]:
+              - /url: /catalog/product/meta-quest-3s-128gb/
+              - generic [ref=e223]:
+                - img "Meta Quest 3S" [ref=e224]
+                - img "Meta Quest 3S" [ref=e225]
+                - img "Meta Quest 3S" [ref=e226]
+                - img "Meta Quest 3S" [ref=e227]
+                - img "Meta Quest 3S" [ref=e228]
+                - img "Meta Quest 3S" [ref=e229]
+                - img "Meta Quest 3S" [ref=e230]
+                - img "Meta Quest 3S" [ref=e231]
+                - img "Meta Quest 3S" [ref=e232]
+          - generic [ref=e233]:
+            - heading "Meta Quest 3S" [level=3] [ref=e234]:
+              - link "Meta Quest 3S" [ref=e235] [cursor=pointer]:
+                - /url: /catalog/product/meta-quest-3s-128gb/
+            - generic [ref=e236]:
+              - generic [ref=e237]: 26 990 ₽
+              - generic [ref=e238]:
+                - generic [ref=e240]: В наличии
+                - generic [ref=e241]: Много
+              - paragraph [ref=e242]: Доставка за 5 дней
+      - link "Весь каталог" [ref=e244] [cursor=pointer]:
+        - /url: /catalog/
+    - generic [ref=e245]:
+      - generic [ref=e246]:
+        - heading "Категории товаров" [level=2] [ref=e247]
+        - generic [ref=e248]:
+          - link "VR-оборудование VR Устройства" [ref=e249] [cursor=pointer]:
+            - /url: /catalog/?category=vr-ustrojstva
+            - generic [ref=e253]:
+              - generic [ref=e254]: VR-оборудование
+              - heading "VR Устройства" [level=3] [ref=e255]
+              - img [ref=e257]
+          - link "VR-оборудование Аккумуляторы / Станции" [ref=e260] [cursor=pointer]:
+            - /url: /catalog/?category=akkumulyatory-stancii
+            - generic [ref=e264]:
+              - generic [ref=e265]: VR-оборудование
+              - heading "Аккумуляторы / Станции" [level=3] [ref=e266]
+              - img [ref=e268]
+          - link "VR-оборудование Кабели" [ref=e271] [cursor=pointer]:
+            - /url: /catalog/?category=kabeli
+            - generic [ref=e275]:
+              - generic [ref=e276]: VR-оборудование
+              - heading "Кабели" [level=3] [ref=e277]
+              - img [ref=e279]
+          - link "VR-оборудование Кейсы" [ref=e282] [cursor=pointer]:
+            - /url: /catalog/?category=kejsy
+            - generic [ref=e286]:
+              - generic [ref=e287]: VR-оборудование
+              - heading "Кейсы" [level=3] [ref=e288]
+              - img [ref=e290]
+          - link "VR-оборудование Крепления" [ref=e293] [cursor=pointer]:
+            - /url: /catalog/?category=krepleniya
+            - generic [ref=e297]:
+              - generic [ref=e298]: VR-оборудование
+              - heading "Крепления" [level=3] [ref=e299]
+              - img [ref=e301]
+          - link "VR-оборудование Маски" [ref=e304] [cursor=pointer]:
+            - /url: /catalog/?category=maski
+            - generic [ref=e308]:
+              - generic [ref=e309]: VR-оборудование
+              - heading "Маски" [level=3] [ref=e310]
+              - img [ref=e312]
+          - link "VR-оборудование Чехлы / Защита" [ref=e315] [cursor=pointer]:
+            - /url: /catalog/?category=chehly-zashita
+            - generic [ref=e319]:
+              - generic [ref=e320]: VR-оборудование
+              - heading "Чехлы / Защита" [level=3] [ref=e321]
+              - img [ref=e323]
+          - link "VR-аттракционы VR Аркады" [ref=e326] [cursor=pointer]:
+            - /url: /catalog/?category=vr-arkady
+            - generic [ref=e330]:
+              - generic [ref=e331]: VR-аттракционы
+              - heading "VR Аркады" [level=3] [ref=e332]
+              - img [ref=e334]
+          - link "VR-аттракционы VR Кинотеатр" [ref=e337] [cursor=pointer]:
+            - /url: /catalog/?category=vr-kinoteatr
+            - generic [ref=e341]:
+              - generic [ref=e342]: VR-аттракционы
+              - heading "VR Кинотеатр" [level=3] [ref=e343]
+              - img [ref=e345]
+          - link "VR-аттракционы Остальные" [ref=e348] [cursor=pointer]:
+            - /url: /catalog/?category=ostalnye
+            - generic [ref=e352]:
+              - generic [ref=e353]: VR-аттракционы
+              - heading "Остальные" [level=3] [ref=e354]
+              - img [ref=e356]
+          - link "VR-аттракционы Платформы для ходьбы в VR" [ref=e359] [cursor=pointer]:
+            - /url: /catalog/?category=platformy-dlya-hodby-v-vr
+            - generic [ref=e363]:
+              - generic [ref=e364]: VR-аттракционы
+              - heading "Платформы для ходьбы в VR" [level=3] [ref=e365]
+              - img [ref=e367]
+          - link "Решения для VR бизнеса Комплекты для VR АРЕН" [ref=e370] [cursor=pointer]:
+            - /url: /catalog/?category=komplekty-dlya-vr-aren
+            - generic [ref=e374]:
+              - generic [ref=e375]: Решения для VR бизнеса
+              - heading "Комплекты для VR АРЕН" [level=3] [ref=e376]
+              - img [ref=e378]
+          - link "Коммерческие роботы Роботы для уборки" [ref=e381] [cursor=pointer]:
+            - /url: /catalog/?category=roboty-dlya-uborki
+            - generic [ref=e385]:
+              - generic [ref=e386]: Коммерческие роботы
+              - heading "Роботы для уборки" [level=3] [ref=e387]
+              - img [ref=e389]
+          - link "Коммерческие роботы Роботы официанты" [ref=e392] [cursor=pointer]:
+            - /url: /catalog/?category=roboty-oficianty
+            - generic [ref=e396]:
+              - generic [ref=e397]: Коммерческие роботы
+              - heading "Роботы официанты" [level=3] [ref=e398]
+              - img [ref=e400]
+          - link "Прочее Мебель" [ref=e403] [cursor=pointer]:
+            - /url: /catalog/?category=mebel
+            - generic [ref=e407]:
+              - generic [ref=e408]: Прочее
+              - heading "Мебель" [level=3] [ref=e409]
+              - img [ref=e411]
+          - link "Прочее Роутеры" [ref=e414] [cursor=pointer]:
+            - /url: /catalog/?category=роутеры
+            - generic [ref=e418]:
+              - generic [ref=e419]: Прочее
+              - heading "Роутеры" [level=3] [ref=e420]
+              - img [ref=e422]
+          - link "Прочее Телевизоры" [ref=e425] [cursor=pointer]:
+            - /url: /catalog/?category=televizory
+            - generic [ref=e429]:
+              - generic [ref=e430]: Прочее
+              - heading "Телевизоры" [level=3] [ref=e431]
+              - img [ref=e433]
+          - link "VR Игры и паки MR / VR Игры" [ref=e436] [cursor=pointer]:
+            - /url: /catalog/?category=mr-vr-games
+            - generic [ref=e440]:
+              - generic [ref=e441]: VR Игры и паки
+              - heading "MR / VR Игры" [level=3] [ref=e442]
+              - img [ref=e444]
+          - link "VR Игры и паки Паки для VR-зон" [ref=e447] [cursor=pointer]:
+            - /url: /catalog/?category=vr-zone-packs
+            - generic [ref=e451]:
+              - generic [ref=e452]: VR Игры и паки
+              - heading "Паки для VR-зон" [level=3] [ref=e453]
+              - img [ref=e455]
+      - link "Удобно, стильно и практично Аксессуары для PICO 4 PICO 4 accessories" [ref=e459] [cursor=pointer]:
+        - /url: /catalog/
+        - generic [ref=e460]:
+          - generic [ref=e461]: Удобно, стильно и практично
+          - heading "Аксессуары для PICO 4" [level=3] [ref=e462]
+        - img "PICO 4 accessories"
+    - generic [ref=e467]:
+      - generic [ref=e468]:
+        - generic [ref=e469]:
+          - generic [ref=e470]: BizonVR Media
+          - heading "Мы в соцсетях Telegram / YouTube / TikTok / Avito" [level=2] [ref=e471]
+        - paragraph [ref=e472]: Короткие обзоры, распаковки, гайды и новости VR/AR/MR. Выбирайте удобный формат и подписывайтесь.
+      - generic [ref=e473]:
+        - link "Telegram Канал BizonVR Новости, обновления ассортимента, анонсы и быстрые ответы по VR-оборудованию. Перейти в канал" [ref=e474] [cursor=pointer]:
+          - /url: https://t.me/bizon_order_manager
+          - generic [ref=e476]:
+            - img [ref=e478]
+            - generic [ref=e481]: Telegram
+            - heading "Канал BizonVR" [level=3] [ref=e482]
+            - paragraph [ref=e483]: Новости, обновления ассортимента, анонсы и быстрые ответы по VR-оборудованию.
+            - generic [ref=e484]:
+              - generic [ref=e485]: Перейти в канал
+              - img [ref=e486]
+        - generic [ref=e489]:
+          - img [ref=e491]
+          - generic [ref=e494]: YouTube
+          - heading "Видеообзоры и гайды" [level=3] [ref=e495]
+          - paragraph [ref=e496]: "Добавьте `SITE_YOUTUBE_URL`, и карточка станет кликабельной."
+        - generic [ref=e497]:
+          - img [ref=e499]
+          - generic [ref=e503]: TikTok
+          - heading "Короткие видео" [level=3] [ref=e504]
+          - paragraph [ref=e505]: "Добавьте `SITE_TIKTOK_URL`, и карточка станет кликабельной."
+        - link "Avito Профиль BizonVR Актуальные объявления, быстрый переход к предложениям и дополнительный канал связи. Открыть Avito" [ref=e506] [cursor=pointer]:
+          - /url: https://www.avito.ru/user/a933d26a360016c146b6326f33aa18d1/profile?src=search_seller_info&iid=7888196703
+          - generic [ref=e508]:
+            - img [ref=e510]
+            - generic [ref=e515]: Avito
+            - heading "Профиль BizonVR" [level=3] [ref=e516]
+            - paragraph [ref=e517]: Актуальные объявления, быстрый переход к предложениям и дополнительный канал связи.
+            - generic [ref=e518]:
+              - generic [ref=e519]: Открыть Avito
+              - img [ref=e520]
+  - generic [ref=e523]:
+    - generic [ref=e524]:
+      - heading "Еще товары" [level=2] [ref=e525]
+      - link "Весь каталог" [ref=e526] [cursor=pointer]:
+        - /url: /catalog/
+    - generic [ref=e527]:
+      - generic:
+        - generic "Загрузка"
+  - contentinfo [ref=e604]:
+    - generic [ref=e605]:
+      - generic [ref=e606]:
+        - generic [ref=e607]:
+          - heading "BizonVR" [level=3] [ref=e608]
+          - paragraph [ref=e609]: Магазин VR оборудования и аттракционов
+          - paragraph [ref=e610]: "Пн-Пт: 10:00-19:00"
+        - generic [ref=e611]:
+          - heading "Каталог" [level=4] [ref=e612]
+          - list [ref=e613]:
+            - listitem [ref=e614]:
+              - link "VR-оборудование" [ref=e615] [cursor=pointer]:
+                - /url: /catalog/?section=vr-oborudovanie
+            - listitem [ref=e616]:
+              - link "VR-аттракционы" [ref=e617] [cursor=pointer]:
+                - /url: /catalog/?section=vr-attrakciony
+            - listitem [ref=e618]:
+              - link "Решения для VR бизнеса" [ref=e619] [cursor=pointer]:
+                - /url: /catalog/?section=resheniya-dlya-vr-biznesa&category=komplekty-dlya-vr-aren
+        - generic [ref=e620]:
+          - heading "Клиентам" [level=4] [ref=e621]
+          - list [ref=e622]:
+            - listitem [ref=e623]:
+              - link "Главная" [ref=e624] [cursor=pointer]:
+                - /url: /
+            - listitem [ref=e625]:
+              - link "Каталог" [ref=e626] [cursor=pointer]:
+                - /url: /catalog/
+            - listitem [ref=e627]:
+              - link "Политика конфиденциальности" [ref=e628] [cursor=pointer]:
+                - /url: /privacy/
+            - listitem [ref=e629]:
+              - link "Публичная оферта" [ref=e630] [cursor=pointer]:
+                - /url: /page/oferta/
+            - listitem [ref=e631]:
+              - link "Оплата / доставка / возврат" [ref=e632] [cursor=pointer]:
+                - /url: /page/sales-terms/
+            - listitem [ref=e633]:
+              - link "Пользовательское соглашение" [ref=e634] [cursor=pointer]:
+                - /url: /page/user-agreement/
+            - listitem [ref=e635]:
+              - link "Согласие на обработку ПД" [ref=e636] [cursor=pointer]:
+                - /url: /page/pd-consent/
+            - listitem [ref=e637]:
+              - link "Политика cookies" [ref=e638] [cursor=pointer]:
+                - /url: /page/cookies/
+            - listitem [ref=e639]:
+              - link "Условия обработки заявок" [ref=e640] [cursor=pointer]:
+                - /url: /page/service-request-terms/
+            - listitem [ref=e641]:
+              - link "Контакты" [ref=e642] [cursor=pointer]:
+                - /url: /contacts/
+        - generic [ref=e643]:
+          - heading "Контакты" [level=4] [ref=e644]
+          - list [ref=e645]:
+            - listitem [ref=e646]:
+              - link "+7 (932) 491-04-82" [ref=e647] [cursor=pointer]:
+                - /url: tel:+79324910482
+            - listitem [ref=e648]:
+              - link "korrypc@gmail.com" [ref=e649] [cursor=pointer]:
+                - /url: mailto:korrypc@gmail.com
+            - listitem [ref=e650]:
+              - link "@bizon_order_manager" [ref=e651] [cursor=pointer]:
+                - /url: https://t.me/bizon_order_manager
+            - listitem [ref=e652]:
+              - link "Avito" [ref=e653] [cursor=pointer]:
+                - /url: https://www.avito.ru/user/a933d26a360016c146b6326f33aa18d1/profile?src=search_seller_info&iid=7888196703
+      - generic [ref=e654]: © 2026 BizonVR. Все права защищены.
+  - region "Согласие с cookies" [ref=e655]:
+    - paragraph [ref=e656]:
+      - text: Продолжая пользоваться сайтом, вы подтверждаете согласие на использование cookies в соответствии с
+      - link "Политикой cookies" [ref=e657] [cursor=pointer]:
+        - /url: /page/cookies/
+      - text: и обработку персональных данных в соответствии с
+      - link "Политикой конфиденциальности" [ref=e658] [cursor=pointer]:
+        - /url: /privacy/
+      - text: .
+    - button "Ок" [ref=e659] [cursor=pointer]

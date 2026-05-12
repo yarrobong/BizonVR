@@ -4,6 +4,18 @@ BizonVR is an e-commerce platform for VR equipment, accessories, and VR attracti
 
 The project is aimed at a VR store team: customers browse and order products, managers process requests and orders, and administrators maintain catalog data, stock, payments, and site content through Django admin.
 
+## Documentation Map
+
+Use these files as the current entry points:
+
+- [docs/LOCAL_DEVELOPMENT.md](docs/LOCAL_DEVELOPMENT.md) - local setup, run commands, CSS build, and validation commands.
+- [docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md) - public-site Django admin workflow.
+- [docs/VR_CLUB_GAMES_ADMIN.md](docs/VR_CLUB_GAMES_ADMIN.md) - games and game-pack admin workflow.
+- [docs/SITE_CHECKLIST.md](docs/SITE_CHECKLIST.md) - public-site smoke test and release checklist.
+- [DOCS_CLEANUP_REPORT.md](DOCS_CLEANUP_REPORT.md) - documentation inventory and deletion/archive recommendations.
+
+Manager portal documentation exists, but manager portal code, templates, routes, JavaScript, CSS, and API endpoints must not be changed as part of public-site documentation cleanup.
+
 ## Active Runtime And Single DB
 
 - BizonVR runs only as one Django application with the internal `manager_portal` module.
@@ -620,6 +632,11 @@ make test-manager-smoke
 
 Что использовать как source of truth:
 
+- [docs/LOCAL_DEVELOPMENT.md](docs/LOCAL_DEVELOPMENT.md) — локальный запуск, команды разработки и проверки;
+- [docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md) — работа с публичной Django admin без manager portal;
+- [docs/VR_CLUB_GAMES_ADMIN.md](docs/VR_CLUB_GAMES_ADMIN.md) — игры для VR-клубов и игровые паки;
+- [docs/SITE_CHECKLIST.md](docs/SITE_CHECKLIST.md) — smoke-check публичного сайта;
+- [DOCS_CLEANUP_REPORT.md](DOCS_CLEANUP_REPORT.md) — рекомендации по чистке документации без удаления файлов;
 - [docs/CITIES_AND_PRODUCTS.md](docs/CITIES_AND_PRODUCTS.md) — города, точки выдачи и остатки;
 - [docs/MANAGER_PORTAL.md](docs/MANAGER_PORTAL.md) — устройство менеджерского портала: сделки, клиенты, склады, остатки, брони, закупки, грузы, отгрузки и финансы;
 - [docs/ORDER_PLACEMENT_AND_ACCOUNT_FLOW.md](docs/ORDER_PLACEMENT_AND_ACCOUNT_FLOW.md) — целевой сценарий оформления заказа и аккаунта;
