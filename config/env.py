@@ -1,3 +1,5 @@
+import sys
+
 from decouple import config
 
 
@@ -24,3 +26,9 @@ def parse_bool_value(value, *, default=False, name='value'):
 
 def config_bool(name, default=False):
     return parse_bool_value(config(name, default=None), default=default, name=name)
+
+
+def is_runserver_command(argv=None):
+    args = argv if argv is not None else sys.argv[1:]
+    normalized_args = {str(arg).strip().lower() for arg in args if str(arg).strip()}
+    return bool(normalized_args & {'runserver', 'runserver_plus'})

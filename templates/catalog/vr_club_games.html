@@ -306,6 +306,18 @@
     padding: 18px;
   }
 
+  .club-empty h3 {
+    margin: 0 0 8px;
+  }
+
+  .club-empty p {
+    margin: 0;
+  }
+
+  .club-empty .club-btn {
+    margin-top: 12px;
+  }
+
   @media (max-width: 860px) {
     .club-hero {
       grid-template-columns: 1fr;
@@ -363,7 +375,7 @@
           {% else %}
             <div class="club-hero-fallback">
               {% lucide_icon "gamepad-2" "w-16 h-16 mx-auto" %}
-              <strong>VR game library</strong>
+              <strong>Библиотека VR-игр</strong>
               <span class="club-muted">Паки, игры и услуги запуска</span>
             </div>
           {% endif %}
@@ -377,7 +389,7 @@
           <p class="club-kicker">Игровые паки</p>
           <h2>Готовые комплекты под сценарий клуба</h2>
         </div>
-        <p class="club-muted">Состав, формат, совместимость и порядок показа управляются в админ-панели.</p>
+        <p class="club-muted">Готовые тарифы помогают быстро запустить VR-клуб: с понятным составом, сценариями игр и услугами под ваш формат.</p>
       </div>
 
       <div class="club-grid">
@@ -397,14 +409,23 @@
             <form action="{% url 'catalog:add_game_pack_to_cart' pack.pk %}" method="post">
               {% csrf_token %}
               <input type="hidden" name="next" value="{{ request.get_full_path }}">
+              {% if pack.in_stock_price is None and pack.on_request_price is not None %}
+              <input type="hidden" name="purchase_mode" value="on_request">
+              {% endif %}
               <button class="club-btn" type="submit">Добавить пак</button>
               <a class="club-btn secondary" href="{{ pack.get_absolute_url }}">Подробнее</a>
             </form>
           </article>
         {% empty %}
           <div class="club-empty">
-            <h3>Паки пока не опубликованы</h3>
-            <p class="club-muted">Создайте GamePack в админке, заполните состав, формат и включите показ в разделе VR-клубов.</p>
+            {% if has_vr_club_packs %}
+              <h3>По текущим фильтрам паки не найдены</h3>
+              <p class="club-muted">Попробуйте изменить параметры подбора или сбросить фильтры, чтобы увидеть опубликованные комплекты для VR-клубов.</p>
+            {% else %}
+              <h3>Подборка паков обновляется</h3>
+              <p class="club-muted">Подберём готовый комплект под формат вашего клуба, количество шлемов и сценарий запуска.</p>
+              <a class="club-btn secondary" href="#quiz">Получить подбор</a>
+            {% endif %}
           </div>
         {% endfor %}
       </div>
@@ -418,7 +439,7 @@
         </div>
       </div>
 
-      <form method="get" class="club-filters">
+      <form method="get" class="club-filters" data-club-filters-form>
         <select class="club-input" name="device">
           <option value="">Устройство</option>
           {% for value in devices %}<option value="{{ value }}" {% if selected_filters.device == value %}selected{% endif %}>{{ value }}</option>{% endfor %}
@@ -443,6 +464,7 @@
           <option value="">Формат пака</option>
           {% for key, label in package_formats %}<option value="{{ key }}" {% if selected_filters.package_format == key %}selected{% endif %}>{{ label }}</option>{% endfor %}
         </select>
+        <input type="hidden" name="headset_count" value="{{ selected_filters.headset_count|default:'4' }}" data-club-headset-filter>
         <button class="club-btn secondary" type="submit">Показать</button>
       </form>
 
@@ -464,6 +486,11 @@
                 </div>
                 <div class="club-game-body">
                   <strong>{{ game.name }}</strong>
+                  {% if game.in_stock_price is not None %}
+                    <p class="club-price">{{ game.in_stock_price|rub }}</p>
+                  {% elif game.on_request_price is not None %}
+                    <p class="club-price">{{ game.on_request_price|rub }}</p>
+                  {% endif %}
                   <p class="club-muted">{{ game.game_metadata.b2b_note|default:game.description|truncatechars:120 }}</p>
                   <div class="club-game-meta">
                     {% for value in game.game_metadata.devices_list %}<span class="club-chip">{{ value }}</span>{% endfor %}
@@ -477,8 +504,9 @@
             </label>
           {% empty %}
             <div class="club-empty">
-              <h3>Игры не найдены</h3>
-              <p class="club-muted">Проверьте фильтры или добавьте активные ProductGameMetadata для игровых товаров в админ-панели.</p>
+              <h3>Игры по вашим фильтрам не найдены</h3>
+              <p class="club-muted">Измените параметры подбора или оставьте заявку, и мы соберём игровую библиотеку под ваш формат клуба.</p>
+              <a class="club-btn secondary" href="#quiz">Оставить заявку</a>
             </div>
           {% endfor %}
         </div>
@@ -492,13 +520,17 @@
                 <span><strong>{{ service.name }}</strong><br><span class="club-muted">{{ service.short_description }} {% if service.price %}- {{ service.price|rub }}{% else %}- по запросу{% endif %}</span></span>
               </label>
             {% empty %}
-              <div class="club-empty"><p class="club-muted">Услуги для VR-клубов пока не опубликованы.</p></div>
+              <div class="club-empty">
+                <h3>Услуги запуска подбираем под задачу</h3>
+                <p class="club-muted">Оставьте заявку, и мы предложим настройку, обучение команды и сопровождение под ваш VR-клуб.</p>
+                <a class="club-btn secondary" href="#quiz">Обсудить запуск</a>
+              </div>
             {% endfor %}
           </div>
         </div>
 
         <div class="club-section club-grid">
-          <input class="club-input" name="headset_count" type="number" min="1" value="{{ selected_filters.headsets|default:'4' }}" placeholder="Количество шлемов">
+          <input class="club-input" name="headset_count" type="number" min="1" value="{{ selected_filters.headset_count|default:'4' }}" placeholder="Количество шлемов" data-club-headset-input>
           <input class="club-input" name="devices" value="{{ selected_filters.device }}" placeholder="Устройства">
           <input class="club-input" name="club_format" value="{{ selected_filters.club_format }}" placeholder="Формат клуба">
           <button class="club-btn" type="submit">Добавить комплект в корзину</button>
@@ -530,4 +562,23 @@
     </section>
   </div>
 </main>
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    var filtersForm = document.querySelector('[data-club-filters-form]');
+    var visibleHeadsetInput = document.querySelector('[data-club-headset-input]');
+    var hiddenHeadsetInput = document.querySelector('[data-club-headset-filter]');
+
+    if (!filtersForm || !visibleHeadsetInput || !hiddenHeadsetInput) {
+      return;
+    }
+
+    var syncHeadsetCount = function () {
+      hiddenHeadsetInput.value = visibleHeadsetInput.value || '4';
+    };
+
+    visibleHeadsetInput.addEventListener('input', syncHeadsetCount);
+    filtersForm.addEventListener('submit', syncHeadsetCount);
+    syncHeadsetCount();
+  });
+</script>
 {% endblock %}

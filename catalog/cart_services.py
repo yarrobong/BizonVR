@@ -171,6 +171,7 @@ def build_custom_game_pack_item_dict(*, name, game_ids, games, services=None, qu
         'game_ids': list(game_ids),
         'games': game_lines,
         'services': services or [],
+        'services_are_separate_lines': bool(services),
         'headset_count': headset_count,
         'club_format': club_format,
         'devices': devices,

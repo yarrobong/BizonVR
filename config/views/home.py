@@ -1,4 +1,4 @@
-from django.conf import settings
+﻿from django.conf import settings
 from django.db.models import Q
 from django.shortcuts import render
 from django.templatetags.static import static
@@ -130,7 +130,7 @@ def _home_view_impl(request):
             'bg_position': 'center center',
         },
         {
-            'title': 'Цифровой магазин',
+            'title': '\u0426\u0438\u0444\u0440\u043e\u0432\u044b\u0435 \u0442\u043e\u0432\u0430\u0440\u044b',
             'description': 'Цифровые товары и контент для VR. Ключи, подписки и лицензии в одном месте.',
             'url': f'{catalog_url}?section=cifrovye-tovary',
             'btn': 'В каталог',

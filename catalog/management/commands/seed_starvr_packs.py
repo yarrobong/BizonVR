@@ -5,12 +5,12 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils.text import slugify
 
+from catalog.game_pack_mirrors import sync_game_pack_mirror
 from catalog.models import (
     CatalogSection,
     Category,
     GamePack,
     GamePackEntry,
-    GamePackItem,
     GamePackServiceEntry,
     Product,
     ProductCharacteristic,
@@ -25,6 +25,18 @@ SECTION_DATA = {
     'name': 'VR Игры и паки',
     'slug': 'vr-games-and-packs',
     'order': 95,
+}
+
+DIGITAL_SECTION_DATA = {
+    'name': 'Цифровые товары',
+    'slug': 'cifrovye-tovary',
+    'order': 95,
+}
+
+BUSINESS_SECTION_DATA = {
+    'name': 'Решения для VR бизнеса',
+    'slug': 'resheniya-dlya-vr-biznesa',
+    'order': 10,
 }
 
 CATEGORY_DATA = {
@@ -408,17 +420,21 @@ class Command(BaseCommand):
 
     @transaction.atomic
     def handle(self, *args, **options):
-        section, _ = CatalogSection.objects.update_or_create(
-            slug=SECTION_DATA['slug'],
-            defaults={'name': SECTION_DATA['name'], 'order': SECTION_DATA['order']},
+        digital_section, _ = CatalogSection.objects.update_or_create(
+            slug=DIGITAL_SECTION_DATA['slug'],
+            defaults={'name': DIGITAL_SECTION_DATA['name'], 'order': DIGITAL_SECTION_DATA['order']},
+        )
+        business_section, _ = CatalogSection.objects.update_or_create(
+            slug=BUSINESS_SECTION_DATA['slug'],
+            defaults={'name': BUSINESS_SECTION_DATA['name'], 'order': BUSINESS_SECTION_DATA['order']},
         )
         games_category, _ = Category.objects.update_or_create(
             slug=CATEGORY_DATA['games']['slug'],
-            defaults={'name': CATEGORY_DATA['games']['name'], 'section': section},
+            defaults={'name': CATEGORY_DATA['games']['name'], 'section': digital_section},
         )
         packs_category, _ = Category.objects.update_or_create(
             slug=CATEGORY_DATA['packs']['slug'],
-            defaults={'name': CATEGORY_DATA['packs']['name'], 'section': section},
+            defaults={'name': CATEGORY_DATA['packs']['name'], 'section': business_section},
         )
 
         tag_map = {}
@@ -475,47 +491,6 @@ class Command(BaseCommand):
         created_product_packs = []
         created_game_packs = []
         for pack_data in PACKS:
-            product, _ = Product.objects.update_or_create(
-                sku=pack_data['sku'],
-                defaults={
-                    'category': packs_category,
-                    'name': pack_data['name'],
-                    'description': pack_data['description'],
-                    'price': pack_data['price'],
-                    'price_on_request': None,
-                    'product_kind': Product.PRODUCT_KIND_GAME_PACK,
-                    'is_active': True,
-                    'allow_order_on_request': False,
-                },
-            )
-            _save_svg(product.image, pack_data['sku'], pack_data['name'], 'Готовый пакет', pack_data['theme'])
-            product.save()
-            product.tags.set([tag_map['vr-zone'], tag_map['multiplayer']])
-            _upsert_characteristics(product, pack_data['characteristics'])
-            _upsert_gallery(product, ['Состав пака', 'Коммерческое предложение'], pack_data['theme'])
-            GamePackItem.objects.filter(product=product).delete()
-            product_pack_items = pack_data['games'] + [
-                {
-                    'title': service_item['title'],
-                    'platform': service_item.get('platform', ''),
-                    'note': service_item.get('note', ''),
-                }
-                for service_item in pack_data['services']
-            ]
-            GamePackItem.objects.bulk_create(
-                [
-                    GamePackItem(
-                        product=product,
-                        title=item['title'],
-                        platform=item.get('platform', ''),
-                        note=item.get('note', ''),
-                        sort_order=index,
-                    )
-                    for index, item in enumerate(product_pack_items, start=1)
-                ]
-            )
-            created_product_packs.append(product)
-
             game_pack, _ = GamePack.objects.update_or_create(
                 slug=pack_data['game_pack_slug'],
                 defaults={
@@ -528,7 +503,7 @@ class Command(BaseCommand):
                     'is_active': True,
                     'vr_club_tariff': pack_data['tariff'],
                     'show_on_vr_club_page': True,
-                    'club_format': 'VR-зона',
+                    'club_format': GamePack.CLUB_FORMAT_CLUB,
                     'devices': 'Meta Quest 3, Meta Quest 3S',
                     'genres': 'MR, AR, Multiplayer, Party',
                     'age_rating': '8+',
@@ -538,7 +513,7 @@ class Command(BaseCommand):
                     'included_summary': pack_data['included_summary'],
                 },
             )
-            _save_svg(game_pack.image, f'club-{pack_data["sku"]}', pack_data['name'], 'Тариф VR-зоны', pack_data['theme'])
+            _save_svg(game_pack.image, f'club-{pack_data["sku"]}', pack_data['name'], 'VR Zone tariff', pack_data['theme'])
             game_pack.save()
             game_pack.tags.set([tag_map['vr-zone'], tag_map['multiplayer']])
 
@@ -548,6 +523,7 @@ class Command(BaseCommand):
                     GamePackEntry(
                         game_pack=game_pack,
                         product=game_lookup[item['title']],
+                        platform=item.get('platform', ''),
                         quantity=1,
                         note=item.get('note', ''),
                         sort_order=index,
@@ -562,6 +538,7 @@ class Command(BaseCommand):
                     GamePackServiceEntry(
                         game_pack=game_pack,
                         service=service_map[item['service_name']],
+                        platform=item.get('platform', ''),
                         quantity=1,
                         note=item.get('note', ''),
                         sort_order=index,
@@ -569,8 +546,31 @@ class Command(BaseCommand):
                     for index, item in enumerate(pack_data['services'], start=1)
                 ]
             )
-            created_game_packs.append(game_pack)
 
+            mirror_product = sync_game_pack_mirror(
+                game_pack,
+                sku=pack_data['sku'],
+                allow_create=True,
+                mirror_image_name=getattr(game_pack.image, 'name', ''),
+                product_characteristics=pack_data['characteristics'],
+            )
+            if mirror_product is not None:
+                _save_svg(
+                    mirror_product.image,
+                    pack_data['sku'],
+                    pack_data['name'],
+                    'Ready-made pack',
+                    pack_data['theme'],
+                )
+                mirror_product.save()
+                _upsert_gallery(
+                    mirror_product,
+                    ['Pack overview', 'Commercial offer'],
+                    pack_data['theme'],
+                )
+                created_product_packs.append(mirror_product)
+
+            created_game_packs.append(game_pack)
         self.stdout.write(
             self.style.SUCCESS(
                 'Готово: синхронизированы позиции STARVR '

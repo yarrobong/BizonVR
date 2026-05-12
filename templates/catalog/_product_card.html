@@ -64,7 +64,14 @@
     {% if card_variant %}
       {% with stock=variant_stock_total|get_item:card_variant.id|default:0 %}
       <div class="mt-2">
-        {% if stock > 0 and card_variant.in_stock_price is not None %}
+        {% if product.is_game_product and card_variant.in_stock_price is not None %}
+          <div class="text-[1.35rem] font-bold leading-none text-accent">{{ card_variant.in_stock_price|price_format }} ₽</div>
+          {% if product.discount_percent > 0 and card_variant.price > card_variant.in_stock_price %}
+          <div class="mt-1 text-xs text-gray-500"><span class="line-through">{{ card_variant.price|price_format }} ₽</span> <span class="text-green-400">−{{ product.discount_percent|floatformat:"-2" }}%</span></div>
+          {% endif %}
+        {% elif product.is_game_product and card_variant.on_request_price is not None %}
+          <div class="text-[1.35rem] font-bold leading-none text-accent">{{ card_variant.on_request_price|price_format }} ₽</div>
+        {% elif stock > 0 and card_variant.in_stock_price is not None %}
           <div class="text-[1.35rem] font-bold leading-none text-accent">{{ card_variant.in_stock_price|price_format }} ₽</div>
           {% if product.discount_percent > 0 and card_variant.price > card_variant.in_stock_price %}
           <div class="mt-1 text-xs text-gray-500"><span class="line-through">{{ card_variant.price|price_format }} ₽</span> <span class="text-green-400">−{{ product.discount_percent|floatformat:"-2" }}%</span></div>
@@ -100,7 +107,14 @@
     {% else %}
       {% with stock=product_stock_total|get_item:product.id|default:0 %}
       <div class="mt-2">
-        {% if product.is_game_pack and product.in_stock_price is not None %}
+        {% if product.is_game_product and product.in_stock_price is not None %}
+          <div class="text-[1.35rem] font-bold leading-none text-accent">{{ product.in_stock_price|price_format }} ₽</div>
+          {% if product.discount_percent > 0 and product.price > product.in_stock_price %}
+          <div class="mt-1 text-xs text-gray-500"><span class="line-through">{{ product.price|price_format }} ₽</span> <span class="text-green-400">−{{ product.discount_percent|floatformat:"-2" }}%</span></div>
+          {% endif %}
+        {% elif product.is_game_product and product.on_request_price is not None %}
+          <div class="text-[1.35rem] font-bold leading-none text-accent">{{ product.on_request_price|price_format }} ₽</div>
+        {% elif product.is_game_pack and product.in_stock_price is not None %}
           <div class="text-[1.35rem] font-bold leading-none text-accent">{{ product.in_stock_price|price_format }} ₽</div>
           <div class="mt-2 flex items-center gap-2 text-xs text-white/92">
             <span class="inline-block h-2.5 w-2.5 rounded-full bg-sky-300 shadow-[0_0_12px_rgba(125,211,252,0.45)]"></span>
@@ -144,7 +158,38 @@
     {% if show_add_button %}
       {% if card_variant %}
         {% with stock=variant_stock_total|get_item:card_variant.id|default:0 %}
-          {% if stock > 0 and card_variant.in_stock_price is not None %}
+          {% if product.is_game_product and card_variant.in_stock_price is not None %}
+            <form action="{% url 'catalog:add_to_cart' product.pk %}" method="post"
+                  hx-post="{% url 'catalog:add_to_cart' product.pk %}"
+                  hx-target="#cart-modal-content"
+                  hx-swap="innerHTML"
+                  class="mt-auto pt-3">
+              {% csrf_token %}
+              <input type="hidden" name="quantity" value="1" />
+              <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+              <input type="hidden" name="variant_id" value="{{ card_variant.id }}" />
+              <button type="submit"
+                      class="w-full h-9 rounded-lg bg-accent hover:bg-accent-hover text-dark-900 text-xs font-bold uppercase tracking-wide transition-colors shadow-[0_8px_20px_rgba(0,212,255,0.24)]">
+                + В корзину
+              </button>
+            </form>
+          {% elif product.is_game_product and product.allow_order_on_request and card_variant.on_request_price is not None %}
+            <form action="{% url 'catalog:add_to_cart' product.pk %}" method="post"
+                  hx-post="{% url 'catalog:add_to_cart' product.pk %}"
+                  hx-target="#cart-modal-content"
+                  hx-swap="innerHTML"
+                  class="mt-auto pt-3">
+              {% csrf_token %}
+              <input type="hidden" name="quantity" value="1" />
+              <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+              <input type="hidden" name="variant_id" value="{{ card_variant.id }}" />
+              <input type="hidden" name="purchase_mode" value="on_request" />
+              <button type="submit"
+                      class="w-full h-9 rounded-lg bg-accent hover:bg-accent-hover text-dark-900 text-xs font-bold uppercase tracking-wide transition-colors shadow-[0_8px_20px_rgba(0,212,255,0.24)]">
+                + В корзину
+              </button>
+            </form>
+          {% elif stock > 0 and card_variant.in_stock_price is not None %}
             <form action="{% url 'catalog:add_to_cart' product.pk %}" method="post"
                   hx-post="{% url 'catalog:add_to_cart' product.pk %}"
                   hx-target="#cart-modal-content"
@@ -184,7 +229,41 @@
         {% endwith %}
       {% else %}
         {% with stock=product_stock_total|get_item:product.id|default:0 %}
-          {% if product.is_game_pack and product.in_stock_price is not None %}
+          {% if product.is_game_product and product.in_stock_price is not None %}
+            <form action="{% url 'catalog:add_to_cart' product.pk %}" method="post"
+                  hx-post="{% url 'catalog:add_to_cart' product.pk %}"
+                  hx-target="#cart-modal-content"
+                  hx-swap="innerHTML"
+                  class="mt-auto pt-3">
+              {% csrf_token %}
+              <input type="hidden" name="quantity" value="1" />
+              <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+              <button type="submit"
+                      class="w-full h-9 rounded-lg bg-accent hover:bg-accent-hover text-dark-900 text-xs font-bold uppercase tracking-wide transition-colors shadow-[0_8px_20px_rgba(0,212,255,0.24)]">
+                + В корзину
+              </button>
+            </form>
+          {% elif product.is_game_product and product.allow_order_on_request and product.on_request_price is not None %}
+            <form action="{% url 'catalog:add_to_cart' product.pk %}" method="post"
+                  hx-post="{% url 'catalog:add_to_cart' product.pk %}"
+                  hx-target="#cart-modal-content"
+                  hx-swap="innerHTML"
+                  class="mt-auto pt-3">
+              {% csrf_token %}
+              <input type="hidden" name="quantity" value="1" />
+              <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+              {% with recommended_variant_id=recommended_variant_ids|get_item:product.id %}
+              {% if recommended_variant_id %}
+              <input type="hidden" name="variant_id" value="{{ recommended_variant_id }}" />
+              {% endif %}
+              {% endwith %}
+              <input type="hidden" name="purchase_mode" value="on_request" />
+              <button type="submit"
+                      class="w-full h-9 rounded-lg bg-accent hover:bg-accent-hover text-dark-900 text-xs font-bold uppercase tracking-wide transition-colors shadow-[0_8px_20px_rgba(0,212,255,0.24)]">
+                + В корзину
+              </button>
+            </form>
+          {% elif product.is_game_pack and product.in_stock_price is not None %}
             <form action="{% url 'catalog:add_to_cart' product.pk %}" method="post"
                   hx-post="{% url 'catalog:add_to_cart' product.pk %}"
                   hx-target="#cart-modal-content"

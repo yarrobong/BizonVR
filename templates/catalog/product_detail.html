@@ -240,6 +240,9 @@
     if (mode === 'on_request') {
       return this.allowOnRequest;
     }
+    if (this.isGameProduct) {
+      return this.hasInStockPrice;
+    }
     if (this.isGamePack) {
       return this.hasInStockPrice;
     }
@@ -390,8 +393,16 @@
   get allowOnRequest() {
     return !!this.data.allowOrderOnRequest && this.hasOnRequestPrice;
   },
+  get isGameProduct() {
+    return !!this.data.isGameProduct;
+  },
   get isGamePack() {
     return !!this.data.isGamePack;
+  },
+  get currentFixedGamePrice() {
+    return this.currentInStockPrice !== null && this.currentInStockPrice !== undefined
+      ? this.currentInStockPrice
+      : this.currentOnRequestPrice;
   },
   get currentPublicPurchaseMode() {
     if (this.selectedVariant) {
@@ -400,6 +411,9 @@
     return this.data.productPublicPurchaseMode || 'request_only';
   },
   get defaultPurchaseModeForSelection() {
+    if (this.isGameProduct && (this.currentInStockPrice === null || this.currentInStockPrice === undefined) && this.currentOnRequestPrice !== null && this.currentOnRequestPrice !== undefined) {
+      return 'on_request';
+    }
     if (this.currentPublicPurchaseMode === 'on_request') {
       return 'on_request';
     }
@@ -724,7 +738,19 @@
         </div>
 
         <div class="mobile-hero-purchase" x-show="!isRequestOnlySelection" x-cloak>
-          <template x-if="currentPublicPurchaseMode === 'stock'">
+          <template x-if="isGameProduct">
+            <div class="offer-stack">
+              <div class="offer-panel offer-panel--primary offer-panel--solo">
+                <div class="price-row">
+                  <span class="main-price" x-text="window.formatRub(currentFixedGamePrice)"></span>
+                  <template x-if="hasCurrentDiscount">
+                    <span class="card-old-price" x-text="window.formatRub(currentRegularInStockPrice)"></span>
+                  </template>
+                </div>
+              </div>
+            </div>
+          </template>
+          <template x-if="!isGameProduct && currentPublicPurchaseMode === 'stock'">
             <div class="offer-stack">
               <button type="button"
                       class="offer-panel offer-panel--primary"
@@ -760,7 +786,7 @@
               </template>
             </div>
           </template>
-          <template x-if="currentPublicPurchaseMode === 'on_request'">
+          <template x-if="!isGameProduct && currentPublicPurchaseMode === 'on_request'">
             <div class="offer-stack">
               <div class="offer-panel offer-panel--primary offer-panel--solo">
                 <div class="offer-secondary-row offer-secondary-row--solo">
@@ -836,7 +862,19 @@
       <div class="right-col">
       <div class="buy-box desktop-only" x-show="!isRequestOnlySelection" x-cloak>
         <div class="price-block">
-          <template x-if="currentPublicPurchaseMode === 'stock'">
+          <template x-if="isGameProduct">
+            <div class="offer-stack">
+              <div class="offer-panel offer-panel--primary offer-panel--solo">
+                <div class="price-row">
+                  <span class="main-price" x-text="window.formatRub(currentFixedGamePrice)"></span>
+                  <template x-if="hasCurrentDiscount">
+                    <span class="card-old-price" x-text="window.formatRub(currentRegularInStockPrice)"></span>
+                  </template>
+                </div>
+              </div>
+            </div>
+          </template>
+          <template x-if="!isGameProduct && currentPublicPurchaseMode === 'stock'">
             <div class="offer-stack">
               <button type="button"
                       class="offer-panel offer-panel--primary"
@@ -872,7 +910,7 @@
               </template>
             </div>
           </template>
-          <template x-if="currentPublicPurchaseMode === 'on_request'">
+          <template x-if="!isGameProduct && currentPublicPurchaseMode === 'on_request'">
             <div class="offer-stack">
               <div class="offer-panel offer-panel--primary offer-panel--solo">
                 <div class="offer-secondary-row offer-secondary-row--solo">
@@ -976,20 +1014,19 @@
     </div>
 
     {% if show_vr_club_games_upsell %}
-    <section class="product-bundles-block">
-      <div class="rec-panel mb-6" style="border-color: rgba(34,211,238,.35); background: linear-gradient(135deg, rgba(8,145,178,.18), rgba(15,23,42,.86));">
-        <div class="rec-caption mb-3">
+    <section class="product-bundles-block product-bundles-block--b2b">
+      <div class="rec-panel mb-6">
+        <div class="rec-caption">
           <div>
             <p class="text-xs uppercase tracking-[0.24em] text-cyan-300/80">B2B комплект</p>
             <h2 class="text-xl md:text-2xl font-semibold text-white mt-2">Добавить игры и настройку</h2>
             <p class="text-sm text-slate-300 mt-2">Соберите коммерческий комплект запуска: игры под эти шлемы, аккаунты, multiplayer, PCVR, обучение персонала и поддержку.</p>
           </div>
-          <a href="{% url 'catalog:vr_club_games' %}?device={{ product.name|urlencode }}#constructor" class="add-cart-btn" style="max-width: 320px;">Собрать комплект</a>
         </div>
         {% if vr_club_recommended_packs %}
-          <div class="grid gap-3 md:grid-cols-3">
+          <div class="b2b-pack-grid">
             {% for pack in vr_club_recommended_packs %}
-              <a href="{{ pack.get_absolute_url }}" class="rounded-2xl border border-white/10 bg-white/5 p-4 text-white hover:border-cyan-300/50">
+              <a href="{{ pack.get_absolute_url }}" class="b2b-pack-card">
                 <span class="text-xs uppercase tracking-[0.18em] text-cyan-200">{{ pack.get_vr_club_tariff_display|default:"Пакет" }}</span>
                 <strong class="mt-2 block">{{ pack.name }}</strong>
                 <span class="mt-1 block text-sm text-slate-400">{% if pack.in_stock_price %}{{ pack.in_stock_price|rub }}{% else %}По запросу{% endif %}</span>
@@ -1025,7 +1062,7 @@
               <img src="{{ game.image_url }}" alt="{{ game.title }}" class="game-pack-item-card__image" loading="lazy" decoding="async">
               {% endif %}
             {% else %}
-              <div class="game-pack-item-card__image-placeholder">VR Game</div>
+              <div class="game-pack-item-card__image-placeholder">VR-игра</div>
             {% endif %}
           </div>
           <div class="game-pack-item-card__head">

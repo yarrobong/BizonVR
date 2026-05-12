@@ -1,5 +1,7 @@
+import importlib
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from django.urls import reverse
 
@@ -8,6 +10,7 @@ from django.contrib.auth.models import AnonymousUser
 from django.test import RequestFactory, SimpleTestCase, TestCase
 from django.test.utils import override_settings
 
+from config.env import is_runserver_command
 from config.views.static_pages import not_found_view, serve_media
 from manager_portal.single_db_contract import collect_single_db_contract_violations
 
@@ -20,6 +23,40 @@ class SingleDatabaseContractTests(SimpleTestCase):
 
     def test_repo_single_db_contract_has_no_violations(self):
         self.assertEqual(collect_single_db_contract_violations(), [])
+
+
+class LocalRunserverMediaRoutingTests(SimpleTestCase):
+    def test_is_runserver_command_detects_standard_runserver(self):
+        self.assertTrue(is_runserver_command(['runserver']))
+        self.assertTrue(is_runserver_command(['manage.py', 'runserver', '127.0.0.1:8001']))
+
+    def test_is_runserver_command_ignores_other_management_commands(self):
+        self.assertFalse(is_runserver_command(['test']))
+        self.assertFalse(is_runserver_command(['check']))
+
+    @override_settings(DEBUG=False)
+    def test_urls_serve_media_during_local_runserver_even_with_debug_disabled(self):
+        import config.urls
+
+        with patch('config.env.config', return_value=None), patch(
+            'config.env.is_runserver_command', return_value=True
+        ):
+            reloaded_urls = importlib.reload(config.urls)
+
+        media_pattern = next(
+            (
+                pattern
+                for pattern in reloaded_urls.urlpatterns
+                if str(pattern.pattern) == '^media/(?P<path>.*)$'
+            ),
+            None,
+        )
+        self.assertIsNotNone(media_pattern)
+
+        with patch('config.env.config', return_value=None), patch(
+            'config.env.is_runserver_command', return_value=False
+        ):
+            importlib.reload(config.urls)
 
 
 class ConferenceAttractionsLandingTests(SimpleTestCase):
@@ -353,12 +390,14 @@ class PublicSiteMetrikaTemplateTests(TestCase):
         self.assertIn('observePageThreshold(100, syncFixedSearch)', html)
         self.assertNotIn("window.addEventListener('scroll', throttled", html)
 
+    @override_settings(ENABLE_ALFATRACK=False)
     def test_home_page_includes_yandex_metrika_counter(self):
         response = self.client.get(reverse('home'))
 
         self.assertContains(response, 'https://mc.yandex.ru/metrika/tag.js?id=', html=False)
         self.assertContains(response, "requestIdleCallback", html=False)
         self.assertContains(response, "BizonVRTrackerLoader", html=False)
+        self.assertContains(response, "hostname === '127.0.0.1'", html=False)
         self.assertContains(response, "var isHeavyCatalogPage = false;", html=False)
         self.assertContains(response, "addEventListener('DOMContentLoaded', scheduleMetrika, {once: true})", html=False)
         self.assertContains(response, 'https://mc.yandex.ru/watch/108292006', html=False)
@@ -391,6 +430,7 @@ class PublicSiteMetrikaTemplateTests(TestCase):
         self.assertContains(response, 'https://cloud.emailtracking.ru/gtm/script.js', html=False)
         self.assertContains(response, 'https://cloud.alfa-track.com/gtm/script.js', html=False)
         self.assertContains(response, 'tryLoadMirror(0)', html=False)
+        self.assertContains(response, "hostname === '127.0.0.1'", html=False)
 
     def test_custom_404_page_includes_yandex_metrika_counter(self):
         request = RequestFactory().get('/missing-page/')
@@ -424,9 +464,12 @@ class PublicMediaCacheHeadersTests(SimpleTestCase):
 
             with override_settings(MEDIA_ROOT=temp_media_root):
                 response = serve_media(RequestFactory().get('/media/cache/responsive/hero.webp'), 'cache/responsive/hero.webp')
+                cache_control = response['Cache-Control']
+                status_code = response.status_code
+                response.close()
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response['Cache-Control'], 'public, max-age=31536000, immutable')
+        self.assertEqual(status_code, 200)
+        self.assertEqual(cache_control, 'public, max-age=31536000, immutable')
 
     def test_regular_media_uses_long_but_mutable_cache_header(self):
         with TemporaryDirectory() as temp_media_root:
@@ -436,9 +479,12 @@ class PublicMediaCacheHeadersTests(SimpleTestCase):
 
             with override_settings(MEDIA_ROOT=temp_media_root):
                 response = serve_media(RequestFactory().get('/media/products/hero.png'), 'products/hero.png')
+                cache_control = response['Cache-Control']
+                status_code = response.status_code
+                response.close()
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response['Cache-Control'], 'public, max-age=2592000')
+        self.assertEqual(status_code, 200)
+        self.assertEqual(cache_control, 'public, max-age=2592000')
 
     def test_non_media_binary_falls_back_to_short_cache_header(self):
         with TemporaryDirectory() as temp_media_root:
@@ -448,6 +494,9 @@ class PublicMediaCacheHeadersTests(SimpleTestCase):
 
             with override_settings(MEDIA_ROOT=temp_media_root):
                 response = serve_media(RequestFactory().get('/media/docs/price-list.bin'), 'docs/price-list.bin')
+                cache_control = response['Cache-Control']
+                status_code = response.status_code
+                response.close()
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response['Cache-Control'], 'public, max-age=300')
+        self.assertEqual(status_code, 200)
+        self.assertEqual(cache_control, 'public, max-age=300')

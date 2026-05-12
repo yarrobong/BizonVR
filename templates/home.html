@@ -95,6 +95,10 @@
     transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
   }
 
+  .home-audience-card > span:last-child {
+    min-width: 0;
+  }
+
   .home-audience-card:hover {
     border-color: rgba(0, 212, 255, 0.55);
     background: rgba(30, 35, 44, 0.96);
@@ -130,6 +134,7 @@
     font-size: 1rem;
     line-height: 1.25;
     font-weight: 700;
+    overflow-wrap: anywhere;
   }
 
   .home-audience-copy {
@@ -139,10 +144,84 @@
     line-height: 1.45;
   }
 
+  @media (max-width: 767px) {
+    .home-audience-strip {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.5rem;
+    }
+
+    .home-audience-card {
+      align-items: center;
+      gap: 0.5rem;
+      min-height: 76px;
+      padding: 0.65rem;
+      background: rgba(24, 27, 33, 0.78);
+    }
+
+    .home-audience-icon {
+      width: 2rem;
+      height: 2rem;
+      border-radius: 7px;
+    }
+
+    .home-audience-kicker {
+      margin-bottom: 0.18rem;
+      font-size: 0.6rem;
+    }
+
+    .home-audience-title {
+      margin-bottom: 0;
+      font-size: 0.86rem;
+      line-height: 1.18;
+    }
+
+    .home-audience-copy {
+      display: none;
+    }
+  }
+
   @media (min-width: 768px) {
     .home-audience-strip {
       grid-template-columns: repeat(4, minmax(0, 1fr));
     }
+  }
+
+  .quicklinks-row .quicklink-catalog {
+    color: #fff;
+  }
+
+  .quicklinks-row .quicklink-catalog .quicklink-catalog-icon {
+    position: relative;
+    overflow: hidden;
+    border-color: rgba(103, 232, 249, 0.75);
+    background:
+      radial-gradient(circle at 28% 18%, rgba(255, 255, 255, 0.34), transparent 28%),
+      linear-gradient(135deg, #00d4ff 0%, #0284c7 48%, #2563eb 100%);
+    box-shadow:
+      0 14px 28px rgba(14, 165, 233, 0.34),
+      inset 0 1px 0 rgba(255, 255, 255, 0.34);
+  }
+
+  .quicklinks-row .quicklink-catalog .quicklink-catalog-icon::after {
+    content: "";
+    position: absolute;
+    inset: -35% 45% auto -25%;
+    height: 80%;
+    transform: rotate(24deg);
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.34), transparent);
+  }
+
+  .quicklinks-row .quicklink-catalog .quicklink-catalog-icon svg {
+    position: relative;
+    z-index: 1;
+    color: #fff;
+    filter: drop-shadow(0 2px 5px rgba(8, 47, 73, 0.35));
+  }
+
+  .quicklinks-row .quicklink-catalog .quicklink-catalog-label {
+    color: #e0f7ff;
+    font-weight: 800;
+    text-shadow: 0 0 12px rgba(0, 212, 255, 0.55);
   }
 </style>
 
@@ -414,7 +493,7 @@
     </a>
 
     <a href="{% url 'uslugi' %}" class="home-audience-card">
-      <span class="home-audience-icon">{% lucide_icon "briefcase-business" "w-5 h-5 inline-block" %}</span>
+      <span class="home-audience-icon">{% lucide_icon "briefcase" "w-5 h-5 inline-block" %}</span>
       <span>
         <span class="home-audience-kicker">Для бизнеса</span>
         <span class="home-audience-title">Решения под задачу</span>
@@ -423,7 +502,7 @@
     </a>
 
     <a href="{% url 'catalog:vr_club_games' %}" class="home-audience-card">
-      <span class="home-audience-icon">{% lucide_icon "gamepad-2" "w-5 h-5 inline-block" %}</span>
+      <span class="home-audience-icon">{% lucide_icon "package" "w-5 h-5 inline-block" %}</span>
       <span>
         <span class="home-audience-kicker">VR-клубам</span>
         <span class="home-audience-title">Игры и готовые паки</span>
@@ -432,7 +511,7 @@
     </a>
 
     <a href="{% url 'contacts' %}" class="home-audience-card">
-      <span class="home-audience-icon">{% lucide_icon "message-circle" "w-5 h-5 inline-block" %}</span>
+      <span class="home-audience-icon">{% lucide_icon "send" "w-5 h-5 inline-block" %}</span>
       <span>
         <span class="home-audience-kicker">Подбор</span>
         <span class="home-audience-title">Поможем выбрать</span>
@@ -446,11 +525,11 @@
 <section class="bricks-section md:hidden w-full">
   <div class="container mx-auto px-4 pt-3 pb-4">
     <div class="quicklinks-row flex gap-2 overflow-x-auto scrollbar-hide pb-1 -mx-4 px-4">
-      <a href="{% url 'catalog:product_list' %}" class="brick flex-shrink-0 w-[72px] flex flex-col items-center gap-2">
-        <span class="w-[54px] h-[54px] rounded-2xl bg-dark-800 border border-dark-600/50 shadow-lg shadow-black/20 flex items-center justify-center">
-          {% lucide_icon "layout-grid" "w-6 h-6 text-accent inline-block" %}
+      <a href="{% url 'catalog:product_list' %}" class="brick quicklink-catalog flex-shrink-0 w-[72px] flex flex-col items-center gap-2">
+        <span class="quicklink-catalog-icon w-[54px] h-[54px] rounded-2xl bg-dark-800 border border-dark-600/50 shadow-lg shadow-black/20 flex items-center justify-center">
+          {% lucide_icon "layout-grid" "w-6 h-6 inline-block" %}
         </span>
-        <span class="text-[11px] font-medium text-white text-center leading-tight">Категории</span>
+        <span class="quicklink-catalog-label text-[11px] text-center leading-tight">Категории</span>
       </a>
 
       <a href="{% url 'arenda' %}" class="brick flex-shrink-0 w-[72px] flex flex-col items-center gap-2">
@@ -474,11 +553,12 @@
         <span class="text-[11px] font-medium text-white text-center leading-tight">Избранное</span>
       </a>
 
-      <a href="{% url 'catalog:cart' %}" class="brick flex-shrink-0 w-[72px] flex flex-col items-center gap-2">
-        <span class="w-[54px] h-[54px] rounded-2xl bg-dark-800 border border-dark-600/50 shadow-lg shadow-black/20 flex items-center justify-center">
+      <a href="{% url 'catalog:cart' %}" class="brick quicklink-cart flex-shrink-0 w-[72px] flex flex-col items-center gap-2">
+        <span class="relative w-[54px] h-[54px] rounded-2xl bg-dark-800 border border-dark-600/50 shadow-lg shadow-black/20 flex items-center justify-center">
           {% lucide_icon "shopping-cart" "w-6 h-6 text-accent inline-block" %}
+          <span class="badge badge-accent" x-text="cartCount">{{ cart_count|default:0 }}</span>
         </span>
-        <span class="text-[11px] font-medium text-white text-center leading-tight" x-text="`Корзина ${cartCount}`">Корзина {{ cart_count|default:0 }}</span>
+        <span class="text-[11px] font-medium text-white text-center leading-tight">Корзина</span>
       </a>
 
       <a href="{% if user.is_authenticated %}{% url 'accounts:profile' %}{% else %}{% url 'accounts:login' %}{% endif %}" class="brick flex-shrink-0 w-[72px] flex flex-col items-center gap-2" hx-boost="false">

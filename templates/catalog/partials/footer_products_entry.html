@@ -162,16 +162,22 @@
       '</div>'
     );
 
+    const retryHtml = (message) => (
+      '<div class="rounded-xl border border-dark-700 bg-dark-800/70 p-4 text-center text-sm text-gray-300">' +
+        '<p class="mb-3">' + message + '</p>' +
+        '<button type="button" class="inline-flex items-center justify-center rounded-lg bg-accent hover:bg-accent-hover text-dark-900 text-xs font-bold uppercase tracking-wide px-4 py-2 transition-colors" data-footer-products-retry>Повторить</button>' +
+      '</div>'
+    );
+
     let lastLoadTime = 0;
     const LOAD_COOLDOWN_MS = 1500;
 
     const loadChunk = async (url, target, replaceOuter) => {
       if (!url || !target || target.dataset.loading === '1') return;
-      if (replaceOuter && Date.now() - lastLoadTime < LOAD_COOLDOWN_MS) return;
       target.dataset.loading = '1';
       try {
         const resp = await fetch(url, { credentials: 'same-origin' });
-        if (!resp.ok) return;
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
         const html = await resp.text();
         const tpl = document.createElement('template');
         tpl.innerHTML = html;
@@ -204,6 +210,20 @@
         initIcons();
       } catch (e) {
         console.error('Footer products load error', e);
+        if (replaceOuter) {
+          target.dataset.observed = '0';
+          target.innerHTML = '<button type="button" class="inline-flex items-center justify-center rounded-lg bg-accent hover:bg-accent-hover text-dark-900 text-xs font-bold uppercase tracking-wide px-4 py-2 transition-colors" data-footer-products-retry>Загрузить еще</button>';
+          const btn = target.querySelector('[data-footer-products-retry]');
+          if (btn) {
+            btn.addEventListener('click', () => loadChunk(url, target, true));
+          }
+        } else {
+          target.innerHTML = retryHtml('Не удалось загрузить товары.');
+          const btn = target.querySelector('[data-footer-products-retry]');
+          if (btn) {
+            btn.addEventListener('click', () => loadChunk(url, target, false));
+          }
+        }
       } finally {
         target.dataset.loading = '0';
         observeSentinels();
@@ -229,7 +249,11 @@
         if (observer) {
           const elapsed = Date.now() - lastLoadTime;
           const delay = elapsed < LOAD_COOLDOWN_MS ? LOAD_COOLDOWN_MS - elapsed : 0;
-          const doObserve = () => observer.observe(node);
+          const doObserve = () => {
+            if (node.isConnected && node.dataset.loading !== '1') {
+              observer.observe(node);
+            }
+          };
           if (delay > 0) {
             setTimeout(doObserve, delay);
           } else {
@@ -261,6 +285,7 @@
         });
       }, { threshold: 0.01, rootMargin: '0px 0px 600px 0px' });
       initialObserver.observe(feed);
+      window.setTimeout(bootLoad, 0);
       return;
     }
 

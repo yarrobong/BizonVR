@@ -318,6 +318,10 @@
     text-align: center;
   }
 
+  .services-empty p {
+    margin: 0 0 1rem;
+  }
+
   .arenda-delivery {
     padding: 7rem 0;
     background: #050508;
@@ -534,7 +538,7 @@
             <p style="color:#9ca3af; margin-bottom:0.8rem;">Фокус-услуга</p>
             <h3 style="font-size:2rem; margin-bottom:0.8rem;">Выездные VR-мероприятия</h3>
             <p style="color:#e5e7eb; margin-bottom:0.8rem;">Корпоративы, промо-акции, активности в ТЦ и на выставках.</p>
-            <p style="color:#9ca3af; margin-bottom:1rem;">Добавьте услуги через админку, и этот блок заполнится автоматически.</p>
+            <p style="color:#9ca3af; margin-bottom:1rem;">Подберём формат, смету и команду под ваше мероприятие, VR-зону или бренд-активацию.</p>
             <p class="price">Индивидуальный расчёт</p>
           {% endif %}
         {% endwith %}
@@ -572,7 +576,7 @@
   <section id="services" class="services-section">
     <div class="arenda-container">
       <h2 class="services-section-title">Наши услуги</h2>
-      <p class="services-section-subtitle">Контент блока редактируется через админку: раздел «Услуги».</p>
+      <p class="services-section-subtitle">Помогаем собрать набор услуг под мероприятие, бренд-активацию или запуск VR-зоны.</p>
 
       {% if services %}
         <div class="services-grid">
@@ -597,7 +601,8 @@
         </div>
       {% else %}
         <div class="services-empty">
-          Услуги пока не добавлены. Заполните их в админке, и карточки появятся здесь автоматически.
+          <p>Расскажите о задаче, и мы предложим услуги под ваш формат мероприятия или площадки.</p>
+          <a href="#contacts" class="arenda-btn-services">Обсудить задачу</a>
         </div>
       {% endif %}
     </div>

@@ -586,6 +586,24 @@ class ProductAdminForm(forms.ModelForm):
 
 @admin.register(Product)
 class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
+    MIRRORED_PRODUCT_READONLY_FIELDS = (
+        'name',
+        'sku',
+        'category',
+        'product_kind',
+        'price',
+        'discount_percent',
+        'price_on_request',
+        'is_active',
+        'allow_order_on_request',
+        'description',
+        'slug',
+        'avito_url',
+        'ozon_url',
+        'wildberries_url',
+        'option_label',
+        'tags',
+    )
     form = ProductAdminForm
     list_display = (
         'name',
@@ -655,7 +673,30 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
         }),
     )
 
+    @admin.display(description='Mirror source')
+    def mirror_source_notice(self, obj):
+        source = obj.mirrored_game_pack_source
+        if source is None:
+            return '—'
+        return format_html(
+            'Edit this pack in <a href="{}">{}</a>. This Product is a generated compatibility mirror.',
+            admin_change_url('catalog.gamepack', source.pk),
+            source.name,
+        )
+
     def get_fieldsets(self, request, obj=None):
+        if obj is not None and obj.is_game_pack_mirror:
+            return (
+                (
+                    'Compatibility mirror',
+                    {
+                        'fields': ('mirror_source_notice',),
+                        'description': 'This Product is generated from GamePack and is read-only here.',
+                        'classes': ('product-fieldset', 'product-fieldset--primary'),
+                    },
+                ),
+                *super().get_fieldsets(request, obj),
+            )
         if obj is None:
             return (
                 ('База карточки', {
@@ -693,7 +734,16 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
             )
         return super().get_fieldsets(request, obj)
 
+    def get_readonly_fields(self, request, obj=None):
+        readonly_fields = list(super().get_readonly_fields(request, obj))
+        if obj is not None and obj.is_game_pack_mirror:
+            readonly_fields.extend(self.MIRRORED_PRODUCT_READONLY_FIELDS)
+            readonly_fields.append('mirror_source_notice')
+        return tuple(dict.fromkeys(readonly_fields))
+
     def get_inline_instances(self, request, obj=None):
+        if obj is not None and obj.is_game_pack_mirror:
+            return []
         inline_instances = super().get_inline_instances(request, obj)
         if not request.user.is_superuser:
             inline_instances = [
@@ -904,7 +954,7 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
 
     @admin.display(description='Дублировать')
     def duplicate_game_pack_link(self, obj):
-        if not obj.is_game_pack:
+        if not obj.is_game_pack or obj.is_game_pack_mirror:
             return '—'
         url = reverse('admin:catalog_product_duplicate_game_pack', args=[obj.pk])
         return format_html('<a class="button" href="{}">Дублировать</a>', url)
@@ -943,7 +993,12 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
         return ', '.join(preview)
 
     def get_queryset(self, request):
-        return super().get_queryset(request).select_related('category', 'category__section', 'product_description').prefetch_related(
+        return super().get_queryset(request).select_related(
+            'category',
+            'category__section',
+            'product_description',
+            'mirrored_game_pack',
+        ).prefetch_related(
             'tags',
             'variants',
             'game_pack_items',
@@ -1191,7 +1246,7 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
 
     def duplicate_game_pack_view(self, request, product_id):
         product = get_object_or_404(Product.objects.prefetch_related('tags', 'game_pack_items'), pk=product_id)
-        if not product.is_game_pack:
+        if not product.is_game_pack or product.is_game_pack_mirror:
             self.message_user(request, 'Дублирование доступно только для игровых паков.', messages.WARNING)
             return HttpResponseRedirect(reverse('admin:catalog_product_change', args=[product.pk]))
         duplicated = _duplicate_game_pack_product(product)
@@ -1207,7 +1262,7 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
         duplicated_count = 0
         skipped_count = 0
         for product in queryset.prefetch_related('tags', 'game_pack_items'):
-            if not product.is_game_pack:
+            if not product.is_game_pack or product.is_game_pack_mirror:
                 skipped_count += 1
                 continue
             _duplicate_game_pack_product(product)

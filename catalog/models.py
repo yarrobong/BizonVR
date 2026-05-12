@@ -12,6 +12,16 @@ from django.db import models
 from django.urls import reverse
 from django.utils.text import slugify
 
+from .club_formats import (
+    FORMAT_ARCADE as SHARED_CLUB_FORMAT_ARCADE,
+    FORMAT_ARENA as SHARED_CLUB_FORMAT_ARENA,
+    FORMAT_CHOICES as SHARED_CLUB_FORMAT_CHOICES,
+    FORMAT_CLUB as SHARED_CLUB_FORMAT_CLUB,
+    FORMAT_HOME as SHARED_CLUB_FORMAT_HOME,
+    FORMAT_KIDS as SHARED_CLUB_FORMAT_KIDS,
+    FORMAT_MOBILE as SHARED_CLUB_FORMAT_MOBILE,
+    FORMAT_PARTY as SHARED_CLUB_FORMAT_PARTY,
+)
 from config.formatting import format_currency_amount
 from .pricing import (
     PURCHASE_MODE_CHOICES,
@@ -373,6 +383,17 @@ class Product(models.Model):
     @property
     def is_game_pack(self):
         return self.product_kind == self.PRODUCT_KIND_GAME_PACK
+
+    @property
+    def mirrored_game_pack_source(self):
+        try:
+            return self.mirrored_game_pack
+        except ObjectDoesNotExist:
+            return None
+
+    @property
+    def is_game_pack_mirror(self):
+        return self.mirrored_game_pack_source is not None
 
     @property
     def is_game_product(self):
@@ -1271,11 +1292,11 @@ class ProductBundleItem(models.Model):
 class GamePack(models.Model):
     """Standalone catalog entity for a game pack."""
 
-    FORMAT_CLUB = 'club'
-    FORMAT_HOME = 'home'
-    FORMAT_ARENA = 'arena'
-    FORMAT_KIDS = 'kids'
-    FORMAT_PARTY = 'party'
+    FORMAT_CLUB = SHARED_CLUB_FORMAT_CLUB
+    FORMAT_HOME = SHARED_CLUB_FORMAT_HOME
+    FORMAT_ARENA = SHARED_CLUB_FORMAT_ARENA
+    FORMAT_KIDS = SHARED_CLUB_FORMAT_KIDS
+    FORMAT_PARTY = SHARED_CLUB_FORMAT_PARTY
     FORMAT_CHOICES = [
         (FORMAT_CLUB, 'Для клуба'),
         (FORMAT_HOME, 'Для дома'),
@@ -1283,6 +1304,14 @@ class GamePack(models.Model):
         (FORMAT_KIDS, 'Для детей'),
         (FORMAT_PARTY, 'Для вечеринки'),
     ]
+    CLUB_FORMAT_ARCADE = SHARED_CLUB_FORMAT_ARCADE
+    CLUB_FORMAT_CLUB = SHARED_CLUB_FORMAT_CLUB
+    CLUB_FORMAT_ARENA = SHARED_CLUB_FORMAT_ARENA
+    CLUB_FORMAT_HOME = SHARED_CLUB_FORMAT_HOME
+    CLUB_FORMAT_KIDS = SHARED_CLUB_FORMAT_KIDS
+    CLUB_FORMAT_PARTY = SHARED_CLUB_FORMAT_PARTY
+    CLUB_FORMAT_MOBILE = SHARED_CLUB_FORMAT_MOBILE
+    CLUB_FORMAT_CHOICES = SHARED_CLUB_FORMAT_CHOICES
 
     TARIFF_NONE = ''
     TARIFF_START = 'start'
@@ -1302,6 +1331,14 @@ class GamePack(models.Model):
         on_delete=models.PROTECT,
         related_name='game_packs',
         verbose_name='Игровой раздел',
+    )
+    mirror_product = models.OneToOneField(
+        Product,
+        on_delete=models.SET_NULL,
+        related_name='mirrored_game_pack',
+        verbose_name='Совместимый товар',
+        null=True,
+        blank=True,
     )
     name = models.CharField('Название пака', max_length=300)
     slug = models.SlugField('Slug', max_length=300, unique=True, blank=True)
@@ -1338,7 +1375,7 @@ class GamePack(models.Model):
         default=FORMAT_CLUB,
         db_index=True,
     )
-    club_format = models.CharField('Формат клуба', max_length=120, blank=True)
+    club_format = models.CharField('Формат клуба', max_length=40, choices=CLUB_FORMAT_CHOICES, blank=True)
     devices = models.CharField('Устройства', max_length=255, blank=True, help_text='Через запятую: Quest, Pico, PCVR')
     genres = models.CharField('Жанры', max_length=255, blank=True, help_text='Через запятую')
     age_rating = models.CharField('Возраст', max_length=40, blank=True)
@@ -1359,6 +1396,27 @@ class GamePack(models.Model):
 
     def __str__(self):
         return self.name
+
+    def clean(self):
+        super().clean()
+        errors = {}
+
+        if self.is_active and self.show_on_vr_club_page:
+            if not self.image:
+                errors['image'] = 'Добавьте изображение перед публикацией пака в разделе VR-клубов.'
+            if not (self.commercial_pitch or self.description or '').strip():
+                errors['commercial_pitch'] = 'Добавьте коммерческий тезис или описание для публичной карточки.'
+            if not (self.devices or '').strip():
+                errors['devices'] = 'Укажите совместимые устройства.'
+            if not (self.included_summary or '').strip():
+                errors['included_summary'] = 'Кратко укажите, что входит в пак.'
+            if not self.price and not self.price_on_request:
+                errors['price'] = 'Укажите цену или цену под заказ.'
+            if self.players_count is not None and self.play_places_count is not None and self.play_places_count > self.players_count:
+                errors['play_places_count'] = 'Игровых мест не должно быть больше максимального числа игроков.'
+
+        if errors:
+            raise ValidationError(errors)
 
     def save(self, *args, **kwargs):
         if not self.slug:
@@ -1455,6 +1513,7 @@ class GamePackEntry(models.Model):
         blank=True,
         limit_choices_to={'is_active': True},
     )
+    platform = models.CharField('Платформа', max_length=120, blank=True)
     quantity = models.PositiveIntegerField('Количество', default=1)
     note = models.CharField('Примечание', max_length=255, blank=True)
     sort_order = models.PositiveIntegerField('Порядок', default=0)
@@ -1489,6 +1548,7 @@ class GamePackServiceEntry(models.Model):
         limit_choices_to={'is_active': True},
     )
     title = models.CharField('Название услуги вручную', max_length=255, blank=True)
+    platform = models.CharField('Платформа', max_length=120, blank=True)
     quantity = models.PositiveIntegerField('Количество', default=1)
     price = models.DecimalField('Цена в составе пака', max_digits=12, decimal_places=2, null=True, blank=True)
     note = models.CharField('Примечание', max_length=255, blank=True)
@@ -1520,22 +1580,14 @@ class GamePackServiceEntry(models.Model):
 class ProductGameMetadata(models.Model):
     """B2B metadata for game products used by the VR-club constructor."""
 
-    FORMAT_ARCADE = 'arcade'
-    FORMAT_CLUB = 'club'
-    FORMAT_ARENA = 'arena'
-    FORMAT_HOME = 'home'
-    FORMAT_KIDS = 'kids'
-    FORMAT_PARTY = 'party'
-    FORMAT_MOBILE = 'mobile'
-    FORMAT_CHOICES = [
-        (FORMAT_ARCADE, 'Аркада / ТЦ'),
-        (FORMAT_CLUB, 'VR-клуб'),
-        (FORMAT_ARENA, 'Арена'),
-        (FORMAT_HOME, 'Дом'),
-        (FORMAT_KIDS, 'Дети'),
-        (FORMAT_PARTY, 'Вечеринка'),
-        (FORMAT_MOBILE, 'Выездной формат'),
-    ]
+    FORMAT_ARCADE = SHARED_CLUB_FORMAT_ARCADE
+    FORMAT_CLUB = SHARED_CLUB_FORMAT_CLUB
+    FORMAT_ARENA = SHARED_CLUB_FORMAT_ARENA
+    FORMAT_HOME = SHARED_CLUB_FORMAT_HOME
+    FORMAT_KIDS = SHARED_CLUB_FORMAT_KIDS
+    FORMAT_PARTY = SHARED_CLUB_FORMAT_PARTY
+    FORMAT_MOBILE = SHARED_CLUB_FORMAT_MOBILE
+    FORMAT_CHOICES = SHARED_CLUB_FORMAT_CHOICES
 
     product = models.OneToOneField(
         Product,
@@ -1564,6 +1616,26 @@ class ProductGameMetadata(models.Model):
 
     def __str__(self):
         return self.product.name
+
+    def clean(self):
+        super().clean()
+        errors = {}
+
+        if self.max_players < self.min_players:
+            errors['max_players'] = 'Максимум игроков не может быть меньше минимума.'
+
+        if self.is_active:
+            if not (self.devices or '').strip():
+                errors['devices'] = 'Укажите устройства перед показом игры в конструкторе.'
+            if not (self.genres or '').strip():
+                errors['genres'] = 'Укажите жанры перед показом игры в конструкторе.'
+            if not (self.b2b_note or '').strip():
+                errors['b2b_note'] = 'Добавьте короткий B2B-смысл для публичной карточки игры.'
+            if self.product_id and not self.product.get_display_image():
+                errors['product'] = 'Добавьте изображение товара перед показом игры в конструкторе.'
+
+        if errors:
+            raise ValidationError(errors)
 
     @property
     def devices_list(self):

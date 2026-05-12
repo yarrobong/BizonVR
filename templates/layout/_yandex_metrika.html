@@ -5,6 +5,7 @@
         var scriptSrc = 'https://mc.yandex.ru/metrika/tag.js?id=' + counterId;
         var hasScheduledLoad = false;
         var trackerLoader = w.BizonVRTrackerLoader;
+        var hostname = w.location && w.location.hostname;
         var isHeavyCatalogPage = {{ defer_public_tracking_heavily|yesno:"true,false" }};
         var webvisorAllowedPrefixes = [
             '/',
@@ -40,6 +41,16 @@
             }
 
             return false;
+        }
+
+        if (
+            hostname === 'localhost'
+            || hostname === '127.0.0.1'
+            || hostname === '[::1]'
+            || hostname === '::1'
+            || (hostname && hostname.slice(-6) === '.local')
+        ) {
+            return;
         }
 
         function initMetrika() {

@@ -17,19 +17,27 @@ from catalog.models import (
 )
 
 
-GAME_SECTION = {
-    'name': 'VR Игры и паки',
-    'slug': 'vr-games-and-packs',
+
+DIGITAL_SECTION = {
+    'name': '\u0426\u0438\u0444\u0440\u043e\u0432\u044b\u0435 \u0442\u043e\u0432\u0430\u0440\u044b',
+    'slug': 'cifrovye-tovary',
+    'order': 90,
+}
+
+BUSINESS_SECTION = {
+    'name': '\u0420\u0435\u0448\u0435\u043d\u0438\u044f \u0434\u043b\u044f VR \u0431\u0438\u0437\u043d\u0435\u0441\u0430',
+    'slug': 'resheniya-dlya-vr-biznesa',
+    'order': 10,
 }
 
 GAME_CATEGORIES = {
     'games': {
-        'name': 'VR Игры',
-        'slug': 'vr-games',
+        'name': 'MR / VR \u0418\u0433\u0440\u044b',
+        'slug': 'mr-vr-games',
     },
     'packs': {
-        'name': 'Игровые паки',
-        'slug': 'game-packs',
+        'name': '\u041f\u0430\u043a\u0438 \u0434\u043b\u044f VR-\u0437\u043e\u043d',
+        'slug': 'vr-zone-packs',
     },
 }
 
@@ -350,17 +358,21 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         with transaction.atomic():
-            section, _ = CatalogSection.objects.update_or_create(
-                slug=GAME_SECTION['slug'],
-                defaults={'name': GAME_SECTION['name'], 'order': 90},
+            digital_section, _ = CatalogSection.objects.update_or_create(
+                slug=DIGITAL_SECTION['slug'],
+                defaults={'name': DIGITAL_SECTION['name'], 'order': DIGITAL_SECTION['order']},
+            )
+            business_section, _ = CatalogSection.objects.update_or_create(
+                slug=BUSINESS_SECTION['slug'],
+                defaults={'name': BUSINESS_SECTION['name'], 'order': BUSINESS_SECTION['order']},
             )
             games_category, _ = Category.objects.update_or_create(
                 slug=GAME_CATEGORIES['games']['slug'],
-                defaults={'name': GAME_CATEGORIES['games']['name'], 'section': section},
+                defaults={'name': GAME_CATEGORIES['games']['name'], 'section': digital_section},
             )
             packs_category, _ = Category.objects.update_or_create(
                 slug=GAME_CATEGORIES['packs']['slug'],
-                defaults={'name': GAME_CATEGORIES['packs']['name'], 'section': section},
+                defaults={'name': GAME_CATEGORIES['packs']['name'], 'section': business_section},
             )
             tag_map = {}
             for tag_payload in GAME_TAGS:
