@@ -1202,6 +1202,7 @@ class ProductDetailView(HtmxPartialResponseMixin, DetailView):
             },
             'allowOrderOnRequest': self.object.allow_order_on_request,
             'isGamePack': self.object.is_game_pack,
+            'isGameProduct': self.object.is_game_product,
             'gamePackItems': [
                 {
                     'title': item.get('title', '') if hasattr(item, 'get') else getattr(item, 'title', ''),

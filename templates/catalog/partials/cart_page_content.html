@@ -909,6 +909,9 @@
                       <div class="text-xs text-gray-400 mt-0.5">{{ item.quantity }} × <span class="line-through">{{ item.original_price|price_format }} ₽</span> → {{ item.price|price_format }} ₽</div>
                     {% endif %}
                   {% endif %}
+                  {% if item.is_custom_game_pack and item.custom_snapshot.services_are_separate_lines %}
+                    <div class="cart-variant text-cyan-200">Выбранные услуги добавлены ниже отдельными строками.</div>
+                  {% endif %}
 
                   <div class="cart-tags">
                     {% if item.is_game_pack %}

@@ -19,7 +19,7 @@ from django.contrib import admin
 from django.contrib.sitemaps.views import sitemap
 from django.urls import path, include, re_path
 
-from config.env import config_bool
+from config.env import config_bool, is_runserver_command
 from config.views import (
     arenda_view,
     compact_vr_view,
@@ -102,5 +102,6 @@ urlpatterns = [
 if settings.DEBUG:
     urlpatterns.append(path('debug-cities/', debug_cities_view, name='debug_cities'))
 # Медиа: в DEBUG или SERVE_MEDIA=1 — раздаём через serve_media
-if settings.DEBUG or config_bool('SERVE_MEDIA', default=False):
+# Локальный runserver тоже должен видеть MEDIA при prod-подобном DEBUG=False.
+if settings.DEBUG or config_bool('SERVE_MEDIA', default=False) or is_runserver_command():
     urlpatterns = [re_path(r'^media/(?P<path>.*)$', serve_media)] + urlpatterns

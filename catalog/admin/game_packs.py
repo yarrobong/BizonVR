@@ -1,12 +1,13 @@
 from django.contrib import admin
 
+from ..game_pack_mirrors import sync_game_pack_mirror
 from ..models import GamePack, GamePackEntry, GamePackServiceEntry, ProductGameMetadata
 
 
 class GamePackEntryInline(admin.TabularInline):
     model = GamePackEntry
     extra = 0
-    fields = ('product', 'unresolved_title', 'quantity', 'note', 'sort_order')
+    fields = ('product', 'unresolved_title', 'platform', 'quantity', 'note', 'sort_order')
     ordering = ('sort_order', 'id')
     autocomplete_fields = ('product',)
 
@@ -14,7 +15,7 @@ class GamePackEntryInline(admin.TabularInline):
 class GamePackServiceEntryInline(admin.TabularInline):
     model = GamePackServiceEntry
     extra = 0
-    fields = ('service', 'title', 'quantity', 'price', 'note', 'sort_order')
+    fields = ('service', 'title', 'platform', 'quantity', 'price', 'note', 'sort_order')
     ordering = ('sort_order', 'id')
     autocomplete_fields = ('service',)
 
@@ -95,6 +96,15 @@ class GamePackAdmin(admin.ModelAdmin):
     @admin.display(description='Цена пака')
     def calculated_price_display(self, obj):
         return obj.in_stock_price
+
+    def save_related(self, request, form, formsets, change):
+        super().save_related(request, form, formsets, change)
+        game_pack = form.instance
+        if game_pack.mirror_product_id:
+            sync_game_pack_mirror(
+                game_pack,
+                mirror_image_name=getattr(game_pack.image, 'name', ''),
+            )
 
 
 @admin.register(GamePackEntry)

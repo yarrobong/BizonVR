@@ -985,30 +985,19 @@
           syncProductCardGalleryState(gallery, 0);
           syncProductCardGalleryFallback(gallery);
         });
-
-        segments.forEach((segment, index) => {
-          segment.addEventListener('mouseenter', () => {
-            syncProductCardGalleryState(gallery, index);
-            syncProductCardGalleryFallback(gallery);
-          });
+        gallery.addEventListener('mousemove', (event) => {
+          const bounds = gallery.getBoundingClientRect();
+          if (!bounds.width) {
+            return;
+          }
+          const offsetX = Math.max(0, Math.min(event.clientX - bounds.left, bounds.width));
+          const nextIndex = Math.min(
+            images.length - 1,
+            Math.floor((offsetX / bounds.width) * images.length)
+          );
+          syncProductCardGalleryState(gallery, nextIndex);
+          syncProductCardGalleryFallback(gallery);
         });
-
-        const segmentsWrap = gallery.querySelector('[data-product-card-segments]');
-        if (segmentsWrap) {
-          segmentsWrap.addEventListener('mousemove', (event) => {
-            const bounds = segmentsWrap.getBoundingClientRect();
-            if (!bounds.width) {
-              return;
-            }
-            const offsetX = Math.max(0, Math.min(event.clientX - bounds.left, bounds.width));
-            const nextIndex = Math.min(
-              segments.length - 1,
-              Math.floor((offsetX / bounds.width) * segments.length)
-            );
-            syncProductCardGalleryState(gallery, nextIndex);
-            syncProductCardGalleryFallback(gallery);
-          });
-        }
 
         syncProductCardGalleryFallback(gallery);
       });

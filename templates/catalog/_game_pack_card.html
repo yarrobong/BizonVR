@@ -37,10 +37,8 @@
     <div class="mt-2">
       {% if game_pack.in_stock_price is not None %}
         <div class="text-[1.35rem] font-bold leading-none text-accent">{{ game_pack.in_stock_price|rub }}</div>
-        <div class="mt-2 flex items-center gap-2 text-xs text-white/92">
-          <span class="inline-block h-2.5 w-2.5 rounded-full bg-sky-300 shadow-[0_0_12px_rgba(125,211,252,0.45)]"></span>
-          <span class="font-medium">Цифровой пакет</span>
-        </div>
+      {% elif game_pack.on_request_price is not None %}
+        <div class="text-[1.35rem] font-bold leading-none text-accent">{{ game_pack.on_request_price|rub }}</div>
       {% else %}
         <div class="text-[1.1rem] font-bold leading-none text-accent">По запросу</div>
       {% endif %}
@@ -85,6 +83,9 @@
           class="mt-auto pt-3">
       {% csrf_token %}
       <input type="hidden" name="next" value="{{ request.get_full_path }}" />
+      {% if game_pack.in_stock_price is None and game_pack.on_request_price is not None %}
+      <input type="hidden" name="purchase_mode" value="on_request" />
+      {% endif %}
       <button type="submit"
               class="w-full h-9 rounded-lg bg-accent hover:bg-accent-hover text-dark-900 text-xs font-bold uppercase transition-colors shadow-[0_8px_20px_rgba(0,212,255,0.24)]">
         В корзину

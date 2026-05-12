@@ -54,6 +54,20 @@
         catalogOpenedAt: 0,
         headerChangedAt: 0,
         catalogTopPx: '5.5rem',
+        syncStickyHeaderFromMainHeader() {
+          const mainHeader = document.querySelector('[data-public-main-header]');
+          const nextValue = mainHeader
+            ? mainHeader.getBoundingClientRect().bottom <= 0
+            : window.scrollY > 180;
+          this.scrollThresholdPassed = Boolean(nextValue);
+          this.applyStickyHeaderState();
+          window.dispatchEvent(new CustomEvent('layout-scroll-threshold', {
+            detail: {
+              offset: 180,
+              pastThreshold: Boolean(nextValue)
+            }
+          }));
+        },
         applyStickyHeaderState() {
           const nextValue = Boolean(this.ready && this.stickyHeaderEnabled && this.scrollThresholdPassed);
           if (this.showStickyHeader === nextValue) {
@@ -79,24 +93,21 @@
      @header-expand.window="showStickyHeader = false; headerChangedAt = Date.now(); $nextTick(() => applyStickyHeaderState())"
      @layout-close-overlays.window="catalogOverlayOpen = false; miniCartOpen = false; searchOpen = false; cartOpen = false"
      @keydown.escape.window="catalogOverlayOpen = false"
+     @scroll.window.throttle.50ms="syncStickyHeaderFromMainHeader()"
+     @resize.window="syncStickyHeaderFromMainHeader()"
      x-init="
        // НЕ скроллим вверх при инициализации - позицию восстановит скрипт
        showStickyHeader = false;
-       const syncLayoutScrollThreshold = (isAboveThreshold) => {
-         scrollThresholdPassed = isAboveThreshold;
-         applyStickyHeaderState();
-         window.dispatchEvent(new CustomEvent('layout-scroll-threshold', {
-           detail: {
-             offset: 180,
-             pastThreshold: isAboveThreshold
-           }
-         }));
+       let stopLayoutHeaderObserver = null;
+       const syncLayoutHeaderVisibility = () => {
+         syncStickyHeaderFromMainHeader();
        };
-       const stopLayoutThresholdObserver = typeof observePageThreshold === 'function'
-         ? observePageThreshold(180, syncLayoutScrollThreshold)
-         : null;
-       syncLayoutScrollThreshold(window.scrollY > 180);
-       setTimeout(() => { ready = true; applyStickyHeaderState(); document.body.classList.remove('preload'); }, 150);
+       const mainHeader = document.querySelector('[data-public-main-header]');
+       if (mainHeader && typeof observeElementViewportState === 'function') {
+         stopLayoutHeaderObserver = observeElementViewportState(mainHeader, syncLayoutHeaderVisibility);
+       }
+       syncLayoutHeaderVisibility();
+       setTimeout(() => { ready = true; syncStickyHeaderFromMainHeader(); document.body.classList.remove('preload'); }, 150);
        $watch('catalogOverlayOpen', v => {
          document.body.style.overflow = v ? 'hidden' : '';
          document.documentElement.style.overflow = v ? 'hidden' : '';
@@ -111,8 +122,8 @@
          }
        });
        return () => {
-         if (typeof stopLayoutThresholdObserver === 'function') {
-           stopLayoutThresholdObserver();
+         if (typeof stopLayoutHeaderObserver === 'function') {
+           stopLayoutHeaderObserver();
          }
        };
      ">

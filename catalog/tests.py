@@ -1,5 +1,6 @@
 """Базовые тесты каталога: поиск, избранное (Фаза 6)."""
 import html as html_lib
+from importlib import import_module
 import json
 import os
 import re
@@ -16,6 +17,7 @@ from io import BytesIO, StringIO
 from unittest.mock import Mock, patch
 
 from django.contrib import admin
+from django.apps import apps as django_apps
 from django.contrib.auth.models import AnonymousUser
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
@@ -42,6 +44,7 @@ from orders.models import Order, OrderItem
 
 from .cart_services import get_cart_count, get_cart_items, get_favorite_product_ids, group_cart_items
 from .characteristic_normalization import normalize_characteristic_value
+from .club_formats import normalize_club_format
 from .context_processors import catalog_menu
 from .filter_audit import (
     build_filter_audit_dashboard_context,
@@ -108,6 +111,28 @@ from .admin.products import ProductAdmin, ProductAdminForm, ProductContentBlockA
 User = get_user_model()
 
 
+class ClubFormatNormalizationTest(TestCase):
+    def test_normalize_club_format_accepts_known_values_and_aliases(self):
+        expected_values = {
+            '': '',
+            '  ': '',
+            'club': ProductGameMetadata.FORMAT_CLUB,
+            'arena': ProductGameMetadata.FORMAT_ARENA,
+            'VR-клуб': ProductGameMetadata.FORMAT_CLUB,
+            'Арена': ProductGameMetadata.FORMAT_ARENA,
+            'VR-зона': ProductGameMetadata.FORMAT_CLUB,
+            'Выездной формат': ProductGameMetadata.FORMAT_MOBILE,
+        }
+
+        for raw_value, expected_value in expected_values.items():
+            with self.subTest(raw_value=raw_value):
+                self.assertEqual(normalize_club_format(raw_value), expected_value)
+
+    def test_normalize_club_format_raises_for_unknown_values(self):
+        with self.assertRaisesMessage(ValueError, 'Unknown club format: experimental'):
+            normalize_club_format('experimental')
+
+
 class VRClubGamesB2BTest(TestCase):
     def setUp(self):
         self.client = Client()
@@ -151,7 +176,11 @@ class VRClubGamesB2BTest(TestCase):
         )
 
     def test_vr_club_games_page_shows_three_scenarios_and_filters_games(self):
-        resp = self.client.get(reverse('catalog:vr_club_games'), {'device': 'Quest', 'players': '4'})
+        resp = self.client.get(reverse('catalog:vr_club_games'), {
+            'device': 'Quest',
+            'players': '4',
+            'headset_count': '6',
+        })
 
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, 'Готовые паки')
@@ -159,6 +188,137 @@ class VRClubGamesB2BTest(TestCase):
         self.assertContains(resp, 'Получить подбор')
         self.assertContains(resp, self.game.name)
         self.assertContains(resp, self.service.name)
+        self.assertContains(
+            resp,
+            'name="headset_count" type="number" min="1" value="6"',
+            html=False,
+        )
+        self.assertContains(resp, 'name="devices" value="Quest"', html=False)
+
+    def test_vr_club_games_page_uses_localized_placeholder_copy(self):
+        response = self.client.get(reverse('catalog:vr_club_games'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Библиотека VR-игр')
+        self.assertNotContains(response, 'VR game library')
+
+    def test_vr_club_games_empty_states_use_buyer_facing_copy(self):
+        self.pack.is_active = False
+        self.pack.save(update_fields=['is_active'])
+        self.game.game_metadata.is_active = False
+        self.game.game_metadata.save(update_fields=['is_active'])
+        self.service.is_active = False
+        self.service.save(update_fields=['is_active'])
+
+        resp = self.client.get(reverse('catalog:vr_club_games'))
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Подборка паков обновляется')
+        self.assertContains(resp, 'Игры по вашим фильтрам не найдены')
+        self.assertContains(resp, 'Услуги запуска подбираем под задачу')
+        self.assertContains(resp, 'Оставить заявку')
+        self.assertContains(resp, 'Обсудить запуск')
+        self.assertContains(resp, 'id="quiz"', html=False)
+        self.assertNotContains(resp, 'GamePack')
+        self.assertNotContains(resp, 'ProductGameMetadata')
+        self.assertNotContains(resp, 'админка')
+        self.assertNotContains(resp, 'админ-панел')
+
+    def test_vr_club_games_page_does_not_show_unpublished_packs(self):
+        self.pack.show_on_vr_club_page = False
+        self.pack.save(update_fields=['show_on_vr_club_page'])
+        hidden_pack = GamePack.objects.create(
+            category=self.category,
+            name='Hidden Club Pack',
+            slug='hidden-club-pack',
+            price=Decimal('4500.00'),
+            is_active=True,
+            show_on_vr_club_page=False,
+        )
+
+        resp = self.client.get(reverse('catalog:vr_club_games'))
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(resp.context['has_vr_club_packs'])
+        self.assertContains(resp, 'Подборка паков обновляется')
+        self.assertContains(resp, 'id="quiz"', html=False)
+        self.assertNotContains(resp, self.pack.name)
+        self.assertNotContains(resp, hidden_pack.name)
+
+    def test_vr_club_games_page_shows_filtered_empty_state_without_hidden_fallback(self):
+        self.pack.devices = 'Pico'
+        self.pack.save(update_fields=['devices'])
+        hidden_pack = GamePack.objects.create(
+            category=self.category,
+            name='Hidden Quest Pack',
+            slug='hidden-quest-pack',
+            price=Decimal('4900.00'),
+            is_active=True,
+            show_on_vr_club_page=False,
+            devices='Quest',
+        )
+
+        resp = self.client.get(reverse('catalog:vr_club_games'), {'device': 'Quest'})
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.context['has_vr_club_packs'])
+        self.assertContains(resp, 'По текущим фильтрам паки не найдены')
+        self.assertNotContains(resp, self.pack.name)
+        self.assertNotContains(resp, hidden_pack.name)
+
+    def test_vr_club_games_device_filter_matches_whole_tokens(self):
+        similar_game = Product.objects.create(
+            category=self.category,
+            name='Similar Device Game',
+            slug='similar-device-game',
+            price=Decimal('1000.00'),
+            is_active=True,
+        )
+        ProductGameMetadata.objects.create(
+            product=similar_game,
+            devices='SuperQuest',
+            genres='PvP',
+            min_players=1,
+            max_players=4,
+            age_rating='12+',
+            club_format=ProductGameMetadata.FORMAT_CLUB,
+            b2b_note='Похоже по названию устройства, но это другой токен.',
+        )
+        similar_pack = GamePack.objects.create(
+            category=self.category,
+            name='SuperQuest Pack',
+            slug='superquest-pack',
+            price=Decimal('4500.00'),
+            is_active=True,
+            show_on_vr_club_page=True,
+            devices='SuperQuest',
+        )
+
+        resp = self.client.get(reverse('catalog:vr_club_games'), {'device': 'Quest'})
+
+        self.assertContains(resp, self.game.name)
+        self.assertNotContains(resp, similar_game.name)
+        self.assertNotContains(resp, similar_pack.name)
+
+    def test_vr_club_games_page_keeps_normalized_legacy_pack_visible_for_club_filter(self):
+        self.pack.club_format = normalize_club_format('VR-зона')
+        self.pack.save(update_fields=['club_format'])
+        other_pack = GamePack.objects.create(
+            category=self.category,
+            name='Home Pack',
+            slug='home-pack',
+            price=Decimal('5500.00'),
+            is_active=True,
+            show_on_vr_club_page=True,
+            club_format=ProductGameMetadata.FORMAT_HOME,
+        )
+
+        resp = self.client.get(reverse('catalog:vr_club_games'), {'club_format': ProductGameMetadata.FORMAT_CLUB})
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, self.pack.name)
+        self.assertContains(resp, self.game.name)
+        self.assertNotContains(resp, other_pack.name)
 
     def test_custom_game_pack_with_service_is_added_to_cart_blocks(self):
         resp = self.client.post(reverse('catalog:add_vr_club_custom_pack'), {
@@ -176,6 +336,38 @@ class VRClubGamesB2BTest(TestCase):
         groups = group_cart_items(items)
         self.assertEqual([group['title'] for group in groups], ['Игры', 'Услуги'])
         self.assertEqual(sum(group['subtotal'] for group in groups), 3500.0)
+
+    def test_custom_game_pack_cart_explains_services_are_separate_lines(self):
+        resp = self.client.post(reverse('catalog:add_vr_club_custom_pack'), {
+            'game_ids': [str(self.game.pk)],
+            'service_ids': [str(self.service.pk)],
+            'headset_count': '4',
+            'devices': 'Quest',
+            'club_format': ProductGameMetadata.FORMAT_CLUB,
+        })
+        cart_resp = self.client.get(reverse('catalog:cart'))
+
+        self.assertRedirects(resp, reverse('catalog:cart'))
+        self.assertContains(cart_resp, 'Выбранные услуги добавлены ниже отдельными строками.')
+
+    def test_active_game_metadata_requires_public_card_quality(self):
+        self.game.image = None
+        self.game.save(update_fields=['image'])
+        metadata = self.game.game_metadata
+        metadata.devices = ''
+        metadata.genres = ''
+        metadata.b2b_note = ''
+        metadata.min_players = 4
+        metadata.max_players = 2
+
+        with self.assertRaises(ValidationError) as ctx:
+            metadata.full_clean()
+
+        self.assertIn('devices', ctx.exception.message_dict)
+        self.assertIn('genres', ctx.exception.message_dict)
+        self.assertIn('b2b_note', ctx.exception.message_dict)
+        self.assertIn('max_players', ctx.exception.message_dict)
+        self.assertIn('product', ctx.exception.message_dict)
 
     def test_game_product_is_available_without_physical_stock(self):
         self.assertFalse(self.game.tracks_stock)
@@ -534,12 +726,17 @@ class SeedStarvrPacksCommandTest(TestCase):
     def setUp(self):
         self.factory = RequestFactory()
 
+    def _pack_payload(self, slug):
+        module = import_module('catalog.management.commands.seed_starvr_packs')
+        return next(pack for pack in module.PACKS if pack['game_pack_slug'] == slug)
+
     def test_command_creates_games_and_packs(self):
         call_command('seed_starvr_packs')
 
-        section = CatalogSection.objects.get(slug='vr-games-and-packs')
-        games_category = Category.objects.get(slug='mr-vr-games', section=section)
-        packs_category = Category.objects.get(slug='vr-zone-packs', section=section)
+        digital_section = CatalogSection.objects.get(slug='cifrovye-tovary')
+        business_section = CatalogSection.objects.get(slug='resheniya-dlya-vr-biznesa')
+        games_category = Category.objects.get(slug='mr-vr-games', section=digital_section)
+        packs_category = Category.objects.get(slug='vr-zone-packs', section=business_section)
 
         self.assertEqual(Product.objects.filter(category=games_category, is_active=True).count(), 5)
         self.assertEqual(
@@ -609,6 +806,8 @@ class SeedStarvrPacksCommandTest(TestCase):
         club_pack = GamePack.objects.get(slug='starvr-universal')
         maximum_pack = GamePack.objects.get(slug='starvr-all-inclusive')
         self.assertEqual(club_pack.vr_club_tariff, GamePack.TARIFF_CLUB)
+        self.assertEqual(club_pack.club_format, ProductGameMetadata.FORMAT_CLUB)
+        self.assertEqual(maximum_pack.club_format, ProductGameMetadata.FORMAT_CLUB)
         self.assertTrue(club_pack.show_on_vr_club_page)
         self.assertEqual(club_pack.in_stock_price, Decimal('8990.00'))
         self.assertTrue(
@@ -643,6 +842,218 @@ class SeedStarvrPacksCommandTest(TestCase):
             GamePack.objects.filter(show_on_vr_club_page=True, category__slug='vr-zone-packs').count(),
             3,
         )
+
+    def test_seeded_game_packs_link_to_single_compatibility_mirror(self):
+        call_command('seed_starvr_packs')
+
+        seeded_packs = GamePack.objects.filter(slug__in=['starvr-base', 'starvr-universal', 'starvr-all-inclusive'])
+        self.assertEqual(seeded_packs.count(), 3)
+
+        for game_pack in seeded_packs.select_related('mirror_product').prefetch_related('entries', 'service_entries'):
+            with self.subTest(game_pack=game_pack.slug):
+                self.assertIsNotNone(game_pack.mirror_product)
+                self.assertEqual(game_pack.mirror_product.product_kind, Product.PRODUCT_KIND_GAME_PACK)
+                self.assertEqual(game_pack.mirror_product.mirrored_game_pack_source, game_pack)
+                self.assertEqual(GamePack.objects.filter(mirror_product=game_pack.mirror_product).count(), 1)
+
+    def test_mirror_product_items_match_game_pack_composition(self):
+        call_command('seed_starvr_packs')
+
+        for slug in ['starvr-base', 'starvr-universal', 'starvr-all-inclusive']:
+            payload = self._pack_payload(slug)
+            game_pack = GamePack.objects.select_related('mirror_product').get(slug=slug)
+            mirror_items = list(
+                game_pack.mirror_product.game_pack_items.order_by('sort_order', 'id').values_list('title', 'platform', 'note')
+            )
+            expected_items = [
+                (item['title'], item.get('platform', ''), item.get('note', ''))
+                for item in payload['games'] + payload['services']
+            ]
+
+            with self.subTest(game_pack=slug):
+                self.assertEqual(mirror_items, expected_items)
+                self.assertEqual(game_pack.entries.count() + game_pack.service_entries.count(), len(mirror_items))
+
+    def test_command_reuses_existing_starvr_mirror_product(self):
+        legacy_section = CatalogSection.objects.create(name='Legacy', slug='legacy-game-packs')
+        legacy_category = Category.objects.create(section=legacy_section, name='Legacy packs', slug='legacy-packs')
+        existing_product = Product.objects.create(
+            category=legacy_category,
+            name='Legacy STARVR Base',
+            sku='STARVR-PACK-BASE',
+            slug='legacy-starvr-pack-base',
+            product_kind=Product.PRODUCT_KIND_GAME_PACK,
+            price=Decimal('1.00'),
+            is_active=False,
+            allow_order_on_request=True,
+        )
+
+        call_command('seed_starvr_packs')
+
+        game_pack = GamePack.objects.select_related('mirror_product').get(slug='starvr-base')
+        existing_product.refresh_from_db()
+
+        self.assertEqual(game_pack.mirror_product_id, existing_product.pk)
+        self.assertEqual(existing_product.category.slug, 'vr-zone-packs')
+        self.assertEqual(existing_product.name, game_pack.name)
+        self.assertEqual(existing_product.price, game_pack.price)
+        self.assertEqual(Product.objects.filter(sku='STARVR-PACK-BASE').count(), 1)
+        self.assertEqual(existing_product.game_pack_items.count(), 5)
+
+    def test_rerun_does_not_create_extra_mirrors_or_duplicate_items(self):
+        call_command('seed_starvr_packs')
+        initial_counts = {
+            slug: (
+                GamePack.objects.get(slug=slug).mirror_product_id,
+                Product.objects.get(sku=self._pack_payload(slug)['sku']).game_pack_items.count(),
+            )
+            for slug in ['starvr-base', 'starvr-universal', 'starvr-all-inclusive']
+        }
+
+        call_command('seed_starvr_packs')
+
+        self.assertEqual(Product.objects.filter(sku__startswith='STARVR-PACK-').count(), 3)
+        for slug, (mirror_product_id, mirror_item_count) in initial_counts.items():
+            game_pack = GamePack.objects.select_related('mirror_product').get(slug=slug)
+            with self.subTest(game_pack=slug):
+                self.assertEqual(game_pack.mirror_product_id, mirror_product_id)
+                self.assertEqual(game_pack.mirror_product.game_pack_items.count(), mirror_item_count)
+
+
+class ProductAdminGamePackMirrorTest(TestCase):
+    def setUp(self):
+        self.section = CatalogSection.objects.create(name='Catalog', slug='catalog-section')
+        self.category = Category.objects.create(section=self.section, name='Game packs', slug='game-packs')
+        self.admin_user = User.objects.create_superuser(
+            username='mirror-admin',
+            email='mirror-admin@example.com',
+            password='password',
+        )
+        self.product_admin = ProductAdmin(Product, admin.site)
+        self.mirror_product = Product.objects.create(
+            category=self.category,
+            name='Mirror Product',
+            sku='STARVR-PACK-MIRROR',
+            slug='mirror-product',
+            product_kind=Product.PRODUCT_KIND_GAME_PACK,
+            price=Decimal('4900.00'),
+            is_active=True,
+        )
+        self.game_pack = GamePack.objects.create(
+            category=self.category,
+            mirror_product=self.mirror_product,
+            name='Mirror Game Pack',
+            slug='mirror-game-pack',
+            price=Decimal('4900.00'),
+            is_active=True,
+        )
+        self.legacy_product = Product.objects.create(
+            category=self.category,
+            name='Legacy Product Pack',
+            sku='LEGACY-PACK-1',
+            slug='legacy-product-pack',
+            product_kind=Product.PRODUCT_KIND_GAME_PACK,
+            price=Decimal('3900.00'),
+            is_active=True,
+        )
+
+    def _request(self):
+        request = RequestFactory().get('/admin/catalog/product/')
+        request.user = self.admin_user
+        return request
+
+    def test_mirrored_product_admin_is_read_only_and_points_to_game_pack(self):
+        request = self._request()
+
+        readonly_fields = self.product_admin.get_readonly_fields(request, obj=self.mirror_product)
+        notice = str(self.product_admin.mirror_source_notice(self.mirror_product))
+
+        self.assertTrue(set(ProductAdmin.MIRRORED_PRODUCT_READONLY_FIELDS).issubset(set(readonly_fields)))
+        self.assertIn('mirror_source_notice', readonly_fields)
+        self.assertIn(reverse('admin:catalog_gamepack_change', args=[self.game_pack.pk]), notice)
+        self.assertIn('generated compatibility mirror', notice)
+
+    def test_mirrored_product_admin_hides_editing_affordances(self):
+        request = self._request()
+
+        fieldsets = self.product_admin.get_fieldsets(request, obj=self.mirror_product)
+        duplicate_link = str(self.product_admin.duplicate_game_pack_link(self.mirror_product))
+
+        self.assertEqual(fieldsets[0][0], 'Compatibility mirror')
+        self.assertEqual(self.product_admin.get_inline_instances(request, obj=self.mirror_product), [])
+        self.assertNotIn('href=', duplicate_link)
+
+    def test_non_mirrored_legacy_pack_remains_editable(self):
+        request = self._request()
+
+        readonly_fields = self.product_admin.get_readonly_fields(request, obj=self.legacy_product)
+        duplicate_link = str(self.product_admin.duplicate_game_pack_link(self.legacy_product))
+
+        self.assertNotIn('name', readonly_fields)
+        self.assertNotIn('mirror_source_notice', readonly_fields)
+        self.assertIn('href=', duplicate_link)
+
+
+class NormalizeGameSectionsMigrationTest(TestCase):
+    def setUp(self):
+        self.migration = import_module('catalog.migrations.0063_normalize_game_sections')
+        self.factory = RequestFactory()
+        Category.objects.filter(slug__in=['mr-vr-games', 'vr-zone-packs', 'vr-games', 'game-packs']).delete()
+        CatalogSection.objects.filter(
+            slug__in=['vr-games-and-packs', 'cifrovye-tovary', 'resheniya-dlya-vr-biznesa']
+        ).delete()
+
+    def test_renames_legacy_section_and_moves_pack_category_to_business(self):
+        legacy_section = CatalogSection.objects.create(name='Legacy games', slug='vr-games-and-packs', order=50)
+        business_section = CatalogSection.objects.create(
+            name='Business',
+            slug='resheniya-dlya-vr-biznesa',
+            order=10,
+        )
+        games_category = Category.objects.create(section=legacy_section, name='Games', slug='mr-vr-games')
+        packs_category = Category.objects.create(section=legacy_section, name='Packs', slug='vr-zone-packs')
+
+        self.migration.normalize_game_sections(django_apps, None)
+
+        digital_section = CatalogSection.objects.get(slug='cifrovye-tovary')
+        games_category.refresh_from_db()
+        packs_category.refresh_from_db()
+
+        self.assertEqual(digital_section.name, 'Цифровые товары')
+        self.assertEqual(games_category.section_id, digital_section.id)
+        self.assertEqual(games_category.name, 'MR / VR Игры')
+        self.assertEqual(packs_category.section_id, business_section.id)
+        self.assertEqual(packs_category.name, 'Паки для VR-зон')
+        self.assertFalse(CatalogSection.objects.filter(slug='vr-games-and-packs').exists())
+
+    def test_uses_existing_digital_section_and_deletes_empty_legacy_duplicate(self):
+        legacy_section = CatalogSection.objects.create(name='Legacy games', slug='vr-games-and-packs', order=50)
+        digital_section = CatalogSection.objects.create(name='Old digital', slug='cifrovye-tovary', order=3)
+        business_section = CatalogSection.objects.create(
+            name='Business',
+            slug='resheniya-dlya-vr-biznesa',
+            order=10,
+        )
+        games_category = Category.objects.create(section=legacy_section, name='Games', slug='mr-vr-games')
+        packs_category = Category.objects.create(section=legacy_section, name='Packs', slug='vr-zone-packs')
+
+        self.migration.normalize_game_sections(django_apps, None)
+
+        digital_section.refresh_from_db()
+        games_category.refresh_from_db()
+        packs_category.refresh_from_db()
+
+        self.assertEqual(digital_section.name, 'Цифровые товары')
+        self.assertEqual(games_category.section_id, digital_section.id)
+        self.assertEqual(packs_category.section_id, business_section.id)
+        self.assertFalse(CatalogSection.objects.filter(slug='vr-games-and-packs').exists())
+
+    def test_raises_when_business_section_is_missing(self):
+        legacy_section = CatalogSection.objects.create(name='Legacy games', slug='vr-games-and-packs', order=50)
+        Category.objects.create(section=legacy_section, name='Packs', slug='vr-zone-packs')
+
+        with self.assertRaisesMessage(RuntimeError, "resheniya-dlya-vr-biznesa"):
+            self.migration.normalize_game_sections(django_apps, None)
 
     def test_missing_form_started_at_does_not_block(self):
         request = self.factory.post('/contacts/', {'message': 'Нужна консультация'})
@@ -1012,6 +1423,19 @@ class VariantGalleryAndCatalogCardsTest(TestCase):
 
         self.assertIn('data-product-card-gallery', html)
         self.assertEqual(html.count('data-product-card-segment') - html.count('data-product-card-segments'), 3)
+
+    def test_product_card_gallery_images_are_limited_to_five(self):
+        self.product.image = _build_test_uploaded_image('gallery-limit-primary.jpg')
+        self.product.save(update_fields=['image'])
+        for index in range(1, 8):
+            self.product.images.create(
+                image=_build_test_uploaded_image(f'gallery-limit-extra-{index}.jpg'),
+                order=index,
+            )
+
+        gallery_images = build_product_card_gallery_images(self.product)
+
+        self.assertEqual(len(gallery_images), 5)
 
     def test_home_page_footer_mobile_dock_uses_inline_home_icon(self):
         response = self.client.get(reverse('home'))
@@ -4178,6 +4602,18 @@ class ServicesPageTest(TestCase):
         self.assertEqual(services[0].name, 'VR-мероприятия')
         self.assertContains(resp, 'VR-мероприятия')
         self.assertNotContains(resp, 'Скрытая услуга')
+        self.assertContains(resp, 'Помогаем собрать набор услуг под мероприятие, бренд-активацию или запуск VR-зоны.')
+        self.assertNotContains(resp, 'админка')
+
+    def test_services_page_empty_state_uses_public_cta(self):
+        Service.objects.all().delete()
+
+        resp = self.client.get(reverse('uslugi'))
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'Расскажите о задаче, и мы предложим услуги под ваш формат мероприятия или площадки.')
+        self.assertContains(resp, 'href="#contacts"', html=True)
+        self.assertNotContains(resp, 'админка')
 
     def test_services_callback_creates_request_with_source(self):
         resp = self.client.post(
@@ -6716,6 +7152,8 @@ class StandaloneGamePackCatalogTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, self.game_pack.name)
         self.assertContains(response, self.game.name)
+        self.assertContains(response, 'VR-игра')
+        self.assertNotContains(response, 'VR Game')
 
     def test_game_pack_detail_page_uses_product_detail_sections(self):
         response = self.client.get(reverse('catalog:game_pack_detail', kwargs={'slug': self.game_pack.slug}))
@@ -6741,3 +7179,56 @@ class StandaloneGamePackCatalogTest(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, 'id="footer-products-feed"', html=False)
+
+
+class DigitalCatalogSectionIaTest(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.client = Client()
+        self.digital_section, _ = CatalogSection.objects.update_or_create(
+            slug='cifrovye-tovary',
+            defaults={'name': 'Цифровые товары'},
+        )
+        self.business_section, _ = CatalogSection.objects.update_or_create(
+            slug='resheniya-dlya-vr-biznesa',
+            defaults={'name': 'Решения для VR бизнеса'},
+        )
+        self.games_category, _ = Category.objects.update_or_create(
+            slug='mr-vr-games',
+            defaults={'section': self.digital_section, 'name': 'MR / VR Игры'},
+        )
+        self.packs_category, _ = Category.objects.update_or_create(
+            slug='vr-zone-packs',
+            defaults={'section': self.business_section, 'name': 'Паки для VR-зон'},
+        )
+        self.game = Product.objects.create(
+            category=self.games_category,
+            name='Neon Rhythm Arena',
+            slug='neon-rhythm-arena',
+            price=Decimal('2490.00'),
+            is_active=True,
+        )
+        self.game_pack = GamePack.objects.create(
+            category=self.packs_category,
+            name='Quest Arcade Pack',
+            slug='quest-arcade-pack',
+            price=Decimal('4990.00'),
+            is_active=True,
+        )
+        GamePackEntry.objects.create(game_pack=self.game_pack, product=self.game, quantity=1)
+
+    def test_section_query_for_digital_catalog_shows_games(self):
+        response = self.client.get(reverse('catalog:product_list'), {'section': 'cifrovye-tovary'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.context['is_game_packs_category'])
+        self.assertContains(response, self.game.name)
+        self.assertNotContains(response, self.game_pack.name)
+
+    def test_business_pack_category_uses_game_pack_mode(self):
+        response = self.client.get(reverse('catalog:product_list'), {'category': 'vr-zone-packs'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context['is_game_packs_category'])
+        self.assertEqual(response.context['current_section_effective'], 'resheniya-dlya-vr-biznesa')
+        self.assertContains(response, self.game_pack.name)

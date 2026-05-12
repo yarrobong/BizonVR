@@ -240,10 +240,18 @@
   get allowOnRequest() {
     return !!this.data.allowOrderOnRequest && this.hasOnRequestPrice;
   },
+  get currentFixedGamePrice() {
+    return this.currentInStockPrice !== null && this.currentInStockPrice !== undefined
+      ? this.currentInStockPrice
+      : this.currentOnRequestPrice;
+  },
   get currentPublicPurchaseMode() {
     return this.data.productPublicPurchaseMode || 'request_only';
   },
   get defaultPurchaseModeForSelection() {
+    if ((this.currentInStockPrice === null || this.currentInStockPrice === undefined) && this.currentOnRequestPrice !== null && this.currentOnRequestPrice !== undefined) {
+      return 'on_request';
+    }
     if (this.currentPublicPurchaseMode === 'on_request') {
       return 'on_request';
     }
@@ -484,7 +492,19 @@
         </div>
 
         <div class="mobile-hero-purchase" x-show="!isRequestOnlySelection" x-cloak>
-          <template x-if="currentPublicPurchaseMode === 'stock'">
+          <template x-if="true">
+            <div class="offer-stack">
+              <div class="offer-panel offer-panel--primary offer-panel--solo">
+                <div class="price-row">
+                  <span class="main-price" x-text="window.formatRub(currentFixedGamePrice)"></span>
+                  <template x-if="hasCurrentDiscount">
+                    <span class="card-old-price" x-text="window.formatRub(currentRegularInStockPrice)"></span>
+                  </template>
+                </div>
+              </div>
+            </div>
+          </template>
+          <template x-if="false && currentPublicPurchaseMode === 'stock'">
             <div class="offer-stack">
               <button type="button"
                       class="offer-panel offer-panel--primary"
@@ -520,7 +540,7 @@
               </template>
             </div>
           </template>
-          <template x-if="currentPublicPurchaseMode === 'on_request'">
+          <template x-if="false && currentPublicPurchaseMode === 'on_request'">
             <div class="offer-stack">
               <div class="offer-panel offer-panel--primary offer-panel--solo">
                 <div class="offer-secondary-row offer-secondary-row--solo">
@@ -566,7 +586,19 @@
       <div class="right-col">
         <div class="buy-box desktop-only" x-show="!isRequestOnlySelection" x-cloak>
           <div class="price-block">
-            <template x-if="currentPublicPurchaseMode === 'stock'">
+            <template x-if="true">
+              <div class="offer-stack">
+                <div class="offer-panel offer-panel--primary offer-panel--solo">
+                  <div class="price-row">
+                    <span class="main-price" x-text="window.formatRub(currentFixedGamePrice)"></span>
+                    <template x-if="hasCurrentDiscount">
+                      <span class="card-old-price" x-text="window.formatRub(currentRegularInStockPrice)"></span>
+                    </template>
+                  </div>
+                </div>
+              </div>
+            </template>
+            <template x-if="false && currentPublicPurchaseMode === 'stock'">
               <div class="offer-stack">
                 <button type="button"
                         class="offer-panel offer-panel--primary"
@@ -602,7 +634,7 @@
                 </template>
               </div>
             </template>
-            <template x-if="currentPublicPurchaseMode === 'on_request'">
+            <template x-if="false && currentPublicPurchaseMode === 'on_request'">
               <div class="offer-stack">
                 <div class="offer-panel offer-panel--primary offer-panel--solo">
                   <div class="offer-secondary-row offer-secondary-row--solo">
@@ -748,11 +780,11 @@
                           <img src="{{ entry_image.url|absolute_uri:request }}" alt="{{ entry.product.name }}" class="game-pack-item-card__image" loading="lazy" decoding="async" />
                         </a>
                       {% else %}
-                        <div class="game-pack-item-card__image-placeholder">VR Game</div>
+                        <div class="game-pack-item-card__image-placeholder">VR-игра</div>
                       {% endif %}
                     {% endwith %}
                   {% else %}
-                    <div class="game-pack-item-card__image-placeholder">VR Game</div>
+                    <div class="game-pack-item-card__image-placeholder">VR-игра</div>
                   {% endif %}
                 </div>
                 <div class="game-pack-item-card__body">

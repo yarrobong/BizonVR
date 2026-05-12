@@ -1,3 +1,5 @@
+import re
+
 from django.contrib import messages
 from django.db.models import Q
 from django.shortcuts import redirect, render
@@ -21,6 +23,11 @@ def _split_filter(value):
     return [part.strip() for part in (value or '').split(',') if part.strip()]
 
 
+def _comma_token_query(field_name, value):
+    escaped_value = re.escape((value or '').strip())
+    return Q(**{f'{field_name}__iregex': rf'(^|,\s*){escaped_value}(\s*,|$)'})
+
+
 def _filter_games(request):
     qs = (
         Product.objects
@@ -34,9 +41,9 @@ def _filter_games(request):
     club_format = (request.GET.get('club_format') or '').strip()
     players = (request.GET.get('players') or '').strip()
     if device:
-        qs = qs.filter(game_metadata__devices__icontains=device)
+        qs = qs.filter(_comma_token_query('game_metadata__devices', device))
     if genre:
-        qs = qs.filter(game_metadata__genres__icontains=genre)
+        qs = qs.filter(_comma_token_query('game_metadata__genres', genre))
     if age:
         qs = qs.filter(game_metadata__age_rating__icontains=age)
     if club_format:
@@ -65,11 +72,11 @@ def _filter_packs(request):
     package_format = (request.GET.get('package_format') or '').strip()
     players = (request.GET.get('players') or '').strip()
     if device:
-        qs = qs.filter(devices__icontains=device)
+        qs = qs.filter(_comma_token_query('devices', device))
     if genre:
-        qs = qs.filter(genres__icontains=genre)
+        qs = qs.filter(_comma_token_query('genres', genre))
     if club_format:
-        qs = qs.filter(Q(club_format__icontains=club_format) | Q(club_format=''))
+        qs = qs.filter(Q(club_format=club_format) | Q(club_format=''))
     if package_format:
         qs = qs.filter(package_format=package_format)
     if players:
@@ -104,15 +111,8 @@ def vr_club_games_view(request):
             quiz_form = VRClubQuizForm()
             quiz_sent = True
 
+    has_vr_club_packs = GamePack.objects.filter(is_active=True, show_on_vr_club_page=True).exists()
     tariff_packs = list(_filter_packs(request)[:6])
-    if not tariff_packs:
-        tariff_packs = list(
-            GamePack.objects
-            .filter(is_active=True)
-            .select_related('category')
-            .prefetch_related('entries__product', 'service_entries__service', 'tags')
-            .order_by('sort_order', '-created_at')[:3]
-        )
 
     games = list(_filter_games(request)[:60])
     services = list(Service.objects.filter(is_active=True, is_vr_club_service=True).order_by('order', 'name'))
@@ -128,6 +128,7 @@ def vr_club_games_view(request):
 
     return render(request, 'catalog/vr_club_games.html', {
         'tariff_packs': tariff_packs,
+        'has_vr_club_packs': has_vr_club_packs,
         'games': games,
         'services': services,
         'quiz_form': quiz_form,

@@ -272,6 +272,9 @@ def filter_url_set(context, key, value):
     )
 
 
+PRODUCT_CARD_GALLERY_LIMIT = 5
+
+
 def build_product_card_gallery_images(product, card_variant=None):
     images = []
     seen_keys = set()
@@ -298,7 +301,7 @@ def build_product_card_gallery_images(product, card_variant=None):
     add_image(getattr(product, 'image', None))
     for extra_image in getattr(product, 'images', []).all() if hasattr(getattr(product, 'images', None), 'all') else []:
         add_image(getattr(extra_image, 'image', None))
-    return images
+    return images[:PRODUCT_CARD_GALLERY_LIMIT]
 
 
 @register.simple_tag
