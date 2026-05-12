@@ -16,6 +16,44 @@ Use these files as the current entry points:
 
 Manager portal documentation exists, but manager portal code, templates, routes, JavaScript, CSS, and API endpoints must not be changed as part of public-site documentation cleanup.
 
+## Быстрый локальный запуск
+
+Текущий минимальный сценарий для локального запуска:
+
+```bash
+createdb bizon
+cp .env.example .env
+make install-local
+make migrate-local
+make superuser-local
+make run-local
+```
+
+Сайт будет доступен по адресу `http://127.0.0.1:8000/`, админка — `http://127.0.0.1:8000/admin/`.
+
+Если нужен не пустой каталог, после миграций можно загрузить демо-данные:
+
+```bash
+make load-data-local
+```
+
+Минимальные локальные переменные в `.env`:
+
+```env
+DEBUG=True
+SITE_URL=http://127.0.0.1:8000
+ALLOWED_HOSTS=127.0.0.1,localhost
+CSRF_TRUSTED_ORIGINS=http://127.0.0.1:8000,http://localhost:8000
+
+DB_NAME=bizon
+DB_USER=postgres
+DB_PASSWORD=replace-with-local-password
+DB_HOST=localhost
+DB_PORT=5432
+```
+
+Подробная инструкция остаётся в [docs/LOCAL_DEVELOPMENT.md](docs/LOCAL_DEVELOPMENT.md).
+
 ## Active Runtime And Single DB
 
 - BizonVR runs only as one Django application with the internal `manager_portal` module.
