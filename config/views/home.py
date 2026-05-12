@@ -61,6 +61,16 @@ def _home_view_impl(request):
         relative_path = str(relative_path).lstrip('/')
         return request.build_absolute_uri(media_url + relative_path)
 
+    def product_image_url(*name_queries):
+        image = (
+            Product.objects.filter(is_active=True, image__isnull=False)
+            .exclude(image='')
+            .filter(*[Q(name__icontains=query) for query in name_queries])
+            .values_list('image', flat=True)
+            .first()
+        )
+        return build_media_url(image) if image else ''
+
     compact_vr_bg = request.build_absolute_uri(media_url + 'hero/compact-vr.webp')
     mart_bg = request.build_absolute_uri(media_url + 'hero/mart.webp')
     tradein_bg = request.build_absolute_uri(media_url + 'hero/tradein.webp')
@@ -70,35 +80,35 @@ def _home_view_impl(request):
     marketing_tiles = [
         {
             'key': 'quest_accessories',
-            'bg_url': build_media_url('products/Quest_3s_Lite_Pack.webp'),
-            'image_url': build_media_url('products/Meta_Quest_3_512GB.webp'),
+            'bg_url': product_image_url('Meta Quest 3S'),
+            'image_url': product_image_url('Meta Quest 3', '512GB'),
             'alt': 'Meta Quest 3 accessories',
             'url': catalog_url,
         },
         {
             'key': 'unitree_robot',
-            'bg_url': build_media_url('products/image-Photoroom_20_4RdGPzn.webp'),
+            'bg_url': product_image_url('AgiBot'),
             'url': catalog_url,
         },
         {
             'key': 'gamepads',
-            'bg_url': build_media_url('products/BoboVR_P4U.webp'),
+            'bg_url': product_image_url('BOBOVR P4U'),
             'url': catalog_url,
         },
         {
             'key': 'portable_consoles',
-            'bg_url': build_media_url('products/image-Photoroom_3.webp'),
+            'bg_url': product_image_url('Pico 4 Ultra'),
             'url': catalog_url,
         },
         {
             'key': 'vr_attractions',
-            'bg_url': build_media_url('products/Two-person_360_flight_simulator.webp'),
+            'bg_url': product_image_url('Two-person 360'),
             'url': f'{catalog_url}?section=vr-attrakciony',
         },
         {
             'key': 'pico_accessories',
-            'image_url': build_media_url('products/bobovr_s3.webp'),
-            'bg_url': build_media_url('products/Quest_3s_Lite_Pack_aRPKIUk.webp'),
+            'image_url': product_image_url('BOBOVR S3 PRO'),
+            'bg_url': product_image_url('Pico 4 Ultra'),
             'alt': 'PICO 4 accessories',
             'url': catalog_url,
         },

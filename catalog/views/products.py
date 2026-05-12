@@ -344,7 +344,7 @@ class BundleDetailView(DetailView):
             return qs.order_by('name', '-created_at')
         if sort == 'popularity':
             return qs.order_by('-views_count', '-created_at')
-        return qs.order_by('-created_at')
+        return qs.order_by('sort_order', '-created_at')
 
     def get_queryset(self):
         return ProductBundle.objects.select_related('category').prefetch_related(
@@ -543,7 +543,7 @@ class ProductListView(HtmxPartialResponseMixin, ListView):
             return qs.order_by('name', '-created_at')
         if sort == 'popularity':
             return qs.order_by('-views_count', '-created_at')
-        return qs.order_by('-created_at')
+        return qs.order_by('sort_order', '-created_at')
 
     def _build_query_string(self, **updates):
         return self.filter_service.build_query_string(**updates)

@@ -3,6 +3,8 @@
     let liveSearchStates = [];
     let liveSearchActiveState = null;
     let liveSearchDocumentListenersBound = false;
+    let publicLayoutHtmxHandlersBound = false;
+    let catalogScrollRestoreListenersBound = false;
     const liveSearchCache = new Map();
     const LIVE_SEARCH_MIN_QUERY_LENGTH = 2;
     const LIVE_SEARCH_MAX_QUERY_LENGTH = 80;
@@ -1221,14 +1223,23 @@
       initProductCardGalleries(document);
       initCookieConsentBanner();
       syncLayoutState();
-      // Проверяем, что body уже существует
+
       if (!document.body) {
         console.warn('document.body is not available yet');
         return;
       }
 
+      if (publicLayoutHtmxHandlersBound || document.body.dataset.publicLayoutHtmxHandlersBound === '1') {
+        updateActiveDockItem();
+        return;
+      }
+      publicLayoutHtmxHandlersBound = true;
+      document.body.dataset.publicLayoutHtmxHandlersBound = '1';
+
       document.body.addEventListener('htmx:beforeRequest', function(ev) {
         if (ev.detail.target?.id !== 'main-content') return;
+
+        window.dispatchEvent(new CustomEvent('layout-close-overlays'));
 
         const mainContent = document.getElementById('main-content');
         if (!mainContent) return;
@@ -1354,6 +1365,12 @@
       }
 
       function initScrollRestoreListeners() {
+        if (!document.body || catalogScrollRestoreListenersBound || document.body.dataset.catalogScrollRestoreListenersBound === '1') {
+          return;
+        }
+        catalogScrollRestoreListenersBound = true;
+        document.body.dataset.catalogScrollRestoreListenersBound = '1';
+
         document.body.addEventListener('htmx:beforeRequest', (ev) => {
           if (ev.detail.target?.id !== 'main-content') return;
 

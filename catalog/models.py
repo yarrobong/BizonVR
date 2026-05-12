@@ -1271,6 +1271,19 @@ class ProductBundleItem(models.Model):
 class GamePack(models.Model):
     """Standalone catalog entity for a game pack."""
 
+    FORMAT_CLUB = 'club'
+    FORMAT_HOME = 'home'
+    FORMAT_ARENA = 'arena'
+    FORMAT_KIDS = 'kids'
+    FORMAT_PARTY = 'party'
+    FORMAT_CHOICES = [
+        (FORMAT_CLUB, 'Для клуба'),
+        (FORMAT_HOME, 'Для дома'),
+        (FORMAT_ARENA, 'Для арены'),
+        (FORMAT_KIDS, 'Для детей'),
+        (FORMAT_PARTY, 'Для вечеринки'),
+    ]
+
     TARIFF_NONE = ''
     TARIFF_START = 'start'
     TARIFF_CLUB = 'club'
@@ -1318,6 +1331,13 @@ class GamePack(models.Model):
         default=False,
         db_index=True,
     )
+    package_format = models.CharField(
+        'Формат пака',
+        max_length=20,
+        choices=FORMAT_CHOICES,
+        default=FORMAT_CLUB,
+        db_index=True,
+    )
     club_format = models.CharField('Формат клуба', max_length=120, blank=True)
     devices = models.CharField('Устройства', max_length=255, blank=True, help_text='Через запятую: Quest, Pico, PCVR')
     genres = models.CharField('Жанры', max_length=255, blank=True, help_text='Через запятую')
@@ -1327,6 +1347,7 @@ class GamePack(models.Model):
     commercial_pitch = models.TextField('Коммерческий тезис', blank=True)
     included_summary = models.TextField('Что входит', blank=True)
     tags = models.ManyToManyField(ProductTag, related_name='game_packs', verbose_name='Теги', blank=True)
+    sort_order = models.PositiveIntegerField('Порядок сортировки', default=0, db_index=True)
     views_count = models.PositiveIntegerField('Просмотры', default=0)
     created_at = models.DateTimeField('Создан', auto_now_add=True)
     updated_at = models.DateTimeField('Обновлён', auto_now=True)
@@ -1334,7 +1355,7 @@ class GamePack(models.Model):
     class Meta:
         verbose_name = 'Игровой пак'
         verbose_name_plural = 'Игровые паки'
-        ordering = ('-created_at',)
+        ordering = ('sort_order', '-created_at')
 
     def __str__(self):
         return self.name
@@ -1406,6 +1427,14 @@ class GamePack(models.Model):
     @property
     def tracks_stock(self):
         return False
+
+    @property
+    def devices_list(self):
+        return [item.strip() for item in (self.devices or '').split(',') if item.strip()]
+
+    @property
+    def genres_list(self):
+        return [item.strip() for item in (self.genres or '').split(',') if item.strip()]
 
 
 class GamePackEntry(models.Model):
@@ -1494,11 +1523,17 @@ class ProductGameMetadata(models.Model):
     FORMAT_ARCADE = 'arcade'
     FORMAT_CLUB = 'club'
     FORMAT_ARENA = 'arena'
+    FORMAT_HOME = 'home'
+    FORMAT_KIDS = 'kids'
+    FORMAT_PARTY = 'party'
     FORMAT_MOBILE = 'mobile'
     FORMAT_CHOICES = [
         (FORMAT_ARCADE, 'Аркада / ТЦ'),
         (FORMAT_CLUB, 'VR-клуб'),
         (FORMAT_ARENA, 'Арена'),
+        (FORMAT_HOME, 'Дом'),
+        (FORMAT_KIDS, 'Дети'),
+        (FORMAT_PARTY, 'Вечеринка'),
         (FORMAT_MOBILE, 'Выездной формат'),
     ]
 
@@ -1529,6 +1564,14 @@ class ProductGameMetadata(models.Model):
 
     def __str__(self):
         return self.product.name
+
+    @property
+    def devices_list(self):
+        return [item.strip() for item in (self.devices or '').split(',') if item.strip()]
+
+    @property
+    def genres_list(self):
+        return [item.strip() for item in (self.genres or '').split(',') if item.strip()]
 
 class GamePackItem(models.Model):
     """Текстовый состав игрового пака на карточке товара."""

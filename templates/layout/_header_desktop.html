@@ -18,10 +18,9 @@
         <h1 class="header-logo font-bold tracking-wider leading-none text-2xl text-white">BizonVR</h1>
       </a>
 
-      <!-- Кнопка каталога (sticky): не реагируем на клик 300ms после смены шапки -->
+      <!-- Кнопка каталога (sticky) -->
       <button type="button" data-catalog-toggle
               @click.stop.prevent="
-                if (headerChangedAt && (Date.now() - headerChangedAt) < 300) return;
                 catalogOpenedAt = Date.now();
                 if (!showStickyHeader) { const el = document.getElementById('header-main-row'); if (el) catalogTopPx = el.getBoundingClientRect().bottom + 'px'; }
                 const nextCatalogState = !catalogOverlayOpen;
@@ -127,7 +126,6 @@
 
         <button type="button" data-catalog-toggle
                 @click.stop.prevent="
-                  if (headerChangedAt && (Date.now() - headerChangedAt) < 300) return;
                   catalogOpenedAt = Date.now();
                   if (!showStickyHeader) { const el = document.getElementById('header-main-row'); if (el) catalogTopPx = el.getBoundingClientRect().bottom + 'px'; }
                   const nextCatalogState = !catalogOverlayOpen;
