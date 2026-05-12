@@ -1,5 +1,6 @@
 """Context processors для каталога."""
 
+import re
 from datetime import date
 
 from django.conf import settings
@@ -10,6 +11,23 @@ from .cache_utils import (
     get_catalog_sections,
 )
 from .cart_services import get_cart_count, get_favorite_product_ids
+
+
+def _normalize_public_url(raw_value, *, env_key=''):
+    value = str(raw_value or '').strip()
+    if not value:
+        return ''
+
+    if env_key:
+        match = re.match(
+            rf'^(?:export\s+)?{re.escape(env_key)}\s*=\s*(.+)$',
+            value,
+            flags=re.IGNORECASE,
+        )
+        if match:
+            value = match.group(1).strip()
+
+    return value.strip('\'"')
 
 
 def _get_active_section(request):
@@ -85,15 +103,36 @@ def catalog_menu(request):
     result['site_contact_phone_href'] = getattr(settings, 'SITE_CONTACT_PHONE_HREF', '')
     result['site_contact_email'] = getattr(settings, 'SITE_CONTACT_EMAIL', '')
     result['site_contact_address'] = getattr(settings, 'SITE_CONTACT_ADDRESS', '')
-    result['site_contact_telegram'] = getattr(settings, 'SITE_CONTACT_TELEGRAM', '')
+    result['site_contact_telegram'] = _normalize_public_url(
+        getattr(settings, 'SITE_CONTACT_TELEGRAM', ''),
+        env_key='SITE_CONTACT_TELEGRAM',
+    )
     result['site_contact_telegram_handle'] = getattr(settings, 'SITE_CONTACT_TELEGRAM_HANDLE', '')
-    result['site_avito_url'] = getattr(settings, 'SITE_AVITO_URL', '')
+    result['site_avito_url'] = _normalize_public_url(
+        getattr(settings, 'SITE_AVITO_URL', ''),
+        env_key='SITE_AVITO_URL',
+    )
     result['site_work_hours'] = getattr(settings, 'SITE_WORK_HOURS', '')
-    result['site_blog_url'] = getattr(settings, 'SITE_BLOG_URL', '')
-    result['site_clubs_url'] = getattr(settings, 'SITE_CLUBS_URL', '')
-    result['site_instructions_url'] = getattr(settings, 'SITE_INSTRUCTIONS_URL', '')
-    result['site_youtube_url'] = getattr(settings, 'SITE_YOUTUBE_URL', '')
-    result['site_tiktok_url'] = getattr(settings, 'SITE_TIKTOK_URL', '')
+    result['site_blog_url'] = _normalize_public_url(
+        getattr(settings, 'SITE_BLOG_URL', ''),
+        env_key='SITE_BLOG_URL',
+    )
+    result['site_clubs_url'] = _normalize_public_url(
+        getattr(settings, 'SITE_CLUBS_URL', ''),
+        env_key='SITE_CLUBS_URL',
+    )
+    result['site_instructions_url'] = _normalize_public_url(
+        getattr(settings, 'SITE_INSTRUCTIONS_URL', ''),
+        env_key='SITE_INSTRUCTIONS_URL',
+    )
+    result['site_youtube_url'] = _normalize_public_url(
+        getattr(settings, 'SITE_YOUTUBE_URL', ''),
+        env_key='SITE_YOUTUBE_URL',
+    )
+    result['site_tiktok_url'] = _normalize_public_url(
+        getattr(settings, 'SITE_TIKTOK_URL', ''),
+        env_key='SITE_TIKTOK_URL',
+    )
     result['current_year'] = date.today().year
     
     return result

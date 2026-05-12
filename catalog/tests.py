@@ -4277,6 +4277,22 @@ class CatalogMenuCacheTest(TestCase):
         self.assertIn(self.category.pk, context['catalog_category_previews'])
         self.assertIn('/media/categories/category-card', context['catalog_category_previews'][self.category.pk])
 
+    @override_settings(
+        SITE_AVITO_URL='SITE_AVITO_URL=https://www.avito.ru/user/test/profile',
+        SITE_CONTACT_TELEGRAM='export SITE_CONTACT_TELEGRAM=https://t.me/bizonvr_test',
+    )
+    def test_catalog_menu_normalizes_public_urls_copied_with_env_key_prefix(self):
+        context = catalog_menu(self._build_request('/'))
+
+        self.assertEqual(
+            context['site_avito_url'],
+            'https://www.avito.ru/user/test/profile',
+        )
+        self.assertEqual(
+            context['site_contact_telegram'],
+            'https://t.me/bizonvr_test',
+        )
+
     def test_catalog_menu_exposes_bundle_only_section_landing_category(self):
         bundle_section = CatalogSection.objects.create(name='Bundle only', slug='bundle-only')
         bundle_category = Category.objects.create(
