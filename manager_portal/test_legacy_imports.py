@@ -8,7 +8,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.core.management import call_command
 from django.db import connection
-from django.test import TestCase
+from django.test import TestCase, tag
 
 from accounts.models import BalanceTransaction, Profile
 from catalog.models import CatalogSection, Category, City, PickupPoint, Product, ProductStock, ProductTag, ProductVariant
@@ -34,6 +34,7 @@ from .single_db_contract import collect_single_db_contract_violations
 User = get_user_model()
 
 
+@tag('slow')
 class LegacyImportCommandTests(TestCase):
     maxDiff = None
 

@@ -203,10 +203,16 @@ def get_legacy_sections():
         .values_list('category__section_id', flat=True)
         .distinct()
     )
-    managed_section_ids = (
+    managed_section_ids = set(
         _runtime_filter_configs()
         .filter(section__isnull=False)
         .values_list('section_id', flat=True)
+        .distinct()
+    )
+    managed_section_ids.update(
+        _runtime_filter_configs()
+        .filter(category__section__isnull=False)
+        .values_list('category__section_id', flat=True)
         .distinct()
     )
     return list(

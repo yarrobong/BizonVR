@@ -52,7 +52,8 @@ sudo systemctl reload nginx
 - `pg_dump ... > backups/...dump` — делает backup PostgreSQL перед миграциями.
 - `.venv/bin/python manage.py migrate` — применяет новые миграции.
 - `.venv/bin/python manage.py migrate --check` — подтверждает, что после миграции не осталось неприменённых миграций.
-- `.venv/bin/python manage.py seed_starvr_packs` — синхронизирует каталог VR-зон: 5 игр, 2 услуги и 3 готовых пака. Команда idempotent, но перезаписывает эти managed-позиции значениями из репозитория.
+- `.venv/bin/python manage.py seed_starvr_packs` — дополняет каталог VR-зон: создаёт отсутствующие 5 игр, 2 услуги и 3 готовых пака, но не трогает уже существующие записи.
+- Если нужно сознательно вернуть STARVR-позиции к состоянию из репозитория, используйте `.venv/bin/python manage.py seed_starvr_packs --sync-existing`.
 - `.venv/bin/python manage.py collectstatic --noinput` — собирает статику в `staticfiles/` из уже закоммиченных файлов репозитория.
 - `sudo systemctl restart bizonvr` — перезапускает Gunicorn/Django.
 - `sudo systemctl reload nginx` — перечитывает конфигурацию Nginx без полного рестарта.

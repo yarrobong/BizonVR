@@ -415,41 +415,79 @@ def _upsert_product_game_metadata(product, metadata):
     )
 
 
+def _seed_instance(model, lookup, defaults, *, sync_existing=False):
+    obj, created = model.objects.get_or_create(**lookup, defaults=defaults)
+    if created or not sync_existing:
+        return obj, created
+
+    updated_fields = []
+    for field_name, value in defaults.items():
+        if getattr(obj, field_name) != value:
+            setattr(obj, field_name, value)
+            updated_fields.append(field_name)
+
+    if updated_fields:
+        obj.save(update_fields=updated_fields)
+
+    return obj, created
+
+
 class Command(BaseCommand):
-    help = 'Создаёт или обновляет каталог STARVR: игры, услуги и готовые паки для VR-зон.'
+    help = 'Создаёт каталог STARVR: игры, услуги и готовые паки для VR-зон.'
+
+    def add_arguments(self, parser):
+        parser.add_argument(
+            '--sync-existing',
+            action='store_true',
+            help='Обновить уже существующие STARVR-позиции значениями из репозитория.',
+        )
 
     @transaction.atomic
     def handle(self, *args, **options):
-        digital_section, _ = CatalogSection.objects.update_or_create(
-            slug=DIGITAL_SECTION_DATA['slug'],
-            defaults={'name': DIGITAL_SECTION_DATA['name'], 'order': DIGITAL_SECTION_DATA['order']},
+        sync_existing = options['sync_existing']
+
+        digital_section, _ = _seed_instance(
+            CatalogSection,
+            {'slug': DIGITAL_SECTION_DATA['slug']},
+            {'name': DIGITAL_SECTION_DATA['name'], 'order': DIGITAL_SECTION_DATA['order']},
+            sync_existing=sync_existing,
         )
-        business_section, _ = CatalogSection.objects.update_or_create(
-            slug=BUSINESS_SECTION_DATA['slug'],
-            defaults={'name': BUSINESS_SECTION_DATA['name'], 'order': BUSINESS_SECTION_DATA['order']},
+        business_section, _ = _seed_instance(
+            CatalogSection,
+            {'slug': BUSINESS_SECTION_DATA['slug']},
+            {'name': BUSINESS_SECTION_DATA['name'], 'order': BUSINESS_SECTION_DATA['order']},
+            sync_existing=sync_existing,
         )
-        games_category, _ = Category.objects.update_or_create(
-            slug=CATEGORY_DATA['games']['slug'],
-            defaults={'name': CATEGORY_DATA['games']['name'], 'section': digital_section},
+        games_category, _ = _seed_instance(
+            Category,
+            {'slug': CATEGORY_DATA['games']['slug']},
+            {'name': CATEGORY_DATA['games']['name'], 'section': digital_section},
+            sync_existing=sync_existing,
         )
-        packs_category, _ = Category.objects.update_or_create(
-            slug=CATEGORY_DATA['packs']['slug'],
-            defaults={'name': CATEGORY_DATA['packs']['name'], 'section': business_section},
+        packs_category, _ = _seed_instance(
+            Category,
+            {'slug': CATEGORY_DATA['packs']['slug']},
+            {'name': CATEGORY_DATA['packs']['name'], 'section': business_section},
+            sync_existing=sync_existing,
         )
 
         tag_map = {}
         for tag_data in TAG_DATA:
-            tag, _ = ProductTag.objects.update_or_create(
-                slug=tag_data['slug'],
-                defaults={'name': tag_data['name'], 'order': tag_data['order']},
+            tag, _ = _seed_instance(
+                ProductTag,
+                {'slug': tag_data['slug']},
+                {'name': tag_data['name'], 'order': tag_data['order']},
+                sync_existing=sync_existing,
             )
             tag_map[tag.slug] = tag
 
         service_map = {}
+        created_services = 0
         for service_data in SERVICES:
-            service, _ = Service.objects.update_or_create(
-                name=service_data['name'],
-                defaults={
+            service, created = _seed_instance(
+                Service,
+                {'name': service_data['name']},
+                {
                     'short_description': service_data['short_description'],
                     'description': service_data['description'],
                     'icon': service_data['icon'],
@@ -460,15 +498,20 @@ class Command(BaseCommand):
                     'order': service_data['order'],
                     'is_active': True,
                 },
+                sync_existing=sync_existing,
             )
-            service_map[service.name] = service
+            if created:
+                created_services += 1
+            service_map[service_data['name']] = service
 
-        created_games = []
+        created_games = 0
+        skipped_games = 0
         game_lookup = {}
         for game_data in GAMES:
-            product, _ = Product.objects.update_or_create(
-                sku=game_data['sku'],
-                defaults={
+            product, created = _seed_instance(
+                Product,
+                {'sku': game_data['sku']},
+                {
                     'category': games_category,
                     'name': game_data['name'],
                     'description': game_data['description'],
@@ -478,22 +521,29 @@ class Command(BaseCommand):
                     'is_active': True,
                     'allow_order_on_request': True,
                 },
+                sync_existing=sync_existing,
             )
-            _save_svg(product.image, game_data['sku'], game_data['name'], 'Карточка игры', game_data['theme'])
-            product.save()
-            product.tags.set([tag_map[slug] for slug in game_data['tags']])
-            _upsert_characteristics(product, game_data['characteristics'])
-            _upsert_gallery(product, ['Игровой постер', 'Сценарий использования'], game_data['theme'])
-            _upsert_product_game_metadata(product, game_data['metadata'])
-            created_games.append(product)
-            game_lookup[product.name] = product
+            if created or sync_existing:
+                _save_svg(product.image, game_data['sku'], game_data['name'], 'Карточка игры', game_data['theme'])
+                product.save()
+                product.tags.set([tag_map[slug] for slug in game_data['tags']])
+                _upsert_characteristics(product, game_data['characteristics'])
+                _upsert_gallery(product, ['Игровой постер', 'Сценарий использования'], game_data['theme'])
+                _upsert_product_game_metadata(product, game_data['metadata'])
+            if created:
+                created_games += 1
+            else:
+                skipped_games += 1
+            game_lookup[game_data['name']] = product
 
-        created_product_packs = []
-        created_game_packs = []
+        created_product_packs = 0
+        created_game_packs = 0
+        skipped_game_packs = 0
         for pack_data in PACKS:
-            game_pack, _ = GamePack.objects.update_or_create(
-                slug=pack_data['game_pack_slug'],
-                defaults={
+            game_pack, created = _seed_instance(
+                GamePack,
+                {'slug': pack_data['game_pack_slug']},
+                {
                     'category': packs_category,
                     'name': pack_data['name'],
                     'description': pack_data['description'],
@@ -512,69 +562,77 @@ class Command(BaseCommand):
                     'commercial_pitch': pack_data['commercial_pitch'],
                     'included_summary': pack_data['included_summary'],
                 },
+                sync_existing=sync_existing,
             )
-            _save_svg(game_pack.image, f'club-{pack_data["sku"]}', pack_data['name'], 'VR Zone tariff', pack_data['theme'])
-            game_pack.save()
-            game_pack.tags.set([tag_map['vr-zone'], tag_map['multiplayer']])
+            if created or sync_existing:
+                _save_svg(game_pack.image, f'club-{pack_data["sku"]}', pack_data['name'], 'VR Zone tariff', pack_data['theme'])
+                game_pack.save()
+                game_pack.tags.set([tag_map['vr-zone'], tag_map['multiplayer']])
 
-            GamePackEntry.objects.filter(game_pack=game_pack).delete()
-            GamePackEntry.objects.bulk_create(
-                [
-                    GamePackEntry(
-                        game_pack=game_pack,
-                        product=game_lookup[item['title']],
-                        platform=item.get('platform', ''),
-                        quantity=1,
-                        note=item.get('note', ''),
-                        sort_order=index,
-                    )
-                    for index, item in enumerate(pack_data['games'], start=1)
-                ]
-            )
-
-            GamePackServiceEntry.objects.filter(game_pack=game_pack).delete()
-            GamePackServiceEntry.objects.bulk_create(
-                [
-                    GamePackServiceEntry(
-                        game_pack=game_pack,
-                        service=service_map[item['service_name']],
-                        platform=item.get('platform', ''),
-                        quantity=1,
-                        note=item.get('note', ''),
-                        sort_order=index,
-                    )
-                    for index, item in enumerate(pack_data['services'], start=1)
-                ]
-            )
-
-            mirror_product = sync_game_pack_mirror(
-                game_pack,
-                sku=pack_data['sku'],
-                allow_create=True,
-                mirror_image_name=getattr(game_pack.image, 'name', ''),
-                product_characteristics=pack_data['characteristics'],
-            )
-            if mirror_product is not None:
-                _save_svg(
-                    mirror_product.image,
-                    pack_data['sku'],
-                    pack_data['name'],
-                    'Ready-made pack',
-                    pack_data['theme'],
+                GamePackEntry.objects.filter(game_pack=game_pack).delete()
+                GamePackEntry.objects.bulk_create(
+                    [
+                        GamePackEntry(
+                            game_pack=game_pack,
+                            product=game_lookup[item['title']],
+                            platform=item.get('platform', ''),
+                            quantity=1,
+                            note=item.get('note', ''),
+                            sort_order=index,
+                        )
+                        for index, item in enumerate(pack_data['games'], start=1)
+                    ]
                 )
-                mirror_product.save()
-                _upsert_gallery(
-                    mirror_product,
-                    ['Pack overview', 'Commercial offer'],
-                    pack_data['theme'],
-                )
-                created_product_packs.append(mirror_product)
 
-            created_game_packs.append(game_pack)
+                GamePackServiceEntry.objects.filter(game_pack=game_pack).delete()
+                GamePackServiceEntry.objects.bulk_create(
+                    [
+                        GamePackServiceEntry(
+                            game_pack=game_pack,
+                            service=service_map[item['service_name']],
+                            platform=item.get('platform', ''),
+                            quantity=1,
+                            note=item.get('note', ''),
+                            sort_order=index,
+                        )
+                        for index, item in enumerate(pack_data['services'], start=1)
+                    ]
+                )
+
+                mirror_product = sync_game_pack_mirror(
+                    game_pack,
+                    sku=pack_data['sku'],
+                    allow_create=True,
+                    mirror_image_name=getattr(game_pack.image, 'name', ''),
+                    product_characteristics=pack_data['characteristics'],
+                )
+                if mirror_product is not None:
+                    _save_svg(
+                        mirror_product.image,
+                        pack_data['sku'],
+                        pack_data['name'],
+                        'Ready-made pack',
+                        pack_data['theme'],
+                    )
+                    mirror_product.save()
+                    _upsert_gallery(
+                        mirror_product,
+                        ['Pack overview', 'Commercial offer'],
+                        pack_data['theme'],
+                    )
+                    if created:
+                        created_product_packs += 1
+
+            if created:
+                created_game_packs += 1
+            else:
+                skipped_game_packs += 1
+
         self.stdout.write(
             self.style.SUCCESS(
-                'Готово: синхронизированы позиции STARVR '
-                f'(игры: {len(created_games)}, услуги: {len(service_map)}, '
-                f'товарные паки: {len(created_product_packs)}, B2B-паки: {len(created_game_packs)}).'
+                'Готово: STARVR bootstrap завершён '
+                f'(создано игр: {created_games}, пропущено игр: {skipped_games}, '
+                f'создано услуг: {created_services}, создано товарных паков: {created_product_packs}, '
+                f'создано B2B-паков: {created_game_packs}, пропущено B2B-паков: {skipped_game_packs}).'
             )
         )

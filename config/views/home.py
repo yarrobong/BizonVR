@@ -27,6 +27,12 @@ _HERO_DEFAULT_BG = [
     'https://images.unsplash.com/photo-1516035069371-29a1b244cc32?q=80&w=2070&auto=format&fit=crop',
 ]
 
+_MARKETING_TILE_FALLBACKS = {
+    'unitree_robot': 'products/image-Photoroom_20_4RdGPzn.webp',
+    'portable_consoles': 'products/image-Photoroom_3.webp',
+    'vr_attractions': 'products/Two-person_360_flight_simulator.webp',
+}
+
 
 def _home_view_impl(request):
     """Внутренняя реализация главной страницы."""
@@ -61,7 +67,7 @@ def _home_view_impl(request):
         relative_path = str(relative_path).lstrip('/')
         return request.build_absolute_uri(media_url + relative_path)
 
-    def product_image_url(*name_queries):
+    def product_image_url(*name_queries, fallback=''):
         image = (
             Product.objects.filter(is_active=True, image__isnull=False)
             .exclude(image='')
@@ -69,7 +75,9 @@ def _home_view_impl(request):
             .values_list('image', flat=True)
             .first()
         )
-        return build_media_url(image) if image else ''
+        if image:
+            return build_media_url(image)
+        return build_media_url(fallback)
 
     compact_vr_bg = request.build_absolute_uri(media_url + 'hero/compact-vr.webp')
     mart_bg = request.build_absolute_uri(media_url + 'hero/mart.webp')
@@ -87,7 +95,7 @@ def _home_view_impl(request):
         },
         {
             'key': 'unitree_robot',
-            'bg_url': product_image_url('AgiBot'),
+            'bg_url': product_image_url('AgiBot', fallback=_MARKETING_TILE_FALLBACKS['unitree_robot']),
             'url': catalog_url,
         },
         {
@@ -97,12 +105,12 @@ def _home_view_impl(request):
         },
         {
             'key': 'portable_consoles',
-            'bg_url': product_image_url('Pico 4 Ultra'),
+            'bg_url': product_image_url('Pico 4 Ultra', fallback=_MARKETING_TILE_FALLBACKS['portable_consoles']),
             'url': catalog_url,
         },
         {
             'key': 'vr_attractions',
-            'bg_url': product_image_url('Two-person 360'),
+            'bg_url': product_image_url('Two-person 360', fallback=_MARKETING_TILE_FALLBACKS['vr_attractions']),
             'url': f'{catalog_url}?section=vr-attrakciony',
         },
         {

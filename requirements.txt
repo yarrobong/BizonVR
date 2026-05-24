@@ -10,6 +10,7 @@ psycopg2-binary==2.9.11
 python-decouple==3.8
 requests>=2.28.0
 sqlparse==0.5.5
+tblib>=3.0.0
 weasyprint==68.1
 redis>=5,<6
 openpyxl>=3.1.5
