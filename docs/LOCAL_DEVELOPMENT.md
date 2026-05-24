@@ -85,8 +85,10 @@ Run before reporting a public-site change:
 
 ```bash
 python manage.py check
-python manage.py test --keepdb --noinput
+python manage.py test
 npm run build:css
 ```
 
 If the full test suite is too slow for the current task, run the relevant app subset and state that in the report.
+
+`--keepdb --noinput` is still fine for quick local reruns, but use a clean `python manage.py test` before final verification so stale test data does not mask or create failures.

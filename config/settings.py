@@ -250,6 +250,14 @@ SITE_INSTRUCTIONS_URL = config('SITE_INSTRUCTIONS_URL', default='').strip()
 SITE_YOUTUBE_URL = config('SITE_YOUTUBE_URL', default='https://www.youtube.com/@BIZON-ZON-ZON').strip()
 SITE_TIKTOK_URL = config('SITE_TIKTOK_URL', default='https://www.tiktok.com/@bizonvr?_r=1&_t=ZS-94DbHz6YXH3').strip()
 DOCUFLOW_BACKEND_URL = config('DOCUFLOW_BACKEND_URL', default='http://127.0.0.1:3001').rstrip('/')
+CATALOG_API_TOKEN = config('CATALOG_API_TOKEN', default='').strip()
+CATALOG_API_ALLOWED_ORIGINS = [
+    x.strip()
+    for x in config('CATALOG_API_ALLOWED_ORIGINS', default='').split(',')
+    if x.strip()
+]
+CATALOG_API_DEFAULT_LIMIT = config('CATALOG_API_DEFAULT_LIMIT', default=20, cast=int)
+CATALOG_API_MAX_LIMIT = config('CATALOG_API_MAX_LIMIT', default=100, cast=int)
 
 EMAIL_HOST = config('EMAIL_HOST', default='').strip()
 EMAIL_PORT = config('EMAIL_PORT', default=587, cast=int)

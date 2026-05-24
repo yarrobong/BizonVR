@@ -6,11 +6,13 @@ Use this checklist after public-site, catalog, checkout, navigation, content, or
 
 ```bash
 python manage.py check
-python manage.py test --keepdb --noinput
+python manage.py test
 npm run build:css
 ```
 
 If frontend lint is later added to `package.json`, run it too. Currently `package.json` defines only `build:css`.
+
+For faster local reruns you can still use `python manage.py test --keepdb --noinput`, but the release-style validation path should use a clean test database to avoid false failures from stale test data.
 
 ## Public Smoke Test
 

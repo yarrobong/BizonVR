@@ -1,23 +1,77 @@
+from django import forms
 from django.contrib import admin
 
+from config.formatting import format_currency_amount
+
 from ..game_pack_mirrors import sync_game_pack_mirror
+from ..pricing import resolve_in_stock_price
 from ..models import GamePack, GamePackEntry, GamePackServiceEntry, ProductGameMetadata
+from .shared import _admin_image_preview
+
+
+class GamePackEntryInlineForm(forms.ModelForm):
+    class Meta:
+        model = GamePackEntry
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['product'].help_text = 'Основной сценарий: выберите игру из каталога.'
+        self.fields['unresolved_title'].label = 'Временное название'
+        self.fields['unresolved_title'].help_text = (
+            'Заполняйте только для legacy или временной позиции, '
+            'если подходящего товара ещё нет в каталоге.'
+        )
+        self.fields['platform'].help_text = 'Необязательное уточнение платформы для карточки пака.'
+        self.fields['note'].help_text = 'Служебная пометка для редактора.'
+
+
+class GamePackServiceEntryInlineForm(forms.ModelForm):
+    class Meta:
+        model = GamePackServiceEntry
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['service'].help_text = 'Основной сценарий: выберите услугу из каталога.'
+        self.fields['title'].label = 'Временное название'
+        self.fields['title'].help_text = (
+            'Заполняйте только для legacy или временной услуги, '
+            'если её ещё нет в каталоге.'
+        )
+        self.fields['platform'].help_text = 'Необязательное уточнение платформы или сценария.'
+        self.fields['note'].help_text = 'Служебная пометка для редактора.'
 
 
 class GamePackEntryInline(admin.TabularInline):
     model = GamePackEntry
-    extra = 0
-    fields = ('product', 'unresolved_title', 'platform', 'quantity', 'note', 'sort_order')
+    form = GamePackEntryInlineForm
+    extra = 1
+    fields = ('product', 'quantity', 'price_preview', 'unresolved_title', 'platform', 'note', 'sort_order')
+    readonly_fields = ('price_preview',)
     ordering = ('sort_order', 'id')
     autocomplete_fields = ('product',)
+    verbose_name = 'Игра в паке'
+    verbose_name_plural = 'Состав игрового пака'
+
+    def price_preview(self, obj):
+        if obj and obj.product_id:
+            price = resolve_in_stock_price(obj.product)
+            if price is not None:
+                return format_currency_amount(price)
+        return '—'
+    price_preview.short_description = 'Цена в паке'
 
 
 class GamePackServiceEntryInline(admin.TabularInline):
     model = GamePackServiceEntry
-    extra = 0
-    fields = ('service', 'title', 'platform', 'quantity', 'price', 'note', 'sort_order')
+    form = GamePackServiceEntryInlineForm
+    extra = 1
+    fields = ('service', 'quantity', 'price', 'title', 'platform', 'note', 'sort_order')
     ordering = ('sort_order', 'id')
     autocomplete_fields = ('service',)
+    verbose_name = 'Услуга в паке'
+    verbose_name_plural = 'Услуги игрового пака'
 
 
 @admin.register(GamePack)
@@ -29,6 +83,7 @@ class GamePackAdmin(admin.ModelAdmin):
         'vr_club_tariff',
         'show_on_vr_club_page',
         'calculated_price_display',
+        'items_count',
         'price_on_request',
         'sort_order',
         'is_active',
@@ -57,6 +112,7 @@ class GamePackAdmin(admin.ModelAdmin):
     prepopulated_fields = {'slug': ('name',)}
     filter_horizontal = ('tags',)
     list_editable = ('sort_order', 'is_active', 'show_on_vr_club_page')
+    readonly_fields = ('image_preview',)
     inlines = [GamePackEntryInline, GamePackServiceEntryInline]
     fieldsets = (
         (None, {
@@ -65,6 +121,7 @@ class GamePackAdmin(admin.ModelAdmin):
                 'name',
                 'slug',
                 'description',
+                'image_preview',
                 'image',
                 'price',
                 'discount_percent',
@@ -74,7 +131,10 @@ class GamePackAdmin(admin.ModelAdmin):
                 'sort_order',
                 'tags',
             ),
-            'description': 'Цена из наличия используется как fallback, если в составе пака нет позиций с ценой.',
+            'description': (
+                'Собирайте пак в первую очередь через товары каталога ниже. '
+                'Цена из наличия используется как fallback, если в составе пака нет позиций с ценой.'
+            ),
         }),
         ('VR-клубы и сценарии', {
             'fields': (
@@ -96,6 +156,14 @@ class GamePackAdmin(admin.ModelAdmin):
     @admin.display(description='Цена пака')
     def calculated_price_display(self, obj):
         return obj.in_stock_price
+
+    def image_preview(self, obj):
+        return _admin_image_preview(obj, width=120, height=120)
+    image_preview.short_description = 'Превью'
+
+    @admin.display(description='Игр')
+    def items_count(self, obj):
+        return obj.entries.count() if obj.pk else 0
 
     def save_related(self, request, form, formsets, change):
         super().save_related(request, form, formsets, change)

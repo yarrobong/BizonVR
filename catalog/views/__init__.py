@@ -1,4 +1,5 @@
 from .cart import cart_clear_view, cart_page_view, cart_partial
+from .api import catalog_bundle_detail_view, catalog_item_detail_view, catalog_items_view
 from .cart_mutations import (
     add_bundle_to_cart_view,
     add_game_pack_to_cart_view,
@@ -20,6 +21,9 @@ __all__ = [
     'GamePackDetailView',
     'ProductDetailView',
     'ProductListView',
+    'catalog_bundle_detail_view',
+    'catalog_item_detail_view',
+    'catalog_items_view',
     'add_bundle_to_cart_view',
     'add_game_pack_to_cart_view',
     'add_to_cart_view',

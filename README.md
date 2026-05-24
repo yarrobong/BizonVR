@@ -587,8 +587,10 @@ npm run build:css
 ```bash
 make test
 # или напрямую:
-DJANGO_SETTINGS_MODULE=config.settings_test .venv/bin/python manage.py test config catalog orders accounts payments manager_portal --keepdb --noinput
+DJANGO_SETTINGS_MODULE=config.settings_test .venv/bin/python manage.py test config catalog orders accounts payments manager_portal
 ```
+
+`--keepdb --noinput` можно использовать для быстрых повторных локальных прогонов, но финальную проверку лучше делать на чистой тестовой базе без `--keepdb`.
 
 Для быстрого повседневного прогона без `manager_portal`:
 
