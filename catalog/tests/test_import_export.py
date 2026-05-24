@@ -343,11 +343,15 @@ class NormalizeGameSectionsMigrationTest(TestCase):
 
     def test_two_links_block(self):
         request = self.factory.post('/contacts/', {'message': 'https://spam.example и www.bad.example'})
-        self.assertTrue(is_spam_request(request))
+        result = check_spam_submission(request)
+        self.assertTrue(result.is_spam)
+        self.assertIn('message_contains_multiple_links', result.reasons)
 
     def test_spam_word_blocks(self):
         request = self.factory.post('/contacts/', {'message': 'Нужен seo traffic прямо сейчас'})
-        self.assertTrue(is_spam_request(request))
+        result = check_spam_submission(request)
+        self.assertFalse(result.is_spam)
+        self.assertIn('seo_word:seo', result.reasons)
 
     def test_normal_payload_passes(self):
         request = self.factory.post('/contacts/', {

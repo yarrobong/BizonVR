@@ -9,11 +9,18 @@ from django.contrib.staticfiles import finders
 from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
+try:
+    from django_ratelimit.decorators import ratelimit
+except ImportError:
+    def ratelimit(*args, **kwargs):
+        def decorator(view):
+            return view
+        return decorator
 
 from catalog.models import CallbackRequest, ContactRequest, Service
 from config.crm_leads import send_crm_lead_email
 from config.solution_landings import get_solution_landing
-from config.utils.spam_protection import is_spam_request
+from config.utils.spam_protection import check_spam_submission, log_blocked_submission
 from config.views.solutions import build_solution_hub_cards
 
 from ..forms import CallbackForm, CompactVRForm
@@ -143,6 +150,7 @@ def solution_landing_view(request, slug, path=''):
     return _serve_public_directory_file(landing.root_dir, path, default_file='index.html')
 
 
+@ratelimit(key='ip', rate='10/m', method='POST', block=False)
 def compact_vr_view(request):
     """Лендинг компактной VR-арены под ключ и его локальные ассеты."""
     if request.method == 'GET' and request.headers.get('HX-Boosted') == 'true':
@@ -152,7 +160,9 @@ def compact_vr_view(request):
 
     lead_form = CompactVRForm()
     if request.method == 'POST' and request.POST.get('form_type') == 'compact_vr':
-        if is_spam_request(request):
+        spam_result = check_spam_submission(request)
+        if spam_result.is_spam:
+            log_blocked_submission(request, source='compact_vr', result=spam_result)
             messages.success(request, 'Заявка отправлена! Мы свяжемся с вами в ближайшее время.')
             return redirect(reverse('compact_vr') + '#contact')
         lead_form = CompactVRForm(request.POST)
@@ -218,6 +228,7 @@ def permission_denied_view(request, exception=None):
     )
 
 
+@ratelimit(key='ip', rate='10/m', method='POST', block=False)
 def arenda_view(request):
     """Страница аренды VR-шлемов Meta Quest."""
     media_url = (settings.MEDIA_URL or '/media/').rstrip('/') + '/'
@@ -230,7 +241,9 @@ def arenda_view(request):
 
     callback_form = CallbackForm()
     if request.method == 'POST' and request.POST.get('form_type') == 'callback':
-        if is_spam_request(request):
+        spam_result = check_spam_submission(request)
+        if spam_result.is_spam:
+            log_blocked_submission(request, source='arenda_callback', result=spam_result)
             messages.success(request, 'Заявка отправлена! Мы перезвоним в ближайшее время.')
             return redirect(reverse('arenda') + '#contacts')
         callback_form = CallbackForm(request.POST)
@@ -261,13 +274,16 @@ def arenda_view(request):
     })
 
 
+@ratelimit(key='ip', rate='10/m', method='POST', block=False)
 def uslugi_view(request):
     """Страница услуг компании."""
     services = Service.objects.filter(is_active=True).order_by('order', 'name')
     callback_form = CallbackForm()
 
     if request.method == 'POST' and request.POST.get('form_type') == 'callback':
-        if is_spam_request(request):
+        spam_result = check_spam_submission(request)
+        if spam_result.is_spam:
+            log_blocked_submission(request, source='uslugi_callback', result=spam_result)
             messages.success(request, 'Заявка отправлена! Мы перезвоним в ближайшее время.')
             return redirect(reverse('uslugi') + '#contacts')
         callback_form = CallbackForm(request.POST)

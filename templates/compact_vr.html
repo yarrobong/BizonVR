@@ -820,8 +820,7 @@
           <form class="lead-form" id="leadForm" method="post" action="{% url 'compact_vr' %}#contact" hx-boost="false" novalidate>
             {% csrf_token %}
             <input type="hidden" name="form_type" value="compact_vr">
-            <input type="hidden" name="website" value="">
-            <input type="hidden" name="form_started_at" value="{{ form_started_at }}">
+            {% include "includes/public_form_spam_fields.html" %}
 
             {% if messages %}
               {% for message in messages %}

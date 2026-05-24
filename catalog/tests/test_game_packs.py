@@ -289,6 +289,19 @@ class VRClubGamesB2BTest(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(VRClubQuizRequest.objects.filter(phone='+7 999 111-22-33').exists())
 
+    def test_quiz_spam_does_not_create_request(self):
+        resp = self.client.post(reverse('catalog:vr_club_games'), {
+            'name': 'Craig Gonsalves',
+            'phone': '7724029977',
+            'email': 'domains@search-bizonvr.ru',
+            'comment': 'Greetings feature bizonvr.ru now: https://searchregister.info',
+            'agree_personal_data': 'on',
+        })
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(VRClubQuizRequest.objects.exists())
+        self.assertContains(resp, 'Заявка отправлена.')
+
 
 def _build_test_uploaded_image(name='test.jpg', *, size=(1600, 1200), image_format='JPEG', color='#22c55e'):
     image_bytes = BytesIO()

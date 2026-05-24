@@ -1,0 +1,242 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrastyle %}
+  {{ block.super }}
+  <link rel="stylesheet" href="{% static 'css/tailwind.css' %}">
+  <style>
+    :root {
+      --warehouse-bg: #07111f;
+      --warehouse-panel: rgba(10, 18, 33, 0.92);
+      --warehouse-panel-soft: rgba(15, 23, 42, 0.86);
+      --warehouse-border: rgba(34, 211, 238, 0.18);
+      --warehouse-text: #dbeafe;
+      --warehouse-muted: #94a3b8;
+      --warehouse-accent: #22d3ee;
+    }
+    body {
+      background:
+        radial-gradient(circle at top left, rgba(34, 211, 238, 0.14), transparent 26%),
+        linear-gradient(180deg, #020617, var(--warehouse-bg));
+    }
+    #content {
+      color: var(--warehouse-text);
+    }
+    .warehouse-shell {
+      position: relative;
+      padding: 24px 0 32px;
+    }
+    .warehouse-panel {
+      border: 1px solid var(--warehouse-border);
+      background: var(--warehouse-panel);
+      border-radius: 24px;
+      box-shadow: 0 24px 80px rgba(2, 6, 23, 0.45);
+      backdrop-filter: blur(20px);
+    }
+    .warehouse-card {
+      border: 1px solid rgba(34, 211, 238, 0.14);
+      background: linear-gradient(180deg, rgba(15, 23, 42, 0.92), rgba(8, 15, 29, 0.95));
+      border-radius: 20px;
+      padding: 18px;
+    }
+    .warehouse-matrix-table {
+      min-width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+    }
+    .warehouse-matrix-table th,
+    .warehouse-matrix-table td {
+      border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+      vertical-align: top;
+    }
+    .warehouse-sticky-col {
+      position: sticky;
+      left: 0;
+      z-index: 2;
+      background: rgba(4, 10, 20, 0.98);
+      box-shadow: 12px 0 28px rgba(2, 6, 23, 0.32);
+    }
+    .warehouse-drawer {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: min(540px, 100vw);
+      height: 100vh;
+      transform: translateX(100%);
+      transition: transform 0.24s ease;
+      z-index: 1100;
+      border-left: 1px solid var(--warehouse-border);
+      background: rgba(3, 8, 19, 0.98);
+      box-shadow: -24px 0 80px rgba(2, 6, 23, 0.6);
+    }
+    .warehouse-drawer[data-open="true"] {
+      transform: translateX(0);
+    }
+    .warehouse-drawer-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(2, 6, 23, 0.6);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+      z-index: 1090;
+    }
+    .warehouse-drawer-overlay[data-open="true"] {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .warehouse-skeleton {
+      background: linear-gradient(90deg, rgba(15, 23, 42, 0.8), rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.8));
+      background-size: 200% 100%;
+      animation: warehouse-shimmer 1.3s linear infinite;
+      border-radius: 999px;
+    }
+    @keyframes warehouse-shimmer {
+      from { background-position: 200% 0; }
+      to { background-position: -200% 0; }
+    }
+    @media (max-width: 1366px) {
+      .warehouse-shell {
+        padding-bottom: 24px;
+      }
+    }
+  </style>
+{% endblock %}
+
+{% block extrahead %}
+  {{ block.super }}
+  <script defer src="{% static 'vendor/htmx/htmx-1.9.10.min.js' %}"></script>
+  <script defer src="{% static 'vendor/alpine/alpine-3.13.3-cdn.min.js' %}"></script>
+{% endblock %}
+
+{% block content %}
+  <div class="warehouse-shell" x-data="{ drawerOpen: {{ drawer_open|yesno:'true,false' }} }">
+    <div id="warehouse-drawer-overlay" class="warehouse-drawer-overlay" :data-open="drawerOpen" @click="drawerOpen = false"></div>
+
+    <section class="warehouse-panel px-6 py-6 lg:px-8">
+      <div class="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <p class="text-xs uppercase tracking-[0.32em] text-cyan-300/80">BizonVR Warehouse</p>
+          <h1 class="mt-2 text-3xl font-semibold text-white">Склад</h1>
+          <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
+            Отдельный рабочий интерфейс для остатков, резервов, перемещений и истории складских движений без стандартных Django list view.
+          </p>
+        </div>
+        <a href="{% url 'admin:index' %}" class="inline-flex items-center justify-center rounded-full border border-cyan-400/20 bg-cyan-400/10 px-4 py-2 text-sm font-medium text-cyan-100 transition hover:border-cyan-300/40 hover:bg-cyan-400/15">
+          Вернуться в админку
+        </a>
+      </div>
+
+      <form
+        id="warehouse-filters"
+        method="get"
+        class="mt-6 warehouse-panel bg-slate-950/40 px-4 py-4 lg:px-5"
+        hx-get="{% url 'admin:warehouse_ui_matrix' %}"
+        hx-target="#warehouse-matrix-panel"
+        hx-swap="outerHTML"
+        hx-indicator="#warehouse-matrix-loading"
+      >
+        <div class="grid gap-4 lg:grid-cols-[minmax(280px,2fr)_repeat(2,minmax(180px,1fr))] xl:grid-cols-[minmax(320px,2fr)_repeat(4,minmax(160px,1fr))]">
+          <div>
+            <label class="mb-2 block text-xs font-medium uppercase tracking-[0.24em] text-slate-400">{{ filter_form.q.label }}</label>
+            {{ filter_form.q }}
+          </div>
+          <div>
+            <label class="mb-2 block text-xs font-medium uppercase tracking-[0.24em] text-slate-400">{{ filter_form.city.label }}</label>
+            {{ filter_form.city }}
+          </div>
+          <div class="lg:col-span-2 xl:col-span-2">
+            <label class="mb-2 block text-xs font-medium uppercase tracking-[0.24em] text-slate-400">{{ filter_form.warehouses.label }}</label>
+            {{ filter_form.warehouses }}
+          </div>
+          <div class="flex flex-wrap items-center gap-4 rounded-2xl border border-cyan-500/10 bg-slate-950/40 px-4 py-3">
+            <label class="inline-flex items-center gap-2 text-sm text-slate-300">{{ filter_form.in_stock }}{{ filter_form.in_stock.label }}</label>
+            <label class="inline-flex items-center gap-2 text-sm text-slate-300">{{ filter_form.out_of_stock }}{{ filter_form.out_of_stock.label }}</label>
+            <label class="inline-flex items-center gap-2 text-sm text-slate-300">{{ filter_form.has_reserve }}{{ filter_form.has_reserve.label }}</label>
+            <label class="inline-flex items-center gap-2 text-sm text-slate-300">{{ filter_form.inbound }}{{ filter_form.inbound.label }}</label>
+          </div>
+        </div>
+        <div class="mt-4 flex flex-wrap items-center gap-3">
+          <button type="submit" class="inline-flex items-center justify-center rounded-full bg-cyan-400 px-5 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300">
+            Применить
+          </button>
+          <a href="{% url 'admin:warehouse_ui_index' %}" class="inline-flex items-center justify-center rounded-full border border-slate-700 px-5 py-2.5 text-sm font-medium text-slate-300 transition hover:border-slate-500 hover:bg-slate-900/60">
+            Сбросить
+          </a>
+          <div id="warehouse-matrix-loading" class="htmx-indicator inline-flex items-center gap-2 text-sm text-slate-400">
+            <span class="h-2.5 w-2.5 rounded-full bg-cyan-300"></span> Обновляем матрицу…
+          </div>
+        </div>
+      </form>
+
+      <div id="warehouse-summary-panel">
+        {% include "admin/warehouse/_summary.html" with summary=matrix.summary %}
+      </div>
+
+      <div id="warehouse-matrix-panel">
+        {% include "admin/warehouse/_matrix.html" with matrix=matrix filter_form=filter_form %}
+      </div>
+    </section>
+
+    <aside id="warehouse-drawer" class="warehouse-drawer" :data-open="drawerOpen">
+      <div id="warehouse-drawer-content" class="h-full overflow-y-auto p-6">
+        {% include "admin/warehouse/_drawer_empty.html" %}
+      </div>
+    </aside>
+  </div>
+
+  <script>
+    (function () {
+      const drawer = document.getElementById('warehouse-drawer');
+      const overlay = document.getElementById('warehouse-drawer-overlay');
+      const filterForm = document.getElementById('warehouse-filters');
+      const drawerContent = document.getElementById('warehouse-drawer-content');
+
+      function setDrawerOpen(isOpen) {
+        if (!drawer || !overlay) return;
+        drawer.setAttribute('data-open', isOpen ? 'true' : 'false');
+        overlay.setAttribute('data-open', isOpen ? 'true' : 'false');
+        const alpine = drawer.closest('[x-data]');
+        if (alpine && alpine.__x) {
+          alpine.__x.$data.drawerOpen = isOpen;
+        }
+      }
+
+      document.body.addEventListener('click', function (event) {
+        const drawerButton = event.target.closest('[data-warehouse-drawer-url]');
+        if (drawerButton) {
+          setDrawerOpen(true);
+        }
+        if (event.target.closest('[data-warehouse-drawer-close]')) {
+          setDrawerOpen(false);
+        }
+      });
+
+      document.body.addEventListener('htmx:afterSwap', function (event) {
+        if (event.detail && event.detail.target && event.detail.target.id === 'warehouse-drawer-content') {
+          setDrawerOpen(true);
+        }
+      });
+
+      document.body.addEventListener('warehouse:refresh', function (event) {
+        if (filterForm) {
+          filterForm.requestSubmit();
+        }
+        const detail = event.detail || {};
+        const currentSku = drawerContent ? drawerContent.getAttribute('data-sku-key') : '';
+        if (detail.skuKey && currentSku === detail.skuKey && drawerContent) {
+          const url = drawerContent.getAttribute('data-refresh-url');
+          if (url && window.htmx) {
+            window.htmx.ajax('GET', url, {target: '#warehouse-drawer-content', swap: 'innerHTML'});
+          }
+        }
+      });
+
+      document.body.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') {
+          setDrawerOpen(false);
+        }
+      });
+    })();
+  </script>
+{% endblock %}

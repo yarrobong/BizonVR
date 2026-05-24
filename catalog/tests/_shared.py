@@ -39,7 +39,7 @@ from PIL import Image as PilImage
 from accounts.models import Profile
 from config.forms import CallbackForm, ContactForm
 from config.legal_docs import LEGAL_BUNDLE_VERSION
-from config.utils.spam_protection import is_spam_request
+from config.utils.spam_protection import check_spam_submission, is_spam_request
 from orders.models import Order, OrderItem
 
 from catalog.cart_services import get_cart_count, get_cart_items, get_favorite_product_ids, group_cart_items

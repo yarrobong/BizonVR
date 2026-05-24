@@ -5,8 +5,16 @@ from django.db.models import Q
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
+try:
+    from django_ratelimit.decorators import ratelimit
+except ImportError:
+    def ratelimit(*args, **kwargs):
+        def decorator(view):
+            return view
+        return decorator
 
 from config.legal_consent import build_legal_acceptance_payload
+from config.utils.spam_protection import check_spam_submission, log_blocked_submission
 
 from ..cart_services import (
     _build_service_item_dict,
@@ -89,27 +97,34 @@ def _filter_packs(request):
     return qs
 
 
+@ratelimit(key='ip', rate='10/m', method='POST', block=False)
 def vr_club_games_view(request):
     quiz_sent = False
     quiz_form = VRClubQuizForm()
     if request.method == 'POST':
-        quiz_form = VRClubQuizForm(request.POST)
-        if quiz_form.is_valid():
-            VRClubQuizRequest.objects.create(
-                name=quiz_form.cleaned_data['name'].strip(),
-                phone=quiz_form.cleaned_data['phone'].strip(),
-                email=(quiz_form.cleaned_data.get('email') or '').strip(),
-                club_format=(quiz_form.cleaned_data.get('club_format') or '').strip(),
-                devices=(quiz_form.cleaned_data.get('devices') or '').strip(),
-                headsets_count=quiz_form.cleaned_data.get('headsets_count'),
-                play_places_count=quiz_form.cleaned_data.get('play_places_count'),
-                audience=(quiz_form.cleaned_data.get('audience') or '').strip(),
-                budget=(quiz_form.cleaned_data.get('budget') or '').strip(),
-                comment=(quiz_form.cleaned_data.get('comment') or '').strip(),
-                **build_legal_acceptance_payload(request),
-            )
+        spam_result = check_spam_submission(request)
+        if spam_result.is_spam:
+            log_blocked_submission(request, source='vr_club_quiz', result=spam_result)
             quiz_form = VRClubQuizForm()
             quiz_sent = True
+        else:
+            quiz_form = VRClubQuizForm(request.POST)
+            if quiz_form.is_valid():
+                VRClubQuizRequest.objects.create(
+                    name=quiz_form.cleaned_data['name'].strip(),
+                    phone=quiz_form.cleaned_data['phone'].strip(),
+                    email=(quiz_form.cleaned_data.get('email') or '').strip(),
+                    club_format=(quiz_form.cleaned_data.get('club_format') or '').strip(),
+                    devices=(quiz_form.cleaned_data.get('devices') or '').strip(),
+                    headsets_count=quiz_form.cleaned_data.get('headsets_count'),
+                    play_places_count=quiz_form.cleaned_data.get('play_places_count'),
+                    audience=(quiz_form.cleaned_data.get('audience') or '').strip(),
+                    budget=(quiz_form.cleaned_data.get('budget') or '').strip(),
+                    comment=(quiz_form.cleaned_data.get('comment') or '').strip(),
+                    **build_legal_acceptance_payload(request),
+                )
+                quiz_form = VRClubQuizForm()
+                quiz_sent = True
 
     has_vr_club_packs = GamePack.objects.filter(is_active=True, show_on_vr_club_page=True).exists()
     tariff_packs = list(_filter_packs(request)[:6])

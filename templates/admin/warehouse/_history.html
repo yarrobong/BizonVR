@@ -1,0 +1,20 @@
+{% if movements %}
+  <div class="space-y-3">
+    {% for movement in movements %}
+      <div class="rounded-2xl border border-slate-800 bg-slate-950/80 p-4">
+        <div class="flex items-center justify-between gap-3">
+          <div class="font-medium text-white">{{ movement.get_movement_type_display }}</div>
+          <div class="text-sm text-slate-300">{{ movement.quantity }} шт.</div>
+        </div>
+        <div class="mt-2 text-sm text-slate-400">
+          {{ movement.warehouse.name }} • {{ movement.created_at|date:"d.m.Y H:i" }} • {{ movement.author|default:"Система" }}
+        </div>
+        {% if movement.comment %}
+          <div class="mt-2 text-sm text-slate-500">{{ movement.comment }}</div>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+{% else %}
+  <p class="text-sm text-slate-500">Движений по этой позиции пока нет.</p>
+{% endif %}

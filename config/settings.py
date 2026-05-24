@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     'orders',
     'payments',
     'manager_portal',
+    'warehouse_ui',
 ]
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',

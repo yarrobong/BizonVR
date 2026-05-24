@@ -37,6 +37,13 @@ class VariantGalleryAndCatalogCardsTest(TestCase):
             name='Синий',
             price_override=950,
         )
+        self.simple_product = Product.objects.create(
+            category=self.category,
+            name='Meta Quest Pro',
+            slug='meta-quest-pro-simple',
+            price=800,
+            is_active=True,
+        )
         self.city = City.objects.create(name='Екатеринбург', slug='ekb')
         self.pickup_point = PickupPoint.objects.create(city=self.city, name='Точка 1')
 
@@ -572,7 +579,7 @@ class VariantGalleryAndCatalogCardsTest(TestCase):
         self.assertContains(resp, 'Доставка за 5 дней')
         self.assertContains(resp, 'Под заказ —')
         self.assertContains(resp, '1 100 ₽')
-        self.assertContains(resp, 'Срок поставки: до 35 дней')
+        self.assertContains(resp, 'Срок поставки: 22–28 дней')
         self.assertNotContains(resp, 'В наличии:')
         self.assertNotContains(resp, 'шт. осталось')
 
@@ -596,8 +603,25 @@ class VariantGalleryAndCatalogCardsTest(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, 'Под заказ')
         self.assertContains(resp, '1 100 ₽')
-        self.assertContains(resp, 'Срок поставки: до 35 дней')
+        self.assertContains(resp, 'Срок поставки: 22–28 дней')
         self.assertNotContains(resp, '1 200 ₽')
+
+    def test_variant_card_shows_in_stock_price_even_when_out_of_stock(self):
+        resp = self.client.get(reverse('catalog:product_list'), {'category': self.category.slug})
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, '1 200 ₽')
+        self.assertContains(resp, '1 300 ₽')
+        self.assertContains(resp, 'Нет в наличии')
+        self.assertNotContains(resp, 'Цена не указана')
+
+    def test_product_card_shows_base_price_even_when_out_of_stock(self):
+        resp = self.client.get(reverse('catalog:product_list'), {'category': self.category.slug})
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, '800 ₽')
+        self.assertContains(resp, 'Нет в наличии')
+        self.assertNotContains(resp, 'Цена не указана')
 
     def test_variant_card_prefers_on_request_when_stock_exists_but_in_stock_price_missing(self):
         self.product.price = None
@@ -659,7 +683,7 @@ class VariantGalleryAndCatalogCardsTest(TestCase):
         self.assertContains(resp, 'Мало')
         self.assertContains(resp, 'Доставка за 5 дней')
         self.assertContains(resp, 'Под заказ')
-        self.assertContains(resp, 'Срок поставки: до 35 дней')
+        self.assertContains(resp, 'Срок поставки: 22–28 дней')
         variant_payload = next(item for item in data['variants'] if item['id'] == self.variant_one.pk)
         self.assertEqual(variant_payload['onRequestPrice'], 1100.0)
 
@@ -675,7 +699,7 @@ class VariantGalleryAndCatalogCardsTest(TestCase):
         self.assertEqual(resp.status_code, 200)
         data = self._extract_product_detail_data(resp)
         self.assertContains(resp, 'Под заказ')
-        self.assertContains(resp, 'Срок поставки: до 35 дней')
+        self.assertContains(resp, 'Срок поставки: 22–28 дней')
         variant_payload = next(item for item in data['variants'] if item['id'] == self.variant_one.pk)
         self.assertEqual(variant_payload['onRequestPrice'], 1100.0)
         self.assertEqual(variant_payload['inStockPrice'], 1200.0)

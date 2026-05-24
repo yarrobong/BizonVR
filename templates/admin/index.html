@@ -1,0 +1,184 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block extrastyle %}
+  {{ block.super }}
+  <style>
+    .admin-task-dashboard {
+      display: grid;
+      gap: 20px;
+    }
+    .admin-task-dashboard__summary {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+    .admin-task-dashboard__card,
+    .admin-task-dashboard__queue {
+      border: 1px solid var(--hairline-color);
+      border-radius: 14px;
+      background: var(--body-bg);
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.05);
+    }
+    .admin-task-dashboard__card {
+      display: block;
+      padding: 18px 20px;
+      text-decoration: none;
+      color: inherit;
+    }
+    .admin-task-dashboard__label {
+      display: block;
+      margin-bottom: 10px;
+      color: var(--body-quiet-color);
+      font-size: 13px;
+    }
+    .admin-task-dashboard__value {
+      display: block;
+      font-size: 32px;
+      line-height: 1;
+      font-weight: 700;
+    }
+    .admin-task-dashboard__queues {
+      display: grid;
+      gap: 18px;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    }
+    .admin-task-dashboard__queue {
+      padding: 18px 18px 12px;
+    }
+    .admin-task-dashboard__queue h2 {
+      margin: 0 0 14px;
+      font-size: 17px;
+    }
+    .admin-task-dashboard__list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+    .admin-task-dashboard__item {
+      padding: 12px 0;
+      border-top: 1px solid var(--hairline-color);
+    }
+    .admin-task-dashboard__item:first-child {
+      border-top: 0;
+      padding-top: 0;
+    }
+    .admin-task-dashboard__item a {
+      text-decoration: none;
+    }
+    .admin-task-dashboard__item-title {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .admin-task-dashboard__item-meta {
+      display: block;
+      color: var(--body-quiet-color);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .admin-task-dashboard__badge {
+      display: inline-flex;
+      align-items: center;
+      margin-top: 6px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: var(--darkened-bg);
+      color: var(--body-quiet-color);
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .admin-task-dashboard__empty {
+      margin: 0;
+      color: var(--body-quiet-color);
+    }
+    .admin-home-sections {
+      min-width: 0;
+    }
+    .admin-home-layout {
+      display: grid;
+      gap: 20px;
+      align-items: start;
+      grid-template-columns: minmax(0, 1fr) 360px;
+    }
+    .admin-task-dashboard__sidebar {
+      min-width: 0;
+    }
+    .admin-task-dashboard__sidebar .admin-task-dashboard__queues {
+      grid-template-columns: 1fr;
+    }
+    @media (max-width: 960px) {
+      .admin-home-layout {
+        grid-template-columns: 1fr;
+      }
+      .admin-task-dashboard__queues {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <div id="content-main">
+    {% if task_dashboard %}
+      <section class="admin-task-dashboard" aria-label="Дашборд задач">
+        <div class="admin-task-dashboard__summary">
+          {% for item in task_dashboard.summary %}
+            <a class="admin-task-dashboard__card" href="{{ item.url|default:'#' }}">
+              <span class="admin-task-dashboard__label">{{ item.label }}</span>
+              <span class="admin-task-dashboard__value">{{ item.value }}</span>
+            </a>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+
+    <div class="admin-home-layout">
+      <div class="admin-home-sections">
+        {% include "admin/app_list.html" with app_list=app_list show_changelinks=True %}
+      </div>
+
+      {% if task_dashboard %}
+        <aside class="admin-task-dashboard__sidebar" aria-label="Очереди задач">
+          <div class="admin-task-dashboard__queues">
+            {% for queue in task_dashboard.queues %}
+              <section class="admin-task-dashboard__queue">
+                <h2>{{ queue.title }}</h2>
+                {% if queue.items %}
+                  <ul class="admin-task-dashboard__list">
+                    {% for item in queue.items %}
+                      <li class="admin-task-dashboard__item">
+                        {% if item.url %}
+                          <a href="{{ item.url }}">
+                            <span class="admin-task-dashboard__item-title">{{ item.title }}</span>
+                          </a>
+                        {% else %}
+                          <span class="admin-task-dashboard__item-title">{{ item.title }}</span>
+                        {% endif %}
+                        {% if item.meta %}
+                          <span class="admin-task-dashboard__item-meta">{{ item.meta }}</span>
+                        {% endif %}
+                        {% if item.created_at %}
+                          <span class="admin-task-dashboard__item-meta">{{ item.created_at|date:"d.m.Y H:i" }}</span>
+                        {% endif %}
+                        {% if item.label %}
+                          <span class="admin-task-dashboard__badge">{{ item.label }}</span>
+                        {% elif item.status %}
+                          <span class="admin-task-dashboard__badge">{{ item.status }}</span>
+                        {% elif item.issue %}
+                          <span class="admin-task-dashboard__badge">{{ item.issue }}{% if item.stock_total is not None %}: {{ item.stock_total }}{% endif %}</span>
+                        {% endif %}
+                      </li>
+                    {% endfor %}
+                  </ul>
+                {% else %}
+                  <p class="admin-task-dashboard__empty">{{ queue.empty }}</p>
+                {% endif %}
+              </section>
+            {% endfor %}
+          </div>
+        </aside>
+      {% endif %}
+    </div>
+  </div>
+{% endblock %}

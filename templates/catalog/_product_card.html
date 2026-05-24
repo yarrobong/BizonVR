@@ -86,7 +86,7 @@
           <p class="mt-1 text-xs text-gray-400">Доставка за 5 дней</p>
           {% if product.allow_order_on_request and card_variant.on_request_price %}
           <p class="mt-1 text-[11px] text-gray-500">Под заказ — {{ card_variant.on_request_price|price_format }} ₽</p>
-          <p class="mt-1 text-[11px] text-gray-500">Срок поставки: до 35 дней</p>
+          <p class="mt-1 text-[11px] text-gray-500">Срок поставки: 22–28 дней</p>
           {% endif %}
         {% elif product.allow_order_on_request and card_variant.on_request_price %}
           <div class="text-[1.35rem] font-bold leading-none text-accent">{{ card_variant.on_request_price|price_format }} ₽</div>
@@ -94,7 +94,13 @@
             <span class="inline-block h-2.5 w-2.5 rounded-full bg-amber-300 shadow-[0_0_10px_rgba(253,224,71,0.28)]"></span>
             <span class="font-medium">Под заказ</span>
           </div>
-          <p class="mt-1 text-xs text-gray-400">Срок поставки: до 35 дней</p>
+          <p class="mt-1 text-xs text-gray-400">Срок поставки: 22–28 дней</p>
+        {% elif card_variant.in_stock_price is not None %}
+          <div class="text-[1.35rem] font-bold leading-none text-accent">{{ card_variant.in_stock_price|price_format }} ₽</div>
+          <div class="mt-2 flex items-center gap-2 text-xs text-white/80">
+            <span class="inline-block h-2.5 w-2.5 rounded-full bg-slate-500"></span>
+            <span class="font-medium">Нет в наличии</span>
+          </div>
         {% else %}
           <div class="text-[1.1rem] font-bold leading-none text-accent">Цена не указана</div>
           <div class="mt-2 flex items-center gap-2 text-xs text-white/80">
@@ -136,7 +142,7 @@
           <p class="mt-1 text-xs text-gray-400">Доставка за 5 дней</p>
           {% if product.allow_order_on_request and product.on_request_price %}
           <p class="mt-1 text-[11px] text-gray-500">Под заказ — {{ product.on_request_price|price_format }} ₽</p>
-          <p class="mt-1 text-[11px] text-gray-500">Срок поставки: до 35 дней</p>
+          <p class="mt-1 text-[11px] text-gray-500">Срок поставки: 22–28 дней</p>
           {% endif %}
         {% elif product.allow_order_on_request and product.on_request_price %}
           <div class="text-[1.35rem] font-bold leading-none text-accent">{{ product.on_request_price|price_format }} ₽</div>
@@ -144,7 +150,13 @@
             <span class="inline-block h-2.5 w-2.5 rounded-full bg-amber-300 shadow-[0_0_10px_rgba(253,224,71,0.28)]"></span>
             <span class="font-medium">Под заказ</span>
           </div>
-          <p class="mt-1 text-xs text-gray-400">Срок поставки: до 35 дней</p>
+          <p class="mt-1 text-xs text-gray-400">Срок поставки: 22–28 дней</p>
+        {% elif product.in_stock_price is not None %}
+          <div class="text-[1.35rem] font-bold leading-none text-accent">{{ product.in_stock_price|price_format }} ₽</div>
+          <div class="mt-2 flex items-center gap-2 text-xs text-white/80">
+            <span class="inline-block h-2.5 w-2.5 rounded-full bg-slate-500"></span>
+            <span class="font-medium">Нет в наличии</span>
+          </div>
         {% else %}
           <div class="text-[1.1rem] font-bold leading-none text-accent">Цена не указана</div>
           <div class="mt-2 flex items-center gap-2 text-xs text-white/80">

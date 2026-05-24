@@ -44,7 +44,7 @@ from catalog.views.common import _get_stock_total
 from config.crm_leads import send_crm_lead_email
 from config.legal_consent import build_legal_acceptance_payload
 from config.legal_consent import get_legal_bundle_version
-from config.utils.spam_protection import is_spam_request
+from config.utils.spam_protection import check_spam_submission, log_blocked_submission
 
 from ..forms import CheckoutForm, PurchaseRequestForm
 from ..models import Order, OrderItem, PromoCode, PurchaseRequest, resolve_order_item_image_url
@@ -573,7 +573,7 @@ def _build_cdek_widget_config(request, form, *, selected_saved_address, session_
     }
 
 
-@ratelimit(key='ip', rate='15/m', method='POST')
+@ratelimit(key='ip', rate='15/m', method='POST', block=False)
 def checkout_view(request):
     """Оформление заказа для гостя или авторизованного пользователя."""
     cart_items, items_source = _get_checkout_items_source(request)
@@ -600,6 +600,11 @@ def checkout_view(request):
     cart_items, items_source = _get_checkout_items_source(request)
     if not cart_items:
         return redirect('orders:checkout')
+
+    spam_result = check_spam_submission(request)
+    if spam_result.is_spam:
+        log_blocked_submission(request, source='checkout', result=spam_result)
+        return render(request, 'orders/request_created.html')
 
     if not form.is_valid():
         return render(
@@ -652,9 +657,6 @@ def checkout_view(request):
         promo_code = (form.cleaned_data.get('promo_code') or '').strip()
         if promo_code:
             promo = PromoCode.objects.filter(code__iexact=promo_code, is_active=True).first()
-    if is_spam_request(request):
-        return render(request, 'orders/request_created.html')
-
     subtotal = sum(line['price'] * line['quantity'] for line in lines)
     promo_discount = _discount_for_promo(subtotal, promo)
     payment_status = (
@@ -844,7 +846,7 @@ def _render_purchase_request_product_page(request, product, *, form, variant=Non
 
 
 @require_POST
-@ratelimit(key='ip', rate='15/m', method='POST')
+@ratelimit(key='ip', rate='15/m', method='POST', block=False)
 def purchase_request_create_view(request):
     form = PurchaseRequestForm(request.POST)
 
@@ -875,6 +877,11 @@ def purchase_request_create_view(request):
         form.add_error(None, 'Не удалось определить выбранный вариант товара.')
         return _render_purchase_request_product_page(request, product, form=form, status=400)
 
+    spam_result = check_spam_submission(request)
+    if spam_result.is_spam:
+        log_blocked_submission(request, source='purchase_request', result=spam_result)
+        return redirect('orders:request_created', request_id=0)
+
     if not form.is_valid():
         return _render_purchase_request_product_page(request, product, form=form, variant=variant, status=400)
 
@@ -883,9 +890,6 @@ def purchase_request_create_view(request):
     if public_purchase_mode != PURCHASE_MODE_REQUEST_ONLY:
         form.add_error(None, 'Эту позицию можно оформить через корзину. Заявка нужна только для товаров без наличия и цены под заказ.')
         return _render_purchase_request_product_page(request, product, form=form, variant=variant, status=400)
-    if is_spam_request(request):
-        return redirect('orders:request_created', request_id=0)
-
     source_path = (form.cleaned_data.get('source_path') or '').strip() or _build_purchase_request_source_path(product, variant)
     item_snapshot = {
         'product_id': product.pk,
