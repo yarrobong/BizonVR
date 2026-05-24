@@ -242,8 +242,7 @@
 
       <form method="post" action="{% url 'contacts' %}" class="mt-6">
         {% csrf_token %}
-        <input type="hidden" name="website" value="">
-        <input type="hidden" name="form_started_at" value="{{ form_started_at }}">
+        {% include "includes/public_form_spam_fields.html" %}
         {% for field in form %}
         <div class="custom-field-group">
           {% if field.field.widget.input_type == 'checkbox' %}

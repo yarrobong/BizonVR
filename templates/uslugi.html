@@ -687,8 +687,7 @@
             {% endfor %}
           {% endif %}
           <input type="hidden" name="form_type" value="callback">
-          <input type="hidden" name="website" value="">
-          <input type="hidden" name="form_started_at" value="{{ form_started_at }}">
+          {% include "includes/public_form_spam_fields.html" %}
           <div class="arenda-callback-row">
             <input type="text" name="name" value="{{ callback_form.name.value|default:'' }}" class="arenda-callback-input" placeholder="Ваше имя" maxlength="150">
             <input type="tel" name="phone" value="{{ callback_form.phone.value|default:'' }}" class="arenda-callback-input js-phone-mask" placeholder="+7 (999) 999-99-99" inputmode="tel" required>

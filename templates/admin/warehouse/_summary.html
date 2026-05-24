@@ -1,0 +1,8 @@
+<div class="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
+  {% for card in summary.cards %}
+    <article class="warehouse-card">
+      <p class="text-xs uppercase tracking-[0.28em] text-slate-400">{{ card.label }}</p>
+      <p class="mt-4 text-3xl font-semibold text-white">{{ card.value }}</p>
+    </article>
+  {% endfor %}
+</div>

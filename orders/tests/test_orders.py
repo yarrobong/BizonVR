@@ -5,7 +5,7 @@ import json
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.core import mail
-from django.test import Client, TestCase, override_settings, tag
+from django.test import Client, RequestFactory, TestCase, override_settings, tag
 from django.urls import reverse
 from django.utils import timezone
 from unittest.mock import Mock, patch
@@ -13,6 +13,7 @@ from unittest.mock import Mock, patch
 from accounts.models import NotificationPreference, Profile
 from catalog.models import CartItem, CatalogSection, Category, City, GamePack, GamePackEntry, GamePackItem, GamePackServiceEntry, PickupPoint, Product, ProductGameMetadata, ProductStock, Service
 from config.legal_docs import LEGAL_BUNDLE_VERSION
+from config.utils.spam_protection import check_spam_submission
 from manager_portal.models import ManagerClient, ManagerDeal, SaleLineAllocation
 from payments.models import Payment
 
@@ -429,6 +430,24 @@ class CheckoutTest(TestCase):
         self.assertEqual(Order.objects.count(), 0)
         self.assertEqual(len(mail.outbox), 0)
 
+    @override_settings(CRM_LEADS_EMAIL='crm@example.com')
+    def test_checkout_blocks_searchregister_spam_before_order_and_email(self):
+        self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
+
+        response = self.client.post(
+            reverse('orders:checkout'),
+            self._checkout_payload(
+                first_name='Craig Gonsalves',
+                email='domains@search-bizonvr.ru',
+                comment='Greetings feature bizonvr.ru in GoogleSearchIndex https://searchregister.info',
+            ),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Заявка отправлена')
+        self.assertEqual(Order.objects.count(), 0)
+        self.assertEqual(len(mail.outbox), 0)
+
     def test_guest_checkout_creates_guest_order_and_access_token(self):
         add_url = reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk})
         self.client.post(add_url, {'quantity': 1})
@@ -788,6 +807,18 @@ class CheckoutTest(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response.url, reverse('orders:request_created', kwargs={'request_id': 0}))
         self.assertEqual(PurchaseRequest.objects.count(), 0)
+
+    def test_fast_submit_gets_high_spam_score(self):
+        request = RequestFactory().post('/orders/purchase-request/create/', {
+            'phone': '+7 999 123 45 67',
+            'form_started_at': str(int(timezone.now().timestamp() * 1000)),
+        })
+
+        result = check_spam_submission(request)
+
+        self.assertFalse(result.is_spam)
+        self.assertIn('submitted_too_fast', result.reasons)
+        self.assertGreaterEqual(result.score, 25)
 
     def test_purchase_request_create_saves_null_in_stock_price_when_price_missing(self):
         self.product.price = None

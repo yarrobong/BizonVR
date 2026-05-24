@@ -546,6 +546,7 @@
       {% endif %}
       <form method="post" class="club-quiz">
         {% csrf_token %}
+        {% include "includes/public_form_spam_fields.html" %}
         <input class="club-input" name="name" placeholder="Имя" required>
         <input class="club-input" name="phone" placeholder="Телефон" required>
         <input class="club-input" name="email" placeholder="Email">

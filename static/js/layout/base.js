@@ -1192,6 +1192,18 @@
         syncValue(false);
       });
     }
+
+    function initPublicFormSpamProtection(root) {
+      const scope = root || document;
+      const inputs = scope.querySelectorAll('input[data-form-started-at]');
+
+      inputs.forEach(input => {
+        if (!input || input.value) {
+          return;
+        }
+        input.value = String(Date.now());
+      });
+    }
     
     function initHtmxHandlers() {
       function syncLayoutState() {
@@ -1207,6 +1219,7 @@
       if (hasPendingLucideIcons(document)) {
         initLucide(document);
       }
+      initPublicFormSpamProtection(document);
       initPhoneMasks(document);
       wireLiveSearch(document);
       initProductCardGalleries(document);
@@ -1299,9 +1312,11 @@
           // Alpine.js сам подхватит новые элементы с x-data
           // Поэтому initTree вызывать не обязательно и это может вызвать ошибки
           syncLayoutState();
+          initPublicFormSpamProtection(document);
           initPhoneMasks(document);
           wireLiveSearch(document);
         }
+        initPublicFormSpamProtection(swapTarget);
         initProductCardGalleries(swapTarget);
       });
       

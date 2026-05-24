@@ -1,0 +1,178 @@
+<div data-sku-key="{{ sku_key }}" data-refresh-url="{% url 'admin:warehouse_ui_drawer' sku_key %}" class="space-y-6">
+  {% if toast %}
+    <div class="rounded-2xl border px-4 py-3 text-sm {% if toast.level == 'success' %}border-emerald-400/25 bg-emerald-500/10 text-emerald-100{% else %}border-rose-400/25 bg-rose-500/10 text-rose-100{% endif %}">
+      {{ toast.message }}
+    </div>
+  {% endif %}
+
+  <div class="flex items-start justify-between gap-4">
+    <div class="flex items-start gap-4">
+      {% if image_url %}
+        <img src="{{ image_url }}" alt="{{ product.name }}" class="h-20 w-20 rounded-3xl border border-slate-800 object-cover">
+      {% else %}
+        <div class="flex h-20 w-20 items-center justify-center rounded-3xl border border-cyan-400/20 bg-cyan-400/10 text-2xl text-cyan-200">VR</div>
+      {% endif %}
+      <div>
+        <p class="text-xs uppercase tracking-[0.3em] text-cyan-300/80">SKU</p>
+        <h2 class="mt-2 text-2xl font-semibold text-white">{{ product.name }}</h2>
+        {% if variant %}<p class="mt-1 text-sm text-slate-300">{{ variant.name }}</p>{% endif %}
+        <div class="mt-3 flex flex-wrap gap-2 text-xs">
+          {% if row.sku %}<span class="rounded-full border border-slate-700 px-2 py-1 text-slate-300">{{ row.sku }}</span>{% endif %}
+          <span class="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2 py-1 text-cyan-100">Остаток {{ row.totals.on_hand }}</span>
+          <span class="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-2 py-1 text-emerald-100">Доступно {{ row.totals.available }}</span>
+          <span class="rounded-full border border-amber-400/20 bg-amber-500/10 px-2 py-1 text-amber-100">Резерв {{ row.totals.reserved }}</span>
+          <span class="rounded-full border border-sky-400/20 bg-sky-500/10 px-2 py-1 text-sky-100">В пути {{ row.totals.inbound }}</span>
+        </div>
+      </div>
+    </div>
+    <button type="button" data-warehouse-drawer-close class="rounded-full border border-slate-700 px-3 py-1.5 text-sm text-slate-300 transition hover:border-slate-500 hover:bg-slate-900/60">
+      Закрыть
+    </button>
+  </div>
+
+  <section class="rounded-3xl border border-slate-800 bg-slate-950/60 p-5">
+    <h3 class="text-sm font-semibold uppercase tracking-[0.24em] text-slate-400">По складам</h3>
+    <div class="mt-4 space-y-3">
+      {% for cell in row.cells %}
+        <div class="rounded-2xl border border-slate-800 bg-slate-950/80 p-4">
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <div class="font-medium text-white">{{ cell.warehouse.name }}</div>
+              <div class="mt-1 text-xs text-slate-500">
+                {% if cell.warehouse.pickup_point_id %}
+                  {{ cell.warehouse.pickup_point.city.name }}{% if cell.warehouse.pickup_point.name %}, {{ cell.warehouse.pickup_point.name }}{% endif %}
+                {% else %}
+                  Без публичной точки выдачи
+                {% endif %}
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-x-5 gap-y-2 text-sm text-slate-300">
+              <span>Всего: <strong class="text-white">{{ cell.on_hand }}</strong></span>
+              <span>Резерв: <strong class="text-white">{{ cell.reserved }}</strong></span>
+              <span>Доступно: <strong class="{% if cell.available > 0 %}text-emerald-300{% elif cell.available < 0 %}text-rose-300{% else %}text-white{% endif %}">{{ cell.available }}</strong></span>
+              <span>В пути: <strong class="text-cyan-200">{{ cell.inbound }}</strong></span>
+            </div>
+          </div>
+          {% if cell.public_published_qty is not None %}
+            <div class="mt-3 text-xs {% if cell.public_mismatch %}text-amber-100{% else %}text-emerald-100{% endif %}">
+              Сайт: {{ cell.public_published_qty }} • Ожидается: {{ cell.public_expected_qty }}
+            </div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="rounded-3xl border border-slate-800 bg-slate-950/60 p-5">
+    <h3 class="text-sm font-semibold uppercase tracking-[0.24em] text-slate-400">Быстрые действия</h3>
+    <div class="mt-4 space-y-4">
+      <details class="rounded-2xl border border-slate-800 bg-slate-950/80 p-4" open>
+        <summary class="cursor-pointer font-medium text-white">Приход</summary>
+        <form method="post" class="mt-4 space-y-3" hx-post="{% url 'admin:warehouse_ui_receipt_action' %}" hx-target="#warehouse-drawer-content" hx-swap="innerHTML" hx-include="#warehouse-filters">
+          {% csrf_token %}
+          {{ receipt_form_obj.sku_key }}{{ receipt_form_obj.product }}{{ receipt_form_obj.variant }}
+          {% if receipt_form_obj.non_field_errors %}<div class="text-sm text-rose-300">{{ receipt_form_obj.non_field_errors }}</div>{% endif %}
+          <div>{{ receipt_form_obj.warehouse.label_tag }}{{ receipt_form_obj.warehouse }}{{ receipt_form_obj.warehouse.errors }}</div>
+          <div>{{ receipt_form_obj.quantity.label_tag }}{{ receipt_form_obj.quantity }}{{ receipt_form_obj.quantity.errors }}</div>
+          <div>{{ receipt_form_obj.unit_cost.label_tag }}{{ receipt_form_obj.unit_cost }}{{ receipt_form_obj.unit_cost.errors }}</div>
+          <div>{{ receipt_form_obj.comment.label_tag }}{{ receipt_form_obj.comment }}{{ receipt_form_obj.comment.errors }}</div>
+          <button type="submit" class="rounded-full bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300">Записать приход</button>
+        </form>
+      </details>
+
+      <details class="rounded-2xl border border-slate-800 bg-slate-950/80 p-4">
+        <summary class="cursor-pointer font-medium text-white">Корректировка</summary>
+        <form method="post" class="mt-4 space-y-3" hx-post="{% url 'admin:warehouse_ui_adjustment_action' %}" hx-target="#warehouse-drawer-content" hx-swap="innerHTML" hx-include="#warehouse-filters">
+          {% csrf_token %}
+          {{ adjustment_form_obj.sku_key }}{{ adjustment_form_obj.product }}{{ adjustment_form_obj.variant }}
+          {% if adjustment_form_obj.non_field_errors %}<div class="text-sm text-rose-300">{{ adjustment_form_obj.non_field_errors }}</div>{% endif %}
+          <div>{{ adjustment_form_obj.warehouse.label_tag }}{{ adjustment_form_obj.warehouse }}{{ adjustment_form_obj.warehouse.errors }}</div>
+          <div>{{ adjustment_form_obj.quantity_delta.label_tag }}{{ adjustment_form_obj.quantity_delta }}{{ adjustment_form_obj.quantity_delta.errors }}</div>
+          <p class="text-xs text-slate-500">Положительное число добавит остаток, отрицательное спишет по FIFO.</p>
+          <div>{{ adjustment_form_obj.comment.label_tag }}{{ adjustment_form_obj.comment }}{{ adjustment_form_obj.comment.errors }}</div>
+          <button type="submit" class="rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-slate-200">Провести корректировку</button>
+        </form>
+      </details>
+
+      <details class="rounded-2xl border border-slate-800 bg-slate-950/80 p-4">
+        <summary class="cursor-pointer font-medium text-white">Переместить</summary>
+        <form method="post" class="mt-4 space-y-3" hx-post="{% url 'admin:warehouse_ui_transfer_action' %}" hx-target="#warehouse-drawer-content" hx-swap="innerHTML" hx-include="#warehouse-filters">
+          {% csrf_token %}
+          {{ transfer_form_obj.sku_key }}{{ transfer_form_obj.product }}{{ transfer_form_obj.variant }}
+          {% if transfer_form_obj.non_field_errors %}<div class="text-sm text-rose-300">{{ transfer_form_obj.non_field_errors }}</div>{% endif %}
+          <div>{{ transfer_form_obj.source_warehouse.label_tag }}{{ transfer_form_obj.source_warehouse }}{{ transfer_form_obj.source_warehouse.errors }}</div>
+          <div>{{ transfer_form_obj.target_warehouse.label_tag }}{{ transfer_form_obj.target_warehouse }}{{ transfer_form_obj.target_warehouse.errors }}</div>
+          <div>{{ transfer_form_obj.quantity.label_tag }}{{ transfer_form_obj.quantity }}{{ transfer_form_obj.quantity.errors }}</div>
+          <div>{{ transfer_form_obj.comment.label_tag }}{{ transfer_form_obj.comment }}{{ transfer_form_obj.comment.errors }}</div>
+          <button type="submit" class="rounded-full border border-cyan-400/30 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-400/20">Сохранить перемещение</button>
+        </form>
+      </details>
+    </div>
+  </section>
+
+  <section class="rounded-3xl border border-slate-800 bg-slate-950/60 p-5">
+    <div class="flex items-center justify-between gap-3">
+      <h3 class="text-sm font-semibold uppercase tracking-[0.24em] text-slate-400">История движения</h3>
+      <button type="button" class="rounded-full border border-slate-700 px-3 py-1.5 text-xs text-slate-300 transition hover:border-slate-500 hover:bg-slate-900/60" hx-get="{{ history_url }}" hx-target="#warehouse-history-slot" hx-swap="innerHTML">
+        Обновить
+      </button>
+    </div>
+    <div id="warehouse-history-slot" class="mt-4">
+      {% include "admin/warehouse/_history.html" with movements=movements sku_key=sku_key %}
+    </div>
+  </section>
+
+  <section class="rounded-3xl border border-slate-800 bg-slate-950/60 p-5">
+    <h3 class="text-sm font-semibold uppercase tracking-[0.24em] text-slate-400">Активные резервы</h3>
+    <div class="mt-4 space-y-3">
+      {% for item in reservations %}
+        <div class="rounded-2xl border border-slate-800 bg-slate-950/80 p-4">
+          <div class="flex items-center justify-between gap-3">
+            <div class="font-medium text-white">{{ item.reservation.code|default:"Бронь" }}</div>
+            <div class="text-sm text-amber-100">{{ item.active_reserved_quantity }}</div>
+          </div>
+          <div class="mt-2 text-sm text-slate-400">
+            {{ item.reservation.client.name }}{% if item.reservation.manager_deal_id %} • Сделка {{ item.reservation.manager_deal.code }}{% endif %}
+          </div>
+        </div>
+      {% empty %}
+        <p class="text-sm text-slate-500">Активных резервов нет.</p>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="rounded-3xl border border-slate-800 bg-slate-950/60 p-5">
+    <h3 class="text-sm font-semibold uppercase tracking-[0.24em] text-slate-400">Входящие поставки</h3>
+    <div class="mt-4 space-y-3">
+      {% for item in cargo_items %}
+        <div class="rounded-2xl border border-slate-800 bg-slate-950/80 p-4">
+          <div class="flex items-center justify-between gap-3">
+            <div class="font-medium text-white">{{ item.cargo.cargo_number }}</div>
+            <div class="text-sm text-cyan-200">{{ item.remaining_quantity }} шт.</div>
+          </div>
+          <div class="mt-2 text-sm text-slate-400">
+            {{ item.cargo.destination_warehouse.name }}{% if item.cargo.eta %} • ETA {{ item.cargo.eta|date:"d.m.Y" }}{% endif %}
+          </div>
+        </div>
+      {% empty %}
+        <p class="text-sm text-slate-500">Позиция не едет ни в одном активном грузе.</p>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="rounded-3xl border border-slate-800 bg-slate-950/60 p-5">
+    <h3 class="text-sm font-semibold uppercase tracking-[0.24em] text-slate-400">Связанные сделки и заказы</h3>
+    <div class="mt-4 space-y-3">
+      {% for deal in linked_deals %}
+        <div class="rounded-2xl border border-slate-800 bg-slate-950/80 p-4">
+          <div class="font-medium text-white">{{ deal.code|default:"Сделка" }}</div>
+          <div class="mt-2 text-sm text-slate-400">
+            Заказ #{{ deal.order_id }}{% if deal.stock_warehouse_id %} • {{ deal.stock_warehouse.name }}{% endif %}
+          </div>
+        </div>
+      {% empty %}
+        <p class="text-sm text-slate-500">Связанных сделок не найдено.</p>
+      {% endfor %}
+    </div>
+  </section>
+</div>

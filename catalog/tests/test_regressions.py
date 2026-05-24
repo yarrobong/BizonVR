@@ -14,8 +14,27 @@ class SpamProtectionHelperTest(TestCase):
         self.assertTrue(is_spam_request(request))
 
     def test_fast_submit_blocks(self):
-        request = self.factory.post('/contacts/', {'form_started_at': str(int(time.time()))})
-        self.assertTrue(is_spam_request(request))
+        request = self.factory.post('/contacts/', {'form_started_at': str(int(time.time() * 1000))})
+        result = check_spam_submission(request)
+        self.assertFalse(result.is_spam)
+        self.assertIn('submitted_too_fast', result.reasons)
+        self.assertGreaterEqual(result.score, 25)
+
+    def test_searchregister_phrase_blocks_with_reason(self):
+        request = self.factory.post('/contacts/', {
+            'email': 'domains@search-bizonvr.ru',
+            'message': 'Greetings feature bizonvr.ru now: https://searchregister.info',
+        })
+        result = check_spam_submission(request)
+        self.assertTrue(result.is_spam)
+        self.assertGreaterEqual(result.score, 100)
+        self.assertIn('keyword:searchregister', result.reasons)
+
+    def test_missing_form_started_at_only_increases_score(self):
+        request = self.factory.post('/contacts/', {'message': 'Нужна консультация по VR-арене'})
+        result = check_spam_submission(request)
+        self.assertFalse(result.is_spam)
+        self.assertIn('form_started_at_missing', result.reasons)
 
 
 
@@ -354,6 +373,51 @@ class LegalConsentFormsAndViewsTest(TestCase):
         )
         self.assertEqual(resp.status_code, 302)
         self.assertEqual(resp['Location'], reverse('contacts'))
+        self.assertEqual(ContactRequest.objects.count(), 0)
+
+    @override_settings(CRM_LEADS_EMAIL='crm@example.com')
+    def test_contacts_view_blocks_searchregister_spam_before_db_and_email(self):
+        resp = self.client.post(
+            reverse('contacts'),
+            {
+                'name': 'Craig Gonsalves',
+                'email': 'domains@search-bizonvr.ru',
+                'phone': '7724029977',
+                'message': 'Greetings Feature bizonvr.ru in GoogleSearchIndex: https://searchregister.info',
+                'agree_personal_data': 'on',
+            },
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp['Location'], reverse('contacts'))
+        self.assertEqual(ContactRequest.objects.count(), 0)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_contacts_view_blocks_searchregister_net_spam(self):
+        resp = self.client.post(
+            reverse('contacts'),
+            {
+                'name': 'Nannette Cadman',
+                'email': 'domains@search-bizonvr.ru',
+                'phone': '7954273189',
+                'message': 'Dear Sir/Madam Enlist bizonvr.ru in GoogleSearchIndex: https://searchregister.net',
+                'agree_personal_data': 'on',
+            },
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(ContactRequest.objects.count(), 0)
+
+    def test_contacts_view_blocks_google_search_index_phrase(self):
+        resp = self.client.post(
+            reverse('contacts'),
+            {
+                'name': 'Spam Bot',
+                'email': 'bot@example.com',
+                'phone': '+7 999 111-22-33',
+                'message': 'Please add feature bizonvr.ru to Google Search Index for better online search results',
+                'agree_personal_data': 'on',
+            },
+        )
+        self.assertEqual(resp.status_code, 302)
         self.assertEqual(ContactRequest.objects.count(), 0)
 
 

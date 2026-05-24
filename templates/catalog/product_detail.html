@@ -340,7 +340,7 @@
     return 5;
   },
   get onRequestDeliveryDays() {
-    return 35;
+    return '22–28';
   },
   get inStockDeliveryText() {
     if (this.isGamePack) {
@@ -349,7 +349,7 @@
     return `Доставка за ${this.inStockDeliveryDays} дней`;
   },
   get onRequestDeliveryText() {
-    return `Срок поставки: до ${this.onRequestDeliveryDays} дней`;
+    return `Срок поставки: ${this.onRequestDeliveryDays} дней`;
   },
   get currentInStockPrice() {
     if (this.selectedVariant) {
@@ -781,7 +781,7 @@
                     <span class="offer-secondary-label">Под заказ</span>
                     <span class="offer-secondary-price" x-text="window.formatRub(currentOnRequestPrice)">4 490 ₽</span>
                   </div>
-                  <p class="offer-secondary-meta" x-text="onRequestDeliveryText">Срок поставки: до 35 дней</p>
+                  <p class="offer-secondary-meta" x-text="onRequestDeliveryText">Срок поставки: 22–28 дней</p>
                 </button>
               </template>
             </div>
@@ -795,7 +795,7 @@
                 <div class="price-row">
                   <span class="main-price" x-text="window.formatRub(currentOnRequestPrice)">4 490 ₽</span>
                 </div>
-                <p class="offer-meta-text" x-text="onRequestDeliveryText">Срок поставки: до 35 дней</p>
+                <p class="offer-meta-text" x-text="onRequestDeliveryText">Срок поставки: 22–28 дней</p>
               </div>
             </div>
           </template>
@@ -905,7 +905,7 @@
                     <span class="offer-secondary-label">Под заказ</span>
                     <span class="offer-secondary-price" x-text="window.formatRub(currentOnRequestPrice)">4 490 ₽</span>
                   </div>
-                  <p class="offer-secondary-meta" x-text="onRequestDeliveryText">Срок поставки: до 35 дней</p>
+                  <p class="offer-secondary-meta" x-text="onRequestDeliveryText">Срок поставки: 22–28 дней</p>
                 </button>
               </template>
             </div>
@@ -919,7 +919,7 @@
                 <div class="price-row">
                   <span class="main-price" x-text="window.formatRub(currentOnRequestPrice)">4 490 ₽</span>
                 </div>
-                <p class="offer-meta-text" x-text="onRequestDeliveryText">Срок поставки: до 35 дней</p>
+                <p class="offer-meta-text" x-text="onRequestDeliveryText">Срок поставки: 22–28 дней</p>
               </div>
             </div>
           </template>
@@ -981,8 +981,7 @@
             {% csrf_token %}
             {{ purchase_request_form.product_id }}
             {{ purchase_request_form.source_path }}
-            <input type="hidden" name="website" value="">
-            <input type="hidden" name="form_started_at" value="{{ form_started_at }}">
+            {% include "includes/public_form_spam_fields.html" %}
             <input type="hidden" name="variant_id" :value="selectedVariant ? selectedVariant.id : '{{ purchase_request_variant_id|default_if_none:''|escapejs }}'" />
             <div class="purchase-request-field">
               <label for="{{ purchase_request_form.phone.id_for_label }}" class="purchase-request-label">Телефон</label>

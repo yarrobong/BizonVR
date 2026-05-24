@@ -1989,11 +1989,15 @@ class InventoryMovement(models.Model):
     TYPE_ADJUSTMENT = 'adjustment'
     TYPE_RESERVE = 'reserve'
     TYPE_RELEASE = 'release'
+    TYPE_TRANSFER_OUT = 'transfer_out'
+    TYPE_TRANSFER_IN = 'transfer_in'
     TYPE_CHOICES = [
         (TYPE_RECEIPT, 'Приемка'),
         (TYPE_ADJUSTMENT, 'Корректировка'),
         (TYPE_RESERVE, 'Резерв'),
         (TYPE_RELEASE, 'Снятие резерва'),
+        (TYPE_TRANSFER_OUT, 'Перемещение со склада'),
+        (TYPE_TRANSFER_IN, 'Перемещение на склад'),
     ]
 
     warehouse = models.ForeignKey(
@@ -2035,6 +2039,9 @@ class InventoryMovement(models.Model):
         verbose_name = 'Движение по складу'
         verbose_name_plural = 'Движения по складу'
         ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(fields=['warehouse', 'product', 'variant', '-created_at'], name='mgr_inv_move_lookup_idx'),
+        ]
 
 
 class InventoryLot(models.Model):
