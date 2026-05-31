@@ -1,0 +1,172 @@
+{% extends "operations/base.html" %}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+  <section class="ops-panel rounded-[2rem] px-6 py-6">
+    <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <div>
+        <p class="text-xs uppercase tracking-[0.18em] text-cyan-100/70">Груз по позиции закупки</p>
+        <h2 class="mt-2 text-3xl font-semibold">{{ deal.code|default:deal.order_id }}</h2>
+        <p class="mt-3 text-sm ops-muted">{{ page_subtitle }}</p>
+        <dl class="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div>
+            <dt class="text-xs uppercase tracking-[0.16em] text-slate-500">Заказ</dt>
+            <dd class="mt-1 text-sm text-white">#{{ deal.order_id }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs uppercase tracking-[0.16em] text-slate-500">Склад по сделке</dt>
+            <dd class="mt-1 text-sm text-white">{{ deal.stock_warehouse.name|default:"—" }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs uppercase tracking-[0.16em] text-slate-500">ETA по сделке</dt>
+            <dd class="mt-1 text-sm text-white">{{ deal.expected_arrival_date|date:"d.m.Y"|default:"—" }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs uppercase tracking-[0.16em] text-slate-500">Режим</dt>
+            <dd class="mt-1 text-sm text-white">{% if selected_purchase %}Закупка {{ selected_purchase.code|default:selected_purchase.pk }}{% else %}Все закупки сделки{% endif %}</dd>
+          </div>
+        </dl>
+      </div>
+      <a href="{% url 'operations:deal_detail' pk=deal.pk %}" class="inline-flex rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-100 transition hover:bg-slate-900">Вернуться в сделку</a>
+    </div>
+  </section>
+
+  <section class="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(18rem,0.8fr)]">
+    <article class="ops-panel rounded-[1.75rem] px-6 py-6">
+      <div>
+        <p class="text-xs uppercase tracking-[0.18em] text-cyan-100/70">Новый груз</p>
+        <h3 class="mt-2 text-2xl font-semibold">Создать / привязать груз</h3>
+        <p class="mt-2 text-sm ops-muted">Форма разбита по смыслу: что грузим, куда едет, когда приедет и в каком статусе сейчас находится груз.</p>
+      </div>
+      <form method="post" class="mt-5 space-y-6">
+        {% csrf_token %}
+        {% if selected_purchase %}
+          <input type="hidden" name="scope_purchase" value="{{ selected_purchase.id }}">
+        {% endif %}
+        {% if selected_purchase_item %}
+          <input type="hidden" name="scope_purchase_item" value="{{ selected_purchase_item.id }}">
+        {% endif %}
+        <div class="rounded-[1.5rem] border border-slate-800 bg-slate-950/40 px-4 py-4">
+          <p class="text-xs uppercase tracking-[0.16em] text-cyan-100/70">A. Что грузим</p>
+          <div class="mt-4 grid gap-4 md:grid-cols-2">
+            <div class="md:col-span-2">
+              <label class="mb-2 block text-xs uppercase tracking-[0.16em] text-slate-500">{{ form.purchase_item.label }}<span class="ops-required">обязательно</span></label>
+              {{ form.purchase_item }}
+              {% for error in form.purchase_item.errors %}
+                <p class="mt-1 text-xs text-rose-300">{{ error }}</p>
+              {% endfor %}
+            </div>
+            <div>
+              <label class="mb-2 block text-xs uppercase tracking-[0.16em] text-slate-500">{{ form.quantity.label }}<span class="ops-required">обязательно</span></label>
+              {{ form.quantity }}
+              {% for error in form.quantity.errors %}
+                <p class="mt-1 text-xs text-rose-300">{{ error }}</p>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+
+        <div class="rounded-[1.5rem] border border-slate-800 bg-slate-950/40 px-4 py-4">
+          <p class="text-xs uppercase tracking-[0.16em] text-cyan-100/70">B. Куда едет</p>
+          <div class="mt-4">
+            <label class="mb-2 block text-xs uppercase tracking-[0.16em] text-slate-500">{{ form.destination_warehouse.label }}<span class="ops-required">обязательно</span></label>
+            {{ form.destination_warehouse }}
+            {% for error in form.destination_warehouse.errors %}
+              <p class="mt-1 text-xs text-rose-300">{{ error }}</p>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="rounded-[1.5rem] border border-slate-800 bg-slate-950/40 px-4 py-4">
+          <p class="text-xs uppercase tracking-[0.16em] text-cyan-100/70">C. Когда приедет</p>
+          <div class="mt-4">
+            <label class="mb-2 block text-xs uppercase tracking-[0.16em] text-slate-500">{{ form.eta.label }}</label>
+            {{ form.eta }}
+            {% for error in form.eta.errors %}
+              <p class="mt-1 text-xs text-rose-300">{{ error }}</p>
+            {% endfor %}
+            <p class="mt-2 text-xs ops-muted">ETA обязателен, если груз уже не в статусе «Создан».</p>
+          </div>
+        </div>
+
+        <div class="rounded-[1.5rem] border border-slate-800 bg-slate-950/40 px-4 py-4">
+          <p class="text-xs uppercase tracking-[0.16em] text-cyan-100/70">D. Статус</p>
+          <div class="mt-4">
+            <label class="mb-2 block text-xs uppercase tracking-[0.16em] text-slate-500">{{ form.status.label }}<span class="ops-required">обязательно</span></label>
+            {{ form.status }}
+            {% for error in form.status.errors %}
+              <p class="mt-1 text-xs text-rose-300">{{ error }}</p>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="rounded-[1.5rem] border border-slate-800 bg-slate-950/40 px-4 py-4">
+          <p class="text-xs uppercase tracking-[0.16em] text-cyan-100/70">E. Дополнительно</p>
+          <div class="mt-4 grid gap-4">
+            <div>
+              <label class="mb-2 block text-xs uppercase tracking-[0.16em] text-slate-500">{{ form.cargo_number.label }}</label>
+              {{ form.cargo_number }}
+              {% for error in form.cargo_number.errors %}
+                <p class="mt-1 text-xs text-rose-300">{{ error }}</p>
+              {% endfor %}
+            </div>
+            <div>
+              <label class="mb-2 block text-xs uppercase tracking-[0.16em] text-slate-500">{{ form.comments.label }}</label>
+              {{ form.comments }}
+              {% for error in form.comments.errors %}
+                <p class="mt-1 text-xs text-rose-300">{{ error }}</p>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+
+        {% if form.non_field_errors %}
+          <div>
+            {% for error in form.non_field_errors %}
+              <p class="text-xs text-rose-300">{{ error }}</p>
+            {% endfor %}
+          </div>
+        {% endif %}
+        <div class="flex flex-wrap gap-3">
+          <button type="submit" {% if not has_purchase_items %}disabled{% endif %} class="ops-button-primary disabled:cursor-not-allowed disabled:opacity-60">Сохранить груз</button>
+          <a href="{% url 'operations:deal_detail' pk=deal.pk %}" class="ops-button-secondary">Отмена</a>
+        </div>
+      </form>
+    </article>
+
+    <aside class="ops-panel rounded-[1.75rem] px-6 py-6">
+      <p class="text-xs uppercase tracking-[0.18em] text-cyan-100/70">Текущий контекст</p>
+      <div class="mt-4 space-y-4">
+        {% if selected_purchase_item %}
+          <div class="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-4">
+            <p class="text-sm font-medium text-white">Выбранная позиция закупки</p>
+            <p class="mt-2 text-sm ops-muted">{{ selected_purchase_item.purchase.code|default:selected_purchase_item.purchase.pk }} · {{ selected_purchase_item.purchase.get_status_display }}</p>
+            <p class="mt-1 text-sm ops-muted">{{ selected_purchase_item.product.name }}{% if selected_purchase_item.variant %} · {{ selected_purchase_item.variant.name }}{% endif %}</p>
+            <p class="mt-1 text-sm ops-muted">{{ selected_purchase_item.quantity }} шт. · получено {{ selected_purchase_item.received_quantity }}</p>
+          </div>
+        {% elif selected_purchase %}
+          <div class="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-4">
+            <p class="text-sm font-medium text-white">Выбранная закупка</p>
+            <p class="mt-2 text-sm ops-muted">{{ selected_purchase.code|default:selected_purchase.pk }} · {{ selected_purchase.get_status_display }}</p>
+            <p class="mt-1 text-sm ops-muted">{{ selected_purchase.supplier_name|default:"Поставщик не указан" }}</p>
+            <p class="mt-1 text-sm ops-muted">После сохранения груз сразу появится в карточке сделки.</p>
+          </div>
+        {% endif %}
+
+        <div class="rounded-2xl border border-slate-800 bg-slate-950/40 px-4 py-4">
+          <p class="text-sm font-medium text-white">Что произойдёт после сохранения</p>
+          <p class="mt-2 text-sm ops-muted">После сохранения будет создан груз и привязана позиция закупки.</p>
+          <p class="mt-1 text-sm ops-muted">Если номер не указан, система сгенерирует его сама.</p>
+        </div>
+
+        {% if not has_purchase_items %}
+          <div class="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-4 py-4">
+            <p class="text-sm font-medium text-white">Нет доступных позиций закупки</p>
+            <p class="mt-2 text-sm ops-muted">Сначала создайте закупку по сделке или выберите позицию, по которой ещё не распределён весь объём в грузы.</p>
+          </div>
+        {% endif %}
+      </div>
+    </aside>
+  </section>
+{% endblock %}

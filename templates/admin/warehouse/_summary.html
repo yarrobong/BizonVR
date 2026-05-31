@@ -1,8 +1,14 @@
 <div class="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-6">
   {% for card in summary.cards %}
-    <article class="warehouse-card">
+    <button
+      type="submit"
+      form="warehouse-filters"
+      name="status"
+      value="{{ card.status }}"
+      class="warehouse-card text-left transition hover:-translate-y-0.5 hover:border-cyan-300/25 {% if summary.active_status == card.status %}ring-2 ring-cyan-300/30{% endif %}"
+    >
       <p class="text-xs uppercase tracking-[0.28em] text-slate-400">{{ card.label }}</p>
       <p class="mt-4 text-3xl font-semibold text-white">{{ card.value }}</p>
-    </article>
+    </button>
   {% endfor %}
 </div>

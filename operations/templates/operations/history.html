@@ -1,0 +1,52 @@
+{% extends "operations/base.html" %}
+
+{% block title %}История исполнения{% endblock %}
+
+{% block content %}
+  <section class="ops-panel rounded-[2rem] px-6 py-6">
+    <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div>
+        <p class="text-xs uppercase tracking-[0.22em] text-cyan-100/70">История</p>
+        <h2 class="mt-2 text-2xl font-semibold">{{ page_title }}</h2>
+        <p class="mt-2 text-sm ops-muted">{{ page_subtitle }}</p>
+      </div>
+      <span class="ops-chip ops-tone-neutral">{{ history_rows_total }}</span>
+    </div>
+  </section>
+
+  <section class="ops-panel rounded-[1.75rem] px-6 py-6">
+    <div class="flex flex-wrap gap-2">
+      {% for link in history_filter_links %}
+        <a href="{{ link.url }}" class="rounded-full px-3 py-2 text-sm transition {% if link.active %}bg-cyan-300 text-slate-950{% else %}border border-slate-700 text-slate-200 hover:bg-slate-900{% endif %}">
+          {{ link.label }}
+        </a>
+      {% endfor %}
+    </div>
+
+    <div class="mt-5 space-y-3">
+      {% for event in history_rows %}
+        <article class="rounded-[1.5rem] border border-slate-800 bg-slate-950/35 px-5 py-5">
+          <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div class="min-w-0">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="text-sm font-medium text-white">{{ event.created_at|date:"d.m H:i" }}</span>
+                <span class="ops-chip ops-tone-{{ event.tone }}">{{ event.category_label }}</span>
+              </div>
+              <p class="mt-2 text-sm text-white">{{ event.summary }}</p>
+              <p class="mt-1 text-xs ops-muted">{{ event.who_label }}</p>
+            </div>
+            {% if event.deal %}
+              <a href="{% url 'operations:deal_detail' event.deal.pk %}?tab=history" class="ops-button-secondary">Открыть сделку</a>
+            {% endif %}
+          </div>
+        </article>
+      {% empty %}
+        <p class="text-sm ops-muted">Событий пока нет.</p>
+      {% endfor %}
+    </div>
+
+    {% if history_rows_total > history_rows|length or history_show_all %}
+      <a href="{{ history_toggle_url }}" class="mt-4 inline-flex rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-200 transition hover:bg-slate-900">{{ history_toggle_label }}</a>
+    {% endif %}
+  </section>
+{% endblock %}

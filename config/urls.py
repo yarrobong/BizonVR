@@ -83,6 +83,7 @@ urlpatterns = [
     path('payments/', include('payments.urls')),
     path('catalog/', include('catalog.urls')),
     path('api/v1/', include('catalog.api_urls')),
+    path('ops/', include('operations.urls')),
     path('manager/', include('manager_portal.urls')),
     path('', home_view, name='home'),
     path(

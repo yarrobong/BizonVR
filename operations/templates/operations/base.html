@@ -1,0 +1,217 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Операторский портал{% endblock %}</title>
+  {% with disable_public_tracking_helpers=True %}
+    {% include "layout/_head_assets.html" %}
+  {% endwith %}
+  <style>
+    :root {
+      --ops-bg: #07111f;
+      --ops-panel: rgba(7, 18, 34, 0.86);
+      --ops-line: rgba(148, 163, 184, 0.18);
+      --ops-accent: #67e8f9;
+      --ops-critical: #f87171;
+      --ops-attention: #fb923c;
+      --ops-working: #facc15;
+      --ops-info: #60a5fa;
+      --ops-success: #4ade80;
+      --ops-neutral: #94a3b8;
+      --ops-text: #e2e8f0;
+      --ops-muted: #94a3b8;
+    }
+    body {
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at top left, rgba(103, 232, 249, 0.14), transparent 30%),
+        radial-gradient(circle at top right, rgba(250, 204, 21, 0.12), transparent 22%),
+        linear-gradient(180deg, #020617 0%, var(--ops-bg) 50%, #0b1120 100%);
+      color: var(--ops-text);
+    }
+    .ops-shell {
+      width: min(1280px, calc(100vw - 2rem));
+      margin: 0 auto;
+      padding: 1rem 0 2rem;
+    }
+    .ops-panel {
+      background: var(--ops-panel);
+      border: 1px solid var(--ops-line);
+      backdrop-filter: blur(18px);
+      box-shadow: 0 24px 60px rgba(2, 6, 23, 0.28);
+    }
+    .ops-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      border-radius: 999px;
+      border: 1px solid rgba(103, 232, 249, 0.22);
+      background: rgba(103, 232, 249, 0.1);
+      padding: 0.35rem 0.75rem;
+      font-size: 0.78rem;
+      color: #cffafe;
+    }
+    .ops-muted {
+      color: var(--ops-muted);
+    }
+    .ops-table th {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #94a3b8;
+      font-weight: 600;
+    }
+    .ops-table td {
+      vertical-align: top;
+    }
+    .ops-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      border-radius: 999px;
+      border: 1px solid var(--ops-line);
+      padding: 0.35rem 0.75rem;
+      font-size: 0.78rem;
+      line-height: 1.2;
+    }
+    .ops-tone-critical {
+      border-color: rgba(248, 113, 113, 0.28);
+      background: rgba(248, 113, 113, 0.12);
+      color: #fee2e2;
+    }
+    .ops-tone-attention {
+      border-color: rgba(251, 146, 60, 0.28);
+      background: rgba(251, 146, 60, 0.12);
+      color: #ffedd5;
+    }
+    .ops-tone-working {
+      border-color: rgba(250, 204, 21, 0.28);
+      background: rgba(250, 204, 21, 0.12);
+      color: #fef3c7;
+    }
+    .ops-tone-info {
+      border-color: rgba(96, 165, 250, 0.28);
+      background: rgba(96, 165, 250, 0.12);
+      color: #dbeafe;
+    }
+    .ops-tone-success {
+      border-color: rgba(74, 222, 128, 0.28);
+      background: rgba(74, 222, 128, 0.12);
+      color: #dcfce7;
+    }
+    .ops-tone-neutral {
+      border-color: rgba(148, 163, 184, 0.24);
+      background: rgba(148, 163, 184, 0.1);
+      color: #e2e8f0;
+    }
+    .ops-button-primary,
+    .ops-button-secondary,
+    .ops-button-attention {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      padding: 0.8rem 1rem;
+      font-size: 0.95rem;
+      transition: 160ms ease;
+    }
+    .ops-button-primary {
+      background: #67e8f9;
+      color: #082f49;
+      font-weight: 600;
+    }
+    .ops-button-primary:hover {
+      background: #a5f3fc;
+    }
+    .ops-button-secondary {
+      border: 1px solid rgba(148, 163, 184, 0.24);
+      color: #e2e8f0;
+      background: rgba(15, 23, 42, 0.45);
+    }
+    .ops-button-secondary:hover {
+      background: rgba(15, 23, 42, 0.8);
+    }
+    .ops-button-attention {
+      background: rgba(251, 146, 60, 0.14);
+      border: 1px solid rgba(251, 146, 60, 0.28);
+      color: #ffedd5;
+    }
+    .ops-button-attention:hover {
+      background: rgba(251, 146, 60, 0.22);
+    }
+    .ops-card-link {
+      border: 1px solid rgba(148, 163, 184, 0.16);
+      background: rgba(2, 6, 23, 0.34);
+      transition: 180ms ease;
+    }
+    .ops-card-link:hover {
+      border-color: rgba(103, 232, 249, 0.28);
+      background: rgba(2, 6, 23, 0.56);
+    }
+    .ops-kpi {
+      min-height: 8.5rem;
+    }
+    .ops-required {
+      display: inline-flex;
+      align-items: center;
+      margin-left: 0.5rem;
+      border-radius: 999px;
+      background: rgba(251, 146, 60, 0.14);
+      color: #ffedd5;
+      padding: 0.18rem 0.5rem;
+      font-size: 0.68rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+  </style>
+</head>
+<body>
+  <div class="ops-shell">
+    <header class="ops-panel mb-6 rounded-[2rem] px-6 py-5">
+      <div class="flex flex-col gap-5">
+        <div>
+          <p class="text-xs uppercase tracking-[0.28em] text-cyan-200/80">BizonVR</p>
+          <h1 class="mt-2 text-3xl font-semibold tracking-tight">Операторский портал</h1>
+          <p class="mt-2 max-w-3xl text-sm ops-muted">Bitrix24 продаёт. Здесь оператор быстро исполняет сделку: товар, закупка, груз, резерв, отгрузка и контроль статусов.</p>
+        </div>
+        <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto]">
+          <div class="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            {% for group in ops_nav_groups %}
+              <div class="rounded-[1.5rem] border border-slate-800 bg-slate-950/30 px-4 py-4">
+                <p class="text-xs uppercase tracking-[0.2em] text-slate-500">{{ group.label }}</p>
+                <div class="mt-3 flex flex-wrap gap-2">
+                  {% for item in group.items %}
+                    <a href="{{ item.url }}" class="rounded-full px-3 py-2 text-sm transition {% if item.active %}bg-cyan-300 text-slate-950{% else %}border border-slate-700 text-slate-200 hover:bg-slate-900{% endif %}">
+                      {{ item.label }}
+                    </a>
+                  {% endfor %}
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+          <div class="flex flex-wrap items-start justify-end gap-3 text-sm">
+            <a href="{{ ops_mode_toggle_url }}" class="ops-button-secondary">{{ ops_mode_label }} режим</a>
+            <a href="{% url 'accounts:logout' %}" class="ops-button-secondary">Выход</a>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    {% if messages %}
+      <div class="mb-6 space-y-3">
+        {% for message in messages %}
+          <div class="ops-panel rounded-2xl px-4 py-3 text-sm {% if message.tags == 'success' %}border-emerald-400/30 bg-emerald-500/10 text-emerald-100{% elif message.tags == 'error' %}border-rose-400/30 bg-rose-500/10 text-rose-100{% endif %}">
+            {{ message }}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <main class="space-y-6">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</body>
+</html>

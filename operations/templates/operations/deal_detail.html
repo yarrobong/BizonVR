@@ -1,0 +1,562 @@
+{% extends "operations/base.html" %}
+
+{% block title %}{{ deal.code|default:deal.order_id }}{% endblock %}
+
+{% block content %}
+  <section id="deal-summary" class="ops-panel rounded-[2rem] px-6 py-6">
+    <div class="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-center gap-3">
+          <span class="ops-chip ops-tone-{{ operation_snapshot.status_tone }}">{{ operation_snapshot.status_label }}</span>
+          <span class="ops-chip ops-tone-{{ deal.ops_summary.fulfillment_tone|default:'neutral' }}">{{ deal.ops_summary.fulfillment_status_label }}</span>
+          <span class="ops-chip ops-tone-{{ deal.ops_summary.delivery_tone|default:'neutral' }}">{{ deal.ops_summary.delivery_status_label }}</span>
+          {% if source_bitrix.deal_id and ops_mode == 'advanced' %}
+            <span class="ops-chip ops-tone-info">Bitrix #{{ source_bitrix.deal_id }}</span>
+          {% endif %}
+        </div>
+        <h2 class="mt-4 text-3xl font-semibold">{{ deal.code|default:deal.order_id }} · {{ client_summary.display_name }}</h2>
+        <p class="mt-3 max-w-3xl text-sm ops-muted">{{ operation_snapshot.reason }}</p>
+        <dl class="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div>
+            <dt class="text-xs uppercase tracking-[0.16em] text-slate-500">Сумма</dt>
+            <dd class="mt-1 text-sm text-white">{{ deal.grand_total }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs uppercase tracking-[0.16em] text-slate-500">Позиций</dt>
+            <dd class="mt-1 text-sm text-white">{{ position_rows|length }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs uppercase tracking-[0.16em] text-slate-500">Ответственный</dt>
+            <dd class="mt-1 text-sm text-white">{{ deal.responsible_manager|default:"Не назначен" }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs uppercase tracking-[0.16em] text-slate-500">Следующее действие</dt>
+            <dd class="mt-1 text-sm text-cyan-100">{{ operation_snapshot.action_text }}</dd>
+          </div>
+        </dl>
+        {% if ops_mode == 'advanced' %}
+          <div class="mt-4 flex flex-wrap gap-2">
+            <span class="ops-chip ops-tone-neutral">Заказ #{{ deal.order_id }}</span>
+            {% if source_bitrix.synced_at %}
+              <span class="ops-chip ops-tone-neutral">Синхронизация {{ source_bitrix.synced_at|date:"d.m.Y H:i" }}</span>
+            {% endif %}
+          </div>
+        {% endif %}
+      </div>
+      <div class="rounded-[1.5rem] border border-slate-800 bg-slate-950/35 px-5 py-4 xl:max-w-sm">
+        <p class="text-xs uppercase tracking-[0.16em] text-cyan-100/70">Клиент и доставка</p>
+        <dl class="mt-4 grid gap-3">
+          <div>
+            <dt class="text-xs uppercase tracking-[0.16em] text-slate-500">Клиент</dt>
+            <dd class="mt-1 text-sm text-white">{{ client_summary.display_name|default:"—" }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs uppercase tracking-[0.16em] text-slate-500">Получатель</dt>
+            <dd class="mt-1 text-sm text-white">{{ delivery_summary.recipient_name|default:client_summary.display_name|default:"—" }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs uppercase tracking-[0.16em] text-slate-500">Телефон</dt>
+            <dd class="mt-1 text-sm text-white">{{ delivery_summary.recipient_phone|default:client_summary.phone|default:"—" }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs uppercase tracking-[0.16em] text-slate-500">Город</dt>
+            <dd class="mt-1 text-sm text-white">{{ delivery_summary.city|default:client_summary.city|default:"—" }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs uppercase tracking-[0.16em] text-slate-500">Доставка</dt>
+            <dd class="mt-1 text-sm text-white">{{ delivery_summary.delivery_type_label|default:"—" }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs uppercase tracking-[0.16em] text-slate-500">Адрес</dt>
+            <dd class="mt-1 text-sm text-white">{{ delivery_summary.address|default:"—" }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs uppercase tracking-[0.16em] text-slate-500">Комментарий доставки</dt>
+            <dd class="mt-1 text-sm text-white">{{ delivery_summary.comment|default:client_summary.delivery_comment|default:"—" }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs uppercase tracking-[0.16em] text-slate-500">Служба доставки</dt>
+            <dd class="mt-1 text-sm text-white">{% if headline_shipment %}{{ headline_shipment.delivery_provider_name|default:headline_shipment.delivery_method|default:"—" }}{% else %}—{% endif %}</dd>
+          </div>
+          <div>
+            <dt class="text-xs uppercase tracking-[0.16em] text-slate-500">Трек-номер</dt>
+            <dd class="mt-1 text-sm text-white">{% if headline_shipment %}{{ headline_shipment.tracking_number|default:"—" }}{% else %}—{% endif %}</dd>
+          </div>
+          <div>
+            <dt class="text-xs uppercase tracking-[0.16em] text-slate-500">Источник данных</dt>
+            <dd class="mt-1 text-sm text-white">{{ client_summary.data_source|default:"—" }}</dd>
+          </div>
+        </dl>
+      </div>
+    </div>
+  </section>
+
+  <section class="ops-panel sticky top-3 z-20 rounded-[1.75rem] px-5 py-4">
+    <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-center gap-3">
+          <span class="text-lg font-semibold text-white">{{ deal.code|default:deal.order_id }}</span>
+          <span class="ops-chip ops-tone-{{ operation_snapshot.status_tone }}">{{ operation_snapshot.status_label }}</span>
+        </div>
+        <p class="mt-2 text-sm text-cyan-100">{{ primary_action.text }}</p>
+      </div>
+      <div class="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+        {% if primary_action.kind == 'post' %}
+          <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="{{ primary_action.post_action }}">
+            {% for field in primary_action.hidden_fields %}
+              <input type="hidden" name="{{ field.name }}" value="{{ field.value }}">
+            {% endfor %}
+            <button type="submit" class="ops-button-primary w-full">{{ primary_action.label }}</button>
+          </form>
+        {% else %}
+          <a href="{{ primary_action.url }}" class="ops-button-primary w-full">{{ primary_action.label }}</a>
+        {% endif %}
+
+        {% if source_bitrix.deal_url %}
+          <a href="{{ source_bitrix.deal_url }}" target="_blank" rel="noreferrer" class="ops-button-secondary w-full">Открыть в Bitrix</a>
+        {% else %}
+          <span class="ops-button-secondary w-full opacity-60">Bitrix не привязан</span>
+        {% endif %}
+
+        {% if operation_snapshot.status_code != 'completed' %}
+          {% if purchase_target_item %}
+            <a href="{% url 'operations:purchase_form' pk=deal.pk item_pk=purchase_target_item.pk %}" class="ops-button-secondary w-full">Создать закупку</a>
+          {% else %}
+            <span class="ops-button-secondary w-full opacity-60" title="{{ purchase_target_blocked_reason|default:'Нет доступной позиции' }}">Создать закупку</span>
+          {% endif %}
+
+          {% if cargo_target_purchase_item %}
+            <a href="{% url 'operations:deal_cargo_create' pk=deal.pk %}?purchase={{ cargo_target_purchase_item.purchase_id }}&purchase_item={{ cargo_target_purchase_item.id }}" class="ops-button-secondary w-full">Создать груз</a>
+          {% else %}
+            <span class="ops-button-secondary w-full opacity-60">Создать груз</span>
+          {% endif %}
+
+          {% if shipment_action_enabled %}
+            <form method="post">
+              {% csrf_token %}
+              <input type="hidden" name="action" value="create_shipment">
+              <button type="submit" class="ops-button-secondary w-full">Создать отгрузку</button>
+            </form>
+          {% else %}
+            <span class="ops-button-secondary w-full opacity-60">Создать отгрузку</span>
+          {% endif %}
+        {% endif %}
+      </div>
+    </div>
+  </section>
+
+  <section class="ops-panel rounded-[1.5rem] px-4 py-4">
+    <div class="flex flex-wrap gap-2">
+      {% for tab in detail_tabs %}
+        <a href="{{ tab.url }}" class="rounded-full px-4 py-2 text-sm transition {% if tab.active %}bg-cyan-300 text-slate-950{% else %}border border-slate-700 text-slate-200 hover:bg-slate-900{% endif %}">
+          {{ tab.label }}
+        </a>
+      {% endfor %}
+    </div>
+  </section>
+
+  {% if active_tab == 'overview' %}
+    <section class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      {% for card in overview_cards %}
+        <article class="ops-panel ops-kpi rounded-[1.5rem] px-5 py-5">
+          <p class="text-xs uppercase tracking-[0.18em] text-cyan-100/70">{{ card.title }}</p>
+          <p class="mt-3 text-xl font-semibold text-white">{{ card.summary }}</p>
+          <p class="mt-2 text-sm ops-muted">{{ card.detail }}</p>
+        </article>
+      {% endfor %}
+    </section>
+
+    <section class="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,0.75fr)]">
+      <article id="blockers" class="ops-panel rounded-[1.75rem] px-6 py-6">
+        <div class="flex items-end justify-between gap-4">
+          <div>
+            <p class="text-xs uppercase tracking-[0.18em] text-cyan-100/70">Блокеры</p>
+            <h3 class="mt-2 text-2xl font-semibold">Что мешает двинуть сделку дальше</h3>
+          </div>
+          <span class="ops-chip {% if blocker_rows %}ops-tone-attention{% else %}ops-tone-success{% endif %}">{{ blocker_rows|length }}</span>
+        </div>
+        <div class="mt-5 space-y-3">
+          {% for blocker in blocker_rows %}
+            <div class="rounded-[1.35rem] border border-slate-800 bg-slate-950/35 px-4 py-4">
+              <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <p class="text-sm font-medium text-white">{{ blocker.label }}</p>
+                {% if blocker.action.kind == 'post' %}
+                  <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="{{ blocker.action.post_action }}">
+                    <button type="submit" class="ops-button-attention">{{ blocker.action.label }}</button>
+                  </form>
+                {% else %}
+                  <a href="{{ blocker.action.url }}" class="ops-button-attention">{{ blocker.action.label }}</a>
+                {% endif %}
+              </div>
+            </div>
+          {% empty %}
+            <div class="rounded-[1.35rem] border border-emerald-400/20 bg-emerald-400/10 px-4 py-4 text-sm text-emerald-100">Критичных блокеров сейчас нет.</div>
+          {% endfor %}
+        </div>
+      </article>
+
+      <article class="ops-panel rounded-[1.75rem] px-6 py-6">
+        <p class="text-xs uppercase tracking-[0.18em] text-cyan-100/70">Чек-лист</p>
+        <div class="mt-4 space-y-3">
+          {% for item in operation_snapshot.checklist %}
+            <div class="rounded-[1.35rem] border border-slate-800 bg-slate-950/35 px-4 py-4">
+              <div class="flex items-start justify-between gap-3">
+                <p class="text-sm font-medium text-white">{{ item.label }}</p>
+                <span class="ops-chip ops-tone-{{ item.tone }}">{{ item.status_label }}</span>
+              </div>
+              <p class="mt-2 text-sm ops-muted">{{ item.detail }}</p>
+            </div>
+          {% endfor %}
+        </div>
+      </article>
+    </section>
+
+    <section class="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,0.7fr)]">
+      <article class="ops-panel rounded-[1.75rem] px-6 py-6">
+        <div class="flex flex-wrap items-center gap-2">
+          <p class="text-xs uppercase tracking-[0.18em] text-cyan-100/70">История</p>
+          <span class="ops-chip ops-tone-neutral">{{ history_rows_total }}</span>
+        </div>
+        <div class="mt-4 flex flex-wrap gap-2">
+          {% for link in history_filter_links %}
+            <a href="{{ link.url }}" class="rounded-full px-3 py-2 text-sm transition {% if link.active %}bg-cyan-300 text-slate-950{% else %}border border-slate-700 text-slate-200 hover:bg-slate-900{% endif %}">
+              {{ link.label }}
+            </a>
+          {% endfor %}
+        </div>
+        <div class="mt-5 space-y-3">
+          {% for event in history_rows %}
+            <div class="rounded-[1.35rem] border border-slate-800 bg-slate-950/35 px-4 py-4">
+              <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                <div class="min-w-0">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span class="text-sm font-medium text-white">{{ event.created_at|date:"d.m H:i" }}</span>
+                    <span class="ops-chip ops-tone-{{ event.tone }}">{{ event.category_label }}</span>
+                  </div>
+                  <p class="mt-2 text-sm text-white">{{ event.summary }}</p>
+                  <p class="mt-1 text-xs ops-muted">{{ event.who_label }}</p>
+                </div>
+              </div>
+            </div>
+          {% empty %}
+            <p class="text-sm ops-muted">История по сделке пока пустая.</p>
+          {% endfor %}
+        </div>
+        {% if history_rows_total > history_rows|length or history_show_all %}
+          <a href="{{ history_toggle_url }}" class="mt-4 inline-flex rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-200 transition hover:bg-slate-900">{{ history_toggle_label }}</a>
+        {% endif %}
+      </article>
+
+      <article class="ops-panel rounded-[1.75rem] px-6 py-6">
+        <p class="text-xs uppercase tracking-[0.18em] text-cyan-100/70">Источник</p>
+        {% if source_bitrix.deal_id %}
+          <p class="mt-3 text-lg font-medium text-white">Bitrix #{{ source_bitrix.deal_id }}</p>
+          <p class="mt-2 text-sm ops-muted">{{ source_bitrix.title|default:"Без названия" }}</p>
+          <p class="mt-2 text-sm ops-muted">Сумма: {{ source_bitrix.amount }}</p>
+          {% if source_bitrix.synced_at %}
+            <p class="mt-2 text-xs ops-muted">Обновлено {{ source_bitrix.synced_at|date:"d.m.Y H:i" }}</p>
+          {% endif %}
+          {% if source_bitrix.deal_url %}
+            <a href="{{ source_bitrix.deal_url }}" target="_blank" rel="noreferrer" class="mt-4 ops-button-secondary">Открыть в Bitrix</a>
+          {% endif %}
+        {% else %}
+          <p class="mt-3 text-sm ops-muted">Сделка пока не связана с Bitrix.</p>
+        {% endif %}
+      </article>
+    </section>
+  {% elif active_tab == 'goods' %}
+    <section class="space-y-4">
+      {% for row in order_item_rows %}
+        {% with item=row.item link_form=row.link_form %}
+          <article id="item-{{ item.id }}" class="ops-panel rounded-[1.75rem] px-6 py-6">
+            <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+              <div class="min-w-0">
+                <h3 class="text-xl font-semibold text-white">{{ item.display_name }}</h3>
+                <p class="mt-2 text-sm ops-muted">Количество {{ item.quantity }} · SKU {{ item.sku|default:"—" }} · {{ item.get_line_type_display }}</p>
+                <p class="mt-1 text-sm ops-muted">Цена {{ item.unit_price }} · Сумма {{ item.subtotal }}</p>
+              </div>
+              <span class="ops-chip ops-tone-{% if item.product_id and item.line_type == 'catalog' %}success{% else %}attention{% endif %}">
+                {% if item.product_id and item.line_type == 'catalog' %}Связан с каталогом{% else %}Нужно связать{% endif %}
+              </span>
+            </div>
+
+            {% if link_form %}
+              <div class="mt-5 rounded-[1.5rem] border border-amber-400/20 bg-amber-400/10 px-5 py-5">
+                <p class="text-sm font-medium text-white">Связать с товаром сайта</p>
+                <form method="post" class="mt-4 grid gap-4 md:grid-cols-2">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="link_product">
+                  <div>
+                    <label class="mb-2 block text-xs uppercase tracking-[0.16em] text-slate-500">Товар<span class="ops-required">обязательно</span></label>
+                    {{ link_form.product }}
+                    {% for error in link_form.product.errors %}<p class="mt-1 text-xs text-rose-300">{{ error }}</p>{% endfor %}
+                  </div>
+                  <div>
+                    <label class="mb-2 block text-xs uppercase tracking-[0.16em] text-slate-500">Вариант</label>
+                    {{ link_form.variant }}
+                    {% for error in link_form.variant.errors %}<p class="mt-1 text-xs text-rose-300">{{ error }}</p>{% endfor %}
+                  </div>
+                  {% for hidden in link_form.hidden_fields %}{{ hidden }}{% endfor %}
+                  {% if link_form.non_field_errors %}
+                    <div class="md:col-span-2">{% for error in link_form.non_field_errors %}<p class="text-xs text-rose-300">{{ error }}</p>{% endfor %}</div>
+                  {% endif %}
+                  <div class="md:col-span-2">
+                    <button type="submit" class="ops-button-attention">Связать позицию</button>
+                  </div>
+                </form>
+              </div>
+            {% endif %}
+          </article>
+        {% endwith %}
+      {% endfor %}
+
+      <article class="ops-panel rounded-[1.75rem] px-6 py-6">
+        <p class="text-xs uppercase tracking-[0.18em] text-cyan-100/70">Позиции исполнения</p>
+        <div class="mt-4 space-y-3">
+          {% for line in position_rows %}
+            <div class="rounded-[1.5rem] border border-slate-800 bg-slate-950/35 px-4 py-4">
+              <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <div class="flex flex-wrap items-center gap-2">
+                    <p class="text-sm font-medium text-white">{{ line.item.display_name }}</p>
+                    <span class="ops-chip ops-tone-{{ line.status_tone }}">{{ line.status_label }}</span>
+                    <span class="ops-chip ops-tone-{{ line.catalog_link_tone }}">{{ line.catalog_link_label }}</span>
+                  </div>
+                  <p class="mt-2 text-sm ops-muted">Нужно {{ line.ordered }} · Принято {{ line.received }} · Доступно к резерву {{ line.available_to_reserve }} · В резерве {{ line.reserved }} · Не хватает {{ line.reserve_missing }} · Свободно {{ line.free_stock }} · Заказано {{ line.purchased }} · В пути {{ line.in_transit }} · Отгружено {{ line.shipped }}</p>
+                  <p class="mt-1 text-xs ops-muted">{{ line.coverage_summary }}</p>
+                  {% if ops_mode == 'advanced' and line.reserve_debug_reason %}
+                    <p class="mt-1 text-xs text-slate-500">Reserve debug: {{ line.reserve_debug_reason }}</p>
+                  {% endif %}
+                </div>
+                <div class="flex flex-wrap gap-2">
+                  {% for action in line.actions %}
+                    {% if action.kind == 'post' %}
+                      <form method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="{{ action.post_action }}">
+                        <button type="submit" class="{% if action.tone == 'primary' %}ops-button-primary{% elif action.tone == 'attention' %}ops-button-attention{% else %}ops-button-secondary{% endif %}">{{ action.label }}</button>
+                      </form>
+                    {% else %}
+                      <a href="{{ action.url }}" class="{% if action.tone == 'primary' %}ops-button-primary{% elif action.tone == 'attention' %}ops-button-attention{% else %}ops-button-secondary{% endif %}">{{ action.label }}</a>
+                    {% endif %}
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </article>
+    </section>
+  {% elif active_tab == 'purchases' %}
+    <section class="space-y-4">
+      {% for purchase_row in purchase_rows %}
+        {% with purchase=purchase_row.purchase %}
+          <article class="ops-panel rounded-[1.75rem] px-6 py-6">
+            <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <h3 class="text-lg font-semibold text-white">{{ purchase.code|default:purchase.pk }}</h3>
+                  <span class="ops-chip ops-tone-{{ purchase_row.status_tone }}">{{ purchase.get_status_display }}</span>
+                </div>
+                <p class="mt-2 text-sm ops-muted">{{ purchase.supplier_name|default:"Поставщик не указан" }} · {{ purchase.total_amount }} {{ purchase.currency }} · {{ purchase.date|date:"d.m.Y" }}</p>
+              </div>
+              {% if purchase_row.cargo_action_enabled %}
+                <a href="{% url 'operations:deal_cargo_create' pk=deal.pk %}?purchase={{ purchase.id }}" class="ops-button-secondary">Создать груз</a>
+              {% endif %}
+            </div>
+            <div class="mt-4 space-y-3">
+              {% for item_row in purchase_row.items %}
+                <div class="rounded-[1.35rem] border border-slate-800 bg-slate-950/35 px-4 py-4">
+                  <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <p class="text-sm font-medium text-white">{{ item_row.order_item.display_name }}</p>
+                      <p class="mt-1 text-sm ops-muted">{{ item_row.item.quantity }} шт. · Получено {{ item_row.item.received_quantity }} · {{ item_row.item.unit_cost }} {{ purchase.currency }}</p>
+                    </div>
+                    {% if item_row.cargo_action_enabled %}
+                      <a href="{% url 'operations:deal_cargo_create' pk=deal.pk %}?purchase={{ purchase.id }}&purchase_item={{ item_row.item.id }}" class="ops-button-secondary">Добавить в груз</a>
+                    {% endif %}
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          </article>
+        {% endwith %}
+      {% empty %}
+        <div class="ops-panel rounded-[1.75rem] px-6 py-6 text-sm ops-muted">Связанных закупок пока нет.</div>
+      {% endfor %}
+    </section>
+  {% elif active_tab == 'cargos' %}
+    <section class="space-y-4">
+      {% for cargo_row in cargo_rows %}
+        {% with cargo=cargo_row.cargo %}
+          <article id="cargo-{{ cargo.id }}" class="ops-panel rounded-[1.75rem] px-6 py-6">
+            <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <h3 class="text-lg font-semibold text-white">{{ cargo.cargo_number|default:cargo.pk }}</h3>
+                  <span class="ops-chip ops-tone-{{ cargo_row.status_tone }}">{{ cargo_row.status_label }}</span>
+                </div>
+                <p class="mt-2 text-sm ops-muted">Склад {{ cargo.destination_warehouse.name|default:"—" }} · ETA {{ cargo.eta|date:"d.m.Y"|default:"—" }}</p>
+              </div>
+              {% if cargo_row.can_receive_any %}
+                <a href="{{ cargo_row.receive_url }}" class="ops-button-primary">Принять груз</a>
+              {% endif %}
+            </div>
+            <div class="mt-4 space-y-3">
+              {% for cargo_item_row in cargo_row.items %}
+                <div class="rounded-[1.35rem] border border-slate-800 bg-slate-950/35 px-4 py-4">
+                  <p class="text-sm font-medium text-white">{{ cargo_item_row.item.product.name }}{% if cargo_item_row.item.variant %} · {{ cargo_item_row.item.variant.name }}{% endif %}</p>
+                  <p class="mt-1 text-sm ops-muted">Количество {{ cargo_item_row.item.quantity }} · Принято {{ cargo_item_row.item.received_quantity }} · Осталось {{ cargo_item_row.item.remaining_quantity }}</p>
+                </div>
+              {% endfor %}
+            </div>
+          </article>
+        {% endwith %}
+      {% empty %}
+        <div class="ops-panel rounded-[1.75rem] px-6 py-6 text-sm ops-muted">Связанных грузов пока нет.</div>
+      {% endfor %}
+    </section>
+  {% elif active_tab == 'reservations' %}
+    <section class="space-y-4">
+      {% for row in reservation_rows %}
+        <article class="ops-panel rounded-[1.75rem] px-6 py-6">
+          <div class="flex flex-wrap items-center gap-2">
+            <h3 class="text-lg font-semibold text-white">{{ row.reservation.code|default:row.reservation.pk }}</h3>
+            <span class="ops-chip ops-tone-{{ row.status_tone }}">{{ row.reservation.get_status_display }}</span>
+          </div>
+          <p class="mt-2 text-sm ops-muted">{{ row.reservation.get_source_type_display }} · {{ row.reservation.target_warehouse.name|default:"—" }}</p>
+        </article>
+      {% empty %}
+        <div class="ops-panel rounded-[1.75rem] px-6 py-6 text-sm ops-muted">Резервов по сделке пока нет.</div>
+      {% endfor %}
+    </section>
+  {% elif active_tab == 'shipments' %}
+    <section class="space-y-4">
+      {% for row in shipment_rows %}
+        <article class="ops-panel rounded-[1.75rem] px-6 py-6">
+          <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div class="flex flex-wrap items-center gap-2">
+                <h3 class="text-lg font-semibold text-white">{{ row.shipment.code|default:row.shipment.pk }}</h3>
+                <span class="ops-chip ops-tone-{{ row.status_tone }}">{{ row.shipment.get_status_display }}</span>
+              </div>
+              <p class="mt-2 text-sm ops-muted">{{ row.shipment.recipient_name|default:"Получатель не указан" }} · {{ row.shipment.recipient_phone|default:"Без телефона" }}</p>
+              <p class="mt-1 text-sm ops-muted">{{ row.shipment.delivery_address|default:"Без адреса" }}</p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              {% for action in row.actions %}
+                {% if action.kind == 'post' %}
+                  <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="{{ action.post_action }}">
+                    {% for field in action.hidden_fields %}
+                      <input type="hidden" name="{{ field.name }}" value="{{ field.value }}">
+                    {% endfor %}
+                    <button type="submit" class="ops-button-secondary">{{ action.label }}</button>
+                  </form>
+                {% else %}
+                  <a href="{{ action.url }}" class="ops-button-secondary">{{ action.label }}</a>
+                {% endif %}
+              {% endfor %}
+              {% if not row.actions and row.shipment.status == row.shipment.STATUS_DELIVERED %}
+                <span class="ops-button-secondary opacity-60">Доставлено</span>
+              {% endif %}
+            </div>
+          </div>
+          <div class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div class="rounded-[1.2rem] border border-slate-800 bg-slate-950/35 px-4 py-4">
+              <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Служба доставки</p>
+              <p class="mt-2 text-sm text-white">{{ row.shipment.delivery_provider_name|default:row.shipment.delivery_method|default:"—" }}</p>
+            </div>
+            <div class="rounded-[1.2rem] border border-slate-800 bg-slate-950/35 px-4 py-4">
+              <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Трек-номер</p>
+              <p class="mt-2 text-sm text-white">{{ row.shipment.tracking_number|default:"—" }}</p>
+            </div>
+            <div class="rounded-[1.2rem] border border-slate-800 bg-slate-950/35 px-4 py-4">
+              <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Отправлено</p>
+              <p class="mt-2 text-sm text-white">{{ row.shipment.shipped_at|date:"d.m.Y H:i"|default:"—" }}</p>
+            </div>
+            <div class="rounded-[1.2rem] border border-slate-800 bg-slate-950/35 px-4 py-4">
+              <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Доставлено</p>
+              <p class="mt-2 text-sm text-white">{{ row.shipment.delivered_at|date:"d.m.Y H:i"|default:"—" }}</p>
+            </div>
+          </div>
+          <div class="mt-4 space-y-2">
+            {% for item in row.shipment.items.all %}
+              <div class="rounded-[1.2rem] border border-slate-800 bg-slate-950/20 px-4 py-3">
+                <p class="text-sm text-white">{{ item.product.name }}{% if item.variant %} · {{ item.variant.name }}{% endif %}</p>
+                <p class="mt-1 text-xs ops-muted">Количество {{ item.quantity }}{% if item.order_item %} · отгружено по позиции {{ item.order_item.shipped_quantity }}{% endif %}</p>
+              </div>
+            {% empty %}
+              <p class="text-sm ops-muted">У отгрузки пока нет позиций.</p>
+            {% endfor %}
+          </div>
+        </article>
+      {% empty %}
+        <div class="ops-panel rounded-[1.75rem] px-6 py-6 text-sm ops-muted">Отгрузок по сделке пока нет.</div>
+      {% endfor %}
+    </section>
+  {% elif active_tab == 'finance' %}
+    <section class="ops-panel rounded-[1.75rem] px-6 py-6">
+      <p class="text-xs uppercase tracking-[0.18em] text-cyan-100/70">Финансы</p>
+      {% if finance_summary.exists %}
+        <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div class="rounded-[1.35rem] border border-slate-800 bg-slate-950/35 px-4 py-4">
+            <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Выручка</p>
+            <p class="mt-2 text-lg font-medium text-white">{{ finance_summary.revenue }}</p>
+          </div>
+          <div class="rounded-[1.35rem] border border-slate-800 bg-slate-950/35 px-4 py-4">
+            <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Себестоимость</p>
+            <p class="mt-2 text-lg font-medium text-white">{{ finance_summary.cost_of_goods }}</p>
+          </div>
+          <div class="rounded-[1.35rem] border border-slate-800 bg-slate-950/35 px-4 py-4">
+            <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Расходы</p>
+            <p class="mt-2 text-lg font-medium text-white">{{ finance_summary.direct_expenses }}</p>
+          </div>
+          <div class="rounded-[1.35rem] border border-slate-800 bg-slate-950/35 px-4 py-4">
+            <p class="text-xs uppercase tracking-[0.16em] text-slate-500">Оценка прибыли</p>
+            <p class="mt-2 text-lg font-medium text-white">{{ finance_summary.estimated_profit }}</p>
+          </div>
+        </div>
+        <p class="mt-4 text-sm ops-muted">{{ finance_summary.cost_status_label }}</p>
+      {% else %}
+        <p class="mt-4 text-sm ops-muted">Финансовый кейс по сделке пока не создан.</p>
+      {% endif %}
+    </section>
+  {% else %}
+    <section class="ops-panel rounded-[1.75rem] px-6 py-6">
+      <div class="flex flex-wrap items-center gap-2">
+        <p class="text-xs uppercase tracking-[0.18em] text-cyan-100/70">История</p>
+        <span class="ops-chip ops-tone-neutral">{{ history_rows_total }}</span>
+      </div>
+      <div class="mt-4 flex flex-wrap gap-2">
+        {% for link in history_filter_links %}
+          <a href="{{ link.url }}" class="rounded-full px-3 py-2 text-sm transition {% if link.active %}bg-cyan-300 text-slate-950{% else %}border border-slate-700 text-slate-200 hover:bg-slate-900{% endif %}">
+            {{ link.label }}
+          </a>
+        {% endfor %}
+      </div>
+      <div class="mt-5 space-y-3">
+        {% for event in history_rows %}
+          <div class="rounded-[1.35rem] border border-slate-800 bg-slate-950/35 px-4 py-4">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="text-sm font-medium text-white">{{ event.created_at|date:"d.m H:i" }}</span>
+              <span class="ops-chip ops-tone-{{ event.tone }}">{{ event.category_label }}</span>
+            </div>
+            <p class="mt-2 text-sm text-white">{{ event.summary }}</p>
+            <p class="mt-1 text-xs ops-muted">{{ event.who_label }}</p>
+          </div>
+        {% empty %}
+          <p class="text-sm ops-muted">История по сделке пока пустая.</p>
+        {% endfor %}
+      </div>
+      {% if history_rows_total > history_rows|length or history_show_all %}
+        <a href="{{ history_toggle_url }}" class="mt-4 inline-flex rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-200 transition hover:bg-slate-900">{{ history_toggle_label }}</a>
+      {% endif %}
+    </section>
+  {% endif %}
+{% endblock %}

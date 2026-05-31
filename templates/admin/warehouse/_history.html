@@ -9,6 +9,9 @@
         <div class="mt-2 text-sm text-slate-400">
           {{ movement.warehouse.name }} • {{ movement.created_at|date:"d.m.Y H:i" }} • {{ movement.author|default:"Система" }}
         </div>
+        {% if movement.reference_label %}
+          <div class="mt-2 text-xs text-cyan-200">{{ movement.reference_label }}</div>
+        {% endif %}
         {% if movement.comment %}
           <div class="mt-2 text-sm text-slate-500">{{ movement.comment }}</div>
         {% endif %}

@@ -1,0 +1,40 @@
+<div class="flex items-start justify-between gap-4">
+  <div>
+    <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Быстрое действие</p>
+    <h2 class="mt-2 text-2xl font-semibold text-white">Связать с товаром сайта</h2>
+    <p class="mt-2 text-sm text-slate-400">Сделка #{{ deal.order_id }}</p>
+  </div>
+  <button type="button" data-drawer-close class="rounded-full border border-slate-700 px-3 py-1 text-sm">Закрыть</button>
+</div>
+
+<section class="manager-preview-item mt-6">
+  <p class="manager-preview-label">Ручная позиция</p>
+  <div class="mt-3 space-y-2 text-sm text-slate-300">
+    <p class="font-semibold text-white">{{ order_item.resolved_product_name }}</p>
+    {% if order_item.resolved_variant_name %}
+      <p>{{ order_item.resolved_variant_name }}</p>
+    {% endif %}
+    <p>Количество: {{ order_item.quantity }} шт.</p>
+    {% if order_item.custom_sku %}
+      <p>SKU: {{ order_item.custom_sku }}</p>
+    {% endif %}
+  </div>
+</section>
+
+<form
+  method="post"
+  action="{% url 'manager_portal:deal_order_item_link_product' deal.pk order_item.pk %}"
+  hx-post="{% url 'manager_portal:deal_order_item_link_product' deal.pk order_item.pk %}"
+  hx-target="#manager-remote-drawer-content"
+  hx-swap="innerHTML"
+  hx-push-url="false"
+  class="mt-6 space-y-4"
+>
+  {% csrf_token %}
+  {% include "manager_portal/_form_fields.html" with form=form %}
+  <p class="text-xs leading-5 text-slate-500">После связки строка станет каталоговой, очистит произвольный SKU и сразу попадет в складской, резервный и закупочный контур.</p>
+  <div class="flex flex-wrap gap-2">
+    <button type="submit" class="rounded-xl bg-cyan-500 px-4 py-3 text-sm font-medium text-slate-950 hover:bg-cyan-400">Связать позицию</button>
+    <button type="button" data-drawer-close class="manager-inline-action">Отмена</button>
+  </div>
+</form>

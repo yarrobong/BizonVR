@@ -9,6 +9,7 @@ from catalog.admin.game_packs import (
     GamePackServiceEntryInline,
     GamePackServiceEntryInlineForm,
 )
+from catalog.models import ProductVariantCharacteristic
 
 class ProductAdminGamePackMirrorTest(TestCase):
     def setUp(self):
@@ -176,6 +177,132 @@ class GamePackAdminConfigurationTest(TestCase):
         self.assertIn('legacy', form.fields['title'].help_text.lower())
         self.assertEqual(form.fields['title'].label, 'Временное название')
 
+
+
+class AdminCatalogExcelExportTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.staff_user = User.objects.create_user(
+            username='excel-manager',
+            password='testpass',
+            is_staff=True,
+        )
+        self.view_permission = Permission.objects.get(codename='view_product')
+        self.section = CatalogSection.objects.create(name='VR', slug='vr-section')
+        self.category = Category.objects.create(section=self.section, name='Шлемы', slug='vr-headsets')
+
+    def _login_staff(self, *, with_view_permission=False):
+        if with_view_permission:
+            self.staff_user.user_permissions.add(self.view_permission)
+        self.client.force_login(self.staff_user)
+
+    def _image_upload(self, filename, color):
+        buffer = BytesIO()
+        PilImage.new('RGB', (24, 24), color=color).save(buffer, format='PNG')
+        buffer.seek(0)
+        return SimpleUploadedFile(filename, buffer.getvalue(), content_type='image/png')
+
+    def test_export_excel_endpoint_requires_view_permission(self):
+        self._login_staff()
+
+        response = self.client.get(reverse('admin:catalog_product_export_excel'))
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_export_excel_button_visible_with_view_permission(self):
+        self._login_staff(with_view_permission=True)
+
+        response = self.client.get(reverse('admin:catalog_product_changelist'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, reverse('admin:catalog_product_export_excel'))
+        self.assertContains(response, 'Экспорт Excel')
+
+    def test_export_excel_contains_product_data_links_and_embedded_images(self):
+        with tempfile.TemporaryDirectory() as media_root:
+            with override_settings(MEDIA_ROOT=media_root):
+                product = Product.objects.create(
+                    category=self.category,
+                    name='Meta Quest 3',
+                    sku='QUEST3-128',
+                    slug='meta-quest-3',
+                    description='Автономный VR-шлем для дома и бизнеса.',
+                    price=Decimal('54990.00'),
+                    discount_percent=Decimal('5.00'),
+                    price_on_request=Decimal('49990.00'),
+                    image=self._image_upload('quest3.png', '#0ea5e9'),
+                    is_active=True,
+                    allow_order_on_request=True,
+                    avito_url='https://www.avito.ru/item-1',
+                    ozon_url='https://www.ozon.ru/product-1',
+                    wildberries_url='https://www.wildberries.ru/catalog/1/detail.aspx',
+                )
+                product.tags.add(ProductTag.objects.create(name='Хит', slug='hit'))
+                ProductCharacteristic.objects.create(product=product, name='Память', value='128 ГБ')
+                variant = ProductVariant.objects.create(
+                    product=product,
+                    name='Quest 3 512GB',
+                    sku='QUEST3-512',
+                    image=self._image_upload('quest3-512.png', '#22c55e'),
+                    price_override=Decimal('64990.00'),
+                    price_on_request_override=Decimal('61990.00'),
+                )
+                ProductVariantCharacteristic.objects.create(
+                    variant=variant,
+                    name='Память',
+                    value='512 ГБ',
+                )
+                ProductImage.objects.create(
+                    product=product,
+                    image=self._image_upload('quest3-side.png', '#f97316'),
+                    order=1,
+                )
+
+                self._login_staff(with_view_permission=True)
+                response = self.client.get(reverse('admin:catalog_product_export_excel'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response['Content-Type'],
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        self.assertIn('attachment; filename="catalog_export_', response['Content-Disposition'])
+
+        from openpyxl import load_workbook
+
+        workbook = load_workbook(BytesIO(response.content))
+        worksheet = workbook['Каталог']
+        expected_product_url = f'http://testserver{product.get_absolute_url()}'
+
+        self.assertEqual(worksheet['B2'].value, product.name)
+        self.assertEqual(worksheet['C2'].value, self.section.name)
+        self.assertEqual(worksheet['D2'].value, self.category.name)
+        self.assertEqual(worksheet['F2'].value, expected_product_url)
+        self.assertEqual(worksheet['F2'].hyperlink.target, expected_product_url)
+        self.assertEqual(worksheet['G2'].value, product.sku)
+        self.assertEqual(worksheet['H2'].value, product.slug)
+        self.assertEqual(worksheet['I2'].value, 'Да')
+        self.assertEqual(worksheet['J2'].value, 'Да')
+        self.assertEqual(worksheet['K2'].value, '54990.00')
+        self.assertEqual(worksheet['L2'].value, '5.00')
+        self.assertEqual(worksheet['M2'].value, '49990.00')
+        self.assertIn('Хит', worksheet['N2'].value)
+        self.assertEqual(worksheet['O2'].value, product.description)
+        self.assertIn('Память: 128 ГБ', worksheet['P2'].value)
+        self.assertIn('Quest 3 512GB', worksheet['Q2'].value)
+        self.assertIn('SKU: QUEST3-512', worksheet['Q2'].value)
+        self.assertIn('Память: 512 ГБ', worksheet['Q2'].value)
+        self.assertEqual(worksheet['R2'].hyperlink.target, worksheet['R2'].value)
+        self.assertIn('Основное:', worksheet['S2'].value)
+        self.assertIn('quest3-side.png', worksheet['S2'].value)
+        self.assertIn('Вариант 1: Quest 3 512GB', worksheet['S2'].value)
+        self.assertEqual(worksheet['T2'].hyperlink.target, product.avito_url)
+        self.assertEqual(worksheet['U2'].hyperlink.target, product.ozon_url)
+        self.assertEqual(worksheet['V2'].hyperlink.target, product.wildberries_url)
+
+        with zipfile.ZipFile(BytesIO(response.content)) as archive:
+            media_entries = [name for name in archive.namelist() if name.startswith('xl/media/')]
+        self.assertTrue(media_entries)
 
 
 class AdminRestoreSecurityTest(TestCase):

@@ -4,181 +4,597 @@
 {% block extrastyle %}
   {{ block.super }}
   <style>
-    .admin-task-dashboard {
+    .admin-home {
       display: grid;
-      gap: 20px;
+      gap: 24px;
     }
-    .admin-task-dashboard__summary {
+    .admin-home-layout {
       display: grid;
-      gap: 14px;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 24px;
+      align-items: start;
+      grid-template-columns: 220px minmax(0, 1fr) 360px;
     }
-    .admin-task-dashboard__card,
-    .admin-task-dashboard__queue {
+    .admin-home-panel,
+    .admin-home-card,
+    .admin-home-queue,
+    .admin-home-section,
+    .admin-home-search-result,
+    .admin-home-service {
       border: 1px solid var(--hairline-color);
-      border-radius: 14px;
+      border-radius: 18px;
       background: var(--body-bg);
-      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.05);
+      box-shadow: 0 14px 34px rgba(0, 0, 0, 0.05);
     }
-    .admin-task-dashboard__card {
-      display: block;
-      padding: 18px 20px;
-      text-decoration: none;
-      color: inherit;
+    .admin-home-sidebar {
+      position: sticky;
+      top: 24px;
     }
-    .admin-task-dashboard__label {
-      display: block;
-      margin-bottom: 10px;
-      color: var(--body-quiet-color);
-      font-size: 13px;
+    .admin-home-nav {
+      padding: 18px;
     }
-    .admin-task-dashboard__value {
-      display: block;
-      font-size: 32px;
-      line-height: 1;
+    .admin-home-nav h2,
+    .admin-home-main h2,
+    .admin-home-aside h2,
+    .admin-home-service summary span {
+      margin: 0;
+      font-size: 16px;
       font-weight: 700;
     }
-    .admin-task-dashboard__queues {
-      display: grid;
-      gap: 18px;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    }
-    .admin-task-dashboard__queue {
-      padding: 18px 18px 12px;
-    }
-    .admin-task-dashboard__queue h2 {
-      margin: 0 0 14px;
-      font-size: 17px;
-    }
-    .admin-task-dashboard__list {
+    .admin-home-nav-list,
+    .admin-home-links,
+    .admin-home-action-list,
+    .admin-home-queue-list,
+    .admin-home-search-list,
+    .admin-home-service-list {
       list-style: none;
       margin: 0;
       padding: 0;
     }
-    .admin-task-dashboard__item {
-      padding: 12px 0;
-      border-top: 1px solid var(--hairline-color);
+    .admin-home-nav-list {
+      margin-top: 14px;
+      display: grid;
+      gap: 8px;
     }
-    .admin-task-dashboard__item:first-child {
-      border-top: 0;
-      padding-top: 0;
+    .admin-home-nav-list a {
+      display: block;
+      padding: 10px 12px;
+      border-radius: 12px;
+      color: inherit;
+      text-decoration: none;
+      background: var(--darkened-bg);
     }
-    .admin-task-dashboard__item a {
+    .admin-home-main {
+      display: grid;
+      gap: 24px;
+      min-width: 0;
+    }
+    .admin-home-panel {
+      padding: 22px;
+    }
+    .admin-home-panel__heading {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .admin-home-panel__heading p,
+    .admin-home-section__header p,
+    .admin-home-search-meta,
+    .admin-home-focus-description,
+    .admin-home-queue-meta,
+    .admin-home-item-meta,
+    .admin-home-service-note {
+      margin: 0;
+      color: var(--body-quiet-color);
+      line-height: 1.5;
+    }
+    .admin-home-search-form {
+      display: grid;
+      gap: 12px;
+    }
+    .admin-home-search-row {
+      display: grid;
+      gap: 12px;
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+    .admin-home-search-row input[type="search"] {
+      width: 100%;
+      min-height: 46px;
+      padding: 0 14px;
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      background: var(--body-bg);
+      color: inherit;
+      font-size: 15px;
+    }
+    .admin-home-search-row button {
+      min-height: 46px;
+      padding: 0 18px;
+      border: 0;
+      border-radius: 12px;
+      background: var(--button-bg);
+      color: var(--button-fg);
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .admin-home-search-results {
+      display: grid;
+      gap: 14px;
+    }
+    .admin-home-search-result {
+      padding: 16px 18px;
+    }
+    .admin-home-search-result__header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .admin-home-search-result__header h3,
+    .admin-home-focus-list h3,
+    .admin-home-section__header h3,
+    .admin-home-queue__header h3 {
+      margin: 0;
+      font-size: 16px;
+    }
+    .admin-home-search-result__header a,
+    .admin-home-queue__header a,
+    .admin-home-focus-header a {
+      color: var(--link-fg);
       text-decoration: none;
     }
-    .admin-task-dashboard__item-title {
+    .admin-home-search-list,
+    .admin-home-focus-list,
+    .admin-home-queue-list {
+      display: grid;
+      gap: 10px;
+    }
+    .admin-home-search-list a,
+    .admin-home-links a,
+    .admin-home-action-list a,
+    .admin-home-focus-list a,
+    .admin-home-queue-list a,
+    .admin-home-service-list a {
+      color: inherit;
+      text-decoration: none;
+    }
+    .admin-home-summary {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    }
+    .admin-home-card {
+      display: block;
+      padding: 18px;
+      color: inherit;
+      text-decoration: none;
+    }
+    .admin-home-card__label,
+    .admin-home-card__note,
+    .admin-home-item-badge {
+      display: block;
+    }
+    .admin-home-card__label {
+      margin-bottom: 10px;
+      color: var(--body-quiet-color);
+      font-size: 13px;
+    }
+    .admin-home-card__value {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 30px;
+      line-height: 1;
+      font-weight: 700;
+    }
+    .admin-home-card__note {
+      color: var(--body-quiet-color);
+      line-height: 1.45;
+    }
+    .admin-home-attention {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+    .admin-home-action-list,
+    .admin-home-links {
+      display: grid;
+      gap: 10px;
+    }
+    .admin-home-action-list {
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    }
+    .admin-home-action-list a,
+    .admin-home-links a {
+      display: block;
+      padding: 14px 16px;
+      border: 1px solid var(--hairline-color);
+      border-radius: 14px;
+      background: var(--darkened-bg);
+    }
+    .admin-home-section-grid {
+      display: grid;
+      gap: 18px;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    }
+    .admin-home-section {
+      padding: 20px;
+    }
+    .admin-home-section__header {
+      margin-bottom: 14px;
+    }
+    .admin-home-links span {
       display: block;
       font-weight: 600;
       margin-bottom: 4px;
     }
-    .admin-task-dashboard__item-meta {
+    .admin-home-aside {
+      display: grid;
+      gap: 16px;
+      min-width: 0;
+    }
+    .admin-home-queue {
+      padding: 18px;
+    }
+    .admin-home-queue__header,
+    .admin-home-focus-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .admin-home-queue-item,
+    .admin-home-focus-item,
+    .admin-home-search-item {
+      padding-top: 10px;
+      border-top: 1px solid var(--hairline-color);
+    }
+    .admin-home-queue-item:first-child,
+    .admin-home-focus-item:first-child,
+    .admin-home-search-item:first-child {
+      padding-top: 0;
+      border-top: 0;
+    }
+    .admin-home-item-title {
       display: block;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .admin-home-item-badge {
+      margin-top: 6px;
       color: var(--body-quiet-color);
       font-size: 12px;
-      line-height: 1.45;
-    }
-    .admin-task-dashboard__badge {
-      display: inline-flex;
-      align-items: center;
-      margin-top: 6px;
-      padding: 3px 8px;
-      border-radius: 999px;
-      background: var(--darkened-bg);
-      color: var(--body-quiet-color);
-      font-size: 11px;
       font-weight: 700;
     }
-    .admin-task-dashboard__empty {
+    .admin-home-queue-empty {
       margin: 0;
       color: var(--body-quiet-color);
     }
-    .admin-home-sections {
-      min-width: 0;
+    .admin-home-service {
+      padding: 0;
+      overflow: hidden;
     }
-    .admin-home-layout {
+    .admin-home-service summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 18px 22px;
+      cursor: pointer;
+      list-style: none;
+    }
+    .admin-home-service summary::-webkit-details-marker {
+      display: none;
+    }
+    .admin-home-service-body {
+      padding: 0 22px 22px;
       display: grid;
-      gap: 20px;
-      align-items: start;
-      grid-template-columns: minmax(0, 1fr) 360px;
+      gap: 16px;
     }
-    .admin-task-dashboard__sidebar {
-      min-width: 0;
+    .admin-home-service-block h3 {
+      margin: 0 0 10px;
+      font-size: 14px;
     }
-    .admin-task-dashboard__sidebar .admin-task-dashboard__queues {
-      grid-template-columns: 1fr;
-    }
-    @media (max-width: 960px) {
+    @media (max-width: 1180px) {
       .admin-home-layout {
         grid-template-columns: 1fr;
       }
-      .admin-task-dashboard__queues {
+      .admin-home-sidebar {
+        position: static;
+      }
+    }
+    @media (max-width: 640px) {
+      .admin-home-search-row {
         grid-template-columns: 1fr;
+      }
+      .admin-home-panel,
+      .admin-home-section,
+      .admin-home-queue,
+      .admin-home-search-result {
+        padding: 18px;
       }
     }
   </style>
 {% endblock %}
 
+{% block nav-sidebar %}{% endblock %}
+
 {% block content %}
   <div id="content-main">
-    {% if task_dashboard %}
-      <section class="admin-task-dashboard" aria-label="Дашборд задач">
-        <div class="admin-task-dashboard__summary">
-          {% for item in task_dashboard.summary %}
-            <a class="admin-task-dashboard__card" href="{{ item.url|default:'#' }}">
-              <span class="admin-task-dashboard__label">{{ item.label }}</span>
-              <span class="admin-task-dashboard__value">{{ item.value }}</span>
-            </a>
-          {% endfor %}
-        </div>
-      </section>
-    {% endif %}
-
-    <div class="admin-home-layout">
-      <div class="admin-home-sections">
-        {% include "admin/app_list.html" with app_list=app_list show_changelinks=True %}
-      </div>
-
-      {% if task_dashboard %}
-        <aside class="admin-task-dashboard__sidebar" aria-label="Очереди задач">
-          <div class="admin-task-dashboard__queues">
-            {% for queue in task_dashboard.queues %}
-              <section class="admin-task-dashboard__queue">
-                <h2>{{ queue.title }}</h2>
-                {% if queue.items %}
-                  <ul class="admin-task-dashboard__list">
-                    {% for item in queue.items %}
-                      <li class="admin-task-dashboard__item">
-                        {% if item.url %}
-                          <a href="{{ item.url }}">
-                            <span class="admin-task-dashboard__item-title">{{ item.title }}</span>
-                          </a>
-                        {% else %}
-                          <span class="admin-task-dashboard__item-title">{{ item.title }}</span>
-                        {% endif %}
-                        {% if item.meta %}
-                          <span class="admin-task-dashboard__item-meta">{{ item.meta }}</span>
-                        {% endif %}
-                        {% if item.created_at %}
-                          <span class="admin-task-dashboard__item-meta">{{ item.created_at|date:"d.m.Y H:i" }}</span>
-                        {% endif %}
-                        {% if item.label %}
-                          <span class="admin-task-dashboard__badge">{{ item.label }}</span>
-                        {% elif item.status %}
-                          <span class="admin-task-dashboard__badge">{{ item.status }}</span>
-                        {% elif item.issue %}
-                          <span class="admin-task-dashboard__badge">{{ item.issue }}{% if item.stock_total is not None %}: {{ item.stock_total }}{% endif %}</span>
-                        {% endif %}
-                      </li>
-                    {% endfor %}
-                  </ul>
-                {% else %}
-                  <p class="admin-task-dashboard__empty">{{ queue.empty }}</p>
-                {% endif %}
-              </section>
-            {% endfor %}
-          </div>
+    <div class="admin-home">
+      <div class="admin-home-layout">
+        <aside class="admin-home-sidebar" aria-label="Навигация">
+          <nav class="admin-home-panel admin-home-nav">
+            <h2>Разделы</h2>
+            <ul class="admin-home-nav-list">
+              {% for item in admin_home.navigation %}
+                <li><a href="#{{ item.anchor }}">{{ item.label }}</a></li>
+              {% endfor %}
+            </ul>
+          </nav>
         </aside>
-      {% endif %}
+
+        <main class="admin-home-main">
+          <section class="admin-home-panel" id="overview" aria-label="Глобальный поиск">
+            <div class="admin-home-panel__heading">
+              <div>
+                <h2>Глобальный поиск</h2>
+                <p>Ищет по ключевым сущностям админки: заказам, товарам, клиентам, складу и документам.</p>
+              </div>
+            </div>
+            <form class="admin-home-search-form" method="get">
+              {% if request.GET.focus %}
+                <input type="hidden" name="focus" value="{{ request.GET.focus }}">
+              {% endif %}
+              <div class="admin-home-search-row">
+                <input type="search" name="q" value="{{ admin_home.search.query }}" placeholder="Например: номер заказа, телефон, товар, клиент" aria-label="Глобальный поиск">
+                <button type="submit">Найти</button>
+              </div>
+            </form>
+
+            {% if admin_home.search.query %}
+              <div class="admin-home-search-meta" style="margin-top: 14px;">
+                Найдено результатов: {{ admin_home.search.total }} по запросу “{{ admin_home.search.query }}”.
+              </div>
+              <div class="admin-home-search-results" style="margin-top: 16px;">
+                {% for group in admin_home.search.results %}
+                  <section class="admin-home-search-result">
+                    <div class="admin-home-search-result__header">
+                      <h3>{{ group.section }} · {{ group.model_name }}</h3>
+                      {% if group.model_url %}
+                        <a href="{{ group.model_url }}">Открыть список</a>
+                      {% endif %}
+                    </div>
+                    <ul class="admin-home-search-list">
+                      {% for item in group.items %}
+                        <li class="admin-home-search-item">
+                          <a href="{{ item.url }}">
+                            <span class="admin-home-item-title">{{ item.title }}</span>
+                          </a>
+                          <p class="admin-home-item-meta">{{ item.meta }}</p>
+                        </li>
+                      {% endfor %}
+                    </ul>
+                  </section>
+                {% empty %}
+                  <p class="admin-home-search-meta">Совпадений не найдено. Попробуйте номер заказа, телефон, email, название товара или имя клиента.</p>
+                {% endfor %}
+              </div>
+            {% endif %}
+          </section>
+
+          {% if admin_home.summary %}
+            <section class="admin-home-panel" aria-label="Ключевые показатели">
+              <div class="admin-home-panel__heading">
+                <div>
+                  <h2>Ключевые показатели</h2>
+                  <p>Каждая карточка открывает соответствующий рабочий список.</p>
+                </div>
+              </div>
+              <div class="admin-home-summary">
+                {% for item in admin_home.summary %}
+                  <a class="admin-home-card" href="{{ item.url }}">
+                    <span class="admin-home-card__label">{{ item.label }}</span>
+                    <span class="admin-home-card__value">{{ item.value }}</span>
+                    <span class="admin-home-card__note">{{ item.note }}</span>
+                  </a>
+                {% endfor %}
+              </div>
+            </section>
+          {% endif %}
+
+          {% if admin_home.focus_panel %}
+            <section class="admin-home-panel" aria-label="Рабочий список">
+              <div class="admin-home-focus-header">
+                <div>
+                  <h2>{{ admin_home.focus_panel.title }}</h2>
+                  <p class="admin-home-focus-description">{{ admin_home.focus_panel.description }}</p>
+                </div>
+                <a href="{% url 'admin:index' %}">Сбросить</a>
+              </div>
+              <div class="admin-home-focus-list">
+                {% for item in admin_home.focus_panel.items %}
+                  <div class="admin-home-focus-item">
+                    {% if item.url %}
+                      <a href="{{ item.url }}">
+                        <span class="admin-home-item-title">{{ item.title }}</span>
+                      </a>
+                    {% else %}
+                      <span class="admin-home-item-title">{{ item.title }}</span>
+                    {% endif %}
+                    {% if item.meta %}
+                      <p class="admin-home-item-meta">{{ item.meta }}</p>
+                    {% endif %}
+                    {% if item.created_at %}
+                      <p class="admin-home-item-meta">{{ item.created_at|date:"d.m.Y H:i" }}</p>
+                    {% endif %}
+                    {% if item.badge %}
+                      <span class="admin-home-item-badge">{{ item.badge }}</span>
+                    {% elif item.label %}
+                      <span class="admin-home-item-badge">{{ item.label }}</span>
+                    {% endif %}
+                  </div>
+                {% empty %}
+                  <p class="admin-home-queue-empty">Сейчас этот список пуст.</p>
+                {% endfor %}
+              </div>
+            </section>
+          {% endif %}
+
+          {% if admin_home.today_attention %}
+            <section class="admin-home-panel" aria-label="Сегодня требует внимания">
+              <div class="admin-home-panel__heading">
+                <div>
+                  <h2>Сегодня требует внимания</h2>
+                  <p>Приоритетные очереди, которые влияют на продажи, наличие и ответы клиентам.</p>
+                </div>
+              </div>
+              <div class="admin-home-attention">
+                {% for item in admin_home.today_attention %}
+                  <a class="admin-home-card" href="{{ item.url }}">
+                    <span class="admin-home-card__label">{{ item.title }}</span>
+                    <span class="admin-home-card__value">{{ item.count }}</span>
+                    <span class="admin-home-card__note">{{ item.description }}</span>
+                  </a>
+                {% endfor %}
+              </div>
+            </section>
+          {% endif %}
+
+          {% if admin_home.quick_actions %}
+            <section class="admin-home-panel" aria-label="Быстрые действия">
+              <div class="admin-home-panel__heading">
+                <div>
+                  <h2>Быстрые действия</h2>
+                  <p>Частые операции без перехода в общий список моделей.</p>
+                </div>
+              </div>
+              <ul class="admin-home-action-list">
+                {% for action in admin_home.quick_actions %}
+                  <li><a href="{{ action.url }}">{{ action.label }}</a></li>
+                {% endfor %}
+              </ul>
+            </section>
+          {% endif %}
+
+          {% if admin_home.sections %}
+            <section class="admin-home-panel" aria-label="Рабочие разделы">
+              <div class="admin-home-panel__heading">
+                <div>
+                  <h2>Рабочие разделы</h2>
+                  <p>Крупные бизнес-сценарии вместо плоского списка всех Django-моделей.</p>
+                </div>
+              </div>
+              <div class="admin-home-section-grid">
+                {% for section in admin_home.sections %}
+                  <section class="admin-home-section" id="{{ section.anchor }}">
+                    <div class="admin-home-section__header">
+                      <h3>{{ section.name }}</h3>
+                      <p>{{ section.description }}</p>
+                    </div>
+                    <ul class="admin-home-links">
+                      {% for model in section.models %}
+                        <li>
+                          {% if model.admin_url %}
+                            <a href="{{ model.admin_url }}">
+                              <span>{{ model.name }}</span>
+                              <span class="admin-home-service-note">Открыть рабочий список</span>
+                            </a>
+                          {% else %}
+                            <span>{{ model.name }}</span>
+                          {% endif %}
+                        </li>
+                      {% endfor %}
+                    </ul>
+                  </section>
+                {% endfor %}
+              </div>
+            </section>
+          {% endif %}
+
+          {% if admin_home.service_sections %}
+            <details class="admin-home-service" id="service">
+              <summary>
+                <span>Служебное</span>
+                <span class="admin-home-service-note">Технические модели и справочники, которые не нужны в ежедневной работе.</span>
+              </summary>
+              <div class="admin-home-service-body">
+                {% for section in admin_home.service_sections %}
+                  <section class="admin-home-service-block">
+                    <h3>{{ section.name }}</h3>
+                    <ul class="admin-home-service-list">
+                      {% for model in section.models %}
+                        <li>
+                          {% if model.admin_url %}
+                            <a href="{{ model.admin_url }}">{{ model.name }}</a>
+                          {% else %}
+                            {{ model.name }}
+                          {% endif %}
+                        </li>
+                      {% endfor %}
+                    </ul>
+                  </section>
+                {% endfor %}
+              </div>
+            </details>
+          {% endif %}
+        </main>
+
+        <aside class="admin-home-aside" aria-label="Task center">
+          <section class="admin-home-panel admin-home-queue">
+            <div class="admin-home-panel__heading">
+              <div>
+                <h2>Task center</h2>
+                <p>Проблемы и очереди, которые должны вести в конкретный объект или рабочий список.</p>
+              </div>
+            </div>
+          </section>
+
+          {% for queue in admin_home.task_center %}
+            <section class="admin-home-queue">
+              <div class="admin-home-queue__header">
+                <div>
+                  <h3>{{ queue.title }}</h3>
+                  <p class="admin-home-queue-meta">Требует внимания: {{ queue.count }}</p>
+                </div>
+                <a href="{{ queue.url }}">Открыть</a>
+              </div>
+              {% if queue.items %}
+                <ul class="admin-home-queue-list">
+                  {% for item in queue.items %}
+                    <li class="admin-home-queue-item">
+                      {% if item.url %}
+                        <a href="{{ item.url }}">
+                          <span class="admin-home-item-title">{{ item.title }}</span>
+                        </a>
+                      {% else %}
+                        <span class="admin-home-item-title">{{ item.title }}</span>
+                      {% endif %}
+                      {% if item.meta %}
+                        <p class="admin-home-item-meta">{{ item.meta }}</p>
+                      {% endif %}
+                      {% if item.created_at %}
+                        <p class="admin-home-item-meta">{{ item.created_at|date:"d.m.Y H:i" }}</p>
+                      {% endif %}
+                      {% if item.issue %}
+                        <span class="admin-home-item-badge">{{ item.issue }}{% if item.stock_total is not None %}: {{ item.stock_total }}{% endif %}</span>
+                      {% elif item.status %}
+                        <span class="admin-home-item-badge">{{ item.status }}</span>
+                      {% elif item.label %}
+                        <span class="admin-home-item-badge">{{ item.label }}</span>
+                      {% endif %}
+                    </li>
+                  {% endfor %}
+                </ul>
+              {% else %}
+                <p class="admin-home-queue-empty">{{ queue.empty }}</p>
+              {% endif %}
+            </section>
+          {% endfor %}
+        </aside>
+      </div>
     </div>
   </div>
 {% endblock %}

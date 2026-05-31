@@ -21,6 +21,11 @@ from django.urls import path, reverse
 from django.utils.html import format_html
 from django.utils.text import slugify
 from django.utils import timezone
+from openpyxl import Workbook
+from openpyxl.drawing.image import Image as XLImage
+from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter
+from PIL import Image as PilImage, UnidentifiedImageError
 
 from ..cache_utils import invalidate_catalog_cache
 from ..importers import CatalogImportError
@@ -183,6 +188,105 @@ def _build_unique_archive_path(directory, base_name, extension, used_paths):
             used_paths.add(archive_path)
             return archive_path
         suffix += 1
+
+
+def _bool_label(value):
+    return 'Да' if value else 'Нет'
+
+
+def _build_absolute_site_url(path_or_url):
+    if not path_or_url:
+        return ''
+    if str(path_or_url).startswith(('http://', 'https://')):
+        return str(path_or_url)
+    site_url = (getattr(settings, 'SITE_URL', '') or '').rstrip('/')
+    if not site_url:
+        return str(path_or_url)
+    return f'{site_url}{path_or_url}'
+
+
+def _serialize_characteristics(characteristics):
+    values = [f'{item.name}: {item.value}' for item in characteristics if item.name and item.value]
+    return '\n'.join(values)
+
+
+def _serialize_variant_summary(product):
+    variants = []
+    for variant in product.variants.all():
+        parts = [variant.name]
+        if variant.sku:
+            parts.append(f'SKU: {variant.sku}')
+        if variant.price_override is not None:
+            parts.append(f'Цена из наличия: {variant.price_override}')
+        elif product.price is not None:
+            parts.append(f'Цена из наличия: {product.price}')
+        if variant.price_on_request_override is not None:
+            parts.append(f'Цена под заказ: {variant.price_on_request_override}')
+        elif product.price_on_request is not None:
+            parts.append(f'Цена под заказ: {product.price_on_request}')
+
+        characteristics = _serialize_characteristics(variant.characteristics.all().order_by('name'))
+        if characteristics:
+            parts.append(f'Характеристики: {characteristics}')
+        variants.append(' | '.join(parts))
+    return '\n'.join(variants)
+
+
+def _collect_product_image_urls(product):
+    urls = []
+    seen = set()
+
+    def add_url(label, file_field):
+        if not file_field:
+            return
+        try:
+            url = _build_absolute_site_url(file_field.url)
+        except Exception:
+            return
+        if not url or url in seen:
+            return
+        seen.add(url)
+        urls.append(f'{label}: {url}')
+
+    add_url('Основное', product.image)
+    for index, image in enumerate(product.images.all().order_by('order', 'id'), start=1):
+        add_url(f'Доп. фото {index}', image.image)
+    for index, variant in enumerate(product.variants.all(), start=1):
+        add_url(f'Вариант {index}: {variant.name}', variant.image)
+    return '\n'.join(urls)
+
+
+def _build_excel_thumbnail(image_field, max_size=(140, 140)):
+    if not image_field:
+        return None
+    try:
+        image_path = image_field.path
+    except Exception:
+        return None
+    if not image_path or not os.path.exists(image_path):
+        return None
+
+    try:
+        with PilImage.open(image_path) as source_image:
+            prepared = source_image.convert('RGBA')
+            prepared.thumbnail(max_size, PilImage.Resampling.LANCZOS)
+            if prepared.mode == 'RGBA':
+                background = PilImage.new('RGB', prepared.size, 'white')
+                background.paste(prepared, mask=prepared.getchannel('A'))
+                prepared = background
+            else:
+                prepared = prepared.convert('RGB')
+
+            buffer = io.BytesIO()
+            prepared.save(buffer, format='PNG')
+    except (FileNotFoundError, OSError, UnidentifiedImageError):
+        return None
+
+    buffer.seek(0)
+    excel_image = XLImage(buffer)
+    excel_image.width, excel_image.height = prepared.size
+    excel_image._bizon_buffer = buffer
+    return excel_image
 
 
 class ProductCharacteristicInline(admin.TabularInline):
@@ -635,7 +739,7 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
         ProductBundleItemInlineForProduct,
     )
     readonly_fields = ('created_at', 'updated_at', 'description_constructor')
-    actions = ('export_catalog_with_images', 'backup_full_catalog', 'duplicate_game_packs')
+    actions = ('export_catalog_excel', 'export_catalog_with_images', 'backup_full_catalog', 'duplicate_game_packs')
     change_form_template = 'admin/catalog/product/change_form.html'
     save_on_top = False
     fieldsets = (
@@ -1001,6 +1105,7 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
         ).prefetch_related(
             'tags',
             'variants',
+            'variants__characteristics',
             'game_pack_items',
             'characteristics',
             'content_blocks',
@@ -1021,7 +1126,9 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
         extra_context['restore_backup_url'] = 'admin:catalog_product_restore_backup'
         extra_context['import_catalog_json_url'] = 'admin:catalog_product_import_json'
         extra_context['commercial_proposal_url'] = 'admin:catalog_product_commercial_proposal'
+        extra_context['catalog_excel_export_url'] = 'admin:catalog_product_export_excel'
         extra_context['can_export_commercial_proposal'] = request.user.has_perm('catalog.view_product')
+        extra_context['can_export_catalog_excel'] = request.user.has_perm('catalog.view_product')
         extra_context['can_restore_backup'] = self.has_restore_backup_permission(request)
         extra_context['can_import_catalog_json'] = self.has_import_catalog_json_permission(request)
         return super().changelist_view(request, extra_context=extra_context)
@@ -1031,6 +1138,169 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
 
     def has_import_catalog_json_permission(self, request):
         return request.user.has_perm('catalog.can_import_catalog_json')
+
+    def _get_catalog_export_queryset(self, queryset):
+        return queryset.select_related('category', 'category__section').prefetch_related(
+            'characteristics',
+            'images',
+            'tags',
+            'variants',
+            'variants__characteristics',
+        )
+
+    def _build_catalog_excel_response(self, queryset, *, filename_prefix='catalog_export'):
+        products = list(
+            self._get_catalog_export_queryset(queryset).order_by(
+                'category__section__name',
+                'category__name',
+                'name',
+                'pk',
+            )
+        )
+
+        workbook = Workbook()
+        worksheet = workbook.active
+        worksheet.title = 'Каталог'
+        worksheet.freeze_panes = 'A2'
+
+        headers = [
+            'Превью',
+            'Название',
+            'Раздел',
+            'Категория',
+            'Тип товара',
+            'Ссылка на товар',
+            'SKU',
+            'Slug',
+            'Активен',
+            'Доступен под заказ',
+            'Цена из наличия',
+            'Скидка, %',
+            'Цена под заказ',
+            'Теги',
+            'Описание',
+            'Характеристики',
+            'Варианты',
+            'Основное изображение URL',
+            'Все изображения URL',
+            'Avito',
+            'Ozon',
+            'Wildberries',
+            'Создан',
+            'Обновлён',
+        ]
+        worksheet.append(headers)
+        worksheet.auto_filter.ref = f'A1:{get_column_letter(len(headers))}1'
+
+        header_fill = PatternFill(fill_type='solid', fgColor='1F2937')
+        header_font = Font(color='FFFFFF', bold=True)
+        top_alignment = Alignment(vertical='top', wrap_text=True)
+
+        for cell in worksheet[1]:
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = top_alignment
+
+        column_widths = {
+            'A': 16,
+            'B': 28,
+            'C': 20,
+            'D': 22,
+            'E': 16,
+            'F': 26,
+            'G': 18,
+            'H': 20,
+            'I': 12,
+            'J': 18,
+            'K': 16,
+            'L': 12,
+            'M': 16,
+            'N': 20,
+            'O': 48,
+            'P': 36,
+            'Q': 42,
+            'R': 34,
+            'S': 44,
+            'T': 26,
+            'U': 26,
+            'V': 26,
+            'W': 20,
+            'X': 20,
+        }
+        for column_letter, width in column_widths.items():
+            worksheet.column_dimensions[column_letter].width = width
+
+        for row_index, product in enumerate(products, start=2):
+            display_image = product.get_display_image()
+            image_url = ''
+            if display_image:
+                try:
+                    image_url = _build_absolute_site_url(display_image.url)
+                except Exception:
+                    image_url = ''
+
+            product_url = _build_absolute_site_url(product.get_absolute_url())
+            tags = ', '.join(sorted(tag.name for tag in product.tags.all()))
+            section_name = product.category.section.name if product.category.section else ''
+
+            worksheet.append([
+                '',
+                product.name,
+                section_name,
+                product.category.name,
+                product.get_product_kind_display(),
+                product_url,
+                product.sku,
+                product.slug,
+                _bool_label(product.is_active),
+                _bool_label(product.allow_order_on_request),
+                _decimal_to_str_or_empty(product.price),
+                _decimal_to_str_or_empty(product.discount_percent),
+                _decimal_to_str_or_empty(product.price_on_request),
+                tags,
+                product.description or '',
+                _serialize_characteristics(product.characteristics.all().order_by('name')),
+                _serialize_variant_summary(product),
+                image_url,
+                _collect_product_image_urls(product),
+                product.avito_url,
+                product.ozon_url,
+                product.wildberries_url,
+                timezone.localtime(product.created_at).strftime('%Y-%m-%d %H:%M:%S'),
+                timezone.localtime(product.updated_at).strftime('%Y-%m-%d %H:%M:%S'),
+            ])
+
+            worksheet.row_dimensions[row_index].height = 82
+            for column_index in range(1, len(headers) + 1):
+                worksheet.cell(row=row_index, column=column_index).alignment = top_alignment
+
+            for column_letter in ('F', 'R', 'T', 'U', 'V'):
+                cell = worksheet[f'{column_letter}{row_index}']
+                if cell.value:
+                    cell.hyperlink = cell.value
+                    cell.style = 'Hyperlink'
+
+            thumbnail = _build_excel_thumbnail(display_image)
+            if thumbnail:
+                worksheet.add_image(thumbnail, f'A{row_index}')
+
+        export_buffer = io.BytesIO()
+        workbook.save(export_buffer)
+        export_buffer.seek(0)
+
+        timestamp = timezone.now().strftime('%Y%m%d_%H%M%S')
+        filename = f'{filename_prefix}_{timestamp}.xlsx'
+        response = HttpResponse(
+            export_buffer.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        response['Content-Length'] = len(export_buffer.getvalue())
+        return response
+
+    @admin.action(description='Экспортировать каталог в Excel (.xlsx)')
+    def export_catalog_excel(self, request, queryset):
+        return self._build_catalog_excel_response(queryset, filename_prefix='catalog_export')
 
     @admin.action(description='Скачать каталог с картинками (ZIP)')
     def export_catalog_with_images(self, request, queryset):
@@ -1042,11 +1312,11 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
         # Если ничего не выбрано, экспортируем все активные товары
         if not queryset.exists():
             products = Product.objects.filter(is_active=True).select_related('category', 'category__section').prefetch_related(
-                'characteristics', 'variants', 'images', 'tags'
+                'characteristics', 'variants', 'variants__characteristics', 'images', 'tags'
             )
         else:
             products = queryset.select_related('category', 'category__section').prefetch_related(
-                'characteristics', 'variants', 'images', 'tags'
+                'characteristics', 'variants', 'variants__characteristics', 'images', 'tags'
             )
 
         ordered_products = list(products.order_by('category__section__name', 'category__name', 'name', 'pk'))
@@ -1210,6 +1480,7 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
     def get_urls(self):
         urls = super().get_urls()
         custom_urls = [
+            path('export-excel/', self.admin_site.admin_view(self.export_catalog_excel_view), name='catalog_product_export_excel'),
             path('restore-backup/', self.admin_site.admin_view(self.restore_backup_view), name='catalog_product_restore_backup'),
             path('import-json/', self.admin_site.admin_view(self.import_json_view), name='catalog_product_import_json'),
             path('import-json/<int:batch_id>/', self.admin_site.admin_view(self.import_json_review_view), name='catalog_product_import_json_review'),
@@ -1243,6 +1514,12 @@ class ProductAdmin(SortableAdminBase, admin.ModelAdmin):
             path('<int:product_id>/description/apply-template/', self.admin_site.admin_view(self.product_description_apply_template_api_view), name='catalog_product_description_apply_template'),
         ]
         return custom_urls + urls
+
+    def export_catalog_excel_view(self, request):
+        if not request.user.has_perm('catalog.view_product'):
+            return HttpResponseForbidden('Недостаточно прав для экспорта каталога.')
+        changelist = self.get_changelist_instance(request)
+        return self._build_catalog_excel_response(changelist.get_queryset(request), filename_prefix='catalog_export')
 
     def duplicate_game_pack_view(self, request, product_id):
         product = get_object_or_404(Product.objects.prefetch_related('tags', 'game_pack_items'), pk=product_id)

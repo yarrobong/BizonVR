@@ -551,6 +551,8 @@ class ManagerDeal(models.Model):
         choices=CUSTOMER_SOURCE_CHOICES,
         default=SOURCE_WEBSITE,
     )
+    bitrix_deal_id = models.CharField('ID сделки Bitrix', max_length=64, blank=True, db_index=True)
+    bitrix_deal_url = models.URLField('Ссылка на сделку Bitrix', blank=True, max_length=500)
     deal_created_at = models.DateTimeField('Дата создания сделки', default=timezone.now, db_index=True)
     individual_full_name = models.CharField('ФИО физ. лица', max_length=255, blank=True)
     individual_phone = models.CharField('Телефон физ. лица', max_length=40, blank=True)

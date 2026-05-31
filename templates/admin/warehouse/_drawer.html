@@ -1,10 +1,4 @@
-<div data-sku-key="{{ sku_key }}" data-refresh-url="{% url 'admin:warehouse_ui_drawer' sku_key %}" class="space-y-6">
-  {% if toast %}
-    <div class="rounded-2xl border px-4 py-3 text-sm {% if toast.level == 'success' %}border-emerald-400/25 bg-emerald-500/10 text-emerald-100{% else %}border-rose-400/25 bg-rose-500/10 text-rose-100{% endif %}">
-      {{ toast.message }}
-    </div>
-  {% endif %}
-
+<div data-sku-key="{{ sku_key }}" data-refresh-url="{% url 'admin:warehouse_ui_drawer' sku_key %}" class="space-y-6" x-data="{ tab: 'overview', action: '' }">
   <div class="flex items-start justify-between gap-4">
     <div class="flex items-start gap-4">
       {% if image_url %}
@@ -13,12 +7,12 @@
         <div class="flex h-20 w-20 items-center justify-center rounded-3xl border border-cyan-400/20 bg-cyan-400/10 text-2xl text-cyan-200">VR</div>
       {% endif %}
       <div>
-        <p class="text-xs uppercase tracking-[0.3em] text-cyan-300/80">SKU</p>
+        <p class="text-xs uppercase tracking-[0.3em] text-cyan-300/80">{% if variant %}Вариант{% else %}Товар{% endif %}</p>
         <h2 class="mt-2 text-2xl font-semibold text-white">{{ product.name }}</h2>
         {% if variant %}<p class="mt-1 text-sm text-slate-300">{{ variant.name }}</p>{% endif %}
         <div class="mt-3 flex flex-wrap gap-2 text-xs">
           {% if row.sku %}<span class="rounded-full border border-slate-700 px-2 py-1 text-slate-300">{{ row.sku }}</span>{% endif %}
-          <span class="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2 py-1 text-cyan-100">Остаток {{ row.totals.on_hand }}</span>
+          <span class="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2 py-1 text-cyan-100">Всего {{ row.totals.on_hand }}</span>
           <span class="rounded-full border border-emerald-400/20 bg-emerald-500/10 px-2 py-1 text-emerald-100">Доступно {{ row.totals.available }}</span>
           <span class="rounded-full border border-amber-400/20 bg-amber-500/10 px-2 py-1 text-amber-100">Резерв {{ row.totals.reserved }}</span>
           <span class="rounded-full border border-sky-400/20 bg-sky-500/10 px-2 py-1 text-sky-100">В пути {{ row.totals.inbound }}</span>
@@ -30,7 +24,42 @@
     </button>
   </div>
 
-  <section class="rounded-3xl border border-slate-800 bg-slate-950/60 p-5">
+  <div class="flex flex-wrap gap-2">
+    <button type="button" @click="tab = 'overview'" :class="tab === 'overview' ? 'border-cyan-300/30 bg-cyan-400/10 text-cyan-100' : 'border-slate-700 text-slate-300'" class="rounded-full border px-3 py-1.5 text-sm transition hover:border-slate-500">Обзор</button>
+    <button type="button" @click="tab = 'warehouses'" :class="tab === 'warehouses' ? 'border-cyan-300/30 bg-cyan-400/10 text-cyan-100' : 'border-slate-700 text-slate-300'" class="rounded-full border px-3 py-1.5 text-sm transition hover:border-slate-500">По складам</button>
+    <button type="button" @click="tab = 'movements'" :class="tab === 'movements' ? 'border-cyan-300/30 bg-cyan-400/10 text-cyan-100' : 'border-slate-700 text-slate-300'" class="rounded-full border px-3 py-1.5 text-sm transition hover:border-slate-500">Движения</button>
+    <button type="button" @click="tab = 'actions'" :class="tab === 'actions' ? 'border-cyan-300/30 bg-cyan-400/10 text-cyan-100' : 'border-slate-700 text-slate-300'" class="rounded-full border px-3 py-1.5 text-sm transition hover:border-slate-500">Действия</button>
+  </div>
+
+  <section x-show="tab === 'overview'" class="rounded-3xl border border-slate-800 bg-slate-950/60 p-5">
+    <h3 class="text-sm font-semibold uppercase tracking-[0.24em] text-slate-400">Обзор</h3>
+    <div class="mt-4 grid gap-3 sm:grid-cols-2">
+      <div class="rounded-2xl border border-slate-800 bg-slate-950/80 p-4">
+        <div class="text-xs uppercase tracking-[0.18em] text-slate-500">Где лежит</div>
+        <div class="mt-2 text-sm text-white">
+          {% for cell in row.cells %}
+            {% if cell.on_hand or cell.inbound or cell.reserved %}
+              <div>{{ cell.warehouse.name }}: {{ cell.on_hand }} шт.</div>
+            {% endif %}
+          {% empty %}
+            <div>Позиция пока не привязана к складу.</div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="rounded-2xl border border-slate-800 bg-slate-950/80 p-4">
+        <div class="text-xs uppercase tracking-[0.18em] text-slate-500">Краткие сигналы</div>
+        <div class="mt-2 text-sm text-slate-300">
+          {% for note in overview_notes %}
+            <div>{{ note }}</div>
+          {% empty %}
+            <div>Проблем по позиции не найдено.</div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section x-show="tab === 'warehouses'" class="rounded-3xl border border-slate-800 bg-slate-950/60 p-5">
     <h3 class="text-sm font-semibold uppercase tracking-[0.24em] text-slate-400">По складам</h3>
     <div class="mt-4 space-y-3">
       {% for cell in row.cells %}
@@ -42,7 +71,7 @@
                 {% if cell.warehouse.pickup_point_id %}
                   {{ cell.warehouse.pickup_point.city.name }}{% if cell.warehouse.pickup_point.name %}, {{ cell.warehouse.pickup_point.name }}{% endif %}
                 {% else %}
-                  Без публичной точки выдачи
+                  Импорт / не указан
                 {% endif %}
               </div>
             </div>
@@ -63,62 +92,109 @@
     </div>
   </section>
 
-  <section class="rounded-3xl border border-slate-800 bg-slate-950/60 p-5">
-    <h3 class="text-sm font-semibold uppercase tracking-[0.24em] text-slate-400">Быстрые действия</h3>
-    <div class="mt-4 space-y-4">
-      <details class="rounded-2xl border border-slate-800 bg-slate-950/80 p-4" open>
-        <summary class="cursor-pointer font-medium text-white">Приход</summary>
-        <form method="post" class="mt-4 space-y-3" hx-post="{% url 'admin:warehouse_ui_receipt_action' %}" hx-target="#warehouse-drawer-content" hx-swap="innerHTML" hx-include="#warehouse-filters">
-          {% csrf_token %}
-          {{ receipt_form_obj.sku_key }}{{ receipt_form_obj.product }}{{ receipt_form_obj.variant }}
-          {% if receipt_form_obj.non_field_errors %}<div class="text-sm text-rose-300">{{ receipt_form_obj.non_field_errors }}</div>{% endif %}
-          <div>{{ receipt_form_obj.warehouse.label_tag }}{{ receipt_form_obj.warehouse }}{{ receipt_form_obj.warehouse.errors }}</div>
-          <div>{{ receipt_form_obj.quantity.label_tag }}{{ receipt_form_obj.quantity }}{{ receipt_form_obj.quantity.errors }}</div>
-          <div>{{ receipt_form_obj.unit_cost.label_tag }}{{ receipt_form_obj.unit_cost }}{{ receipt_form_obj.unit_cost.errors }}</div>
-          <div>{{ receipt_form_obj.comment.label_tag }}{{ receipt_form_obj.comment }}{{ receipt_form_obj.comment.errors }}</div>
-          <button type="submit" class="rounded-full bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300">Записать приход</button>
-        </form>
-      </details>
-
-      <details class="rounded-2xl border border-slate-800 bg-slate-950/80 p-4">
-        <summary class="cursor-pointer font-medium text-white">Корректировка</summary>
-        <form method="post" class="mt-4 space-y-3" hx-post="{% url 'admin:warehouse_ui_adjustment_action' %}" hx-target="#warehouse-drawer-content" hx-swap="innerHTML" hx-include="#warehouse-filters">
-          {% csrf_token %}
-          {{ adjustment_form_obj.sku_key }}{{ adjustment_form_obj.product }}{{ adjustment_form_obj.variant }}
-          {% if adjustment_form_obj.non_field_errors %}<div class="text-sm text-rose-300">{{ adjustment_form_obj.non_field_errors }}</div>{% endif %}
-          <div>{{ adjustment_form_obj.warehouse.label_tag }}{{ adjustment_form_obj.warehouse }}{{ adjustment_form_obj.warehouse.errors }}</div>
-          <div>{{ adjustment_form_obj.quantity_delta.label_tag }}{{ adjustment_form_obj.quantity_delta }}{{ adjustment_form_obj.quantity_delta.errors }}</div>
-          <p class="text-xs text-slate-500">Положительное число добавит остаток, отрицательное спишет по FIFO.</p>
-          <div>{{ adjustment_form_obj.comment.label_tag }}{{ adjustment_form_obj.comment }}{{ adjustment_form_obj.comment.errors }}</div>
-          <button type="submit" class="rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-slate-200">Провести корректировку</button>
-        </form>
-      </details>
-
-      <details class="rounded-2xl border border-slate-800 bg-slate-950/80 p-4">
-        <summary class="cursor-pointer font-medium text-white">Переместить</summary>
-        <form method="post" class="mt-4 space-y-3" hx-post="{% url 'admin:warehouse_ui_transfer_action' %}" hx-target="#warehouse-drawer-content" hx-swap="innerHTML" hx-include="#warehouse-filters">
-          {% csrf_token %}
-          {{ transfer_form_obj.sku_key }}{{ transfer_form_obj.product }}{{ transfer_form_obj.variant }}
-          {% if transfer_form_obj.non_field_errors %}<div class="text-sm text-rose-300">{{ transfer_form_obj.non_field_errors }}</div>{% endif %}
-          <div>{{ transfer_form_obj.source_warehouse.label_tag }}{{ transfer_form_obj.source_warehouse }}{{ transfer_form_obj.source_warehouse.errors }}</div>
-          <div>{{ transfer_form_obj.target_warehouse.label_tag }}{{ transfer_form_obj.target_warehouse }}{{ transfer_form_obj.target_warehouse.errors }}</div>
-          <div>{{ transfer_form_obj.quantity.label_tag }}{{ transfer_form_obj.quantity }}{{ transfer_form_obj.quantity.errors }}</div>
-          <div>{{ transfer_form_obj.comment.label_tag }}{{ transfer_form_obj.comment }}{{ transfer_form_obj.comment.errors }}</div>
-          <button type="submit" class="rounded-full border border-cyan-400/30 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-400/20">Сохранить перемещение</button>
-        </form>
-      </details>
-    </div>
-  </section>
-
-  <section class="rounded-3xl border border-slate-800 bg-slate-950/60 p-5">
+  <section x-show="tab === 'movements'" class="rounded-3xl border border-slate-800 bg-slate-950/60 p-5">
     <div class="flex items-center justify-between gap-3">
-      <h3 class="text-sm font-semibold uppercase tracking-[0.24em] text-slate-400">История движения</h3>
+      <h3 class="text-sm font-semibold uppercase tracking-[0.24em] text-slate-400">Последние движения</h3>
       <button type="button" class="rounded-full border border-slate-700 px-3 py-1.5 text-xs text-slate-300 transition hover:border-slate-500 hover:bg-slate-900/60" hx-get="{{ history_url }}" hx-target="#warehouse-history-slot" hx-swap="innerHTML">
         Обновить
       </button>
     </div>
     <div id="warehouse-history-slot" class="mt-4">
       {% include "admin/warehouse/_history.html" with movements=movements sku_key=sku_key %}
+    </div>
+  </section>
+
+  <section x-show="tab === 'actions'" class="rounded-3xl border border-slate-800 bg-slate-950/60 p-5">
+    <h3 class="text-sm font-semibold uppercase tracking-[0.24em] text-slate-400">Действия</h3>
+    <div class="mt-4 flex flex-wrap gap-2">
+      {% if permissions.can_manage %}
+        <button type="button" @click="action = 'receipt'" :class="action === 'receipt' ? 'border-cyan-300/30 bg-cyan-400/10 text-cyan-100' : 'border-slate-700 text-slate-300'" class="rounded-full border px-3 py-1.5 text-sm transition hover:border-slate-500">Приход</button>
+        <button type="button" @click="action = 'expense'" :class="action === 'expense' ? 'border-cyan-300/30 bg-cyan-400/10 text-cyan-100' : 'border-slate-700 text-slate-300'" class="rounded-full border px-3 py-1.5 text-sm transition hover:border-slate-500">Продажи / расход</button>
+        <button type="button" @click="action = 'transfer'" :class="action === 'transfer' ? 'border-cyan-300/30 bg-cyan-400/10 text-cyan-100' : 'border-slate-700 text-slate-300'" class="rounded-full border px-3 py-1.5 text-sm transition hover:border-slate-500">Переместить</button>
+        <button type="button" @click="action = 'reserve'" :class="action === 'reserve' ? 'border-cyan-300/30 bg-cyan-400/10 text-cyan-100' : 'border-slate-700 text-slate-300'" class="rounded-full border px-3 py-1.5 text-sm transition hover:border-slate-500">Зарезервировать</button>
+      {% endif %}
+      {% if permissions.can_adjust %}
+        <button type="button" @click="action = 'adjustment'" :class="action === 'adjustment' ? 'border-cyan-300/30 bg-cyan-400/10 text-cyan-100' : 'border-slate-700 text-slate-300'" class="rounded-full border px-3 py-1.5 text-sm transition hover:border-slate-500">Корректировка</button>
+      {% endif %}
+      {% if permissions.can_writeoff %}
+        <button type="button" @click="action = 'writeoff'" :class="action === 'writeoff' ? 'border-rose-300/30 bg-rose-500/10 text-rose-100' : 'border-slate-700 text-slate-300'" class="rounded-full border px-3 py-1.5 text-sm transition hover:border-rose-400/40">Списание</button>
+      {% endif %}
+      <button type="button" @click="tab = 'movements'" class="rounded-full border border-slate-700 px-3 py-1.5 text-sm text-slate-300 transition hover:border-slate-500">История</button>
+    </div>
+
+    {% if not permissions.can_manage and not permissions.can_adjust and not permissions.can_writeoff %}
+      <p class="mt-4 text-sm text-slate-500">У текущего пользователя есть доступ к просмотру, но нет прав на складские действия.</p>
+    {% endif %}
+
+    <div class="mt-4 space-y-4">
+      <form x-show="action === 'receipt'" method="post" class="rounded-2xl border border-slate-800 bg-slate-950/80 p-4 space-y-3" hx-post="{% url 'admin:warehouse_ui_receipt_action' %}" hx-target="#warehouse-drawer-content" hx-swap="innerHTML" hx-include="#warehouse-filters">
+        {% csrf_token %}
+        {{ receipt_form_obj.sku_key }}{{ receipt_form_obj.product }}{{ receipt_form_obj.variant }}
+        {% if receipt_form_obj.non_field_errors %}<div class="text-sm text-rose-300">{{ receipt_form_obj.non_field_errors }}</div>{% endif %}
+        <div>{{ receipt_form_obj.warehouse.label_tag }}{{ receipt_form_obj.warehouse }}{{ receipt_form_obj.warehouse.errors }}</div>
+        <div>{{ receipt_form_obj.quantity.label_tag }}{{ receipt_form_obj.quantity }}{{ receipt_form_obj.quantity.errors }}</div>
+        <div>{{ receipt_form_obj.unit_cost.label_tag }}{{ receipt_form_obj.unit_cost }}{{ receipt_form_obj.unit_cost.errors }}</div>
+        <div>{{ receipt_form_obj.comment.label_tag }}{{ receipt_form_obj.comment }}{{ receipt_form_obj.comment.errors }}</div>
+        <button type="submit" class="rounded-full bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300">Записать приход</button>
+      </form>
+
+      <form x-show="action === 'expense'" method="post" class="rounded-2xl border border-slate-800 bg-slate-950/80 p-4 space-y-3" hx-post="{% url 'admin:warehouse_ui_expense_action' %}" hx-target="#warehouse-drawer-content" hx-swap="innerHTML" hx-include="#warehouse-filters">
+        {% csrf_token %}
+        {{ expense_form_obj.sku_key }}{{ expense_form_obj.product }}{{ expense_form_obj.variant }}
+        {% if expense_form_obj.non_field_errors %}<div class="text-sm text-rose-300">{{ expense_form_obj.non_field_errors }}</div>{% endif %}
+        <p class="text-xs text-slate-500">Продажи из сайта должны завершаться штатным workflow заказа. Здесь доступен только ручной расход с обязательным комментарием.</p>
+        <div>{{ expense_form_obj.warehouse.label_tag }}{{ expense_form_obj.warehouse }}{{ expense_form_obj.warehouse.errors }}</div>
+        <div>{{ expense_form_obj.order.label_tag }}{{ expense_form_obj.order }}{{ expense_form_obj.order.errors }}</div>
+        <div>{{ expense_form_obj.deal.label_tag }}{{ expense_form_obj.deal }}{{ expense_form_obj.deal.errors }}</div>
+        <div>{{ expense_form_obj.quantity.label_tag }}{{ expense_form_obj.quantity }}{{ expense_form_obj.quantity.errors }}</div>
+        <div>{{ expense_form_obj.comment.label_tag }}{{ expense_form_obj.comment }}{{ expense_form_obj.comment.errors }}</div>
+        <button type="submit" class="rounded-full border border-amber-400/30 bg-amber-500/10 px-4 py-2 text-sm font-semibold text-amber-100 transition hover:bg-amber-500/20">Записать расход</button>
+      </form>
+
+      <form x-show="action === 'transfer'" method="post" class="rounded-2xl border border-slate-800 bg-slate-950/80 p-4 space-y-3" hx-post="{% url 'admin:warehouse_ui_transfer_action' %}" hx-target="#warehouse-drawer-content" hx-swap="innerHTML" hx-include="#warehouse-filters">
+        {% csrf_token %}
+        {{ transfer_form_obj.sku_key }}{{ transfer_form_obj.product }}{{ transfer_form_obj.variant }}
+        {% if transfer_form_obj.non_field_errors %}<div class="text-sm text-rose-300">{{ transfer_form_obj.non_field_errors }}</div>{% endif %}
+        <div>{{ transfer_form_obj.source_warehouse.label_tag }}{{ transfer_form_obj.source_warehouse }}{{ transfer_form_obj.source_warehouse.errors }}</div>
+        <div>{{ transfer_form_obj.target_warehouse.label_tag }}{{ transfer_form_obj.target_warehouse }}{{ transfer_form_obj.target_warehouse.errors }}</div>
+        <div>{{ transfer_form_obj.quantity.label_tag }}{{ transfer_form_obj.quantity }}{{ transfer_form_obj.quantity.errors }}</div>
+        <div>{{ transfer_form_obj.comment.label_tag }}{{ transfer_form_obj.comment }}{{ transfer_form_obj.comment.errors }}</div>
+        <button type="submit" class="rounded-full border border-cyan-400/30 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-400/20">Сохранить перемещение</button>
+      </form>
+
+      <form x-show="action === 'reserve'" method="post" class="rounded-2xl border border-slate-800 bg-slate-950/80 p-4 space-y-3" hx-post="{% url 'admin:warehouse_ui_reserve_action' %}" hx-target="#warehouse-drawer-content" hx-swap="innerHTML" hx-include="#warehouse-filters">
+        {% csrf_token %}
+        {{ reserve_form_obj.sku_key }}{{ reserve_form_obj.product }}{{ reserve_form_obj.variant }}
+        {% if reserve_form_obj.non_field_errors %}<div class="text-sm text-rose-300">{{ reserve_form_obj.non_field_errors }}</div>{% endif %}
+        <div>{{ reserve_form_obj.warehouse.label_tag }}{{ reserve_form_obj.warehouse }}{{ reserve_form_obj.warehouse.errors }}</div>
+        <div>{{ reserve_form_obj.order.label_tag }}{{ reserve_form_obj.order }}{{ reserve_form_obj.order.errors }}</div>
+        <div>{{ reserve_form_obj.deal.label_tag }}{{ reserve_form_obj.deal }}{{ reserve_form_obj.deal.errors }}</div>
+        <div>{{ reserve_form_obj.quantity.label_tag }}{{ reserve_form_obj.quantity }}{{ reserve_form_obj.quantity.errors }}</div>
+        <div>{{ reserve_form_obj.comment.label_tag }}{{ reserve_form_obj.comment }}{{ reserve_form_obj.comment.errors }}</div>
+        <button type="submit" class="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/20">Создать резерв</button>
+      </form>
+
+      <form x-show="action === 'adjustment'" method="post" class="rounded-2xl border border-slate-800 bg-slate-950/80 p-4 space-y-3" hx-post="{% url 'admin:warehouse_ui_adjustment_action' %}" hx-target="#warehouse-drawer-content" hx-swap="innerHTML" hx-include="#warehouse-filters">
+        {% csrf_token %}
+        {{ adjustment_form_obj.sku_key }}{{ adjustment_form_obj.product }}{{ adjustment_form_obj.variant }}
+        {% if adjustment_form_obj.non_field_errors %}<div class="text-sm text-rose-300">{{ adjustment_form_obj.non_field_errors }}</div>{% endif %}
+        <div>{{ adjustment_form_obj.warehouse.label_tag }}{{ adjustment_form_obj.warehouse }}{{ adjustment_form_obj.warehouse.errors }}</div>
+        <div>{{ adjustment_form_obj.actual_quantity.label_tag }}{{ adjustment_form_obj.actual_quantity }}{{ adjustment_form_obj.actual_quantity.errors }}</div>
+        <div>{{ adjustment_form_obj.reason.label_tag }}{{ adjustment_form_obj.reason }}{{ adjustment_form_obj.reason.errors }}</div>
+        <div>{{ adjustment_form_obj.comment.label_tag }}{{ adjustment_form_obj.comment }}{{ adjustment_form_obj.comment.errors }}</div>
+        <button type="submit" class="rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-slate-200">Провести корректировку</button>
+      </form>
+
+      <form x-show="action === 'writeoff'" method="post" class="rounded-2xl border border-rose-500/20 bg-slate-950/80 p-4 space-y-3" hx-post="{% url 'admin:warehouse_ui_writeoff_action' %}" hx-target="#warehouse-drawer-content" hx-swap="innerHTML" hx-include="#warehouse-filters" hx-confirm="Подтвердите списание. Операция уменьшит физический остаток.">
+        {% csrf_token %}
+        {{ writeoff_form_obj.sku_key }}{{ writeoff_form_obj.product }}{{ writeoff_form_obj.variant }}
+        {% if writeoff_form_obj.non_field_errors %}<div class="text-sm text-rose-300">{{ writeoff_form_obj.non_field_errors }}</div>{% endif %}
+        <div>{{ writeoff_form_obj.warehouse.label_tag }}{{ writeoff_form_obj.warehouse }}{{ writeoff_form_obj.warehouse.errors }}</div>
+        <div>{{ writeoff_form_obj.quantity.label_tag }}{{ writeoff_form_obj.quantity }}{{ writeoff_form_obj.quantity.errors }}</div>
+        <div>{{ writeoff_form_obj.reason.label_tag }}{{ writeoff_form_obj.reason }}{{ writeoff_form_obj.reason.errors }}</div>
+        <div>{{ writeoff_form_obj.comment.label_tag }}{{ writeoff_form_obj.comment }}{{ writeoff_form_obj.comment.errors }}</div>
+        <button type="submit" class="rounded-full border border-rose-400/30 bg-rose-500/10 px-4 py-2 text-sm font-semibold text-rose-100 transition hover:bg-rose-500/20">Списать</button>
+      </form>
     </div>
   </section>
 
@@ -129,10 +205,10 @@
         <div class="rounded-2xl border border-slate-800 bg-slate-950/80 p-4">
           <div class="flex items-center justify-between gap-3">
             <div class="font-medium text-white">{{ item.reservation.code|default:"Бронь" }}</div>
-            <div class="text-sm text-amber-100">{{ item.active_reserved_quantity }}</div>
+            <div class="text-sm text-amber-100">{{ item.active_reserved_quantity }} шт.</div>
           </div>
           <div class="mt-2 text-sm text-slate-400">
-            {{ item.reservation.client.name }}{% if item.reservation.manager_deal_id %} • Сделка {{ item.reservation.manager_deal.code }}{% endif %}
+            {{ item.reservation.client.name }}{% if item.reservation.manager_deal_id %} • {{ item.reservation.manager_deal.code }}{% elif item.reservation.linked_order_id %} • Заказ #{{ item.reservation.linked_order_id }}{% endif %}
           </div>
         </div>
       {% empty %}
@@ -156,22 +232,6 @@
         </div>
       {% empty %}
         <p class="text-sm text-slate-500">Позиция не едет ни в одном активном грузе.</p>
-      {% endfor %}
-    </div>
-  </section>
-
-  <section class="rounded-3xl border border-slate-800 bg-slate-950/60 p-5">
-    <h3 class="text-sm font-semibold uppercase tracking-[0.24em] text-slate-400">Связанные сделки и заказы</h3>
-    <div class="mt-4 space-y-3">
-      {% for deal in linked_deals %}
-        <div class="rounded-2xl border border-slate-800 bg-slate-950/80 p-4">
-          <div class="font-medium text-white">{{ deal.code|default:"Сделка" }}</div>
-          <div class="mt-2 text-sm text-slate-400">
-            Заказ #{{ deal.order_id }}{% if deal.stock_warehouse_id %} • {{ deal.stock_warehouse.name }}{% endif %}
-          </div>
-        </div>
-      {% empty %}
-        <p class="text-sm text-slate-500">Связанных сделок не найдено.</p>
       {% endfor %}
     </div>
   </section>

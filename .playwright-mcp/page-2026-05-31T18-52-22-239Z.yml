@@ -1,0 +1,134 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - paragraph [ref=e6]: BizonVR
+        - heading "Операторский портал" [level=1] [ref=e7]
+        - paragraph [ref=e8]: "Bitrix24 продаёт. Здесь оператор быстро исполняет сделку: товар, закупка, груз, резерв, отгрузка и контроль статусов."
+      - generic [ref=e9]:
+        - generic [ref=e10]:
+          - generic [ref=e11]:
+            - paragraph [ref=e12]: Главное
+            - generic [ref=e13]:
+              - link "Dashboard" [ref=e14] [cursor=pointer]:
+                - /url: /ops/?q=6669&mode=simple
+              - link "Сделки" [ref=e15] [cursor=pointer]:
+                - /url: /ops/deals/?q=6669&mode=simple
+          - generic [ref=e16]:
+            - paragraph [ref=e17]: Исполнение
+            - generic [ref=e18]:
+              - link "Закупки" [ref=e19] [cursor=pointer]:
+                - /url: /manager/purchases/
+              - link "Грузы" [ref=e20] [cursor=pointer]:
+                - /url: /manager/cargos/
+              - link "Резервы" [ref=e21] [cursor=pointer]:
+                - /url: /manager/reservations/
+              - link "Отгрузки" [ref=e22] [cursor=pointer]:
+                - /url: /manager/shipments/
+          - generic [ref=e23]:
+            - paragraph [ref=e24]: Учёт
+            - generic [ref=e25]:
+              - link "Склад" [ref=e26] [cursor=pointer]:
+                - /url: /manager/inventory/
+              - link "Финансы" [ref=e27] [cursor=pointer]:
+                - /url: /manager/finance/
+              - link "История" [ref=e28] [cursor=pointer]:
+                - /url: /ops/history/?q=6669&mode=simple
+          - generic [ref=e29]:
+            - paragraph [ref=e30]: Система
+            - generic [ref=e31]:
+              - link "Справочники" [ref=e32] [cursor=pointer]:
+                - /url: /admin/manager_portal/
+              - link "Настройки" [ref=e33] [cursor=pointer]:
+                - /url: /admin/
+              - link "Админка" [ref=e34] [cursor=pointer]:
+                - /url: /admin/
+        - generic [ref=e35]:
+          - link "Простой режим" [ref=e36] [cursor=pointer]:
+            - /url: /ops/deals/?q=6669&mode=advanced
+          - link "Выход" [ref=e37] [cursor=pointer]:
+            - /url: /accounts/logout/
+  - main [ref=e38]:
+    - generic [ref=e39]:
+      - generic [ref=e40]:
+        - generic [ref=e41]:
+          - paragraph [ref=e42]: Сделки
+          - heading "Операционные сделки" [level=2] [ref=e43]
+          - paragraph [ref=e44]: "Только исполнение: товар, обеспечение, закупки, грузы, резервы, отгрузки и финансы."
+        - generic [ref=e45]: "Найдено: 0"
+      - generic [ref=e46]:
+        - generic [ref=e47]:
+          - generic [ref=e48]: Поиск
+          - textbox "Поиск" [ref=e49]:
+            - /placeholder: Bitrix ID, клиент, сделка, товар, SKU
+            - text: "6669"
+        - generic [ref=e50]:
+          - generic [ref=e51]: Операционный статус
+          - combobox "Операционный статус" [ref=e52]:
+            - option "Все статусы" [selected]
+            - option "Нужно разобрать"
+            - option "Нужно связать товары"
+            - option "Нужно запросить данные доставки"
+            - option "Нужно проверить наличие"
+            - option "Нужно закупить"
+            - option "Частично обеспечено"
+            - option "В пути"
+            - option "Частично приехало"
+            - option "Готово к отправке"
+            - option "В доставке"
+            - option "Проблемы"
+        - generic [ref=e53]:
+          - generic [ref=e54]: Проблема
+          - combobox "Проблема" [ref=e55]:
+            - option "Любая" [selected]
+            - option "Есть проблемы"
+            - option "Без проблем"
+        - generic [ref=e56]:
+          - generic [ref=e57]: Ответственный
+          - combobox "Ответственный" [ref=e58]:
+            - option "Любой ответственный" [selected]
+            - option "799"
+            - option "79990001123"
+            - option "admin-automation"
+            - option "oneboardsholi@gmail.com"
+            - option "ops_ui_check"
+            - option "u1"
+            - option "u2"
+            - option "yaroslav"
+            - option "yarrobong"
+        - generic [ref=e59]:
+          - generic [ref=e60]:
+            - checkbox "Нужно связать товары" [ref=e61]
+            - text: Нужно связать товары
+          - generic [ref=e62]:
+            - checkbox "Нужно закупить" [ref=e63]
+            - text: Нужно закупить
+          - generic [ref=e64]:
+            - checkbox "Готово к отправке" [ref=e65]
+            - text: Готово к отправке
+          - generic [ref=e66]:
+            - checkbox "В пути" [ref=e67]
+            - text: В пути
+          - generic [ref=e68]:
+            - checkbox "Нет адреса или получателя" [ref=e69]
+            - text: Нет адреса или получателя
+        - generic [ref=e70]:
+          - button "Применить" [ref=e71] [cursor=pointer]
+          - link "Сбросить" [ref=e72] [cursor=pointer]:
+            - /url: /ops/deals/
+    - table [ref=e75]:
+      - rowgroup [ref=e76]:
+        - row "Номер Bitrix Клиент Сумма Позиций Обеспечение Доставка Блокеры Обновлено Действие" [ref=e77]:
+          - columnheader "Номер" [ref=e78]
+          - columnheader "Bitrix" [ref=e79]
+          - columnheader "Клиент" [ref=e80]
+          - columnheader "Сумма" [ref=e81]
+          - columnheader "Позиций" [ref=e82]
+          - columnheader "Обеспечение" [ref=e83]
+          - columnheader "Доставка" [ref=e84]
+          - columnheader "Блокеры" [ref=e85]
+          - columnheader "Обновлено" [ref=e86]
+          - columnheader "Действие" [ref=e87]
+      - rowgroup [ref=e88]:
+        - row "Сделки по выбранным фильтрам не найдены." [ref=e89]:
+          - cell "Сделки по выбранным фильтрам не найдены." [ref=e90]

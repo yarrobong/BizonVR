@@ -1,29 +1,35 @@
 {% extends "manager_portal/base.html" %}
 
-{% block title %}Дашборд менеджера{% endblock %}
+{% block title %}Операционный dashboard{% endblock %}
 
 {% block content %}
   <div class="space-y-8">
     <section class="manager-dashboard-hero manager-panel rounded-[1.75rem] p-6 lg:p-8">
       <div class="manager-dashboard-hero-grid">
         <div>
-          <p class="manager-page-kicker">Операционный обзор</p>
-          <h2 class="manager-page-title mt-3">Операционный центр</h2>
+          <p class="manager-page-kicker">Исполнение после оплаты</p>
+          <h2 class="manager-page-title mt-3">Операционный dashboard</h2>
+          <p class="mt-4 max-w-3xl text-sm text-slate-300">Bitrix24 ведет продажу, а здесь менеджер видит только операционную работу: обеспечение, закупки, грузы, склад, резервы, отгрузки и финансы.</p>
           <div class="mt-6 flex flex-wrap gap-2">
-            <span class="manager-pill"><strong>{{ stats.new_orders }}</strong> новых заказов</span>
+            <span class="manager-pill"><strong>{{ stats.active_deals_total }}</strong> активных кейсов</span>
             <span class="manager-pill"><strong>{{ stats.cargos_in_transit }}</strong> грузов в пути</span>
-            <span class="manager-pill"><strong>{{ stats.active_reservations }}</strong> активных броней</span>
+            <span class="manager-pill"><strong>{{ stats.active_reservations }}</strong> активных резервов</span>
           </div>
           <div class="mt-6 flex flex-wrap gap-3">
-            <a href="{% url 'manager_portal:order_list' %}" class="rounded-xl bg-cyan-500 px-4 py-3 text-sm font-medium text-slate-950">Открыть заказы</a>
-            <a href="{% url 'manager_portal:inventory' %}" class="rounded-xl border border-slate-700 px-4 py-3 text-sm text-slate-200 hover:bg-slate-800">Проверить остатки</a>
+            <a href="{% url 'manager_portal:deal_list' %}" class="rounded-xl bg-cyan-500 px-4 py-3 text-sm font-medium text-slate-950">Открыть сделки в работе</a>
+            <a href="{% url 'manager_portal:purchase_list' %}" class="rounded-xl border border-slate-700 px-4 py-3 text-sm text-slate-200 hover:bg-slate-800">Проверить закупки</a>
+            <a href="{% url 'manager_portal:inventory' %}" class="rounded-xl border border-slate-700 px-4 py-3 text-sm text-slate-200 hover:bg-slate-800">Проверить склад</a>
           </div>
         </div>
 
         <div class="manager-dashboard-alerts">
           <div class="manager-dashboard-alert-card">
-            <p class="manager-dashboard-alert-label">Срочные сигналы</p>
+            <p class="manager-dashboard-alert-label">Критичные сигналы</p>
             <div class="mt-4 space-y-3">
+              <div class="manager-dashboard-alert-row">
+                <span class="text-slate-300">Проблемные кейсы</span>
+                <strong class="{% if stats.problem_deals %}manager-semantic-text manager-semantic-text-critical{% endif %}">{{ stats.problem_deals|length }}</strong>
+              </div>
               <div class="manager-dashboard-alert-row">
                 <span class="text-slate-300">Просроченные ETA</span>
                 <strong class="{% if stats.overdue_cargos %}manager-semantic-text manager-semantic-text-critical{% endif %}">{{ stats.overdue_cargos }}</strong>
@@ -32,42 +38,79 @@
                 <span class="text-slate-300">Проблемные остатки</span>
                 <strong class="{% if stats.inventory_problem_rows %}manager-semantic-text manager-semantic-text-critical{% endif %}">{{ stats.inventory_problem_rows }}</strong>
               </div>
-              <div class="manager-dashboard-alert-row">
-                <span class="text-slate-300">Активные брони</span>
-                <strong>{{ stats.active_reservations }}</strong>
-              </div>
             </div>
           </div>
         </div>
       </div>
     </section>
 
-    <div class="manager-kpi-grid">
-      <div class="manager-kpi manager-panel rounded-[1.75rem] p-5">
-        <p class="text-sm text-slate-400">Новые заказы</p>
-        <p class="mt-3 text-4xl font-semibold">{{ stats.new_orders }}</p>
-        <p class="mt-2 text-sm text-slate-500">в фокусе менеджеров сайта</p>
+    <section class="manager-panel rounded-[1.75rem] p-6">
+      <div class="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <p class="manager-page-kicker">Очереди</p>
+          <h3 class="text-2xl font-semibold text-white">Куда смотреть в первую очередь</h3>
+        </div>
+        <p class="text-sm text-slate-400">Категории могут пересекаться: одна сделка может одновременно быть в пути и иметь проблему.</p>
       </div>
-      <div class="manager-kpi manager-panel rounded-[1.75rem] p-5">
-        <p class="text-sm text-slate-400">Грузы в пути</p>
-        <p class="mt-3 text-4xl font-semibold">{{ stats.cargos_in_transit }}</p>
-        <p class="mt-2 text-sm text-slate-500">между закупкой и складом</p>
+      <div class="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {% for bucket in stats.operations_buckets %}
+          <a href="{{ bucket.url }}" class="manager-panel rounded-[1.5rem] border border-slate-800/80 bg-slate-950/70 p-5 transition hover:border-cyan-400/30 hover:bg-slate-900/80">
+            <p class="text-sm text-slate-400">{{ bucket.label }}</p>
+            <p class="mt-3 text-4xl font-semibold text-white">{{ bucket.count }}</p>
+          </a>
+        {% endfor %}
       </div>
-      <div class="manager-kpi manager-panel rounded-[1.75rem] p-5">
-        <p class="text-sm text-slate-400">Просроченный ETA</p>
-        <p class="mt-3 text-4xl font-semibold {% if stats.overdue_cargos %}manager-semantic-text manager-semantic-text-critical{% endif %}">{{ stats.overdue_cargos }}</p>
-        <p class="mt-2 text-sm text-slate-500">требуют вмешательства</p>
-      </div>
-      <div class="manager-kpi manager-panel rounded-[1.75rem] p-5">
-        <p class="text-sm text-slate-400">Активные брони</p>
-        <p class="mt-3 text-4xl font-semibold">{{ stats.active_reservations }}</p>
-        <p class="mt-2 text-sm text-slate-500">в резерве склада или в пути</p>
-      </div>
-      <div class="manager-kpi manager-panel rounded-[1.75rem] p-5">
-        <p class="text-sm text-slate-400">Проблемные строки</p>
-        <p class="mt-3 text-4xl font-semibold {% if stats.inventory_problem_rows %}manager-semantic-text manager-semantic-text-critical{% endif %}">{{ stats.inventory_problem_rows }}</p>
-        <p class="mt-2 text-sm text-slate-500">конфликты доступности</p>
-      </div>
+    </section>
+
+    <div class="grid gap-6 xl:grid-cols-[1.4fr,1fr]">
+      <section class="manager-panel rounded-[1.75rem] p-6">
+        <div class="mb-5 flex items-center justify-between gap-3">
+          <div>
+            <h3 class="text-xl font-semibold">Проблемные кейсы</h3>
+            <p class="mt-1 text-sm text-slate-400">Сделки с блокерами, просрочками или конфликтом по обеспечению.</p>
+          </div>
+          <a href="{% url 'manager_portal:deal_list' %}?only_problematic=1" class="manager-pill text-cyan-200">Открыть все</a>
+        </div>
+        <div class="space-y-3">
+          {% for deal in stats.problem_deals %}
+            <a href="{% url 'manager_portal:deal_detail' deal.pk %}" class="block rounded-2xl border border-slate-800 bg-slate-950/60 px-4 py-4 transition hover:border-rose-400/30 hover:bg-slate-900/70">
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p class="text-sm font-semibold text-white">{{ deal.code|default:deal.order_id }} · {{ deal.customer_name|default:deal.order.shipping_contact_name|default:"Клиент" }}</p>
+                  <p class="mt-1 text-xs text-slate-400">{{ deal.get_case_status_display }} · {{ deal.next_step_label|default:"—" }}</p>
+                </div>
+                <span class="rounded-full border border-rose-400/30 bg-rose-400/10 px-3 py-1 text-xs text-rose-100">{{ deal.problem_flag_labels|join:", " }}</span>
+              </div>
+            </a>
+          {% empty %}
+            <div class="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-4">
+              <p class="text-sm font-medium text-white">Сейчас без критичных проблем.</p>
+            </div>
+          {% endfor %}
+        </div>
+      </section>
+
+      <section class="manager-panel rounded-[1.75rem] p-6">
+        <div class="mb-5 flex items-center justify-between gap-3">
+          <div>
+            <h3 class="text-xl font-semibold">Готово к отправке</h3>
+            <p class="mt-1 text-sm text-slate-400">Кейсы, которые можно переводить в отгрузку без дополнительных продажных действий.</p>
+          </div>
+          <a href="{% url 'manager_portal:deal_list' %}?queue=ready_to_ship" class="manager-pill text-cyan-200">Открыть все</a>
+        </div>
+        <div class="space-y-3">
+          {% for deal in stats.ready_deals %}
+            <a href="{% url 'manager_portal:deal_detail' deal.pk %}" class="block rounded-2xl border border-slate-800 bg-slate-950/60 px-4 py-4 transition hover:border-emerald-400/30 hover:bg-slate-900/70">
+              <p class="text-sm font-semibold text-white">{{ deal.code|default:deal.order_id }} · {{ deal.customer_name|default:deal.order.shipping_contact_name|default:"Клиент" }}</p>
+              <p class="mt-1 text-xs text-slate-400">{{ deal.get_case_status_display }} · {{ deal.get_fulfillment_status_display }}</p>
+            </a>
+          {% empty %}
+            <div class="rounded-2xl border border-slate-800 bg-slate-950/60 px-4 py-4">
+              <p class="text-sm text-slate-300">Пока нет кейсов в очереди на отправку.</p>
+            </div>
+          {% endfor %}
+        </div>
+      </section>
     </div>
 
     <div class="manager-dashboard-main">
@@ -144,39 +187,6 @@
             {% empty %}
               <p class="text-slate-400">Грузов пока нет.</p>
             {% endfor %}
-          </div>
-        </section>
-        <section class="manager-panel rounded-[1.75rem] p-6">
-          <h3 class="text-xl font-semibold">Быстрые переходы</h3>
-          <div class="mt-4 grid gap-3">
-            <a href="{% url 'manager_portal:order_list' %}" class="manager-dashboard-action">
-              <span>
-                <span class="block text-sm font-semibold text-white">Проверить новые заказы</span>
-                <span class="mt-1 block text-sm text-slate-400">Открыть очередь обработки заказов сайта.</span>
-              </span>
-              <span class="manager-dashboard-action-arrow">→</span>
-            </a>
-            <a href="{% url 'manager_portal:cargo_list' %}" class="manager-dashboard-action">
-              <span>
-                <span class="block text-sm font-semibold text-white">Принять грузы и обновить ETA</span>
-                <span class="mt-1 block text-sm text-slate-400">Проверить входящие партии и задержки поставки.</span>
-              </span>
-              <span class="manager-dashboard-action-arrow">→</span>
-            </a>
-            <a href="{% url 'manager_portal:reservation_list' %}" class="manager-dashboard-action">
-              <span>
-                <span class="block text-sm font-semibold text-white">Пересобрать резервы и брони</span>
-                <span class="mt-1 block text-sm text-slate-400">Синхронизировать складской резерв с потребностями клиентов.</span>
-              </span>
-              <span class="manager-dashboard-action-arrow">→</span>
-            </a>
-            <a href="{% url 'manager_portal:shipments' %}" class="manager-dashboard-action">
-              <span>
-                <span class="block text-sm font-semibold text-white">Сформировать список отгрузок</span>
-                <span class="mt-1 block text-sm text-slate-400">Подготовить активные брони к выдаче и отправке.</span>
-              </span>
-              <span class="manager-dashboard-action-arrow">→</span>
-            </a>
           </div>
         </section>
       </div>

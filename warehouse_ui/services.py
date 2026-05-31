@@ -1,22 +1,15 @@
+from datetime import timedelta
 from decimal import Decimal
-from urllib.parse import urlencode
 
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db import transaction
-from django.db.models import (
-    ExpressionWrapper,
-    F,
-    IntegerField,
-    Max,
-    Q,
-    Sum,
-    Value,
-)
+from django.db.models import ExpressionWrapper, F, IntegerField, Max, Q, Sum, Value
 from django.db.models.functions import Coalesce
 from django.urls import reverse
+from django.utils import timezone
 
-from catalog.models import ProductStock
+from catalog.models import Product, ProductStock, ProductVariant
 from manager_portal.models import (
     Cargo,
     CargoItem,
@@ -28,7 +21,15 @@ from manager_portal.models import (
     ReservationItem,
     Warehouse,
 )
-from manager_portal.services import rebuild_inventory_balance_cache, receipt_inventory, sync_public_stock_for_warehouse
+from manager_portal.services import (
+    create_or_update_reservation_movements,
+    ensure_manager_client_for_order,
+    receipt_inventory,
+    sync_public_stock_for_warehouse,
+    validate_reservation_availability,
+    rebuild_inventory_balance_cache,
+)
+from orders.models import Order
 
 from .models import WarehouseTransfer, WarehouseTransferLine
 
@@ -45,6 +46,15 @@ INBOUND_CARGO_STATUSES = {
     Cargo.STATUS_AWAITING_RECEIPT,
 }
 SKU_PAGE_SIZE = 25
+STALE_DAYS = 30
+STATUS_ALL = 'all'
+STATUS_AVAILABLE = 'available'
+STATUS_OUT = 'out'
+STATUS_LOW = 'low'
+STATUS_RESERVE = 'reserve'
+STATUS_INBOUND = 'inbound'
+STATUS_PROBLEMATIC = 'problematic'
+STATUS_MISMATCH = 'mismatch'
 
 
 def build_sku_key(product_id, variant_id=None):
@@ -64,11 +74,11 @@ def parse_sku_key(value):
 def _warehouse_scope(cleaned_data):
     queryset = Warehouse.objects.filter(is_active=True).select_related('pickup_point__city').order_by('name')
     city = cleaned_data.get('city')
-    selected = cleaned_data.get('warehouses')
+    warehouse = cleaned_data.get('warehouse')
     if city:
         queryset = queryset.filter(pickup_point__city=city)
-    if selected:
-        queryset = queryset.filter(pk__in=selected.values_list('pk', flat=True))
+    if warehouse:
+        queryset = queryset.filter(pk=warehouse.pk)
     return list(queryset)
 
 
@@ -114,6 +124,7 @@ def _ensure_row_meta(row_map, row):
             'product_slug': row.get('product__slug') or '',
             'variant_name': row.get('variant__name') or '',
             'sku': row.get('variant__sku') or row.get('product__sku') or '',
+            'last_movement_at': None,
             'totals': {
                 'on_hand': 0,
                 'reserved': 0,
@@ -134,20 +145,54 @@ def _ensure_row_meta(row_map, row):
         meta['variant_name'] = row['variant__name']
     if not meta['sku'] and (row.get('variant__sku') or row.get('product__sku')):
         meta['sku'] = row.get('variant__sku') or row.get('product__sku') or ''
+    if row.get('last_movement_at') and meta['last_movement_at'] is None:
+        meta['last_movement_at'] = row['last_movement_at']
     return meta
+
+
+def _row_status_bits(row):
+    totals = row['totals']
+    is_low_stock = totals['available'] <= 0 or (totals['min_stock'] > 0 and totals['available'] < totals['min_stock'])
+    has_mismatch = totals['public_mismatch_count'] > 0
+    has_problem = is_low_stock or has_mismatch or totals['available'] < 0
+    stale_at = timezone.now() - timedelta(days=STALE_DAYS)
+    is_stale = row['last_movement_at'] is None or row['last_movement_at'] < stale_at
+    labels = []
+    if totals['available'] <= 0:
+        labels.append('Нет в наличии')
+    elif is_low_stock:
+        labels.append('Низкий остаток')
+    else:
+        labels.append('В наличии')
+    if totals['reserved'] > 0:
+        labels.append('Есть резерв')
+    if totals['inbound'] > 0:
+        labels.append('В пути')
+    if has_mismatch:
+        labels.append('Расхождение')
+    row['is_low_stock'] = is_low_stock
+    row['has_problem'] = has_problem
+    row['has_mismatch'] = has_mismatch
+    row['is_stale'] = is_stale
+    row['status_labels'] = labels
+    row['status_label'] = labels[0] if labels else 'Норма'
+    return row
 
 
 def _build_aggregate_payload(warehouses):
     warehouse_ids = [warehouse.pk for warehouse in warehouses]
     row_map = {}
     cell_map = {}
+    warehouse_map = {warehouse.pk: warehouse for warehouse in warehouses}
 
     def ensure_cell(sku_key, warehouse_id):
         key = (sku_key, warehouse_id)
         if key not in cell_map:
-            warehouse = next(item for item in warehouses if item.pk == warehouse_id)
-            cell_map[key] = _empty_cell(warehouse)
+            cell_map[key] = _empty_cell(warehouse_map[warehouse_id])
         return cell_map[key]
+
+    if not warehouse_ids:
+        return row_map, cell_map
 
     balance_rows = list(
         InventoryBalance.objects.filter(warehouse_id__in=warehouse_ids)
@@ -190,8 +235,7 @@ def _build_aggregate_payload(warehouses):
     for row in reserve_rows:
         row['warehouse_id'] = row.pop('reservation__source_warehouse_id')
         meta = _ensure_row_meta(row_map, row)
-        cell = ensure_cell(meta['sku_key'], row['warehouse_id'])
-        cell['reserved'] = int(row['reserved'] or 0)
+        ensure_cell(meta['sku_key'], row['warehouse_id'])['reserved'] = int(row['reserved'] or 0)
 
     inbound_rows = list(
         CargoItem.objects.filter(
@@ -213,8 +257,7 @@ def _build_aggregate_payload(warehouses):
     for row in inbound_rows:
         row['warehouse_id'] = row.pop('cargo__destination_warehouse_id')
         meta = _ensure_row_meta(row_map, row)
-        cell = ensure_cell(meta['sku_key'], row['warehouse_id'])
-        cell['inbound'] = int(row['inbound'] or 0)
+        ensure_cell(meta['sku_key'], row['warehouse_id'])['inbound'] = int(row['inbound'] or 0)
 
     inbound_reserved_rows = list(
         ReservationItem.objects.filter(
@@ -237,8 +280,16 @@ def _build_aggregate_payload(warehouses):
     for row in inbound_reserved_rows:
         row['warehouse_id'] = row.pop('reservation__source_cargo__destination_warehouse_id')
         meta = _ensure_row_meta(row_map, row)
-        cell = ensure_cell(meta['sku_key'], row['warehouse_id'])
-        cell['inbound_reserved'] = int(row['reserved'] or 0)
+        ensure_cell(meta['sku_key'], row['warehouse_id'])['inbound_reserved'] = int(row['reserved'] or 0)
+
+    movement_rows = list(
+        InventoryMovement.objects.filter(warehouse_id__in=warehouse_ids)
+        .values('product_id', 'variant_id')
+        .annotate(last_movement_at=Max('created_at'))
+    )
+    for row in movement_rows:
+        meta = _ensure_row_meta(row_map, row)
+        meta['last_movement_at'] = row['last_movement_at']
 
     public_stock_rows = list(
         ProductStock.objects.filter(
@@ -275,41 +326,69 @@ def _build_aggregate_payload(warehouses):
             if cell['public_mismatch']:
                 totals['public_mismatch_count'] += 1
 
+    if row_map:
+        products_with_variant_rows = {row['product_id'] for row in row_map.values() if row['variant_id']}
+        for row in row_map.values():
+            row['prefer_variants_only'] = row['variant_id'] is None and row['product_id'] in products_with_variant_rows
+            _row_status_bits(row)
+
     return row_map, cell_map
+
+
+def _matches_status(row, status_value):
+    totals = row['totals']
+    if status_value == STATUS_AVAILABLE:
+        return totals['available'] > 0
+    if status_value == STATUS_OUT:
+        return totals['available'] <= 0
+    if status_value == STATUS_LOW:
+        return row['is_low_stock']
+    if status_value == STATUS_RESERVE:
+        return totals['reserved'] > 0
+    if status_value == STATUS_INBOUND:
+        return totals['inbound'] > 0 or totals['inbound_available'] > 0
+    if status_value == STATUS_PROBLEMATIC:
+        return row['has_problem']
+    if status_value == STATUS_MISMATCH:
+        return row['has_mismatch']
+    return True
 
 
 def _filter_rows(row_map, cleaned_data):
     search = (cleaned_data.get('q') or '').strip().lower()
-    in_stock = bool(cleaned_data.get('in_stock'))
-    out_of_stock = bool(cleaned_data.get('out_of_stock'))
-    has_reserve = bool(cleaned_data.get('has_reserve'))
-    inbound = bool(cleaned_data.get('inbound'))
+    status = cleaned_data.get('status') or STATUS_ALL
     rows = []
     for row in row_map.values():
-        haystack = ' '.join(
-            [
-                row['product_name'],
-                row['variant_name'],
-                row['sku'],
-            ]
-        ).lower()
+        if row.get('prefer_variants_only'):
+            continue
+        haystack = ' '.join([row['product_name'], row['variant_name'], row['sku']]).lower()
         totals = row['totals']
         if search and search not in haystack:
             continue
-        if in_stock and totals['available'] <= 0:
+        if not _matches_status(row, status):
             continue
-        if out_of_stock and totals['available'] > 0:
+        if cleaned_data.get('in_stock') and totals['available'] <= 0:
             continue
-        if has_reserve and totals['reserved'] <= 0:
+        if cleaned_data.get('out_of_stock') and totals['available'] > 0:
             continue
-        if inbound and totals['inbound_available'] <= 0 and totals['inbound'] <= 0:
+        if cleaned_data.get('has_reserve') and totals['reserved'] <= 0:
             continue
-        row['is_low_stock'] = totals['available'] <= 0 or (totals['min_stock'] > 0 and totals['available'] < totals['min_stock'])
-        row['has_problem'] = row['is_low_stock'] or totals['public_mismatch_count'] > 0
+        if cleaned_data.get('inbound') and totals['inbound'] <= 0 and totals['inbound_available'] <= 0:
+            continue
+        if cleaned_data.get('low_stock') and not row['is_low_stock']:
+            continue
+        if cleaned_data.get('problematic') and not row['has_problem']:
+            continue
+        if cleaned_data.get('only_mismatch') and not row['has_mismatch']:
+            continue
+        if cleaned_data.get('stale') and not row['is_stale']:
+            continue
         rows.append(row)
+
     rows.sort(
         key=lambda item: (
             0 if item['has_problem'] else 1,
+            0 if item['totals']['available'] <= 0 else 1,
             item['totals']['available'],
             item['product_name'].lower(),
             item['variant_name'].lower(),
@@ -318,45 +397,88 @@ def _filter_rows(row_map, cleaned_data):
     return rows
 
 
+def _attach_row_assets(rows):
+    product_map = Product.objects.in_bulk({row['product_id'] for row in rows})
+    variant_map = ProductVariant.objects.select_related('product').in_bulk({row['variant_id'] for row in rows if row['variant_id']})
+    for row in rows:
+        product = product_map.get(row['product_id'])
+        variant = variant_map.get(row['variant_id']) if row['variant_id'] else None
+        row['image_url'] = image_url_for_sku(product=product, variant=variant) if product else ''
+    return rows
+
+
+def _summary_cards(filtered_rows, *, has_public_links):
+    low_or_zero_count = sum(1 for row in filtered_rows if row['is_low_stock'])
+    cards = [
+        {'label': 'Доступно к продаже', 'value': sum(row['totals']['available'] for row in filtered_rows), 'status': STATUS_AVAILABLE},
+        {'label': 'В резерве', 'value': sum(row['totals']['reserved'] for row in filtered_rows), 'status': STATUS_RESERVE},
+        {'label': 'В пути', 'value': sum(row['totals']['inbound'] for row in filtered_rows), 'status': STATUS_INBOUND},
+        {'label': 'Низкий / нулевой остаток', 'value': low_or_zero_count, 'status': STATUS_LOW},
+        {'label': 'Всего SKU', 'value': len(filtered_rows), 'status': STATUS_ALL},
+    ]
+    if has_public_links:
+        cards.insert(
+            4,
+            {
+                'label': 'Расхождения',
+                'value': sum(1 for row in filtered_rows if row['has_mismatch']),
+                'status': STATUS_MISMATCH,
+            },
+        )
+    return cards
+
+
+def _quick_tabs(active_status):
+    tabs = [
+        (STATUS_ALL, 'Все'),
+        (STATUS_AVAILABLE, 'В наличии'),
+        (STATUS_OUT, 'Нет в наличии'),
+        (STATUS_LOW, 'Низкий остаток'),
+        (STATUS_RESERVE, 'Есть резерв'),
+        (STATUS_INBOUND, 'В пути'),
+        (STATUS_PROBLEMATIC, 'Проблемные'),
+    ]
+    return [{'value': value, 'label': label, 'active': active_status == value} for value, label in tabs]
+
+
 def build_matrix_context(cleaned_data, *, page_number=1):
     warehouses = _warehouse_scope(cleaned_data)
     row_map, cell_map = _build_aggregate_payload(warehouses)
     filtered_rows = _filter_rows(row_map, cleaned_data)
     paginator = Paginator(filtered_rows, SKU_PAGE_SIZE)
     page = paginator.get_page(page_number or 1)
-    rendered_rows = []
-    for row in page.object_list:
-        row_cells = [cell_map[(row['sku_key'], warehouse.pk)] for warehouse in warehouses]
-        rendered_rows.append(
+    rendered_rows = _attach_row_assets(list(page.object_list))
+
+    rows = []
+    for row in rendered_rows:
+        rows.append(
             {
                 **row,
-                'cells': row_cells,
+                'cells': [cell_map[(row['sku_key'], warehouse.pk)] for warehouse in warehouses],
                 'drawer_url': reverse('admin:warehouse_ui_drawer', args=[row['sku_key']]),
             }
         )
 
-    low_or_zero_count = sum(1 for row in filtered_rows if row['is_low_stock'])
-    mismatch_count = sum(1 for row in filtered_rows if row['totals']['public_mismatch_count'] > 0)
-    summary = {
-        'cards': [
-            {'label': 'Всего в наличии', 'value': sum(row['totals']['on_hand'] for row in filtered_rows)},
-            {'label': 'Доступно к продаже', 'value': sum(row['totals']['available'] for row in filtered_rows)},
-            {'label': 'В резерве', 'value': sum(row['totals']['reserved'] for row in filtered_rows)},
-            {'label': 'В пути', 'value': sum(row['totals']['inbound'] for row in filtered_rows)},
-            {'label': 'Низкий / нулевой остаток', 'value': low_or_zero_count},
-            {'label': 'Расхождения', 'value': mismatch_count},
-        ],
-    }
+    has_public_links = any(warehouse.pickup_point_id for warehouse in warehouses)
     return {
-        'summary': summary,
+        'summary': {
+            'cards': _summary_cards(filtered_rows, has_public_links=has_public_links),
+            'active_status': cleaned_data.get('status') or STATUS_ALL,
+        },
         'page': page,
         'warehouses': warehouses,
-        'rows': rendered_rows,
-        'page_query': urlencode({'page': page.number}),
+        'rows': rows,
+        'compact_mode': (cleaned_data.get('compact') or 'compact') != 'detailed',
+        'quick_tabs': _quick_tabs(cleaned_data.get('status') or STATUS_ALL),
+        'selected_status': cleaned_data.get('status') or STATUS_ALL,
+        'selected_count': len(filtered_rows),
+        'has_public_links': has_public_links,
     }
 
 
 def image_url_for_sku(*, product, variant=None):
+    if product is None:
+        return ''
     image = variant.image if variant and getattr(variant, 'image', None) else product.get_display_image()
     if not image:
         return ''
@@ -364,6 +486,34 @@ def image_url_for_sku(*, product, variant=None):
         return image.url
     except Exception:
         return ''
+
+
+def _movement_reference_labels(movements):
+    reservation_ids = {movement.reference_id for movement in movements if movement.reference_type == 'reservation' and movement.reference_id}
+    transfer_ids = {movement.reference_id for movement in movements if movement.reference_type == 'warehouse_transfer' and movement.reference_id}
+    reservations = {
+        reservation.id: reservation
+        for reservation in Reservation.objects.filter(id__in=reservation_ids)
+        .select_related('manager_deal', 'linked_order')
+    }
+    transfers = {transfer.id: transfer for transfer in WarehouseTransfer.objects.filter(id__in=transfer_ids)}
+    for movement in movements:
+        movement.reference_label = ''
+        if movement.reference_type == 'reservation' and movement.reference_id in reservations:
+            reservation = reservations[movement.reference_id]
+            parts = [reservation.code or f'Резерв #{reservation.id}']
+            if reservation.manager_deal_id:
+                parts.append(reservation.manager_deal.code or f'Сделка #{reservation.manager_deal_id}')
+            elif reservation.linked_order_id:
+                parts.append(f'Заказ #{reservation.linked_order_id}')
+            movement.reference_label = ' • '.join(parts)
+        elif movement.reference_type == 'warehouse_transfer' and movement.reference_id in transfers:
+            movement.reference_label = f'Перемещение #{movement.reference_id}'
+        elif movement.reference_type == 'warehouse_manual_expense' and movement.reference_id:
+            movement.reference_label = f'Операция #{movement.reference_id}'
+        elif movement.reference_type == 'warehouse_writeoff' and movement.reference_id:
+            movement.reference_label = f'Списание #{movement.reference_id}'
+    return movements
 
 
 def build_drawer_context(sku_key, cleaned_data=None):
@@ -378,30 +528,31 @@ def build_drawer_context(sku_key, cleaned_data=None):
         raise ValidationError('Позиция не найдена.')
 
     balance_lookup = InventoryBalance.objects.select_related('product', 'variant').filter(product_id=product_id)
-    if variant_id:
-        balance_lookup = balance_lookup.filter(variant_id=variant_id)
-    else:
-        balance_lookup = balance_lookup.filter(variant__isnull=True)
+    balance_lookup = balance_lookup.filter(variant_id=variant_id) if variant_id else balance_lookup.filter(variant__isnull=True)
     first_balance = balance_lookup.first()
     if not first_balance:
-        raise ValidationError('Позиция не найдена.')
-
-    product = first_balance.product
-    variant = first_balance.variant
-    row = {**base_row, 'cells': [cell_map[(sku_key, warehouse.pk)] for warehouse in warehouses]}
-
-    if variant_id:
-        movement_qs = InventoryMovement.objects.filter(product_id=product_id, variant_id=variant_id)
+        if variant_id:
+            variant = ProductVariant.objects.select_related('product').filter(pk=variant_id, product_id=product_id).first()
+            product = variant.product if variant else Product.objects.filter(pk=product_id).first()
+        else:
+            product = Product.objects.filter(pk=product_id).first()
+            variant = None
+        if not product:
+            raise ValidationError('Позиция не найдена.')
     else:
-        movement_qs = InventoryMovement.objects.filter(product_id=product_id, variant__isnull=True)
-    movements = list(
-        movement_qs.select_related('warehouse', 'author').order_by('-created_at', '-id')[:20]
+        product = first_balance.product
+        variant = first_balance.variant
+
+    row = {**base_row, 'cells': [cell_map[(sku_key, warehouse.pk)] for warehouse in warehouses]}
+    row['image_url'] = image_url_for_sku(product=product, variant=variant)
+
+    movement_qs = InventoryMovement.objects.filter(product_id=product_id)
+    movement_qs = movement_qs.filter(variant_id=variant_id) if variant_id else movement_qs.filter(variant__isnull=True)
+    movements = _movement_reference_labels(
+        list(movement_qs.select_related('warehouse', 'author').order_by('-created_at', '-id')[:10])
     )
 
-    reservations_qs = ReservationItem.objects.filter(
-        reservation__status__in=ACTIVE_RESERVATION_STATUSES,
-        product_id=product_id,
-    )
+    reservations_qs = ReservationItem.objects.filter(reservation__status__in=ACTIVE_RESERVATION_STATUSES, product_id=product_id)
     reservations_qs = reservations_qs.filter(variant_id=variant_id) if variant_id else reservations_qs.filter(variant__isnull=True)
     reservations = list(
         reservations_qs.select_related(
@@ -414,10 +565,7 @@ def build_drawer_context(sku_key, cleaned_data=None):
         ).order_by('-reservation__created_at')[:10]
     )
 
-    cargo_items_qs = CargoItem.objects.filter(
-        cargo__status__in=INBOUND_CARGO_STATUSES,
-        product_id=product_id,
-    )
+    cargo_items_qs = CargoItem.objects.filter(cargo__status__in=INBOUND_CARGO_STATUSES, product_id=product_id)
     cargo_items_qs = cargo_items_qs.filter(variant_id=variant_id) if variant_id else cargo_items_qs.filter(variant__isnull=True)
     cargo_items = list(
         cargo_items_qs.select_related(
@@ -442,16 +590,24 @@ def build_drawer_context(sku_key, cleaned_data=None):
     warehouse_choices = Warehouse.objects.filter(is_active=True).order_by('name')
     default_warehouse = next((cell['warehouse'] for cell in row['cells'] if cell['on_hand'] or cell['inbound']), None)
     default_target = next((item for item in warehouse_choices if not default_warehouse or item.pk != default_warehouse.pk), None)
+    overview_notes = []
+    if row['is_low_stock']:
+        overview_notes.append('Низкий или нулевой остаток.')
+    if row['has_mismatch']:
+        overview_notes.append('Есть расхождение с опубликованным остатком на сайте.')
+    if row['is_stale']:
+        overview_notes.append(f'Нет движений более {STALE_DAYS} дней.')
     return {
         'sku_key': sku_key,
         'product': product,
         'variant': variant,
-        'image_url': image_url_for_sku(product=product, variant=variant),
+        'image_url': row['image_url'],
         'row': row,
         'movements': movements,
         'reservations': reservations,
         'cargo_items': cargo_items,
         'linked_deals': linked_deals,
+        'overview_notes': overview_notes,
         'receipt_form': {
             'sku_key': sku_key,
             'product': product,
@@ -463,6 +619,10 @@ def build_drawer_context(sku_key, cleaned_data=None):
             'product': product,
             'variant': variant,
             'warehouse': default_warehouse,
+            'actual_quantity': max(
+                next((cell['on_hand'] for cell in row['cells'] if default_warehouse and cell['warehouse'].pk == default_warehouse.pk), 0),
+                0,
+            ),
         },
         'transfer_form': {
             'sku_key': sku_key,
@@ -470,6 +630,24 @@ def build_drawer_context(sku_key, cleaned_data=None):
             'variant': variant,
             'source_warehouse': default_warehouse,
             'target_warehouse': default_target,
+        },
+        'reserve_form': {
+            'sku_key': sku_key,
+            'product': product,
+            'variant': variant,
+            'warehouse': default_warehouse,
+        },
+        'expense_form': {
+            'sku_key': sku_key,
+            'product': product,
+            'variant': variant,
+            'warehouse': default_warehouse,
+        },
+        'writeoff_form': {
+            'sku_key': sku_key,
+            'product': product,
+            'variant': variant,
+            'warehouse': default_warehouse,
         },
         'history_url': reverse('admin:warehouse_ui_history', args=[sku_key]),
     }
@@ -479,12 +657,23 @@ def build_history_context(sku_key):
     product_id, variant_id = parse_sku_key(sku_key)
     movement_qs = InventoryMovement.objects.filter(product_id=product_id)
     movement_qs = movement_qs.filter(variant_id=variant_id) if variant_id else movement_qs.filter(variant__isnull=True)
-    return {
-        'movements': list(
-            movement_qs.select_related('warehouse', 'author').order_by('-created_at', '-id')[:50]
-        ),
-        'sku_key': sku_key,
-    }
+    movements = _movement_reference_labels(
+        list(movement_qs.select_related('warehouse', 'author').order_by('-created_at', '-id')[:50])
+    )
+    return {'movements': movements, 'sku_key': sku_key}
+
+
+def build_bulk_rows(cleaned_data, *, selected_sku_keys=None):
+    warehouses = _warehouse_scope(cleaned_data)
+    row_map, cell_map = _build_aggregate_payload(warehouses)
+    rows = _filter_rows(row_map, cleaned_data)
+    if selected_sku_keys:
+        selected = set(selected_sku_keys)
+        rows = [row for row in rows if row['sku_key'] in selected]
+    rows = _attach_row_assets(rows)
+    for row in rows:
+        row['cells'] = [cell_map[(row['sku_key'], warehouse.pk)] for warehouse in warehouses]
+    return {'warehouses': warehouses, 'rows': rows}
 
 
 def create_receipt(*, warehouse, product, variant, quantity, unit_cost, author=None, comment=''):
@@ -526,7 +715,23 @@ def _consume_inventory_fifo(*, warehouse, product, variant, quantity):
     return consumed
 
 
-def create_adjustment(*, warehouse, product, variant, quantity_delta, author=None, comment=''):
+def _inventory_balance_quantity(*, warehouse, product, variant):
+    balance_qs = InventoryBalance.objects.filter(warehouse=warehouse, product=product)
+    balance_qs = balance_qs.filter(variant=variant) if variant else balance_qs.filter(variant__isnull=True)
+    return int(balance_qs.aggregate(total=Coalesce(Sum('quantity'), Value(0)))['total'] or 0)
+
+
+def _apply_inventory_delta(
+    *,
+    warehouse,
+    product,
+    variant,
+    quantity_delta,
+    author=None,
+    comment='',
+    reference_type='warehouse_adjustment',
+    reference_id=None,
+):
     quantity_delta = int(quantity_delta)
     if quantity_delta == 0:
         raise ValidationError('Изменение не должно быть нулевым.')
@@ -541,27 +746,149 @@ def create_adjustment(*, warehouse, product, variant, quantity_delta, author=Non
                 unit_cost=Decimal('0'),
                 unit_cost_base=Decimal('0'),
                 unit_cost_final=Decimal('0'),
-                reference_type='warehouse_adjustment',
+                reference_type=reference_type,
+                reference_id=reference_id,
             )
         else:
-            _consume_inventory_fifo(
-                warehouse=warehouse,
-                product=product,
-                variant=variant,
-                quantity=abs(quantity_delta),
-            )
-        InventoryMovement.objects.create(
+            _consume_inventory_fifo(warehouse=warehouse, product=product, variant=variant, quantity=abs(quantity_delta))
+        movement = InventoryMovement.objects.create(
             warehouse=warehouse,
             product=product,
             variant=variant,
             movement_type=InventoryMovement.TYPE_ADJUSTMENT,
             quantity=abs(quantity_delta),
-            reference_type='warehouse_adjustment',
+            reference_type=reference_type,
+            reference_id=reference_id,
             comment=comment,
             author=author,
         )
         rebuild_inventory_balance_cache(warehouse_ids=[warehouse.id])
         sync_public_stock_for_warehouse(warehouse)
+    return movement
+
+
+def create_adjustment(*, warehouse, product, variant, actual_quantity, reason, author=None, comment=''):
+    current_quantity = _inventory_balance_quantity(warehouse=warehouse, product=product, variant=variant)
+    actual_quantity = int(actual_quantity)
+    quantity_delta = actual_quantity - current_quantity
+    if quantity_delta == 0:
+        raise ValidationError('Фактический остаток совпадает с учетным. Корректировка не требуется.')
+    reason_label = dict(
+        inventory_count='Инвентаризация',
+        recount='Пересчёт',
+        damage_fix='Исправление ошибки / брака',
+        other='Другое',
+    ).get(reason, 'Корректировка')
+    movement_comment = (
+        f'{reason_label}. Было: {current_quantity}, стало: {actual_quantity}, '
+        f'разница: {quantity_delta:+d}. {comment}'.strip()
+    )
+    return {
+        'movement': _apply_inventory_delta(
+            warehouse=warehouse,
+            product=product,
+            variant=variant,
+            quantity_delta=quantity_delta,
+            author=author,
+            comment=movement_comment,
+            reference_type='warehouse_adjustment',
+        ),
+        'before': current_quantity,
+        'after': actual_quantity,
+        'delta': quantity_delta,
+    }
+
+
+def create_manual_expense(*, warehouse, product, variant, quantity, order=None, deal=None, author=None, comment=''):
+    if not (comment or '').strip():
+        raise ValidationError('Для ручного расхода обязателен комментарий.')
+    quantity = int(quantity)
+    if quantity <= 0:
+        raise ValidationError('Количество должно быть больше нуля.')
+    reference_id = deal.id if deal else order.id if order else None
+    reference_parts = ['Ручной расход']
+    if deal:
+        reference_parts.append(deal.code or f'Сделка #{deal.pk}')
+    if order:
+        reference_parts.append(f'Заказ #{order.pk}')
+    reference_parts.append(comment.strip())
+    return _apply_inventory_delta(
+        warehouse=warehouse,
+        product=product,
+        variant=variant,
+        quantity_delta=-quantity,
+        author=author,
+        comment=' • '.join(reference_parts),
+        reference_type='warehouse_manual_expense',
+        reference_id=reference_id,
+    )
+
+
+def create_writeoff(*, warehouse, product, variant, quantity, reason, author=None, comment=''):
+    if not (comment or '').strip():
+        raise ValidationError('Укажите причину или комментарий к списанию.')
+    quantity = int(quantity)
+    if quantity <= 0:
+        raise ValidationError('Количество должно быть больше нуля.')
+    reason_label = dict(
+        damage='Повреждение',
+        loss='Утеря',
+        defect='Брак',
+        internal_use='Внутреннее использование',
+        other='Другое',
+    ).get(reason, 'Списание')
+    return _apply_inventory_delta(
+        warehouse=warehouse,
+        product=product,
+        variant=variant,
+        quantity_delta=-quantity,
+        author=author,
+        comment=f'Списание • {reason_label}. {comment.strip()}',
+        reference_type='warehouse_writeoff',
+    )
+
+
+def create_reserve(*, warehouse, product, variant, quantity, order=None, deal=None, author=None, comment=''):
+    quantity = int(quantity)
+    if quantity <= 0:
+        raise ValidationError('Количество должно быть больше нуля.')
+    if deal and not order:
+        if not deal.order_id:
+            raise ValidationError('У выбранной сделки нет связанного заказа, поэтому создать резерв из склада нельзя.')
+        order = deal.order
+    if not order and not deal:
+        raise ValidationError('Выберите заказ или сделку.')
+    if order and deal and deal.order_id and deal.order_id != order.id:
+        raise ValidationError('Сделка должна относиться к выбранному заказу.')
+
+    client = ensure_manager_client_for_order(order)['client']
+    with transaction.atomic():
+        reservation = Reservation.objects.create(
+            manager_deal=deal,
+            client=client,
+            linked_order=order,
+            status=Reservation.STATUS_ACTIVE,
+            source_type=Reservation.SOURCE_WAREHOUSE,
+            source_warehouse=warehouse,
+            target_warehouse=warehouse,
+            comments=comment or 'Ручной резерв из складского workspace.',
+        )
+        item = ReservationItem.objects.create(
+            reservation=reservation,
+            product=product,
+            variant=variant,
+            quantity=quantity,
+        )
+        validate_reservation_availability(reservation, items=[item])
+        create_or_update_reservation_movements(
+            reservation,
+            movement_type=InventoryMovement.TYPE_RESERVE,
+            author=author,
+            comment=reservation.comments,
+            items=[item],
+        )
+        sync_public_stock_for_warehouse(warehouse)
+    return reservation
 
 
 def create_transfer(*, source_warehouse, target_warehouse, product, variant, quantity, author=None, comment=''):

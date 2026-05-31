@@ -466,7 +466,7 @@ class ManagerPortalAccessTests(ManagerPortalBaseTestCase):
         self.assertEqual(contracts_response.status_code, 403)
 
         sidebar_groups = entry_response.context['manager_sidebar_groups']
-        self.assertEqual([group['label'] for group in sidebar_groups], ['Финансы и документы'])
+        self.assertEqual([group['label'] for group in sidebar_groups], ['Финансы'])
         self.assertEqual([item['label'] for item in sidebar_groups[0]['items']], ['Финансы'])
 
     def test_finance_admin_can_update_finance_settings_without_staff_access(self):
@@ -493,7 +493,7 @@ class ManagerPortalAccessTests(ManagerPortalBaseTestCase):
 
         response = self.client.get(reverse('manager_portal:entry'))
 
-        self.assertRedirects(response, reverse('manager_portal:deal_list'))
+        self.assertRedirects(response, reverse('manager_portal:dashboard'))
 
     def test_staff_sidebar_groups_include_primary_sections(self):
         self.login_staff()
@@ -503,21 +503,23 @@ class ManagerPortalAccessTests(ManagerPortalBaseTestCase):
         sidebar_groups = response.context['manager_sidebar_groups']
         self.assertEqual(
             [group['label'] for group in sidebar_groups],
-            ['Продажи', 'Склад и логистика', 'Финансы и документы'],
+            ['Операционка', 'Склад и логистика', 'Финансы'],
         )
         self.assertEqual(
             [item['label'] for item in sidebar_groups[0]['items']],
-            ['Сделки', 'Клиенты', 'Коммерческие предложения'],
+            ['Операционный dashboard', 'Сделки в работе'],
         )
-        self.assertTrue(sidebar_groups[0]['items'][0]['active'])
-        self.assertEqual(sidebar_groups[0]['items'][0]['icon'], 'deals')
+        self.assertTrue(sidebar_groups[0]['items'][1]['active'])
+        self.assertEqual(sidebar_groups[0]['items'][1]['icon'], 'deals')
 
     def test_staff_dashboard_redirects_to_problematic_deals(self):
         self.login_staff()
 
         response = self.client.get(reverse('manager_portal:dashboard'))
 
-        self.assertRedirects(response, f"{reverse('manager_portal:deal_list')}?only_problematic=1")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Операционный dashboard')
+        self.assertContains(response, 'Нужно закупить')
 
     def test_staff_can_open_commercial_proposals_module(self):
         self.login_staff()
@@ -667,7 +669,7 @@ class ManagerPortalAccessTests(ManagerPortalBaseTestCase):
         proposal_response = self.client.get(reverse('manager_portal:commercial_proposals'))
         search_response = self.client.get(reverse('manager_portal:commercial_proposals_search'), {'q': 'Meta'})
 
-        self.assertRedirects(entry_response, reverse('manager_portal:deal_list'))
+        self.assertRedirects(entry_response, reverse('manager_portal:dashboard'))
         self.assertEqual(proposal_response.status_code, 403)
         self.assertEqual(search_response.status_code, 403)
 
@@ -795,6 +797,77 @@ class ManagerPortalModelAndFormTests(ManagerPortalBaseTestCase):
 
         with self.assertRaises(ValidationError):
             reservation_item.full_clean()
+
+    def test_deal_detail_shows_link_product_action_for_custom_order_line(self):
+        custom_line = self.order.items.create(
+            line_type=OrderItem.LINE_TYPE_CUSTOM,
+            product_name='Индивидуальный комплект клиента',
+            custom_sku='CUSTOM-001',
+            quantity=1,
+            price=Decimal('25000.00'),
+        )
+        deal = ensure_manager_deal_for_order(self.order)
+        self.client.force_login(self.staff_user)
+
+        response = self.client.get(reverse('manager_portal:deal_detail', kwargs={'pk': deal.pk}))
+
+        self.assertContains(response, 'Связать с товаром сайта')
+        self.assertContains(
+            response,
+            reverse(
+                'manager_portal:deal_order_item_link_product',
+                kwargs={'pk': deal.pk, 'item_id': custom_line.pk},
+            ),
+        )
+
+    def test_link_product_drawer_post_converts_manual_line_and_syncs_finance(self):
+        custom_line = self.order.items.create(
+            line_type=OrderItem.LINE_TYPE_CUSTOM,
+            product_name='Индивидуальный комплект клиента',
+            custom_sku='CUSTOM-001',
+            quantity=2,
+            price=Decimal('25000.00'),
+        )
+        deal = ensure_manager_deal_for_order(self.order)
+        finance_deal = ensure_finance_deal_for_manager_deal(deal, actor=self.staff_user)
+        finance_line = finance_deal.lines.get(order_item=custom_line)
+        self.assertEqual(finance_line.line_type, OrderItem.LINE_TYPE_CUSTOM)
+        self.client.force_login(self.staff_user)
+
+        response = self.client.post(
+            reverse(
+                'manager_portal:deal_order_item_link_product',
+                kwargs={'pk': deal.pk, 'item_id': custom_line.pk},
+            ),
+            {'product': self.product_two.pk},
+            HTTP_HX_REQUEST='true',
+        )
+
+        custom_line.refresh_from_db()
+        finance_line.refresh_from_db()
+
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(
+            response['HX-Redirect'],
+            f"{reverse('manager_portal:deal_detail', kwargs={'pk': deal.pk})}?tab=overview",
+        )
+        self.assertEqual(custom_line.line_type, OrderItem.LINE_TYPE_CATALOG)
+        self.assertEqual(custom_line.product, self.product_two)
+        self.assertEqual(custom_line.variant, self.foreign_variant)
+        self.assertEqual(custom_line.product_name, self.product_two.name)
+        self.assertEqual(custom_line.variant_name, self.foreign_variant.name)
+        self.assertEqual(custom_line.custom_sku, '')
+        self.assertEqual(finance_line.line_type, OrderItem.LINE_TYPE_CATALOG)
+        self.assertEqual(finance_line.product, self.product_two)
+        self.assertEqual(finance_line.variant, self.foreign_variant)
+        self.assertEqual(finance_line.product_name, f'{self.product_two.name} ({self.foreign_variant.name})')
+        self.assertEqual(finance_line.custom_sku, '')
+        self.assertTrue(
+            deal.activities.filter(
+                event_type='order_item.linked_to_catalog',
+                payload__order_item_id=custom_line.id,
+            ).exists()
+        )
 
 
 class FinanceDistributionTests(ManagerPortalBaseTestCase):
@@ -2044,10 +2117,10 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
 
         response = self.client.get(reverse('manager_portal:deal_list'), {'view': 'kanban'})
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'Avito')
+        self.assertNotContains(response, '>Avito<', html=False)
         self.assertContains(response, regular_deal.customer_name)
         self.assertNotContains(response, avito_deal.customer_name)
-        self.assertContains(response, 'Сделки / Заказы')
+        self.assertContains(response, 'Сделки в работе')
 
         avito_response = self.client.get(
             reverse('manager_portal:deal_list'),
@@ -2055,7 +2128,7 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         )
         self.assertEqual(avito_response.status_code, 200)
         self.assertNotContains(avito_response, 'data-manager-deal-board', html=False)
-        self.assertContains(avito_response, 'Сделки / Заказы')
+        self.assertContains(avito_response, 'Сделки в работе')
         self.assertContains(avito_response, avito_deal.customer_name)
         self.assertNotContains(avito_response, regular_deal.customer_name)
 
@@ -2234,7 +2307,7 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(list(response.context['deals'].values_list('pk', flat=True)), [deal.pk])
-        self.assertContains(response, 'Сделки / Заказы')
+        self.assertContains(response, 'Сделки в работе')
 
     def test_deal_list_shows_compact_active_filters_summary_above_table(self):
         self.login_staff()
@@ -2278,7 +2351,7 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
             ['Проблемные', 'Без ответственного', 'Ждут документы', 'Ждут оплату', 'Ждут резерв', 'Готовы к отгрузке'],
         )
         self.assertFalse(response.context['problem_views_expanded'])
-        self.assertContains(response, 'Сделки / Заказы')
+        self.assertContains(response, 'Сделки в работе')
         self.assertContains(response, 'Фильтры')
         self.assertContains(response, 'Фильтры сделок')
         self.assertContains(response, 'Личный фокус')
@@ -2327,7 +2400,7 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
             [chip['label'] for chip in response.context['queue_chips']],
             ['Проблемные', 'Без ответственного', 'Ждут документы', 'Ждут оплату', 'Ждут резерв', 'Готовы к отгрузке'],
         )
-        self.assertContains(response, 'Сделки / Заказы')
+        self.assertContains(response, 'Сделки в работе')
         self.assertEqual(response.context['active_queue_chip'], 'all')
 
     def test_deal_list_renders_compact_rows_with_expandable_details(self):
@@ -2690,8 +2763,7 @@ class ManagerPortalViewTests(ManagerPortalBaseTestCase):
         response = self.client.get(reverse('manager_portal:deal_list'))
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'data-drawer-target="#manager-remote-drawer"', html=False)
-        self.assertContains(
+        self.assertNotContains(
             response,
             f'hx-get="{reverse("manager_portal:deal_create")}"',
             html=False,

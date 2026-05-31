@@ -8,11 +8,8 @@
     :root {
       --warehouse-bg: #07111f;
       --warehouse-panel: rgba(10, 18, 33, 0.92);
-      --warehouse-panel-soft: rgba(15, 23, 42, 0.86);
       --warehouse-border: rgba(34, 211, 238, 0.18);
       --warehouse-text: #dbeafe;
-      --warehouse-muted: #94a3b8;
-      --warehouse-accent: #22d3ee;
     }
     body {
       background:
@@ -21,6 +18,17 @@
     }
     #content {
       color: var(--warehouse-text);
+    }
+    #nav-sidebar,
+    .toggle-nav-sidebar {
+      display: none !important;
+    }
+    #main {
+      display: block !important;
+    }
+    #content-start,
+    .main > #content-start {
+      grid-column: 1 / -1;
     }
     .warehouse-shell {
       position: relative;
@@ -56,11 +64,18 @@
       background: rgba(4, 10, 20, 0.98);
       box-shadow: 12px 0 28px rgba(2, 6, 23, 0.32);
     }
+    .warehouse-sticky-head {
+      position: sticky;
+      top: 0;
+      z-index: 3;
+      background: rgba(4, 10, 20, 0.98);
+      backdrop-filter: blur(18px);
+    }
     .warehouse-drawer {
       position: fixed;
       top: 0;
       right: 0;
-      width: min(540px, 100vw);
+      width: min(560px, 100vw);
       height: 100vh;
       transform: translateX(100%);
       transition: transform 0.24s ease;
@@ -95,11 +110,6 @@
       from { background-position: 200% 0; }
       to { background-position: -200% 0; }
     }
-    @media (max-width: 1366px) {
-      .warehouse-shell {
-        padding-bottom: 24px;
-      }
-    }
   </style>
 {% endblock %}
 
@@ -114,17 +124,31 @@
     <div id="warehouse-drawer-overlay" class="warehouse-drawer-overlay" :data-open="drawerOpen" @click="drawerOpen = false"></div>
 
     <section class="warehouse-panel px-6 py-6 lg:px-8">
-      <div class="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+      <div class="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <p class="text-xs uppercase tracking-[0.32em] text-cyan-300/80">BizonVR Warehouse</p>
+          <p class="text-xs uppercase tracking-[0.32em] text-cyan-300/80">BizonVR Warehouse Workspace</p>
           <h1 class="mt-2 text-3xl font-semibold text-white">Склад</h1>
           <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
-            Отдельный рабочий интерфейс для остатков, резервов, перемещений и истории складских движений без стандартных Django list view.
+            Рабочий режим для сотрудника склада: быстрый обзор остатков, резервов, перемещений и ручных операций без перегруженного Django sidebar.
           </p>
         </div>
         <a href="{% url 'admin:index' %}" class="inline-flex items-center justify-center rounded-full border border-cyan-400/20 bg-cyan-400/10 px-4 py-2 text-sm font-medium text-cyan-100 transition hover:border-cyan-300/40 hover:bg-cyan-400/15">
           Вернуться в админку
         </a>
+      </div>
+
+      <div id="warehouse-overview" class="mt-6 flex flex-wrap gap-2">
+        <a href="#warehouse-overview" class="rounded-full border border-cyan-300/30 bg-cyan-400/10 px-3 py-1.5 text-sm text-cyan-100">Обзор</a>
+        <a href="#warehouse-table" class="rounded-full border border-slate-700 px-3 py-1.5 text-sm text-slate-300 transition hover:border-slate-500">Остатки</a>
+        <button type="submit" form="warehouse-filters" name="status" value="problematic" class="rounded-full border border-slate-700 px-3 py-1.5 text-sm text-slate-300 transition hover:border-slate-500">Движения</button>
+        <button type="submit" form="warehouse-filters" name="status" value="reserve" class="rounded-full border border-slate-700 px-3 py-1.5 text-sm text-slate-300 transition hover:border-slate-500">Резервы</button>
+        {% if permissions.can_manage %}
+          <a href="#warehouse-drawer" class="rounded-full border border-slate-700 px-3 py-1.5 text-sm text-slate-300 transition hover:border-slate-500">Приход</a>
+          <a href="#warehouse-drawer" class="rounded-full border border-slate-700 px-3 py-1.5 text-sm text-slate-300 transition hover:border-slate-500">Продажи / расход</a>
+          <a href="#warehouse-drawer" class="rounded-full border border-slate-700 px-3 py-1.5 text-sm text-slate-300 transition hover:border-slate-500">Перемещения</a>
+        {% endif %}
+        <span class="rounded-full border border-dashed border-slate-700 px-3 py-1.5 text-sm text-slate-500">Инвентаризация — TODO</span>
+        <span class="rounded-full border border-dashed border-slate-700 px-3 py-1.5 text-sm text-slate-500">Настройки — позже</span>
       </div>
 
       <form
@@ -135,36 +159,42 @@
         hx-target="#warehouse-matrix-panel"
         hx-swap="outerHTML"
         hx-indicator="#warehouse-matrix-loading"
+        hx-trigger="submit, change from:select, change from:input[type='checkbox'], keyup changed delay:320ms from:input[name='q']"
       >
-        <div class="grid gap-4 lg:grid-cols-[minmax(280px,2fr)_repeat(2,minmax(180px,1fr))] xl:grid-cols-[minmax(320px,2fr)_repeat(4,minmax(160px,1fr))]">
-          <div>
-            <label class="mb-2 block text-xs font-medium uppercase tracking-[0.24em] text-slate-400">{{ filter_form.q.label }}</label>
-            {{ filter_form.q }}
-          </div>
-          <div>
-            <label class="mb-2 block text-xs font-medium uppercase tracking-[0.24em] text-slate-400">{{ filter_form.city.label }}</label>
-            {{ filter_form.city }}
-          </div>
-          <div class="lg:col-span-2 xl:col-span-2">
-            <label class="mb-2 block text-xs font-medium uppercase tracking-[0.24em] text-slate-400">{{ filter_form.warehouses.label }}</label>
-            {{ filter_form.warehouses }}
-          </div>
-          <div class="flex flex-wrap items-center gap-4 rounded-2xl border border-cyan-500/10 bg-slate-950/40 px-4 py-3">
-            <label class="inline-flex items-center gap-2 text-sm text-slate-300">{{ filter_form.in_stock }}{{ filter_form.in_stock.label }}</label>
-            <label class="inline-flex items-center gap-2 text-sm text-slate-300">{{ filter_form.out_of_stock }}{{ filter_form.out_of_stock.label }}</label>
-            <label class="inline-flex items-center gap-2 text-sm text-slate-300">{{ filter_form.has_reserve }}{{ filter_form.has_reserve.label }}</label>
-            <label class="inline-flex items-center gap-2 text-sm text-slate-300">{{ filter_form.inbound }}{{ filter_form.inbound.label }}</label>
-          </div>
-        </div>
-        <div class="mt-4 flex flex-wrap items-center gap-3">
-          <button type="submit" class="inline-flex items-center justify-center rounded-full bg-cyan-400 px-5 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300">
-            Применить
+        {{ filter_form.compact }}{{ filter_form.page }}
+        <div class="grid gap-3 xl:grid-cols-[minmax(260px,2fr)_repeat(3,minmax(170px,1fr))_auto_auto]">
+          <div>{{ filter_form.q }}</div>
+          <div>{{ filter_form.city }}</div>
+          <div>{{ filter_form.warehouse }}</div>
+          <div>{{ filter_form.status }}</div>
+          <button type="button" class="inline-flex items-center justify-center rounded-full border border-slate-700 px-4 py-3 text-sm text-slate-300 transition hover:border-slate-500 hover:bg-slate-900/60" data-toggle-advanced>
+            Фильтры
           </button>
-          <a href="{% url 'admin:warehouse_ui_index' %}" class="inline-flex items-center justify-center rounded-full border border-slate-700 px-5 py-2.5 text-sm font-medium text-slate-300 transition hover:border-slate-500 hover:bg-slate-900/60">
+          <a href="{% url 'admin:warehouse_ui_index' %}" class="inline-flex items-center justify-center rounded-full border border-slate-700 px-4 py-3 text-sm text-slate-300 transition hover:border-slate-500 hover:bg-slate-900/60">
             Сбросить
           </a>
+        </div>
+
+        <div id="warehouse-advanced-filters" class="mt-4 hidden rounded-2xl border border-slate-800 bg-slate-950/50 px-4 py-4">
+          <div class="flex flex-wrap gap-4 text-sm text-slate-300">
+            <label class="inline-flex items-center gap-2">{{ filter_form.in_stock }}{{ filter_form.in_stock.label }}</label>
+            <label class="inline-flex items-center gap-2">{{ filter_form.out_of_stock }}{{ filter_form.out_of_stock.label }}</label>
+            <label class="inline-flex items-center gap-2">{{ filter_form.has_reserve }}{{ filter_form.has_reserve.label }}</label>
+            <label class="inline-flex items-center gap-2">{{ filter_form.inbound }}{{ filter_form.inbound.label }}</label>
+            <label class="inline-flex items-center gap-2">{{ filter_form.low_stock }}{{ filter_form.low_stock.label }}</label>
+            <label class="inline-flex items-center gap-2">{{ filter_form.problematic }}{{ filter_form.problematic.label }}</label>
+            <label class="inline-flex items-center gap-2">{{ filter_form.stale }}{{ filter_form.stale.label }}</label>
+            <label class="inline-flex items-center gap-2">{{ filter_form.only_mismatch }}{{ filter_form.only_mismatch.label }}</label>
+          </div>
+        </div>
+
+        <div class="mt-4 flex flex-wrap items-center gap-3">
+          <div class="inline-flex overflow-hidden rounded-full border border-slate-700">
+            <button type="button" data-density="compact" class="density-toggle border-r border-slate-700 px-4 py-2 text-sm text-slate-300 {% if matrix.compact_mode %}bg-cyan-400/10 text-cyan-100{% endif %}">Компактно</button>
+            <button type="button" data-density="detailed" class="density-toggle px-4 py-2 text-sm text-slate-300 {% if not matrix.compact_mode %}bg-cyan-400/10 text-cyan-100{% endif %}">Подробно</button>
+          </div>
           <div id="warehouse-matrix-loading" class="htmx-indicator inline-flex items-center gap-2 text-sm text-slate-400">
-            <span class="h-2.5 w-2.5 rounded-full bg-cyan-300"></span> Обновляем матрицу…
+            <span class="h-2.5 w-2.5 rounded-full bg-cyan-300"></span> Обновляем таблицу…
           </div>
         </div>
       </form>
@@ -174,9 +204,11 @@
       </div>
 
       <div id="warehouse-matrix-panel">
-        {% include "admin/warehouse/_matrix.html" with matrix=matrix filter_form=filter_form %}
+        {% include "admin/warehouse/_matrix.html" with matrix=matrix filter_form=filter_form permissions=permissions %}
       </div>
     </section>
+
+    <div id="warehouse-toast-stack" class="pointer-events-none fixed bottom-6 left-1/2 z-[1200] flex w-full max-w-xl -translate-x-1/2 flex-col gap-2 px-4"></div>
 
     <aside id="warehouse-drawer" class="warehouse-drawer" :data-open="drawerOpen">
       <div id="warehouse-drawer-content" class="h-full overflow-y-auto p-6">
@@ -191,6 +223,8 @@
       const overlay = document.getElementById('warehouse-drawer-overlay');
       const filterForm = document.getElementById('warehouse-filters');
       const drawerContent = document.getElementById('warehouse-drawer-content');
+      const advancedFilters = document.getElementById('warehouse-advanced-filters');
+      const toastStack = document.getElementById('warehouse-toast-stack');
 
       function setDrawerOpen(isOpen) {
         if (!drawer || !overlay) return;
@@ -202,20 +236,117 @@
         }
       }
 
+      function showDrawerLoading() {
+        if (!drawerContent) return;
+        drawerContent.innerHTML = `
+          <div class="space-y-4">
+            <div class="warehouse-skeleton h-8 w-48"></div>
+            <div class="warehouse-skeleton h-24 w-full rounded-3xl"></div>
+            <div class="warehouse-skeleton h-56 w-full rounded-3xl"></div>
+          </div>
+        `;
+      }
+
+      function showToast(level, message) {
+        if (!toastStack || !message) return;
+        const node = document.createElement('div');
+        node.className = `pointer-events-auto rounded-2xl border px-4 py-3 text-sm shadow-2xl ${level === 'success' ? 'border-emerald-400/25 bg-emerald-500/10 text-emerald-100' : 'border-rose-400/25 bg-rose-500/10 text-rose-100'}`;
+        node.textContent = message;
+        toastStack.appendChild(node);
+        window.setTimeout(() => {
+          node.remove();
+        }, 3200);
+      }
+
+      function selectedSkuKeys() {
+        return Array.from(document.querySelectorAll('[data-sku-checkbox]:checked')).map((item) => item.value);
+      }
+
+      function updateBulkToolbar() {
+        const countNode = document.querySelector('[data-selected-count]');
+        const actions = document.querySelectorAll('[data-bulk-action]');
+        const checked = selectedSkuKeys();
+        if (countNode) {
+          countNode.textContent = checked.length;
+        }
+        actions.forEach((button) => {
+          button.disabled = checked.length === 0;
+          button.classList.toggle('opacity-50', checked.length === 0);
+          button.classList.toggle('cursor-not-allowed', checked.length === 0);
+        });
+      }
+
+      function queryForSelection(baseUrl) {
+        const params = new URLSearchParams(new FormData(filterForm));
+        selectedSkuKeys().forEach((sku) => params.append('sku', sku));
+        return `${baseUrl}?${params.toString()}`;
+      }
+
       document.body.addEventListener('click', function (event) {
         const drawerButton = event.target.closest('[data-warehouse-drawer-url]');
         if (drawerButton) {
+          showDrawerLoading();
           setDrawerOpen(true);
         }
         if (event.target.closest('[data-warehouse-drawer-close]')) {
           setDrawerOpen(false);
         }
+        if (event.target.closest('[data-toggle-advanced]')) {
+          advancedFilters.classList.toggle('hidden');
+        }
+        const densityButton = event.target.closest('[data-density]');
+        if (densityButton && filterForm) {
+          filterForm.querySelector('input[name="compact"]').value = densityButton.getAttribute('data-density');
+          filterForm.requestSubmit();
+        }
+        const bulkButton = event.target.closest('[data-bulk-action]');
+        if (bulkButton) {
+          const toolbar = document.getElementById('warehouse-bulk-toolbar');
+          if (!toolbar || bulkButton.disabled) return;
+          const url = bulkButton.getAttribute('data-bulk-action') === 'print'
+            ? queryForSelection(toolbar.getAttribute('data-print-url'))
+            : queryForSelection(toolbar.getAttribute('data-export-url'));
+          window.location.href = url;
+        }
+      });
+
+      document.body.addEventListener('change', function (event) {
+        if (event.target.matches('[data-select-all]')) {
+          document.querySelectorAll('[data-sku-checkbox]').forEach((checkbox) => {
+            checkbox.checked = event.target.checked;
+          });
+          updateBulkToolbar();
+        }
+        if (event.target.matches('[data-sku-checkbox]')) {
+          updateBulkToolbar();
+        }
+      });
+
+      document.body.addEventListener('htmx:beforeRequest', function (event) {
+        const form = event.target.closest('form');
+        if (!form) return;
+        const submitButtons = form.querySelectorAll('button[type="submit"]');
+        submitButtons.forEach((button) => {
+          button.disabled = true;
+          button.classList.add('opacity-60');
+        });
+      });
+
+      document.body.addEventListener('htmx:afterRequest', function (event) {
+        const form = event.target.closest('form');
+        if (!form) return;
+        const submitButtons = form.querySelectorAll('button[type="submit"]');
+        submitButtons.forEach((button) => {
+          button.disabled = false;
+          button.classList.remove('opacity-60');
+        });
       });
 
       document.body.addEventListener('htmx:afterSwap', function (event) {
         if (event.detail && event.detail.target && event.detail.target.id === 'warehouse-drawer-content') {
           setDrawerOpen(true);
         }
+        updateBulkToolbar();
       });
 
       document.body.addEventListener('warehouse:refresh', function (event) {
@@ -232,11 +363,17 @@
         }
       });
 
+      document.body.addEventListener('warehouse:notify', function (event) {
+        showToast(event.detail.level || 'success', event.detail.message || '');
+      });
+
       document.body.addEventListener('keydown', function (event) {
         if (event.key === 'Escape') {
           setDrawerOpen(false);
         }
       });
+
+      updateBulkToolbar();
     })();
   </script>
 {% endblock %}
