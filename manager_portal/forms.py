@@ -243,6 +243,37 @@ class DealNextStepOverrideForm(StyledFormMixin, forms.Form):
     reason = forms.CharField(label='Комментарий', required=False, widget=forms.Textarea())
 
 
+class LinkOrderItemProductForm(StyledFormMixin, forms.Form):
+    product = forms.ModelChoiceField(
+        label='Товар сайта',
+        queryset=Product.objects.order_by('name'),
+    )
+    variant = forms.ModelChoiceField(
+        label='Вариант',
+        queryset=ProductVariant.objects.order_by('product__name', 'name'),
+        required=False,
+    )
+
+    def clean(self):
+        cleaned = super().clean()
+        product = cleaned.get('product')
+        variant = cleaned.get('variant')
+        if product is None:
+            return cleaned
+        if not getattr(product, 'tracks_stock', True):
+            self.add_error('product', 'Связать можно только с товаром, который участвует в складском контуре.')
+            return cleaned
+        product_variants = list(product.variants.order_by('order', 'id'))
+        if variant is not None and variant.product_id != product.id:
+            self.add_error('variant', 'Вариант должен относиться к выбранному товару.')
+            return cleaned
+        if variant is None and len(product_variants) == 1:
+            cleaned['variant'] = product_variants[0]
+        elif variant is None and len(product_variants) > 1:
+            self.add_error('variant', 'Для товара с вариантами выберите конкретный вариант.')
+        return cleaned
+
+
 class DealManagementForm(StyledFormMixin, forms.Form):
     case_status = forms.ChoiceField(label='Этап', choices=ManagerDeal.CASE_STATUS_CHOICES)
     responsible_manager = forms.ModelChoiceField(

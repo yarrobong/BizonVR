@@ -1,0 +1,105 @@
+{% extends "operations/base.html" %}
+
+{% block title %}Заполнить доставку{% endblock %}
+
+{% block content %}
+  <section class="ops-panel rounded-[2rem] px-6 py-6">
+    <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+      <div>
+        <p class="text-xs uppercase tracking-[0.22em] text-cyan-100/70">Сделка {{ deal.code|default:deal.order_id }}</p>
+        <h2 class="mt-2 text-2xl font-semibold">Заполнить доставку</h2>
+        <p class="mt-2 text-sm ops-muted">Сохраняем только то, что нужно для исполнения: получатель, телефон, способ и адрес.</p>
+      </div>
+      <a href="{% url 'operations:deal_detail' deal.pk %}" class="inline-flex rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-100 transition hover:bg-slate-900">Назад к сделке</a>
+    </div>
+  </section>
+
+  <section class="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(20rem,1fr)]">
+    <article class="ops-panel rounded-[1.75rem] px-6 py-6">
+      <form method="post" class="grid gap-4 md:grid-cols-2">
+        {% csrf_token %}
+        <label class="block">
+          <span class="mb-2 block text-xs uppercase tracking-[0.16em] text-slate-500">{{ form.recipient_name.label }}<span class="ops-required">обязательно</span></span>
+          {{ form.recipient_name }}
+          {% for error in form.recipient_name.errors %}
+            <p class="mt-1 text-xs text-rose-300">{{ error }}</p>
+          {% endfor %}
+        </label>
+        <label class="block">
+          <span class="mb-2 block text-xs uppercase tracking-[0.16em] text-slate-500">{{ form.recipient_phone.label }}<span class="ops-required">обязательно</span></span>
+          {{ form.recipient_phone }}
+          {% for error in form.recipient_phone.errors %}
+            <p class="mt-1 text-xs text-rose-300">{{ error }}</p>
+          {% endfor %}
+        </label>
+        <label class="block">
+          <span class="mb-2 block text-xs uppercase tracking-[0.16em] text-slate-500">{{ form.delivery_type.label }}<span class="ops-required">обязательно</span></span>
+          {{ form.delivery_type }}
+          {% for error in form.delivery_type.errors %}
+            <p class="mt-1 text-xs text-rose-300">{{ error }}</p>
+          {% endfor %}
+        </label>
+        <label class="block">
+          <span class="mb-2 block text-xs uppercase tracking-[0.16em] text-slate-500">{{ form.city_text.label }}</span>
+          {{ form.city_text }}
+          {% for error in form.city_text.errors %}
+            <p class="mt-1 text-xs text-rose-300">{{ error }}</p>
+          {% endfor %}
+        </label>
+        <label class="block md:col-span-2">
+          <span class="mb-2 block text-xs uppercase tracking-[0.16em] text-slate-500">{{ form.address.label }}</span>
+          {{ form.address }}
+          {% for error in form.address.errors %}
+            <p class="mt-1 text-xs text-rose-300">{{ error }}</p>
+          {% endfor %}
+        </label>
+        <label class="block md:col-span-2">
+          <span class="mb-2 block text-xs uppercase tracking-[0.16em] text-slate-500">{{ form.delivery_comment.label }}</span>
+          {{ form.delivery_comment }}
+          {% for error in form.delivery_comment.errors %}
+            <p class="mt-1 text-xs text-rose-300">{{ error }}</p>
+          {% endfor %}
+        </label>
+        {% if form.non_field_errors %}
+          <div class="md:col-span-2">
+            {% for error in form.non_field_errors %}
+              <p class="text-xs text-rose-300">{{ error }}</p>
+            {% endfor %}
+          </div>
+        {% endif %}
+        <div class="md:col-span-2 flex flex-wrap gap-3">
+          <button type="submit" class="ops-button-primary">Сохранить доставку</button>
+          <a href="{% url 'operations:deal_detail' deal.pk %}" class="ops-button-secondary">Отмена</a>
+        </div>
+      </form>
+    </article>
+
+    <article class="ops-panel rounded-[1.75rem] px-6 py-6">
+      <p class="text-xs uppercase tracking-[0.18em] text-cyan-100/70">Текущие блокеры</p>
+      {% if operation_snapshot.missing_delivery_fields %}
+        <ul class="mt-4 space-y-2 text-sm text-rose-100">
+          {% for blocker in operation_snapshot.missing_delivery_fields %}
+            <li>{{ blocker }}</li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="mt-4 text-sm text-emerald-200">По доставке блокеров нет.</p>
+      {% endif %}
+
+      <dl class="mt-6 grid gap-3">
+        <div>
+          <dt class="text-xs uppercase tracking-[0.16em] text-slate-500">Заказ</dt>
+          <dd class="mt-1 text-sm text-white">#{{ deal.order_id }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs uppercase tracking-[0.16em] text-slate-500">Клиент</dt>
+          <dd class="mt-1 text-sm text-white">{{ client_summary.display_name }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs uppercase tracking-[0.16em] text-slate-500">Текущий адрес</dt>
+          <dd class="mt-1 text-sm text-white">{{ deal.order.display_address|default:"—" }}</dd>
+        </div>
+      </dl>
+    </article>
+  </section>
+{% endblock %}

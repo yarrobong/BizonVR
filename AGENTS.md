@@ -6,18 +6,7 @@ BizonVR — сайт продажи VR-оборудования, аксессу�
 ## Main business goal
 Сайт должен продавать VR-оборудование, собирать заявки, показывать товары, игровые паки, услуги, подписки и решения для VR-клубов.
 
-## Critical rule
-Do not touch manager portal.
 
-Never modify:
-- manager portal templates
-- manager portal routes
-- manager portal views/controllers
-- manager portal JS
-- manager portal CSS
-- manager portal API endpoints
-
-If a file is related to manager portal, skip it and mention it in the report.
 
 ## What can be improved
 - public website pages

@@ -18,6 +18,8 @@ from warehouse_ui.models import WarehouseTransfer
 class WarehouseUiViewTests(ManagerPortalBaseTestCase):
     def setUp(self):
         super().setUp()
+        self.staff_user.is_superuser = True
+        self.staff_user.save(update_fields=['is_superuser'])
         self.login_staff()
 
     def test_staff_can_open_warehouse_screen_and_non_staff_cannot(self):
@@ -100,7 +102,8 @@ class WarehouseUiViewTests(ManagerPortalBaseTestCase):
                 'sku_key': f'{self.product.id}:0',
                 'product': self.product.id,
                 'warehouse': self.warehouse.id,
-                'quantity_delta': -2,
+                'actual_quantity': 3,
+                'reason': 'inventory_count',
                 'comment': 'manual shrink',
             },
             HTTP_HX_REQUEST='true',
@@ -118,6 +121,69 @@ class WarehouseUiViewTests(ManagerPortalBaseTestCase):
                 movement_type=InventoryMovement.TYPE_ADJUSTMENT,
                 quantity=2,
             ).exists()
+        )
+
+    def test_reserve_action_creates_manual_reservation(self):
+        receipt_inventory(
+            warehouse=self.warehouse,
+            product=self.product,
+            quantity=5,
+            unit_cost=Decimal('100.00'),
+            author=self.staff_user,
+            comment='seed',
+            reference_type='test',
+        )
+
+        response = self.client.post(
+            reverse('admin:warehouse_ui_reserve_action'),
+            {
+                'sku_key': f'{self.product.id}:0',
+                'product': self.product.id,
+                'warehouse': self.warehouse.id,
+                'order': self.order.id,
+                'quantity': 2,
+                'comment': 'reserve for order',
+            },
+            HTTP_HX_REQUEST='true',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            ReservationItem.objects.filter(
+                reservation__linked_order=self.order,
+                product=self.product,
+                quantity=2,
+            ).exists()
+        )
+
+    def test_expense_action_consumes_balance(self):
+        receipt_inventory(
+            warehouse=self.warehouse,
+            product=self.product,
+            quantity=5,
+            unit_cost=Decimal('100.00'),
+            author=self.staff_user,
+            comment='seed',
+            reference_type='test',
+        )
+
+        response = self.client.post(
+            reverse('admin:warehouse_ui_expense_action'),
+            {
+                'sku_key': f'{self.product.id}:0',
+                'product': self.product.id,
+                'warehouse': self.warehouse.id,
+                'order': self.order.id,
+                'quantity': 2,
+                'comment': 'manual expense',
+            },
+            HTTP_HX_REQUEST='true',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            InventoryBalance.objects.get(warehouse=self.warehouse, product=self.product, variant__isnull=True).quantity,
+            3,
         )
 
     def test_transfer_action_creates_audit_document_and_balances(self):

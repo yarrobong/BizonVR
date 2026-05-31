@@ -1,0 +1,294 @@
+- generic [ref=e2]:
+  - banner [ref=e3]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - paragraph [ref=e6]: BizonVR
+        - heading "Операторский портал" [level=1] [ref=e7]
+        - paragraph [ref=e8]: "Bitrix24 продаёт. Здесь оператор быстро исполняет сделку: товар, закупка, груз, резерв, отгрузка и контроль статусов."
+      - generic [ref=e9]:
+        - generic [ref=e10]:
+          - generic [ref=e11]:
+            - paragraph [ref=e12]: Главное
+            - generic [ref=e13]:
+              - link "Dashboard" [ref=e14] [cursor=pointer]:
+                - /url: /ops/?mode=simple
+              - link "Сделки" [ref=e15] [cursor=pointer]:
+                - /url: /ops/deals/?mode=simple
+          - generic [ref=e16]:
+            - paragraph [ref=e17]: Исполнение
+            - generic [ref=e18]:
+              - link "Закупки" [ref=e19] [cursor=pointer]:
+                - /url: /manager/purchases/
+              - link "Грузы" [ref=e20] [cursor=pointer]:
+                - /url: /manager/cargos/
+              - link "Резервы" [ref=e21] [cursor=pointer]:
+                - /url: /manager/reservations/
+              - link "Отгрузки" [ref=e22] [cursor=pointer]:
+                - /url: /manager/shipments/
+          - generic [ref=e23]:
+            - paragraph [ref=e24]: Учёт
+            - generic [ref=e25]:
+              - link "Склад" [ref=e26] [cursor=pointer]:
+                - /url: /manager/inventory/
+              - link "Финансы" [ref=e27] [cursor=pointer]:
+                - /url: /manager/finance/
+              - link "История" [ref=e28] [cursor=pointer]:
+                - /url: /ops/history/?mode=simple
+          - generic [ref=e29]:
+            - paragraph [ref=e30]: Система
+            - generic [ref=e31]:
+              - link "Справочники" [ref=e32] [cursor=pointer]:
+                - /url: /admin/manager_portal/
+              - link "Настройки" [ref=e33] [cursor=pointer]:
+                - /url: /admin/
+              - link "Админка" [ref=e34] [cursor=pointer]:
+                - /url: /admin/
+        - generic [ref=e35]:
+          - link "Простой режим" [ref=e36] [cursor=pointer]:
+            - /url: /ops/deals/40/?mode=advanced
+          - link "Выход" [ref=e37] [cursor=pointer]:
+            - /url: /accounts/logout/
+  - main [ref=e38]:
+    - generic [ref=e40]:
+      - generic [ref=e41]:
+        - generic [ref=e42]:
+          - generic [ref=e43]: Нужно связать товары
+          - generic [ref=e44]: Резерв со склада
+          - generic [ref=e45]: Доставлено
+        - heading "DEAL-2026-000035 · тест" [level=2] [ref=e46]
+        - paragraph [ref=e47]: Пока позиция остается custom, складские действия, закупка и отгрузка по ней ограничены.
+        - generic [ref=e48]:
+          - generic [ref=e49]:
+            - term [ref=e50]: Сумма
+            - definition [ref=e51]: 2403970,00
+          - generic [ref=e52]:
+            - term [ref=e53]: Позиций
+            - definition [ref=e54]: "3"
+          - generic [ref=e55]:
+            - term [ref=e56]: Ответственный
+            - definition [ref=e57]: Не назначен
+          - generic [ref=e58]:
+            - term [ref=e59]: Следующее действие
+            - definition [ref=e60]: Связать 1 товар с каталогом
+      - generic [ref=e61]:
+        - paragraph [ref=e62]: Клиент и доставка
+        - generic [ref=e63]:
+          - generic [ref=e64]:
+            - term [ref=e65]: Клиент
+            - definition [ref=e66]: тест
+          - generic [ref=e67]:
+            - term [ref=e68]: Получатель
+            - definition [ref=e69]: тест
+          - generic [ref=e70]:
+            - term [ref=e71]: Телефон
+            - definition [ref=e72]: "799999999999"
+          - generic [ref=e73]:
+            - term [ref=e74]: Город
+            - definition [ref=e75]: Тест
+          - generic [ref=e76]:
+            - term [ref=e77]: Доставка
+            - definition [ref=e78]: Другая ТК
+          - generic [ref=e79]:
+            - term [ref=e80]: Адрес
+            - definition [ref=e81]: "67575"
+          - generic [ref=e82]:
+            - term [ref=e83]: Комментарий доставки
+            - definition [ref=e84]: "Запрос клиента: Тест"
+          - generic [ref=e85]:
+            - term [ref=e86]: Служба доставки
+            - definition [ref=e87]: CDEK
+          - generic [ref=e88]:
+            - term [ref=e89]: Трек-номер
+            - definition [ref=e90]: OPS-AUDIT-TRACK-001
+          - generic [ref=e91]:
+            - term [ref=e92]: Источник данных
+            - definition [ref=e93]: Вручную
+    - generic [ref=e95]:
+      - generic [ref=e96]:
+        - generic [ref=e97]:
+          - generic [ref=e98]: DEAL-2026-000035
+          - generic [ref=e99]: Нужно связать товары
+        - paragraph [ref=e100]: Связать 1 товар с каталогом
+      - generic [ref=e101]:
+        - link "Связать товар" [ref=e102] [cursor=pointer]:
+          - /url: /ops/deals/40/?tab=goods#item-58
+        - link "Открыть в Bitrix" [ref=e103] [cursor=pointer]:
+          - /url: https://b24-ghnm2n.bitrix24.ru/crm/deal/details/6669/
+        - link "Создать закупку" [ref=e104] [cursor=pointer]:
+          - /url: /ops/deals/40/purchase/60/
+        - generic [ref=e105]: Создать груз
+        - generic [ref=e106]: Создать отгрузку
+    - generic [ref=e108]:
+      - link "Обзор" [ref=e109] [cursor=pointer]:
+        - /url: /ops/deals/40/?tab=overview
+      - link "Товары" [ref=e110] [cursor=pointer]:
+        - /url: /ops/deals/40/?tab=goods
+      - link "Закупки" [ref=e111] [cursor=pointer]:
+        - /url: /ops/deals/40/?tab=purchases
+      - link "Грузы" [ref=e112] [cursor=pointer]:
+        - /url: /ops/deals/40/?tab=cargos
+      - link "Резервы" [ref=e113] [cursor=pointer]:
+        - /url: /ops/deals/40/?tab=reservations
+      - link "Отгрузки" [ref=e114] [cursor=pointer]:
+        - /url: /ops/deals/40/?tab=shipments
+      - link "Финансы" [ref=e115] [cursor=pointer]:
+        - /url: /ops/deals/40/?tab=finance
+      - link "История" [ref=e116] [cursor=pointer]:
+        - /url: /ops/deals/40/?tab=history
+    - generic [ref=e117]:
+      - article [ref=e118]:
+        - paragraph [ref=e119]: Позиции
+        - paragraph [ref=e120]: 3 строк, 0 готовы к отгрузке
+        - paragraph [ref=e121]: Не хватает обеспечения по 0, в пути 0.
+      - article [ref=e122]:
+        - paragraph [ref=e123]: Закупки
+        - paragraph [ref=e124]: 2 закупок
+        - paragraph [ref=e125]: Подробности вынесены на отдельную вкладку.
+      - article [ref=e126]:
+        - paragraph [ref=e127]: Грузы
+        - paragraph [ref=e128]: 2 грузов
+        - paragraph [ref=e129]: В работе 1.
+      - article [ref=e130]:
+        - paragraph [ref=e131]: Отгрузки
+        - paragraph [ref=e132]: 1 отгрузок
+        - paragraph [ref=e133]: Финальный этап исполнения сделки.
+    - generic [ref=e134]:
+      - article [ref=e135]:
+        - generic [ref=e136]:
+          - generic [ref=e137]:
+            - paragraph [ref=e138]: Блокеры
+            - heading "Что мешает двинуть сделку дальше" [level=3] [ref=e139]
+          - generic [ref=e140]: "3"
+        - generic [ref=e141]:
+          - generic [ref=e143]:
+            - paragraph [ref=e144]: Нет ответственного
+            - button "Назначить себя" [ref=e146] [cursor=pointer]
+          - generic [ref=e148]:
+            - paragraph [ref=e149]: 1 товар не связан с каталогом
+            - link "Связать товар" [ref=e150] [cursor=pointer]:
+              - /url: /ops/deals/40/?tab=goods#item-58
+          - generic [ref=e152]:
+            - paragraph [ref=e153]: Груз CG-2026-000001 без ETA
+            - link "Открыть груз" [ref=e154] [cursor=pointer]:
+              - /url: /ops/deals/40/?tab=cargos#cargo-2
+      - article [ref=e155]:
+        - paragraph [ref=e156]: Чек-лист
+        - generic [ref=e157]:
+          - generic [ref=e158]:
+            - generic [ref=e159]:
+              - paragraph [ref=e160]: Ответственный назначен
+              - generic [ref=e161]: Требует внимания
+            - paragraph [ref=e162]: Назначьте ответственного, чтобы сделка не зависла без владельца.
+          - generic [ref=e163]:
+            - generic [ref=e164]:
+              - paragraph [ref=e165]: Все товары связаны с каталогом
+              - generic [ref=e166]: Требует внимания
+            - paragraph [ref=e167]: Нужно связать 1 товар с каталогом сайта.
+          - generic [ref=e168]:
+            - generic [ref=e169]:
+              - paragraph [ref=e170]: Данные доставки заполнены
+              - generic [ref=e171]: OK
+            - paragraph [ref=e172]: Получатель, телефон и адрес готовы для отгрузки.
+          - generic [ref=e173]:
+            - generic [ref=e174]:
+              - paragraph [ref=e175]: Все позиции обеспечены
+              - generic [ref=e176]: Требует внимания
+            - paragraph [ref=e177]: Есть позиции без резерва, закупки, груза или отгрузки.
+          - generic [ref=e178]:
+            - generic [ref=e179]:
+              - paragraph [ref=e180]: Закупки созданы
+              - generic [ref=e181]: OK
+            - paragraph [ref=e182]: Для нужных позиций закупки уже заведены.
+          - generic [ref=e183]:
+            - generic [ref=e184]:
+              - paragraph [ref=e185]: Грузы созданы / в пути / приняты
+              - generic [ref=e186]: OK
+            - paragraph [ref=e187]: По закупке уже есть грузовой контур или приемка.
+          - generic [ref=e188]:
+            - generic [ref=e189]:
+              - paragraph [ref=e190]: Резерв создан
+              - generic [ref=e191]: OK
+            - paragraph [ref=e192]: Складской резерв уже создан.
+          - generic [ref=e193]:
+            - generic [ref=e194]:
+              - paragraph [ref=e195]: Отгрузка создана
+              - generic [ref=e196]: OK
+            - paragraph [ref=e197]: По сделке уже есть отгрузка.
+          - generic [ref=e198]:
+            - generic [ref=e199]:
+              - paragraph [ref=e200]: Финансы заполнены
+              - generic [ref=e201]: Требует внимания
+            - paragraph [ref=e202]: Создайте или заполните финансовый кейс.
+    - generic [ref=e203]:
+      - article [ref=e204]:
+        - generic [ref=e205]:
+          - paragraph [ref=e206]: История
+          - generic [ref=e207]: "19"
+        - generic [ref=e208]:
+          - link "Все" [ref=e209] [cursor=pointer]:
+            - /url: /ops/deals/40/?history_filter=all&mode=simple
+          - link "Система" [ref=e210] [cursor=pointer]:
+            - /url: /ops/deals/40/?history_filter=system&mode=simple
+          - link "Пользователь" [ref=e211] [cursor=pointer]:
+            - /url: /ops/deals/40/?history_filter=user&mode=simple
+          - link "Закупки" [ref=e212] [cursor=pointer]:
+            - /url: /ops/deals/40/?history_filter=purchases&mode=simple
+          - link "Грузы" [ref=e213] [cursor=pointer]:
+            - /url: /ops/deals/40/?history_filter=cargos&mode=simple
+          - link "Отгрузки" [ref=e214] [cursor=pointer]:
+            - /url: /ops/deals/40/?history_filter=shipments&mode=simple
+          - link "Финансы" [ref=e215] [cursor=pointer]:
+            - /url: /ops/deals/40/?history_filter=finance&mode=simple
+        - generic [ref=e216]:
+          - generic [ref=e219]:
+            - generic [ref=e220]:
+              - generic [ref=e221]: 31.05 18:42
+              - generic [ref=e222]: Отгрузки
+            - paragraph [ref=e223]: Отгрузка SHP-2026-000035-01 доставлена
+            - paragraph [ref=e224]: ops_ui_check
+          - generic [ref=e227]:
+            - generic [ref=e228]:
+              - generic [ref=e229]: 31.05 18:42
+              - generic [ref=e230]: Отгрузки
+            - paragraph [ref=e231]: Отгрузка SHP-2026-000035-01 отправлена
+            - paragraph [ref=e232]: ops_ui_check
+          - generic [ref=e235]:
+            - generic [ref=e236]:
+              - generic [ref=e237]: 31.05 18:40
+              - generic [ref=e238]: Пользователь
+            - paragraph [ref=e239]: Создан резерв RSV-2026-000035-01
+            - paragraph [ref=e240]: ops_ui_check
+          - generic [ref=e243]:
+            - generic [ref=e244]:
+              - generic [ref=e245]: 31.05 18:39
+              - generic [ref=e246]: Система
+            - paragraph [ref=e247]: Импорт из Bitrix
+            - paragraph [ref=e248]: Система
+          - generic [ref=e251]:
+            - generic [ref=e252]:
+              - generic [ref=e253]: 31.05 18:38
+              - generic [ref=e254]: Пользователь
+            - paragraph [ref=e255]: Товар связан с каталогом
+            - paragraph [ref=e256]: ops_ui_check
+          - generic [ref=e259]:
+            - generic [ref=e260]:
+              - generic [ref=e261]: 31.05 18:35
+              - generic [ref=e262]: Система
+            - paragraph [ref=e263]: Импорт из Bitrix
+            - paragraph [ref=e264]: Система
+          - generic [ref=e267]:
+            - generic [ref=e268]:
+              - generic [ref=e269]: 31.05 18:35
+              - generic [ref=e270]: Система
+            - paragraph [ref=e271]: Импорт из Bitrix
+            - paragraph [ref=e272]: Система
+        - link "Показать всю историю" [ref=e273] [cursor=pointer]:
+          - /url: /ops/deals/40/?history=all&mode=simple
+      - article [ref=e274]:
+        - paragraph [ref=e275]: Источник
+        - paragraph [ref=e276]: "Bitrix #6669"
+        - paragraph [ref=e277]: Продажа под заказ · Автозаполнение операционого статуса · Автосимулятор 360 Racing 6DOF
+        - paragraph [ref=e278]: "Сумма: 2403970,00"
+        - paragraph [ref=e279]: Обновлено 31.05.2026 18:39
+        - link "Открыть в Bitrix" [ref=e280] [cursor=pointer]:
+          - /url: https://b24-ghnm2n.bitrix24.ru/crm/deal/details/6669/

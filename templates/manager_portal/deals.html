@@ -1,6 +1,6 @@
 {% extends "manager_portal/base.html" %}
 
-{% block title %}Сделки / Заказы{% endblock %}
+{% block title %}Сделки в работе{% endblock %}
 
 {% block content %}
   <div class="space-y-3 lg:space-y-2">
@@ -8,7 +8,7 @@
       <div class="manager-deals-compact-header">
         <div class="manager-deals-compact-header-row manager-deals-compact-header-row-main">
           <div class="manager-deals-compact-heading">
-            <h2 class="manager-deals-page-title">Сделки / Заказы</h2>
+            <h2 class="manager-deals-page-title">Сделки в работе</h2>
           </div>
 
           <div class="manager-deals-compact-actions">
@@ -26,10 +26,6 @@
                 href="{% url 'manager_portal:deal_list' %}{% if kanban_view_query_string %}?{{ kanban_view_query_string }}{% endif %}"
                 class="manager-view-switch-link {% if current_view_mode == 'kanban' %}manager-view-switch-link-active{% endif %}"
               >Канбан</a>
-              <a
-                href="{% url 'manager_portal:deal_list' %}{% if avito_view_query_string %}?{{ avito_view_query_string }}{% endif %}"
-                class="manager-view-switch-link {% if current_view_mode == 'list' and current_scope == 'avito' %}manager-view-switch-link-active{% endif %}"
-              >Avito</a>
             </div>
 
             <button type="button" data-drawer-target="#deal-filters-drawer" class="manager-inline-action manager-deals-filter-trigger">
@@ -39,16 +35,6 @@
               {% endif %}
             </button>
 
-            <a
-              href="{% url 'manager_portal:deal_create' %}"
-              class="manager-create-action"
-              data-drawer-target="#manager-remote-drawer"
-              hx-get="{% url 'manager_portal:deal_create' %}"
-              hx-select="#manager-main-content > *"
-              hx-target="#manager-remote-drawer-content"
-              hx-swap="innerHTML"
-              hx-push-url="false"
-            >Новая сделка</a>
           </div>
         </div>
 
@@ -85,7 +71,7 @@
     <section class="manager-panel rounded-[1.5rem] p-3 lg:p-4">
       {% if current_view_mode == 'kanban' %}
         <div class="border-b border-slate-800/80 pb-4">
-          <p class="text-sm text-slate-400">Avito остаётся в отдельной таблице, чтобы рабочий канбан не смешивался с внешним каналом.</p>
+          <p class="text-sm text-slate-400">Канбан показывает только операционные этапы исполнения после подтверждения оплаты.</p>
         </div>
         <div
           class="manager-deal-board mt-4"
@@ -142,8 +128,8 @@
                       <h3 class="text-lg font-semibold text-white">Очередь Avito</h3>
                       <p class="mt-1 text-sm text-slate-400">Avito вынесен из канбана и ведётся отдельным рабочим реестром.</p>
                     {% else %}
-                      <h3 class="text-lg font-semibold text-white">Очередь сделок</h3>
-                      <p class="mt-1 text-sm text-slate-400">Приоритет, риск и следующее действие в одной строке.</p>
+                      <h3 class="text-lg font-semibold text-white">Операционная очередь</h3>
+                      <p class="mt-1 text-sm text-slate-400">Исполнение сделки после оплаты: обеспечение, закупка, логистика и отгрузка.</p>
                     {% endif %}
                     <div class="manager-deals-list-toolbar-title">
                       <p class="manager-deals-list-toolbar-note">После фильтрации: {{ total_deals }}</p>

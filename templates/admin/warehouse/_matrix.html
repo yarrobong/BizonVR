@@ -5,37 +5,69 @@
     </div>
   {% endif %}
 
-  <section class="warehouse-panel overflow-hidden">
-    <div class="flex items-center justify-between gap-4 border-b border-slate-800/80 px-5 py-4">
+  <section id="warehouse-table" class="warehouse-panel overflow-hidden">
+    <div class="flex flex-col gap-4 border-b border-slate-800/80 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
       <div>
         <h2 class="text-lg font-semibold text-white">Остатки</h2>
         <p class="mt-1 text-sm text-slate-400">
           SKU: {{ matrix.page.paginator.count }} • страница {{ matrix.page.number }} из {{ matrix.page.paginator.num_pages }}
         </p>
       </div>
-      <div class="text-right text-xs uppercase tracking-[0.24em] text-slate-500">
-        {% if matrix.warehouses %}
-          {{ matrix.warehouses|length }} склад(а)
-        {% else %}
-          Нет активных складов в выборке
-        {% endif %}
+      <div class="flex flex-wrap items-center gap-2">
+        {% for tab in matrix.quick_tabs %}
+          <button
+            type="submit"
+            form="warehouse-filters"
+            name="status"
+            value="{{ tab.value }}"
+            class="rounded-full border px-3 py-1.5 text-sm transition {% if tab.active %}border-cyan-300/30 bg-cyan-400/10 text-cyan-100{% else %}border-slate-700 text-slate-300 hover:border-slate-500 hover:bg-slate-900/60{% endif %}"
+          >
+            {{ tab.label }}
+          </button>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="flex flex-col gap-3 border-b border-slate-800/80 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+      <div class="text-sm text-slate-400">
+        В выборке: {{ matrix.selected_count }} SKU
+      </div>
+      <div id="warehouse-bulk-toolbar" class="flex flex-wrap items-center gap-2 text-sm" data-export-url="{% url 'admin:warehouse_ui_export' %}" data-print-url="{% url 'admin:warehouse_ui_print' %}">
+        <span class="rounded-full border border-slate-700 px-3 py-1.5 text-slate-300">
+          Выбрано: <strong data-selected-count>0</strong>
+        </span>
+        <button type="button" data-bulk-action="export" class="rounded-full border border-slate-700 px-3 py-1.5 text-slate-300 transition hover:border-slate-500 hover:bg-slate-900/60" disabled>
+          Экспорт выбранных
+        </button>
+        <button type="button" data-bulk-action="print" class="rounded-full border border-slate-700 px-3 py-1.5 text-slate-300 transition hover:border-slate-500 hover:bg-slate-900/60" disabled>
+          Печатный список
+        </button>
+        <span class="rounded-full border border-dashed border-slate-700 px-3 py-1.5 text-slate-500">
+          Инвентаризация и массовое списание — позже, после отдельного безопасного сценария.
+        </span>
       </div>
     </div>
 
     {% if matrix.rows %}
       <div class="overflow-x-auto">
-        <table class="warehouse-matrix-table">
+        <table class="warehouse-matrix-table min-w-[960px]">
           <thead>
-            <tr class="text-left text-xs uppercase tracking-[0.24em] text-slate-400">
-              <th class="warehouse-sticky-col min-w-[320px] px-5 py-4">Товар</th>
+            <tr class="text-left text-[11px] uppercase tracking-[0.24em] text-slate-400">
+              <th class="warehouse-sticky-col warehouse-sticky-head min-w-[360px] px-5 py-4">
+                <label class="flex items-center gap-3">
+                  <input type="checkbox" class="h-4 w-4 rounded border-slate-600 bg-slate-950 text-cyan-400 focus:ring-cyan-400/30" data-select-all>
+                  <span>Товар / вариант</span>
+                </label>
+              </th>
+              <th class="warehouse-sticky-head min-w-[210px] px-4 py-4">Итого</th>
               {% for warehouse in matrix.warehouses %}
-                <th class="min-w-[220px] px-4 py-4">
+                <th class="warehouse-sticky-head min-w-[220px] px-4 py-4">
                   <div class="font-semibold text-slate-100">{{ warehouse.name }}</div>
                   <div class="mt-1 text-[11px] normal-case tracking-normal text-slate-500">
                     {% if warehouse.pickup_point_id %}
                       {{ warehouse.pickup_point.city.name }}{% if warehouse.pickup_point.name %}, {{ warehouse.pickup_point.name }}{% endif %}
                     {% else %}
-                      Без публичной точки
+                      Импорт / не указан
                     {% endif %}
                   </div>
                 </th>
@@ -46,64 +78,101 @@
             {% for row in matrix.rows %}
               <tr class="transition hover:bg-slate-900/30">
                 <td class="warehouse-sticky-col px-5 py-4">
-                  <button
-                    type="button"
-                    data-warehouse-drawer-url="{{ row.drawer_url }}"
-                    hx-get="{{ row.drawer_url }}"
-                    hx-target="#warehouse-drawer-content"
-                    hx-swap="innerHTML"
-                    hx-include="#warehouse-filters"
-                    class="w-full rounded-2xl border border-transparent p-0 text-left transition hover:border-cyan-400/20"
-                  >
-                    <div class="flex items-start gap-3">
-                      <div class="h-11 w-11 rounded-2xl border border-cyan-400/10 bg-cyan-400/10"></div>
-                      <div>
-                        <div class="font-semibold text-white">{{ row.product_name }}</div>
-                        {% if row.variant_name %}
-                          <div class="mt-1 text-sm text-slate-300">{{ row.variant_name }}</div>
+                  <div class="flex items-start gap-3">
+                    <input type="checkbox" class="mt-4 h-4 w-4 rounded border-slate-600 bg-slate-950 text-cyan-400 focus:ring-cyan-400/30" data-sku-checkbox value="{{ row.sku_key }}">
+                    <button
+                      type="button"
+                      data-warehouse-drawer-url="{{ row.drawer_url }}"
+                      data-sku-key="{{ row.sku_key }}"
+                      hx-get="{{ row.drawer_url }}"
+                      hx-target="#warehouse-drawer-content"
+                      hx-swap="innerHTML"
+                      hx-include="#warehouse-filters"
+                      class="w-full rounded-2xl border border-transparent p-0 text-left transition hover:border-cyan-400/20"
+                    >
+                      <div class="flex items-start gap-3">
+                        {% if row.image_url %}
+                          <img src="{{ row.image_url }}" alt="{{ row.product_name }}" class="h-12 w-12 rounded-2xl border border-slate-800 object-cover">
+                        {% else %}
+                          <div class="flex h-12 w-12 items-center justify-center rounded-2xl border border-cyan-400/10 bg-cyan-400/10 text-xs font-semibold text-cyan-100">VR</div>
                         {% endif %}
-                        <div class="mt-2 flex flex-wrap gap-2 text-xs">
-                          {% if row.sku %}
-                            <span class="rounded-full border border-slate-700 px-2 py-1 text-slate-300">{{ row.sku }}</span>
+                        <div>
+                          <div class="font-semibold text-white">{{ row.product_name }}</div>
+                          {% if row.variant_name %}
+                            <div class="mt-1 text-sm text-slate-300">{{ row.variant_name }}</div>
                           {% endif %}
-                          <span class="rounded-full border px-2 py-1 {% if row.has_problem %}border-amber-400/30 bg-amber-500/10 text-amber-100{% else %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% endif %}">
-                            {% if row.has_problem %}Нужна проверка{% else %}Норма{% endif %}
-                          </span>
-                        </div>
-                        <div class="mt-2 text-xs text-slate-500">
-                          Доступно: {{ row.totals.available }} • Резерв: {{ row.totals.reserved }} • В пути: {{ row.totals.inbound }}
+                          <div class="mt-2 flex flex-wrap gap-2 text-xs">
+                            {% if row.sku %}
+                              <span class="rounded-full border border-slate-700 px-2 py-1 text-slate-300">{{ row.sku }}</span>
+                            {% endif %}
+                            {% for label in row.status_labels|slice:":3" %}
+                              <span class="rounded-full border px-2 py-1 {% if label == 'Расхождение' %}border-amber-400/30 bg-amber-500/10 text-amber-100{% elif label == 'Нет в наличии' or label == 'Низкий остаток' %}border-rose-400/20 bg-rose-500/10 text-rose-100{% else %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% endif %}">
+                                {{ label }}
+                              </span>
+                            {% endfor %}
+                          </div>
                         </div>
                       </div>
+                    </button>
+                  </div>
+                </td>
+                <td class="px-4 py-4">
+                  <div class="rounded-2xl border border-slate-800 bg-slate-950/50 p-3">
+                    <div class="grid grid-cols-2 gap-3 text-sm">
+                      <div>
+                        <div class="text-[11px] uppercase tracking-[0.18em] text-slate-500">Всего</div>
+                        <div class="mt-1 font-semibold text-white">{{ row.totals.on_hand }}</div>
+                      </div>
+                      <div>
+                        <div class="text-[11px] uppercase tracking-[0.18em] text-slate-500">Доступно</div>
+                        <div class="mt-1 font-semibold {% if row.totals.available > 0 %}text-emerald-300{% elif row.totals.available < 0 %}text-rose-300{% else %}text-white{% endif %}">
+                          {{ row.totals.available }}
+                        </div>
+                      </div>
+                      <div>
+                        <div class="text-[11px] uppercase tracking-[0.18em] text-slate-500">Резерв</div>
+                        <div class="mt-1 font-semibold text-amber-100">{{ row.totals.reserved }}</div>
+                      </div>
+                      <div>
+                        <div class="text-[11px] uppercase tracking-[0.18em] text-slate-500">В пути</div>
+                        <div class="mt-1 font-semibold text-cyan-200">{{ row.totals.inbound }}</div>
+                      </div>
                     </div>
-                  </button>
+                    {% if not matrix.compact_mode %}
+                      <div class="mt-3 text-xs text-slate-500">
+                        Мин. остаток: {{ row.totals.min_stock }}{% if row.last_movement_at %} • Последнее движение: {{ row.last_movement_at|date:"d.m.Y H:i" }}{% endif %}
+                      </div>
+                    {% endif %}
+                  </div>
                 </td>
                 {% for cell in row.cells %}
                   <td class="px-4 py-4">
                     <div class="rounded-2xl border border-slate-800 bg-slate-950/40 p-3">
-                      <div class="grid grid-cols-2 gap-2 text-sm">
+                      <div class="grid grid-cols-3 gap-2 text-sm">
                         <div>
-                          <div class="text-[11px] uppercase tracking-[0.18em] text-slate-500">Всего</div>
-                          <div class="mt-1 font-semibold text-slate-100">{{ cell.on_hand }}</div>
+                          <div class="text-[11px] uppercase tracking-[0.18em] text-slate-500">Доступно</div>
+                          <div class="mt-1 font-semibold {% if cell.available > 0 %}text-emerald-300{% elif cell.available < 0 %}text-rose-300{% else %}text-white{% endif %}">
+                            {{ cell.available }}
+                          </div>
                         </div>
                         <div>
                           <div class="text-[11px] uppercase tracking-[0.18em] text-slate-500">Резерв</div>
-                          <div class="mt-1 font-semibold text-slate-100">{{ cell.reserved }}</div>
-                        </div>
-                        <div>
-                          <div class="text-[11px] uppercase tracking-[0.18em] text-slate-500">Доступно</div>
-                          <div class="mt-1 font-semibold {% if cell.available > 0 %}text-emerald-300{% elif cell.available < 0 %}text-rose-300{% else %}text-slate-100{% endif %}">
-                            {{ cell.available }}
-                          </div>
+                          <div class="mt-1 font-semibold text-amber-100">{{ cell.reserved }}</div>
                         </div>
                         <div>
                           <div class="text-[11px] uppercase tracking-[0.18em] text-slate-500">В пути</div>
                           <div class="mt-1 font-semibold text-cyan-200">{{ cell.inbound }}</div>
                         </div>
                       </div>
-                      {% if cell.public_published_qty is not None %}
-                        <div class="mt-3 rounded-xl border px-3 py-2 text-xs {% if cell.public_mismatch %}border-amber-400/25 bg-amber-500/10 text-amber-100{% else %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% endif %}">
-                          Сайт: {{ cell.public_published_qty }} • Ожидается: {{ cell.public_expected_qty }}
+                      {% if not matrix.compact_mode %}
+                        <div class="mt-3 text-xs text-slate-500">
+                          Всего: {{ cell.on_hand }}{% if cell.public_published_qty is not None %} • Сайт: {{ cell.public_published_qty }}{% endif %}
                         </div>
+                        {% if cell.public_published_qty is not None %}
+                          <div class="mt-2 rounded-xl border px-3 py-2 text-xs {% if cell.public_mismatch %}border-amber-400/25 bg-amber-500/10 text-amber-100{% else %}border-emerald-400/20 bg-emerald-500/10 text-emerald-100{% endif %}">
+                            Ожидается на сайте: {{ cell.public_expected_qty }}
+                          </div>
+                        {% endif %}
                       {% endif %}
                     </div>
                   </td>
@@ -149,7 +218,7 @@
         <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl border border-cyan-400/20 bg-cyan-400/10 text-2xl text-cyan-200">∅</div>
         <h3 class="mt-5 text-xl font-semibold text-white">Пустая выборка</h3>
         <p class="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-400">
-          По текущим фильтрам ничего не найдено. Попробуйте расширить выбор складов, убрать часть ограничений или изменить поисковую фразу.
+          По текущим фильтрам ничего не найдено. Попробуйте убрать часть ограничений или переключиться на вкладку “Все”.
         </p>
       </div>
     {% endif %}

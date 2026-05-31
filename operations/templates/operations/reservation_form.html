@@ -1,0 +1,130 @@
+{% extends "operations/base.html" %}
+
+{% block title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+  <section class="ops-panel rounded-[2rem] px-6 py-6">
+    <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+      <div>
+        <p class="text-xs uppercase tracking-[0.18em] text-cyan-100/70">Резерв по сделке</p>
+        <h2 class="mt-2 text-3xl font-semibold">{{ deal.code|default:deal.order_id }}</h2>
+        <p class="mt-3 text-sm ops-muted">{{ page_subtitle }}</p>
+        <dl class="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div>
+            <dt class="text-xs uppercase tracking-[0.16em] text-slate-500">Заказ</dt>
+            <dd class="mt-1 text-sm text-white">#{{ deal.order_id }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs uppercase tracking-[0.16em] text-slate-500">Склад по сделке</dt>
+            <dd class="mt-1 text-sm text-white">{{ deal.stock_warehouse.name|default:"—" }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs uppercase tracking-[0.16em] text-slate-500">Режим</dt>
+            <dd class="mt-1 text-sm text-white">{% if selected_candidate %}Ручной резерв позиции{% else %}Нет доступных позиций{% endif %}</dd>
+          </div>
+          <div>
+            <dt class="text-xs uppercase tracking-[0.16em] text-slate-500">Строк в резерве</dt>
+            <dd class="mt-1 text-sm text-white">{{ deal.order.items.count }}</dd>
+          </div>
+        </dl>
+      </div>
+      <a href="{% url 'operations:deal_detail' pk=deal.pk %}?tab=goods" class="inline-flex rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-100 transition hover:bg-slate-900">Вернуться в сделку</a>
+    </div>
+  </section>
+
+  <section class="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(18rem,0.8fr)]">
+    <article class="ops-panel rounded-[1.75rem] px-6 py-6">
+      <div>
+        <p class="text-xs uppercase tracking-[0.18em] text-cyan-100/70">Создание резерва</p>
+        <h3 class="mt-2 text-2xl font-semibold">Закрепить остаток за сделкой</h3>
+        <p class="mt-2 text-sm ops-muted">Выберите строку заказа, проверьте товар и склад, затем зафиксируйте нужное количество и комментарий.</p>
+      </div>
+      <form method="post" class="mt-5 space-y-6">
+        {% csrf_token %}
+        <div class="rounded-[1.5rem] border border-slate-800 bg-slate-950/40 px-4 py-4">
+          <p class="text-xs uppercase tracking-[0.16em] text-cyan-100/70">Позиция сделки</p>
+          <div class="mt-4 grid gap-4 md:grid-cols-2">
+            <div class="md:col-span-2">
+              <label class="mb-2 block text-xs uppercase tracking-[0.16em] text-slate-500">{{ form.order_item.label }}<span class="ops-required">обязательно</span></label>
+              {{ form.order_item }}
+              {% for error in form.order_item.errors %}
+                <p class="mt-1 text-xs text-rose-300">{{ error }}</p>
+              {% endfor %}
+            </div>
+            <div class="md:col-span-2">
+              <label class="mb-2 block text-xs uppercase tracking-[0.16em] text-slate-500">{{ form.product.label }}<span class="ops-required">обязательно</span></label>
+              {{ form.product }}
+              {% for error in form.product.errors %}
+                <p class="mt-1 text-xs text-rose-300">{{ error }}</p>
+              {% endfor %}
+            </div>
+            <div>
+              <label class="mb-2 block text-xs uppercase tracking-[0.16em] text-slate-500">{{ form.warehouse.label }}<span class="ops-required">обязательно</span></label>
+              {{ form.warehouse }}
+              {% for error in form.warehouse.errors %}
+                <p class="mt-1 text-xs text-rose-300">{{ error }}</p>
+              {% endfor %}
+            </div>
+            <div>
+              <label class="mb-2 block text-xs uppercase tracking-[0.16em] text-slate-500">{{ form.quantity.label }}<span class="ops-required">обязательно</span></label>
+              {{ form.quantity }}
+              {% for error in form.quantity.errors %}
+                <p class="mt-1 text-xs text-rose-300">{{ error }}</p>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+
+        <div class="rounded-[1.5rem] border border-slate-800 bg-slate-950/40 px-4 py-4">
+          <p class="text-xs uppercase tracking-[0.16em] text-cyan-100/70">Комментарий</p>
+          <div class="mt-4">
+            <label class="mb-2 block text-xs uppercase tracking-[0.16em] text-slate-500">{{ form.comment.label }}</label>
+            {{ form.comment }}
+            {% for error in form.comment.errors %}
+              <p class="mt-1 text-xs text-rose-300">{{ error }}</p>
+            {% endfor %}
+          </div>
+        </div>
+
+        {% if form.non_field_errors %}
+          <div>
+            {% for error in form.non_field_errors %}
+              <p class="text-xs text-rose-300">{{ error }}</p>
+            {% endfor %}
+          </div>
+        {% endif %}
+        <div class="flex flex-wrap gap-3">
+          <button type="submit" {% if not has_candidates %}disabled{% endif %} class="ops-button-primary disabled:cursor-not-allowed disabled:opacity-60">Создать резерв</button>
+          <a href="{% url 'operations:deal_detail' pk=deal.pk %}?tab=goods" class="ops-button-secondary">Отмена</a>
+        </div>
+      </form>
+    </article>
+
+    <aside class="ops-panel rounded-[1.75rem] px-6 py-6">
+      <p class="text-xs uppercase tracking-[0.18em] text-cyan-100/70">Что изменится</p>
+      <div class="mt-4 space-y-4">
+        {% if selected_candidate %}
+          <div class="rounded-2xl border border-emerald-400/20 bg-emerald-400/10 px-4 py-4">
+            <p class="text-sm font-medium text-white">Текущая позиция</p>
+            <p class="mt-2 text-sm ops-muted">{{ selected_candidate.order_item.display_name }}</p>
+            <p class="mt-1 text-sm ops-muted">Нужно {{ selected_candidate.ordered_quantity }} · уже в резерве {{ selected_candidate.reserved_quantity }} · не хватает {{ selected_candidate.missing_quantity }}</p>
+            <p class="mt-1 text-sm ops-muted">Складов с остатком: {{ selected_candidate.warehouses|length }}</p>
+          </div>
+        {% endif %}
+
+        <div class="rounded-2xl border border-slate-800 bg-slate-950/40 px-4 py-4">
+          <p class="text-sm font-medium text-white">После сохранения</p>
+          <p class="mt-2 text-sm ops-muted">Будут созданы `Reservation`, `ReservationItem` и складское движение `reserve`.</p>
+          <p class="mt-1 text-sm ops-muted">Карточка сделки сразу пересчитает «В резерве», «Не хватает» и готовность к отгрузке.</p>
+        </div>
+
+        {% if not has_candidates %}
+          <div class="rounded-2xl border border-amber-400/20 bg-amber-400/10 px-4 py-4">
+            <p class="text-sm font-medium text-white">Нет свободного остатка</p>
+            <p class="mt-2 text-sm ops-muted">Сейчас по этой сделке нет позиций, которые можно зарезервировать со склада.</p>
+          </div>
+        {% endif %}
+      </div>
+    </aside>
+  </section>
+{% endblock %}

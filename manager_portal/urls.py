@@ -6,6 +6,7 @@ app_name = 'manager_portal'
 
 urlpatterns = [
     path('', views.entry_view, name='entry'),
+    path('bitrix/deal-in-work/', views.bitrix_deal_in_work_view, name='bitrix_deal_in_work'),
     path('search/', views.global_search_results_view, name='global_search_results'),
     path('clients/lookup/', views.client_lookup_view, name='client_lookup'),
     path('deals/', views.deal_list_view, name='deal_list'),
@@ -15,6 +16,7 @@ urlpatterns = [
     path('deals/<int:pk>/', views.deal_detail_view, name='deal_detail'),
     path('deals/<int:pk>/reservation/', views.deal_reservation_action_view, name='deal_reservation_action'),
     path('deals/<int:pk>/shipment/', views.deal_shipment_action_view, name='deal_shipment_action'),
+    path('deals/<int:pk>/items/<int:item_id>/link-product/', views.deal_order_item_link_product_view, name='deal_order_item_link_product'),
     path('deals/<int:pk>/finance/', views.deal_finance_action_view, name='deal_finance_action'),
     path('deals/<int:pk>/documents/<str:document_type>/', views.deal_document_action_view, name='deal_document_action'),
     path('logistics/', views.dashboard_view, name='dashboard'),

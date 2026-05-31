@@ -1,21 +1,25 @@
 import csv
 import json
+import logging
 import zipfile
 from collections import defaultdict
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from io import BytesIO, StringIO
+from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
+import requests
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import transaction
 from django.db import models
+from django.db.models import Q
 from django.utils import timezone
 
 from accounts.services import normalize_email, normalize_phone
 from catalog.models import Product, ProductStock, ProductVariant
-from orders.models import Order, OrderItem
+from orders.models import Order, OrderItem, resolve_order_item_image_url
 from orders.services import sync_order_state_side_effects
 from .status_system import (
     SEMANTIC_TONE_ACTIVE,
@@ -50,6 +54,7 @@ from .models import (
     ManagerDeal,
     ManagerDealParticipant,
     ManagerPersonAlias,
+    Purchase,
     PurchaseItem,
     Reservation,
     ReservationItem,
@@ -218,6 +223,12 @@ MANUAL_EDITABLE_CASE_STATUSES = {
     ManagerDeal.CASE_STATUS_WAITING_CLIENT,
     ManagerDeal.CASE_STATUS_READY_TO_SHIP,
 }
+BITRIX_API_TIMEOUT_SECONDS = 15
+logger = logging.getLogger(__name__)
+
+
+class BitrixImportError(RuntimeError):
+    pass
 
 
 def manager_portal_workflow_settings():
@@ -241,6 +252,493 @@ def manager_portal_zoneinfo():
 def manager_portal_stale_after():
     return timedelta(hours=int(manager_portal_workflow_settings().get('stale_after_hours') or 48))
 
+
+def _bitrix_text(value):
+    return str(value or '').strip()
+
+
+def _bitrix_decimal(value, *, default='0'):
+    raw_value = _bitrix_text(value).replace(' ', '').replace(',', '.')
+    if not raw_value:
+        raw_value = default
+    try:
+        return Decimal(raw_value)
+    except Exception as exc:  # pragma: no cover - defensive parsing
+        raise BitrixImportError(f'Не удалось прочитать денежное значение Bitrix: {value!r}') from exc
+
+
+def _bitrix_int(value, *, default=0):
+    try:
+        return max(int(_bitrix_decimal(value, default=str(default))), 0)
+    except BitrixImportError:
+        return default
+
+
+def _bitrix_first_multifield(value):
+    if isinstance(value, list):
+        for item in value:
+            if isinstance(item, dict):
+                candidate = _bitrix_text(item.get('VALUE'))
+            else:
+                candidate = _bitrix_text(item)
+            if candidate:
+                return candidate
+    if isinstance(value, dict):
+        candidate = _bitrix_text(value.get('VALUE'))
+        if candidate:
+            return candidate
+    return _bitrix_text(value)
+
+
+def _bitrix_parse_datetime(value):
+    raw_value = _bitrix_text(value)
+    if not raw_value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw_value.replace('Z', '+00:00'))
+    except ValueError:
+        try:
+            parsed = datetime.strptime(raw_value, '%Y-%m-%d')
+        except ValueError:
+            return None
+    if timezone.is_naive(parsed):
+        return timezone.make_aware(parsed, timezone.get_default_timezone())
+    return parsed
+
+
+def _bitrix_portal_root():
+    webhook_url = _bitrix_text(getattr(settings, 'BITRIX_WEBHOOK_URL', ''))
+    if not webhook_url:
+        return ''
+    parsed = urlparse(webhook_url)
+    if not parsed.scheme or not parsed.netloc:
+        return ''
+    return f'{parsed.scheme}://{parsed.netloc}'
+
+
+def build_bitrix_deal_url(deal_id):
+    portal_root = _bitrix_portal_root()
+    if not portal_root:
+        return ''
+    return f'{portal_root}/crm/deal/details/{deal_id}/'
+
+
+def _bitrix_api_request(method_name, *, params=None):
+    webhook_url = _bitrix_text(getattr(settings, 'BITRIX_WEBHOOK_URL', ''))
+    if not webhook_url:
+        raise BitrixImportError('Не задан BITRIX_WEBHOOK_URL.')
+    url = f'{webhook_url.rstrip("/")}/{method_name}.json'
+    try:
+        response = requests.get(url, params=params or {}, timeout=BITRIX_API_TIMEOUT_SECONDS)
+        response.raise_for_status()
+        payload = response.json() or {}
+    except (requests.RequestException, ValueError) as exc:
+        raise BitrixImportError(f'Не удалось получить данные Bitrix по методу {method_name}.') from exc
+    if payload.get('error'):
+        message = payload.get('error_description') or payload.get('error') or 'Bitrix вернул ошибку.'
+        raise BitrixImportError(message)
+    return payload.get('result')
+
+
+def _bitrix_optional_entity_id(value):
+    normalized_value = _bitrix_text(value)
+    if normalized_value in {'', '0'}:
+        return ''
+    return normalized_value
+
+
+def _bitrix_optional_request(method_name, *, params=None, entity_label='', entity_id='', warnings=None):
+    warnings = warnings if warnings is not None else []
+    normalized_entity_id = _bitrix_optional_entity_id(entity_id)
+    if not normalized_entity_id:
+        return {}
+    try:
+        result = _bitrix_api_request(method_name, params=params)
+    except BitrixImportError as exc:
+        warning = (
+            f'Bitrix {entity_label} #{normalized_entity_id} не импортирован: '
+            f'{exc}'
+        ).strip()
+        logger.warning(warning)
+        warnings.append(warning)
+        return {}
+    if not isinstance(result, dict) or not result:
+        warning = f'Bitrix {entity_label} #{normalized_entity_id} не найден или вернул пустой result.'.strip()
+        logger.warning(warning)
+        warnings.append(warning)
+        return {}
+    return result
+
+
+def _bitrix_deal_mapped_field(deal_data, setting_name):
+    field_name = _bitrix_text(getattr(settings, setting_name, ''))
+    if not field_name:
+        return ''
+    return _bitrix_text((deal_data or {}).get(field_name))
+
+
+def _bitrix_deal_mapped_payload(deal_data):
+    return {
+        'city': _bitrix_deal_mapped_field(deal_data, 'BITRIX_FIELD_CITY'),
+        'client_request': _bitrix_deal_mapped_field(deal_data, 'BITRIX_FIELD_CLIENT_REQUEST'),
+        'delivery_address': _bitrix_deal_mapped_field(deal_data, 'BITRIX_FIELD_DELIVERY_ADDRESS'),
+        'recipient_name': _bitrix_deal_mapped_field(deal_data, 'BITRIX_FIELD_RECIPIENT_NAME'),
+        'recipient_phone': _bitrix_deal_mapped_field(deal_data, 'BITRIX_FIELD_RECIPIENT_PHONE'),
+    }
+
+
+def _bitrix_deal_comment_payload(*, comment='', client_request=''):
+    base_comment = _bitrix_text(comment)
+    mapped_request = _bitrix_text(client_request)
+    request_comment = f'Запрос клиента: {mapped_request}' if mapped_request else ''
+    combined_comment = '\n\n'.join(part for part in [base_comment, request_comment] if part)
+    return {
+        'comment': combined_comment,
+        'delivery_comment': request_comment,
+    }
+
+
+def _bitrix_manager_client_comments(*, deal_id='', client_request=''):
+    parts = []
+    mapped_request = _bitrix_text(client_request)
+    if mapped_request:
+        parts.append(f'Запрос клиента: {mapped_request}')
+    normalized_deal_id = _bitrix_text(deal_id)
+    if normalized_deal_id:
+        parts.append(f'Bitrix deal id: {normalized_deal_id}')
+    return '\n'.join(parts)
+
+
+def _bitrix_scalar_property_value(value):
+    if isinstance(value, list):
+        for item in value:
+            candidate = _bitrix_scalar_property_value(item)
+            if candidate:
+                return candidate
+        return ''
+    if isinstance(value, dict):
+        for key in ('value', 'VALUE', 'VALUE_ENUM', 'VALUE_NUM', 'VALUE_TEXT'):
+            candidate = _bitrix_scalar_property_value(value.get(key))
+            if candidate:
+                return candidate
+        return ''
+    return _bitrix_text(value)
+
+
+def _bitrix_catalog_product_payload(bitrix_product_id, *, cache=None):
+    normalized_product_id = _bitrix_optional_entity_id(bitrix_product_id)
+    if not normalized_product_id:
+        return {}
+    cache = cache if cache is not None else {}
+    if normalized_product_id in cache:
+        return cache[normalized_product_id]
+
+    payload = {}
+    try:
+        result = _bitrix_api_request('catalog.product.get', params={'id': normalized_product_id}) or {}
+    except BitrixImportError:
+        result = {}
+    if isinstance(result, dict):
+        payload = result.get('product') if isinstance(result.get('product'), dict) else result
+
+    cache[normalized_product_id] = payload if isinstance(payload, dict) else {}
+    return cache[normalized_product_id]
+
+
+def _bitrix_site_product_property_id():
+    return int(getattr(settings, 'BITRIX_SITE_PRODUCT_ID_PROPERTY_ID', 107) or 107)
+
+
+def _bitrix_site_product_property_candidates(product_payload, property_id):
+    property_id = _bitrix_text(property_id)
+    candidate_values = [
+        product_payload.get(f'property{property_id}'),
+        product_payload.get(f'PROPERTY{property_id}'),
+        product_payload.get(f'PROPERTY_{property_id}'),
+        product_payload.get(f'PROPERTY_{property_id}_VALUE'),
+        product_payload.get('ID товара сайта'),
+    ]
+
+    properties = product_payload.get('properties') or product_payload.get('PROPERTIES')
+    if isinstance(properties, dict):
+        for key in (
+            property_id,
+            f'property{property_id}',
+            f'PROPERTY{property_id}',
+            f'PROPERTY_{property_id}',
+            'ID товара сайта',
+        ):
+            if key in properties:
+                candidate_values.append(properties.get(key))
+    return candidate_values
+
+
+def _bitrix_site_product_id_from_catalog_payload(product_payload, *, property_id=None):
+    if not isinstance(product_payload, dict) or not product_payload:
+        return None
+
+    property_id = property_id or _bitrix_site_product_property_id()
+    candidate_values = _bitrix_site_product_property_candidates(product_payload, property_id)
+    for candidate in candidate_values:
+        normalized_value = _bitrix_optional_entity_id(_bitrix_scalar_property_value(candidate))
+        if not normalized_value:
+            continue
+        try:
+            site_product_id = int(normalized_value)
+        except (TypeError, ValueError):
+            continue
+        if site_product_id > 0:
+            return site_product_id
+    return None
+
+
+def _load_bitrix_deal_payload(deal_id):
+    normalized_deal_id = _bitrix_text(deal_id)
+    if not normalized_deal_id:
+        raise BitrixImportError('Не указан deal_id для импорта из Bitrix.')
+
+    deal_data = _bitrix_api_request('crm.deal.get', params={'id': normalized_deal_id}) or {}
+    if not isinstance(deal_data, dict) or not deal_data:
+        raise BitrixImportError(f'Сделка Bitrix #{normalized_deal_id} не найдена.')
+
+    product_rows = _bitrix_api_request('crm.deal.productrows.get', params={'id': normalized_deal_id}) or []
+    if not isinstance(product_rows, list):
+        raise BitrixImportError('Bitrix вернул некорректный список товарных строк.')
+
+    return normalized_deal_id, deal_data, product_rows
+
+
+def inspect_bitrix_deal_payload(deal_id):
+    normalized_deal_id, deal_data, product_rows = _load_bitrix_deal_payload(deal_id)
+    mapped_payload = _bitrix_deal_mapped_payload(deal_data)
+    return {
+        'deal_id': normalized_deal_id,
+        'raw_contact_id': deal_data.get('CONTACT_ID'),
+        'raw_company_id': deal_data.get('COMPANY_ID'),
+        'mapped_city': mapped_payload['city'],
+        'mapped_recipient_name': mapped_payload['recipient_name'],
+        'mapped_recipient_phone': mapped_payload['recipient_phone'],
+        'mapped_delivery_address': mapped_payload['delivery_address'],
+        'mapped_client_request': mapped_payload['client_request'],
+        'product_rows_count': len(product_rows),
+    }
+
+
+def _bitrix_variant_match(product, *, sku_candidates, variant_name):
+    variants = list(product.variants.all())
+    if not variants:
+        return None
+    normalized_skus = {_bitrix_text(value).casefold() for value in sku_candidates if _bitrix_text(value)}
+    for variant in variants:
+        if normalized_skus and _bitrix_text(getattr(variant, 'sku', '')).casefold() in normalized_skus:
+            return variant
+    normalized_variant_name = _bitrix_text(variant_name).casefold()
+    if normalized_variant_name:
+        for variant in variants:
+            if _bitrix_text(variant.name).casefold() == normalized_variant_name:
+                return variant
+    return None
+
+
+def _match_catalog_product_for_bitrix_row(row, *, bitrix_product_cache=None):
+    product_name = _bitrix_text(row.get('PRODUCT_NAME') or row.get('NAME'))
+    variant_name = _bitrix_text(
+        row.get('PRODUCT_VARIATION_NAME')
+        or row.get('VARIANT_NAME')
+        or row.get('OFFERS_NAME')
+    )
+    sku_candidates = [
+        row.get('SKU'),
+        row.get('PRODUCT_XML_ID'),
+        row.get('XML_ID'),
+        row.get('PRODUCT_CODE'),
+        row.get('PRODUCT_BARCODE'),
+    ]
+    normalized_skus = [_bitrix_text(value) for value in sku_candidates if _bitrix_text(value)]
+    bitrix_product_payload = _bitrix_catalog_product_payload(
+        row.get('PRODUCT_ID'),
+        cache=bitrix_product_cache,
+    )
+    site_product_id = _bitrix_site_product_id_from_catalog_payload(bitrix_product_payload)
+    if site_product_id:
+        product = (
+            Product.objects
+            .prefetch_related('variants')
+            .filter(pk=site_product_id)
+            .order_by('id')
+            .first()
+        )
+        if product is not None:
+            variant = _bitrix_variant_match(product, sku_candidates=normalized_skus, variant_name=variant_name)
+            return product, variant
+
+    if normalized_skus:
+        variant = (
+            ProductVariant.objects
+            .select_related('product')
+            .filter(sku__iexact=normalized_skus[0])
+            .order_by('id')
+            .first()
+        )
+        if variant is not None:
+            return variant.product, variant
+
+        product = (
+            Product.objects
+            .prefetch_related('variants')
+            .filter(sku__iexact=normalized_skus[0])
+            .order_by('id')
+            .first()
+        )
+        if product is not None and not product.variants.exists():
+            return product, None
+        if product is not None:
+            variant = _bitrix_variant_match(product, sku_candidates=normalized_skus, variant_name=variant_name)
+            if variant is not None:
+                return product, variant
+
+    if not product_name:
+        return None, None
+
+    products = list(
+        Product.objects
+        .prefetch_related('variants')
+        .filter(name__iexact=product_name)
+        .order_by('id')
+    )
+    for product in products:
+        if not product.variants.exists():
+            return product, None
+        variant = _bitrix_variant_match(product, sku_candidates=normalized_skus, variant_name=variant_name)
+        if variant is not None:
+            return product, variant
+
+    return None, None
+
+
+def _bitrix_order_item_key(row, *, index):
+    return (
+        _bitrix_text(row.get('ID'))
+        or _bitrix_text(row.get('ROW_ID'))
+        or f'{_bitrix_text(row.get("PRODUCT_ID"))}:{_bitrix_text(row.get("PRODUCT_NAME") or row.get("NAME"))}:{index}'
+    )
+
+
+def _bitrix_delivery_type(address):
+    if not _bitrix_text(address):
+        return Order.DELIVERY_NEGOTIABLE
+    return Order.DELIVERY_OTHER_TRANSPORT
+
+
+def _bitrix_inventory_available_map():
+    available = defaultdict(int)
+    for row in inventory_snapshot():
+        available[(row['product_id'], row['variant_id'] or 0)] += int(row['available'] or 0)
+    return available
+
+
+def _bitrix_row_price_payload(row):
+    sale_price = _bitrix_decimal(row.get('PRICE') or row.get('PRICE_NETTO') or row.get('PRICE_ACCOUNT'), default='0')
+    base_price = _bitrix_decimal(
+        row.get('PRICE_EXCLUSIVE') or row.get('PRICE_BRUTTO') or row.get('BASE_PRICE') or sale_price,
+        default=str(sale_price),
+    )
+    if base_price < sale_price:
+        base_price = sale_price
+    discount_amount = base_price - sale_price
+    return base_price, max(discount_amount, MONEY_ZERO)
+
+
+def _prepare_bitrix_order_item_payload(row, *, index, available_map, bitrix_product_cache=None):
+    product_name = _bitrix_text(row.get('PRODUCT_NAME') or row.get('NAME')) or f'Товар #{index}'
+    variant_name = _bitrix_text(
+        row.get('PRODUCT_VARIATION_NAME')
+        or row.get('VARIANT_NAME')
+        or row.get('OFFERS_NAME')
+    )
+    bitrix_product_id = _bitrix_text(row.get('PRODUCT_ID'))
+    custom_sku = _bitrix_text(
+        row.get('SKU')
+        or row.get('PRODUCT_XML_ID')
+        or row.get('XML_ID')
+        or row.get('PRODUCT_CODE')
+    )
+    if not custom_sku and bitrix_product_id:
+        custom_sku = f'bitrix-product-{bitrix_product_id}'
+    quantity = max(_bitrix_int(row.get('QUANTITY'), default=1), 1)
+    base_price, discount_amount = _bitrix_row_price_payload(row)
+    product, variant = _match_catalog_product_for_bitrix_row(
+        row,
+        bitrix_product_cache=bitrix_product_cache,
+    )
+    is_on_request = True
+    line_type = OrderItem.LINE_TYPE_CUSTOM
+    product_image_url = ''
+    if product is not None:
+        line_type = OrderItem.LINE_TYPE_CATALOG
+        product_image_url = resolve_order_item_image_url(product=product, variant=variant)
+        available_now = int(available_map.get((product.id, variant.id if variant else 0), 0))
+        is_on_request = available_now < quantity
+    payload = {
+        'row_key': _bitrix_order_item_key(row, index=index),
+        'line_type': line_type,
+        'product': product,
+        'variant': variant,
+        'product_name': product.name if product is not None else product_name,
+        'variant_name': variant.name if variant is not None else variant_name,
+        'custom_sku': '' if product is not None else custom_sku,
+        'price': base_price,
+        'discount_amount': discount_amount,
+        'quantity': quantity,
+        'planned_unit_cost': Decimal('0'),
+        'product_image_url': product_image_url,
+        'condition': OrderItem.CONDITION_NEW,
+        'comment': '',
+        'is_on_request': is_on_request or line_type == OrderItem.LINE_TYPE_CUSTOM,
+        'metadata': {
+            'bitrix_row_key': _bitrix_order_item_key(row, index=index),
+            'bitrix_row_id': _bitrix_text(row.get('ID') or row.get('ROW_ID')),
+            'bitrix_product_id': bitrix_product_id,
+            'bitrix_product_name': product_name,
+            'bitrix_row': row,
+        },
+    }
+    return payload
+
+
+def _bitrix_contact_payload(contact_data, company_data):
+    phone = _bitrix_first_multifield((contact_data or {}).get('PHONE')) or _bitrix_first_multifield((company_data or {}).get('PHONE'))
+    email = _bitrix_first_multifield((contact_data or {}).get('EMAIL')) or _bitrix_first_multifield((company_data or {}).get('EMAIL'))
+    full_name = ' '.join(
+        part for part in [
+            _bitrix_text((contact_data or {}).get('NAME')),
+            _bitrix_text((contact_data or {}).get('LAST_NAME')),
+        ]
+        if part
+    ).strip()
+    company_name = _bitrix_text((company_data or {}).get('TITLE'))
+    city = (
+        _bitrix_text((contact_data or {}).get('ADDRESS_CITY'))
+        or _bitrix_text((company_data or {}).get('ADDRESS_CITY'))
+        or _bitrix_text((contact_data or {}).get('CITY'))
+        or _bitrix_text((company_data or {}).get('CITY'))
+    )
+    address = (
+        _bitrix_text((contact_data or {}).get('ADDRESS'))
+        or _bitrix_text((company_data or {}).get('ADDRESS_LEGAL'))
+        or _bitrix_text((company_data or {}).get('ADDRESS'))
+    )
+    return {
+        'phone': phone,
+        'email': email,
+        'full_name': full_name,
+        'company_name': company_name,
+        'city': city,
+        'address': address,
+        'is_business': bool(company_name),
+        'inn': _bitrix_text((company_data or {}).get('UF_CRM_INN') or (company_data or {}).get('INN')),
+        'kpp': _bitrix_text((company_data or {}).get('UF_CRM_KPP') or (company_data or {}).get('KPP')),
+    }
 
 def _portal_business_time(raw_value, *, fallback):
     if isinstance(raw_value, time):
@@ -995,6 +1493,97 @@ def sync_finance_deal_lines_from_manager_deal(finance_deal):
     return created_or_updated
 
 
+def link_manual_order_item_to_catalog_product(order_item, *, product, variant=None, actor=None):
+    with transaction.atomic():
+        locked_item = (
+            OrderItem.objects.select_for_update()
+            .select_related('order')
+            .get(pk=order_item.pk)
+        )
+        if locked_item.line_type != OrderItem.LINE_TYPE_CUSTOM:
+            raise ValueError('Связать с товаром сайта можно только ручную строку.')
+        if locked_item.product_id or locked_item.game_pack_id:
+            raise ValueError('Строка уже связана с каталогом.')
+        if not getattr(product, 'tracks_stock', True):
+            raise ValueError('Можно выбирать только товар, который участвует в складском контуре.')
+        if variant is not None and variant.product_id != product.id:
+            raise ValueError('Вариант должен относиться к выбранному товару.')
+
+        product_variants = list(product.variants.order_by('order', 'id'))
+        if variant is None and len(product_variants) == 1:
+            variant = product_variants[0]
+        elif variant is None and len(product_variants) > 1:
+            raise ValueError('Для товара с вариантами выберите конкретный вариант.')
+
+        previous_label = locked_item.display_name
+        previous_custom_sku = locked_item.custom_sku
+        metadata = dict(locked_item.metadata or {})
+        link_history = list(metadata.get('manual_catalog_link_history') or [])
+        link_history.append(
+            {
+                'linked_at': timezone.now().isoformat(),
+                'actor_id': actor.id if actor else None,
+                'actor_username': actor.get_username() if actor else '',
+                'from_line_type': locked_item.line_type,
+                'from_product_name': previous_label,
+                'from_custom_sku': previous_custom_sku,
+                'to_product_id': product.id,
+                'to_product_name': product.name,
+                'to_variant_id': variant.id if variant is not None else None,
+                'to_variant_name': variant.name if variant is not None else '',
+            }
+        )
+        metadata['manual_catalog_link_history'] = link_history
+        metadata['manual_link'] = True
+        metadata['manual_product_link'] = {
+            'product_id': product.id,
+            'variant_id': variant.id if variant is not None else None,
+            'linked_at': link_history[-1]['linked_at'],
+            'actor_id': actor.id if actor else None,
+            'actor_username': actor.get_username() if actor else '',
+        }
+        locked_item.line_type = OrderItem.LINE_TYPE_CATALOG
+        locked_item.product = product
+        locked_item.game_pack = None
+        locked_item.variant = variant
+        locked_item.product_name = product.name
+        locked_item.variant_name = variant.name if variant is not None else ''
+        locked_item.custom_sku = ''
+        locked_item.product_image_url = ''
+        locked_item.metadata = metadata
+        locked_item.full_clean()
+        locked_item.save()
+
+        try:
+            deal = locked_item.order.manager_deal
+        except ManagerDeal.DoesNotExist:
+            deal = None
+
+        if deal is not None:
+            try:
+                finance_deal = deal.finance_deal
+            except FinanceDeal.DoesNotExist:
+                finance_deal = None
+            if finance_deal is not None:
+                sync_finance_deal_lines_from_manager_deal(finance_deal)
+                recalculate_finance_deal_totals(finance_deal, sync_lines=False)
+            record_deal_activity(
+                deal,
+                event_type='order_item.linked_to_catalog',
+                source='user',
+                actor=actor,
+                payload={
+                    'order_item_id': locked_item.id,
+                    'from_product_name': previous_label,
+                    'to_product_name': locked_item.display_name,
+                    'product_id': product.id,
+                    'variant_id': variant.id if variant is not None else None,
+                },
+            )
+            recompute_deal_workflow(deal, actor=actor)
+        return locked_item
+
+
 def create_finance_deal_line_from_order_item(
     finance_deal,
     *,
@@ -1451,6 +2040,17 @@ def _deal_fulfillment_status(deal):
     coverage = reservation_coverage_snapshot(deal.order)
     if coverage['tracked_line_count'] == 0:
         return ManagerDeal.FULFILLMENT_STATUS_FULFILLED
+    tracked_lines_fully_shipped = True
+    tracked_line_seen = False
+    for item in deal.order.items.select_related('product', 'variant').all():
+        if item.is_on_request or not item.product_id:
+            continue
+        tracked_line_seen = True
+        if item.shipped_quantity < item.active_quantity:
+            tracked_lines_fully_shipped = False
+            break
+    if tracked_line_seen and tracked_lines_fully_shipped:
+        return ManagerDeal.FULFILLMENT_STATUS_FULFILLED
     reservation = _deal_primary_reservation(deal)
     if reservation and deal.primary_reservation_id != reservation.id:
         deal.primary_reservation = reservation
@@ -1475,17 +2075,52 @@ def _deal_delivery_required(deal):
 
 def _deal_delivery_status(deal):
     shipments = deal.shipments.exclude(status=Shipment.STATUS_CANCELLED)
-    if not _deal_delivery_required(deal) and not shipments.exists():
-        return ManagerDeal.DELIVERY_STATUS_NOT_REQUIRED
     if deal.order.status == Order.STATUS_DONE or shipments.filter(status=Shipment.STATUS_DELIVERED).exists():
+        return ManagerDeal.DELIVERY_STATUS_DELIVERED
+    if deal.delivery_status == ManagerDeal.DELIVERY_STATUS_DELIVERED:
         return ManagerDeal.DELIVERY_STATUS_DELIVERED
     if deal.order.status == Order.STATUS_SHIPPING or shipments.filter(status=Shipment.STATUS_SHIPPED).exists():
         return ManagerDeal.DELIVERY_STATUS_SHIPPED
+    if deal.delivery_status == ManagerDeal.DELIVERY_STATUS_SHIPPED:
+        return ManagerDeal.DELIVERY_STATUS_SHIPPED
     if shipments.exists():
         return ManagerDeal.DELIVERY_STATUS_PREPARING
+    if deal.shipment_status == ManagerDeal.SHIPMENT_SENT or (deal.tracking_number or '').strip():
+        return ManagerDeal.DELIVERY_STATUS_SHIPPED
+    if deal.shipment_status == ManagerDeal.SHIPMENT_PENDING:
+        return ManagerDeal.DELIVERY_STATUS_PREPARING
+    if not _deal_delivery_required(deal):
+        return ManagerDeal.DELIVERY_STATUS_NOT_REQUIRED
     if _deal_delivery_required(deal):
         return ManagerDeal.DELIVERY_STATUS_READY
     return ManagerDeal.DELIVERY_STATUS_NOT_REQUIRED
+
+
+def _deal_shipment_status(deal):
+    shipments = deal.shipments.exclude(status=Shipment.STATUS_CANCELLED)
+    if not shipments.exists():
+        if deal.delivery_status == ManagerDeal.DELIVERY_STATUS_DELIVERED:
+            return ManagerDeal.SHIPMENT_DELIVERED
+        if (
+            deal.delivery_status == ManagerDeal.DELIVERY_STATUS_SHIPPED
+            or deal.shipment_status == ManagerDeal.SHIPMENT_SENT
+            or (deal.tracking_number or '').strip()
+        ):
+            return ManagerDeal.SHIPMENT_SENT
+        if deal.shipment_status == ManagerDeal.SHIPMENT_PENDING:
+            return ManagerDeal.SHIPMENT_PENDING
+        return ManagerDeal.SHIPMENT_DRAFT
+    if not shipments.exclude(status=Shipment.STATUS_DELIVERED).exists():
+        return ManagerDeal.SHIPMENT_DELIVERED
+    if shipments.filter(
+        Q(status=Shipment.STATUS_SHIPPED)
+        | Q(status=Shipment.STATUS_DELIVERED)
+        | Q(inventory_consumed_at__isnull=False)
+    ).exists():
+        return ManagerDeal.SHIPMENT_SENT
+    if shipments.filter(status__in=[Shipment.STATUS_DRAFT, Shipment.STATUS_PENDING]).exists():
+        return ManagerDeal.SHIPMENT_PENDING
+    return ManagerDeal.SHIPMENT_DRAFT
 
 
 def _deal_stock_conflict(deal):
@@ -1654,6 +2289,7 @@ def recompute_deal_workflow(deal, *, actor=None):
         'payment_state': deal.payment_state,
         'fulfillment_status': deal.fulfillment_status,
         'delivery_status': deal.delivery_status,
+        'shipment_status': deal.shipment_status,
         'documents_status': deal.documents_status,
         'next_step_code': deal.next_step_code,
         'next_step_reason_snapshot': deal.next_step_reason_snapshot,
@@ -1679,11 +2315,16 @@ def recompute_deal_workflow(deal, *, actor=None):
     fulfillment_status = _deal_fulfillment_status(deal)
     documents_status = _deal_documents_status(deal)
     delivery_status = _deal_delivery_status(deal)
+    shipment_status = _deal_shipment_status(deal)
+
+    if delivery_status == ManagerDeal.DELIVERY_STATUS_DELIVERED and shipment_status == ManagerDeal.SHIPMENT_DELIVERED:
+        changed['case_status'] = ManagerDeal.CASE_STATUS_COMPLETED
 
     changed['payment_state'] = payment_state
     changed['fulfillment_status'] = fulfillment_status
     changed['documents_status'] = documents_status
     changed['delivery_status'] = delivery_status
+    changed['shipment_status'] = shipment_status
 
     computed_next_step_code, computed_reason = _compute_next_step_for_deal(
         deal,
@@ -1746,6 +2387,7 @@ def recompute_deal_workflow(deal, *, actor=None):
             'payment_state',
             'fulfillment_status',
             'delivery_status',
+            'shipment_status',
             'documents_status',
             'next_step_code',
             'problem_flags',
@@ -1933,6 +2575,118 @@ def ensure_reservations_for_manager_deal(deal, *, actor=None):
         'client_resolution': client_resolution,
         'coverage': reservation_coverage_snapshot(deal.order),
     }
+
+
+@transaction.atomic
+def reserve_order_item_for_manager_deal(
+    deal,
+    *,
+    order_item,
+    warehouse,
+    quantity,
+    comment='',
+    actor=None,
+):
+    if deal is None or order_item is None or warehouse is None:
+        raise ValueError('Для создания резерва нужны сделка, строка заказа и склад.')
+    if order_item.order_id != deal.order_id:
+        raise ValueError('Строка заказа не относится к этой сделке.')
+    if order_item.line_type != OrderItem.LINE_TYPE_CATALOG or not order_item.product_id:
+        raise ValueError('Резерв можно создать только для каталоговой позиции сделки.')
+    if not getattr(order_item.product, 'tracks_stock', True):
+        raise ValueError('Для этого товара складской резерв не используется.')
+
+    requested_quantity = int(quantity or 0)
+    if requested_quantity <= 0:
+        raise ValueError('Количество резерва должно быть больше нуля.')
+
+    existing_reserved = sum(
+        int(item.active_reserved_quantity or 0)
+        for item in ReservationItem.objects.filter(
+            reservation__linked_order=deal.order,
+            reservation__status__in=ACTIVE_RESERVATION_STATUSES,
+            order_item=order_item,
+        ).select_related('reservation')
+    )
+    missing_quantity = max(int(order_item.active_quantity or 0) - existing_reserved, 0)
+    if missing_quantity <= 0:
+        raise ValueError('Эта позиция уже полностью обеспечена резервом.')
+    if requested_quantity > missing_quantity:
+        raise ValueError(f'Нельзя зарезервировать больше {missing_quantity} шт. по этой позиции.')
+
+    client_resolution = ensure_manager_client_for_order(deal.order)
+    normalized_comment = (comment or '').strip()
+    reservation, created = _get_or_create_order_reservation(
+        order=deal.order,
+        client=client_resolution['client'],
+        warehouse=warehouse,
+        comment=normalized_comment or 'Ручной резерв по сделке.',
+        manager_deal=deal,
+    )
+    if normalized_comment and reservation.comments != normalized_comment:
+        reservation.comments = normalized_comment
+        reservation.save(update_fields=['comments', 'updated_at'])
+
+    reservation_item = ReservationItem(
+        reservation=reservation,
+        order_item=order_item,
+        product=order_item.product,
+        variant=order_item.variant,
+        quantity=requested_quantity,
+    )
+    validate_reservation_availability(reservation, items=[reservation_item])
+    reservation_item.save()
+    create_or_update_reservation_movements(
+        reservation,
+        movement_type=InventoryMovement.TYPE_RESERVE,
+        author=actor,
+        comment=normalized_comment or 'Ручной резерв по сделке.',
+        items=[reservation_item],
+    )
+    sync_public_stock_for_warehouse(warehouse)
+
+    active_reservations = list(
+        deal.reservations.filter(status__in=ACTIVE_RESERVATION_STATUSES)
+        .select_related('source_warehouse')
+        .order_by('id')
+    )
+    unique_warehouse_ids = {
+        active_reservation.source_warehouse_id
+        for active_reservation in active_reservations
+        if active_reservation.source_warehouse_id
+    }
+    update_fields = []
+    primary = _deal_primary_reservation(deal) or reservation
+    if primary and deal.primary_reservation_id != primary.id:
+        deal.primary_reservation = primary
+        update_fields.append('primary_reservation')
+    if deal.reserve_created_at is None:
+        deal.reserve_created_at = timezone.now()
+        update_fields.append('reserve_created_at')
+    if len(unique_warehouse_ids) == 1:
+        warehouse_id = next(iter(unique_warehouse_ids))
+        if deal.stock_warehouse_id != warehouse_id:
+            deal.stock_warehouse_id = warehouse_id
+            update_fields.append('stock_warehouse')
+    if update_fields:
+        deal.save(update_fields=update_fields + ['updated_at'])
+
+    record_deal_activity(
+        deal,
+        event_type='reservation.created',
+        source=DealActivity.SOURCE_USER if actor else DealActivity.SOURCE_SYSTEM,
+        actor=actor,
+        payload={
+            'reservation_id': reservation.id,
+            'reservation_item_id': reservation_item.id,
+            'order_item_id': order_item.id,
+            'warehouse_id': warehouse.id,
+            'quantity': requested_quantity,
+            'created_reservation': created,
+        },
+    )
+    recompute_deal_workflow(deal, actor=actor)
+    return reservation, reservation_item
 
 
 def ensure_primary_reservation_for_manager_deal(deal, *, actor=None):
@@ -3741,7 +4495,9 @@ def receipt_inventory(
     reference_id=None,
     unit_cost=Decimal('0'),
     purchase_item=None,
+    received_at=None,
 ):
+    effective_received_at = _normalize_received_at(received_at)
     with transaction.atomic():
         InventoryLot.objects.create(
             purchase_item=purchase_item,
@@ -3753,11 +4509,11 @@ def receipt_inventory(
             unit_cost=Decimal(unit_cost or 0),
             unit_cost_base=Decimal(unit_cost or 0),
             unit_cost_final=Decimal(unit_cost or 0),
-            received_at=timezone.now(),
+            received_at=effective_received_at,
             reference_type=reference_type,
             reference_id=reference_id,
         )
-        InventoryMovement.objects.create(
+        movement = InventoryMovement.objects.create(
             warehouse=warehouse,
             product=product,
             variant=variant,
@@ -3768,6 +4524,8 @@ def receipt_inventory(
             comment=comment,
             author=author,
         )
+        if received_at is not None:
+            InventoryMovement.objects.filter(pk=movement.pk).update(created_at=effective_received_at)
         rebuild_inventory_balance_cache(warehouse_ids=[warehouse.id])
         sync_public_stock_for_warehouse(warehouse)
     return InventoryBalance.objects.filter(warehouse=warehouse, product=product, variant=variant).first()
@@ -4226,10 +4984,365 @@ def ensure_website_order_workflow(order, *, author=None):
     }
 
 
+def _bitrix_order_item_has_manual_product_link(order_item):
+    metadata = dict(order_item.metadata or {})
+    return bool(
+        metadata.get('manual_link')
+        or metadata.get('manual_product_link')
+        or metadata.get('manual_catalog_link_history')
+    )
+
+
+def _merge_bitrix_order_item_metadata(order_item, payload_metadata):
+    metadata = dict(order_item.metadata or {})
+    metadata.update(payload_metadata or {})
+    return metadata
+
+
+def _apply_bitrix_payload_to_existing_order_item(order_item, payload, *, warnings):
+    existing_has_catalog_link = bool(
+        order_item.line_type == OrderItem.LINE_TYPE_CATALOG
+        and order_item.product_id
+    )
+    has_manual_product_link = _bitrix_order_item_has_manual_product_link(order_item)
+    payload_product = payload.get('product')
+    payload_variant = payload.get('variant')
+    payload_is_catalog = bool(
+        payload.get('line_type') == OrderItem.LINE_TYPE_CATALOG
+        and payload_product is not None
+    )
+    metadata = _merge_bitrix_order_item_metadata(order_item, payload.get('metadata'))
+
+    resolved_line_type = payload['line_type']
+    resolved_product = payload_product
+    resolved_variant = payload_variant
+    resolved_custom_sku = payload['custom_sku']
+    resolved_product_image_url = payload['product_image_url']
+
+    if existing_has_catalog_link and not payload_is_catalog:
+        resolved_line_type = order_item.line_type
+        resolved_product = order_item.product
+        resolved_variant = order_item.variant
+        resolved_custom_sku = ''
+        resolved_product_image_url = order_item.product_image_url
+    elif payload_is_catalog and has_manual_product_link and order_item.product_id:
+        if payload_product.id != order_item.product_id:
+            warnings.append(
+                'Bitrix import сохранил ручную catalog-связку '
+                f'для строки #{order_item.id}: сайт связал её с товаром #{order_item.product_id}, '
+                f'а Bitrix предложил товар #{payload_product.id}.'
+            )
+            resolved_line_type = order_item.line_type
+            resolved_product = order_item.product
+            resolved_variant = order_item.variant
+            resolved_custom_sku = ''
+            resolved_product_image_url = order_item.product_image_url
+        else:
+            resolved_line_type = order_item.line_type
+            resolved_product = order_item.product
+            resolved_variant = order_item.variant or payload_variant
+            resolved_custom_sku = ''
+            resolved_product_image_url = order_item.product_image_url or payload['product_image_url']
+
+    return {
+        'line_type': resolved_line_type,
+        'product': resolved_product,
+        'variant': resolved_variant,
+        'product_name': payload['product_name'],
+        'custom_sku': resolved_custom_sku,
+        'product_image_url': resolved_product_image_url,
+        'quantity': payload['quantity'],
+        'price': payload['price'],
+        'variant_name': payload['variant_name'],
+        'condition': payload['condition'],
+        'purchase_price': payload['planned_unit_cost'],
+        'planned_unit_cost': payload['planned_unit_cost'],
+        'cost_status': OrderItem.COST_STATUS_NONE,
+        'discount_amount': payload['discount_amount'],
+        'comment': payload['comment'],
+        'is_on_request': payload['is_on_request'],
+        'metadata': metadata,
+    }
+
+
+@transaction.atomic
+def sync_bitrix_deal_into_operations(deal_id, *, actor=None):
+    normalized_deal_id, deal_data, product_rows = _load_bitrix_deal_payload(deal_id)
+    mapped_payload = _bitrix_deal_mapped_payload(deal_data)
+    warnings = []
+    contact_data = {}
+    company_data = {}
+    contact_id = _bitrix_optional_entity_id(deal_data.get('CONTACT_ID'))
+    company_id = _bitrix_optional_entity_id(deal_data.get('COMPANY_ID'))
+    if contact_id:
+        contact_data = _bitrix_optional_request(
+            'crm.contact.get',
+            params={'id': contact_id},
+            entity_label='контакт',
+            entity_id=contact_id,
+            warnings=warnings,
+        )
+    if company_id:
+        company_data = _bitrix_optional_request(
+            'crm.company.get',
+            params={'id': company_id},
+            entity_label='компания',
+            entity_id=company_id,
+            warnings=warnings,
+        )
+
+    contact = _bitrix_contact_payload(contact_data, company_data)
+    available_map = _bitrix_inventory_available_map()
+    bitrix_product_cache = {}
+    item_payloads = [
+        _prepare_bitrix_order_item_payload(
+            row,
+            index=index,
+            available_map=available_map,
+            bitrix_product_cache=bitrix_product_cache,
+        )
+        for index, row in enumerate(product_rows, start=1)
+    ]
+    if not item_payloads:
+        fallback_price = _bitrix_decimal(deal_data.get('OPPORTUNITY'), default='0')
+        item_payloads.append(
+            {
+                'row_key': f'deal:{normalized_deal_id}:fallback',
+                'line_type': OrderItem.LINE_TYPE_CUSTOM,
+                'product': None,
+                'variant': None,
+                'product_name': _bitrix_text(deal_data.get('TITLE')) or f'Сделка Bitrix #{normalized_deal_id}',
+                'variant_name': '',
+                'custom_sku': '',
+                'price': fallback_price,
+                'discount_amount': MONEY_ZERO,
+                'quantity': 1,
+                'planned_unit_cost': MONEY_ZERO,
+                'product_image_url': '',
+                'condition': OrderItem.CONDITION_NEW,
+                'comment': '',
+                'is_on_request': True,
+                'metadata': {
+                    'bitrix_row_key': f'deal:{normalized_deal_id}:fallback',
+                    'bitrix_product_name': _bitrix_text(deal_data.get('TITLE')),
+                },
+            }
+        )
+
+    goods_total = sum(
+        (max(item['price'] - item['discount_amount'], MONEY_ZERO) * Decimal(item['quantity']) for item in item_payloads),
+        MONEY_ZERO,
+    )
+    created_at = _bitrix_parse_datetime(deal_data.get('DATE_CREATE') or deal_data.get('BEGINDATE')) or timezone.now()
+    deal_url = build_bitrix_deal_url(normalized_deal_id)
+    order_comment_payload = _bitrix_deal_comment_payload(
+        comment=deal_data.get('COMMENTS'),
+        client_request=mapped_payload['client_request'],
+    )
+    manager_client_comments = _bitrix_manager_client_comments(
+        deal_id=normalized_deal_id,
+        client_request=mapped_payload['client_request'],
+    )
+    fallback_client_name = _bitrix_text(deal_data.get('TITLE')) or f'Клиент Bitrix #{normalized_deal_id}'
+    recipient_name = mapped_payload['recipient_name'] or contact['company_name'] or contact['full_name'] or fallback_client_name
+    address = mapped_payload['delivery_address'] or contact['address']
+    city = mapped_payload['city'] or contact['city']
+    contact_phone = normalize_phone(contact['phone']) or contact['phone']
+    recipient_phone = normalize_phone(mapped_payload['recipient_phone']) or mapped_payload['recipient_phone']
+    phone = contact_phone or recipient_phone
+    email = normalize_email(contact['email']) or contact['email']
+    first_name = _bitrix_text((contact_data or {}).get('NAME'))
+    last_name = _bitrix_text((contact_data or {}).get('LAST_NAME'))
+    delivery_type = _bitrix_delivery_type(address)
+    order_payment_method = Order.PAYMENT_METHOD_MANAGER_PAYMENT if contact['is_business'] else Order.PAYMENT_METHOD_ONLINE
+
+    manager_deal = ManagerDeal.objects.select_related('order').filter(bitrix_deal_id=normalized_deal_id).first()
+    order = manager_deal.order if manager_deal is not None else None
+    if order is None:
+        order = Order.objects.create(
+            user=None,
+            status=Order.STATUS_CONFIRMED,
+            total=goods_total,
+            promo_discount=MONEY_ZERO,
+            payment_method=order_payment_method,
+            contact_channel=Order.CONTACT_CHANNEL_EMAIL if email and not phone else Order.CONTACT_CHANNEL_CALL,
+            contact_handle=email if email and not phone else '',
+            payment_status=Order.PAYMENT_STATUS_PAID,
+            delivery_type=delivery_type,
+            phone=phone,
+            email=email,
+            first_name=first_name,
+            last_name=last_name,
+            recipient_name=recipient_name,
+            recipient_phone=recipient_phone or phone,
+            recipient_is_customer=True,
+            country='Россия',
+            city_text=city,
+            address_line=address,
+            delivery_comment=order_comment_payload['delivery_comment'],
+            address=address,
+            business_company_name=contact['company_name'],
+            business_inn=contact['inn'],
+            business_kpp=contact['kpp'],
+            business_phone=phone if contact['is_business'] else '',
+            delivery_cost=MONEY_ZERO,
+            comment=order_comment_payload['comment'],
+        )
+    else:
+        order_updates = {
+            'status': Order.STATUS_CONFIRMED,
+            'total': goods_total,
+            'payment_method': order_payment_method,
+            'contact_channel': Order.CONTACT_CHANNEL_EMAIL if email and not phone else Order.CONTACT_CHANNEL_CALL,
+            'contact_handle': email if email and not phone else '',
+            'payment_status': Order.PAYMENT_STATUS_PAID,
+            'delivery_type': delivery_type,
+            'phone': phone,
+            'email': email,
+            'first_name': first_name,
+            'last_name': last_name,
+            'recipient_name': recipient_name,
+            'recipient_phone': recipient_phone or phone,
+            'city_text': city,
+            'address_line': address,
+            'delivery_comment': order_comment_payload['delivery_comment'],
+            'address': address,
+            'business_company_name': contact['company_name'],
+            'business_inn': contact['inn'],
+            'business_kpp': contact['kpp'],
+            'business_phone': phone if contact['is_business'] else '',
+            'comment': order_comment_payload['comment'],
+        }
+        update_fields = []
+        for field, value in order_updates.items():
+            if getattr(order, field) != value:
+                setattr(order, field, value)
+                update_fields.append(field)
+        if update_fields:
+            order.save(update_fields=[*update_fields, 'updated_at'])
+
+    if order.created_at != created_at:
+        Order.objects.filter(pk=order.pk).update(created_at=created_at)
+        order.refresh_from_db()
+
+    existing_items = {
+        _bitrix_text((item.metadata or {}).get('bitrix_row_key')): item
+        for item in order.items.select_related('product', 'variant').all()
+    }
+    created_items = 0
+    updated_items = 0
+    for payload in item_payloads:
+        row_key = payload['row_key']
+        order_item = existing_items.get(row_key)
+        item_fields = {
+            'line_type': payload['line_type'],
+            'product': payload['product'],
+            'variant': payload['variant'],
+            'product_name': payload['product_name'],
+            'custom_sku': payload['custom_sku'],
+            'product_image_url': payload['product_image_url'],
+            'quantity': payload['quantity'],
+            'price': payload['price'],
+            'variant_name': payload['variant_name'],
+            'condition': payload['condition'],
+            'purchase_price': payload['planned_unit_cost'],
+            'planned_unit_cost': payload['planned_unit_cost'],
+            'cost_status': OrderItem.COST_STATUS_NONE,
+            'discount_amount': payload['discount_amount'],
+            'comment': payload['comment'],
+            'is_on_request': payload['is_on_request'],
+            'metadata': payload['metadata'],
+        }
+        if order_item is None:
+            OrderItem.objects.create(order=order, **item_fields)
+            created_items += 1
+            continue
+
+        item_fields = _apply_bitrix_payload_to_existing_order_item(
+            order_item,
+            payload,
+            warnings=warnings,
+        )
+        update_fields = []
+        for field, value in item_fields.items():
+            if getattr(order_item, field) != value:
+                setattr(order_item, field, value)
+                update_fields.append(field)
+        if update_fields:
+            order_item.save(update_fields=update_fields)
+            updated_items += 1
+
+    client_resolution = resolve_manager_client(
+        user=order.user,
+        name=recipient_name or fallback_client_name,
+        phone=recipient_phone,
+        email=email,
+        address=address,
+        comments=manager_client_comments,
+        order=order,
+    )
+    imported_deal = ensure_manager_deal_for_order(
+        order,
+        customer_source=ManagerDeal.SOURCE_OTHER,
+    )
+    deal_update_fields = []
+    if imported_deal.bitrix_deal_id != normalized_deal_id:
+        imported_deal.bitrix_deal_id = normalized_deal_id
+        deal_update_fields.append('bitrix_deal_id')
+    if imported_deal.bitrix_deal_url != deal_url:
+        imported_deal.bitrix_deal_url = deal_url
+        deal_update_fields.append('bitrix_deal_url')
+    if imported_deal.customer_source != ManagerDeal.SOURCE_OTHER:
+        imported_deal.customer_source = ManagerDeal.SOURCE_OTHER
+        deal_update_fields.append('customer_source')
+    if imported_deal.deal_created_at != created_at:
+        imported_deal.deal_created_at = created_at
+        deal_update_fields.append('deal_created_at')
+    if deal_update_fields:
+        imported_deal.save(update_fields=[*deal_update_fields, 'updated_at'])
+
+    record_deal_activity(
+        imported_deal,
+        event_type='bitrix.imported',
+        source=DealActivity.SOURCE_SYSTEM,
+        actor=actor,
+        payload={
+            'bitrix_deal_id': normalized_deal_id,
+            'created_items': created_items,
+            'updated_items': updated_items,
+            'item_count': len(item_payloads),
+        },
+    )
+    recompute_deal_workflow(imported_deal, actor=actor)
+    return {
+        'order': order,
+        'order_item_count': len(item_payloads),
+        'manager_client': client_resolution['client'],
+        'manager_deal': imported_deal,
+        'created_items': created_items,
+        'updated_items': updated_items,
+        'warnings': warnings,
+    }
+
+
+def import_bitrix_deal_into_operations(deal_id, *, actor=None):
+    return sync_bitrix_deal_into_operations(deal_id, actor=actor)
+
+
 def _shipment_target_status_from_order(order):
     if order is not None and order.status == Order.STATUS_DONE:
         return Shipment.STATUS_DELIVERED
     return Shipment.STATUS_SHIPPED
+
+
+def _normalize_shipment_event_dt(value):
+    if value is None:
+        return None
+    if isinstance(value, date) and not isinstance(value, datetime):
+        value = datetime.combine(value, time.min)
+    if timezone.is_naive(value):
+        return timezone.make_aware(value, timezone.get_current_timezone())
+    return value
 
 
 def dispatch_shipment(shipment, *, author=None, comment=''):
@@ -4327,6 +5440,189 @@ def dispatch_shipment(shipment, *, author=None, comment=''):
             locked_shipment.order.stock_decreased = True
             locked_shipment.order.save(update_fields=['stock_decreased'])
     if locked_shipment.manager_deal_id:
+        recompute_deal_workflow(locked_shipment.manager_deal, actor=author)
+    return locked_shipment
+
+
+def ship_shipment(
+    shipment,
+    *,
+    author=None,
+    carrier='',
+    tracking_number='',
+    shipped_at=None,
+    comment='',
+):
+    shipment = Shipment.objects.select_related('manager_deal').get(pk=shipment.pk)
+    if shipment.status == Shipment.STATUS_CANCELLED:
+        raise ValueError('Нельзя отправить отмененную отгрузку.')
+    if shipment.inventory_consumed_at is not None or shipment.status in {
+        Shipment.STATUS_SHIPPED,
+        Shipment.STATUS_DELIVERED,
+    }:
+        raise ValueError('Эта отгрузка уже отправлена.')
+
+    normalized_carrier = (carrier or '').strip()
+    normalized_tracking_number = (tracking_number or '').strip()
+    normalized_comment = (comment or '').strip()
+    normalized_shipped_at = _normalize_shipment_event_dt(shipped_at)
+    if not normalized_tracking_number:
+        raise ValueError('Укажите трек-номер отгрузки.')
+
+    update_fields = []
+    if shipment.delivery_provider_name != normalized_carrier:
+        shipment.delivery_provider_name = normalized_carrier
+        update_fields.append('delivery_provider_name')
+    if shipment.tracking_number != normalized_tracking_number:
+        shipment.tracking_number = normalized_tracking_number
+        update_fields.append('tracking_number')
+    if shipment.comments != normalized_comment:
+        shipment.comments = normalized_comment
+        update_fields.append('comments')
+    if update_fields:
+        shipment.save(update_fields=update_fields + ['updated_at'])
+
+    dispatched = dispatch_shipment(
+        shipment,
+        author=author,
+        comment=normalized_comment or f'Списание по отгрузке {normalized_tracking_number}',
+    )
+
+    update_fields = []
+    if normalized_carrier != dispatched.delivery_provider_name:
+        dispatched.delivery_provider_name = normalized_carrier
+        update_fields.append('delivery_provider_name')
+    if normalized_tracking_number != dispatched.tracking_number:
+        dispatched.tracking_number = normalized_tracking_number
+        update_fields.append('tracking_number')
+    if normalized_comment != dispatched.comments:
+        dispatched.comments = normalized_comment
+        update_fields.append('comments')
+    if normalized_shipped_at is not None and dispatched.shipped_at != normalized_shipped_at:
+        dispatched.shipped_at = normalized_shipped_at
+        update_fields.append('shipped_at')
+        if dispatched.inventory_consumed_at != normalized_shipped_at:
+            dispatched.inventory_consumed_at = normalized_shipped_at
+            update_fields.append('inventory_consumed_at')
+    if update_fields:
+        dispatched.save(update_fields=update_fields + ['updated_at'])
+
+    if dispatched.manager_deal_id:
+        record_deal_activity(
+            dispatched.manager_deal,
+            event_type='shipment.dispatched',
+            source=DealActivity.SOURCE_USER if author else DealActivity.SOURCE_SYSTEM,
+            actor=author,
+            payload={
+                'shipment_id': dispatched.id,
+                'carrier': dispatched.delivery_provider_name,
+                'tracking_number': dispatched.tracking_number,
+            },
+        )
+    return dispatched
+
+
+def mark_shipment_delivered(shipment, *, author=None, delivered_at=None):
+    shipment = Shipment.objects.select_related('manager_deal').get(pk=shipment.pk)
+    if shipment.status == Shipment.STATUS_CANCELLED:
+        raise ValueError('Нельзя отметить доставку для отмененной отгрузки.')
+    if shipment.inventory_consumed_at is None and shipment.status not in {
+        Shipment.STATUS_SHIPPED,
+        Shipment.STATUS_DELIVERED,
+    }:
+        raise ValueError('Сначала отправьте отгрузку.')
+
+    normalized_delivered_at = _normalize_shipment_event_dt(delivered_at) or timezone.now()
+    with transaction.atomic():
+        locked_shipment = Shipment.objects.select_for_update().get(pk=shipment.pk)
+        if locked_shipment.status == Shipment.STATUS_CANCELLED:
+            raise ValueError('Нельзя отметить доставку для отмененной отгрузки.')
+        update_fields = []
+        if locked_shipment.status != Shipment.STATUS_DELIVERED:
+            locked_shipment.status = Shipment.STATUS_DELIVERED
+            update_fields.append('status')
+        if locked_shipment.delivered_at != normalized_delivered_at:
+            locked_shipment.delivered_at = normalized_delivered_at
+            update_fields.append('delivered_at')
+        if not locked_shipment.shipped_at:
+            locked_shipment.shipped_at = normalized_delivered_at
+            update_fields.append('shipped_at')
+        if locked_shipment.inventory_consumed_at is None:
+            locked_shipment.inventory_consumed_at = locked_shipment.shipped_at or normalized_delivered_at
+            update_fields.append('inventory_consumed_at')
+        if update_fields:
+            locked_shipment.save(update_fields=update_fields + ['updated_at'])
+
+        deal = shipment.manager_deal
+        if deal is not None:
+            remaining_shipments = deal.shipments.exclude(status=Shipment.STATUS_CANCELLED).exclude(
+                status=Shipment.STATUS_DELIVERED
+            )
+            if not remaining_shipments.exists() and deal.case_status != ManagerDeal.CASE_STATUS_COMPLETED:
+                deal.case_status = ManagerDeal.CASE_STATUS_COMPLETED
+                deal.save(update_fields=['case_status', 'updated_at'])
+
+    if locked_shipment.manager_deal_id:
+        record_deal_activity(
+            locked_shipment.manager_deal,
+            event_type='shipment.delivered',
+            source=DealActivity.SOURCE_USER if author else DealActivity.SOURCE_SYSTEM,
+            actor=author,
+            payload={'shipment_id': locked_shipment.id},
+        )
+        recompute_deal_workflow(locked_shipment.manager_deal, actor=author)
+    return locked_shipment
+
+
+def cancel_shipment(shipment, *, author=None, comment=''):
+    shipment = Shipment.objects.select_related('reservation', 'manager_deal').get(pk=shipment.pk)
+    if shipment.inventory_consumed_at is not None or shipment.status in {
+        Shipment.STATUS_SHIPPED,
+        Shipment.STATUS_DELIVERED,
+    }:
+        raise ValueError('Можно отменить только неподтвержденную отгрузку до списания склада.')
+    if shipment.status == Shipment.STATUS_CANCELLED:
+        return shipment
+
+    normalized_comment = (comment or '').strip()
+    reservation = shipment.reservation
+    reservation_items = []
+    effective_warehouse = reservation_effective_warehouse(reservation) if reservation is not None else None
+    if reservation is not None:
+        reservation_item_ids = list(
+            shipment.items.filter(reservation_item__isnull=False).values_list('reservation_item_id', flat=True)
+        )
+        reservation_items = list(reservation.items.filter(id__in=reservation_item_ids).select_related('product', 'variant'))
+
+    with transaction.atomic():
+        locked_shipment = Shipment.objects.select_for_update().get(pk=shipment.pk)
+        if locked_shipment.status == Shipment.STATUS_CANCELLED:
+            return locked_shipment
+        if reservation is not None and reservation_items:
+            create_or_update_reservation_movements(
+                reservation,
+                movement_type=InventoryMovement.TYPE_RELEASE,
+                author=author,
+                comment=normalized_comment or 'Снятие резерва при отмене отгрузки.',
+                items=reservation_items,
+            )
+        locked_shipment.status = Shipment.STATUS_CANCELLED
+        update_fields = ['status']
+        if normalized_comment and locked_shipment.comments != normalized_comment:
+            locked_shipment.comments = normalized_comment
+            update_fields.append('comments')
+        locked_shipment.save(update_fields=update_fields + ['updated_at'])
+
+    if effective_warehouse is not None:
+        sync_public_stock_for_warehouse(effective_warehouse)
+    if locked_shipment.manager_deal_id:
+        record_deal_activity(
+            locked_shipment.manager_deal,
+            event_type='shipment.cancelled',
+            source=DealActivity.SOURCE_USER if author else DealActivity.SOURCE_SYSTEM,
+            actor=author,
+            payload={'shipment_id': locked_shipment.id},
+        )
         recompute_deal_workflow(locked_shipment.manager_deal, actor=author)
     return locked_shipment
 
@@ -4552,39 +5848,79 @@ def sync_order_workflow_state(order, *, author=None, previous_status=None):
     recompute_deal_workflow(deal, actor=author)
 
 
-def receive_cargo_item(cargo_item, *, quantity, author=None, comment=''):
-    if not cargo_item.cargo.destination_warehouse_id:
+def _normalize_received_at(received_at):
+    if received_at is None:
+        return timezone.now()
+    if isinstance(received_at, date) and not isinstance(received_at, datetime):
+        received_at = datetime.combine(received_at, time.min)
+    if timezone.is_naive(received_at):
+        return timezone.make_aware(received_at, timezone.get_current_timezone())
+    return received_at
+
+
+def receive_cargo_item(cargo_item, *, quantity, author=None, comment='', warehouse=None, received_at=None):
+    receipt_warehouse = warehouse or cargo_item.cargo.destination_warehouse
+    if not receipt_warehouse:
         raise ValueError('У груза не указан склад назначения.')
+    quantity = int(quantity or 0)
+    if quantity <= 0:
+        raise ValueError('Количество для приемки должно быть больше нуля.')
     if quantity > cargo_item.remaining_quantity:
         raise ValueError('Нельзя принять больше, чем осталось в грузе.')
+    effective_received_at = _normalize_received_at(received_at)
     with transaction.atomic():
-        cargo_item.received_quantity += int(quantity)
+        cargo = cargo_item.cargo
+        if cargo.destination_warehouse_id != receipt_warehouse.id:
+            cargo.destination_warehouse = receipt_warehouse
+            cargo.save(update_fields=['destination_warehouse', 'updated_at'])
+
+        cargo_item.received_quantity += quantity
         cargo_item.save(update_fields=['received_quantity'])
         if cargo_item.purchase_item_id:
             purchase_item = cargo_item.purchase_item
             purchase_item.received_quantity = min(
-                purchase_item.received_quantity + int(quantity),
+                purchase_item.received_quantity + quantity,
                 purchase_item.active_quantity,
             )
-            purchase_item.received_at = timezone.now()
+            purchase_item.received_at = effective_received_at
             purchase_item.save(update_fields=['received_quantity', 'received_at'])
+            purchase = purchase_item.purchase
+            linked_purchase_items = list(purchase.items.all())
+            if linked_purchase_items:
+                if all(item.received_quantity >= item.active_quantity for item in linked_purchase_items):
+                    purchase_status = Purchase.STATUS_RECEIVED
+                elif any(int(item.received_quantity or 0) > 0 for item in linked_purchase_items):
+                    purchase_status = Purchase.STATUS_PARTIAL
+                else:
+                    purchase_status = purchase.status
+                if purchase.status != purchase_status:
+                    purchase.status = purchase_status
+                    purchase.save(update_fields=['status', 'updated_at'])
         receipt_inventory(
-            warehouse=cargo_item.cargo.destination_warehouse,
+            warehouse=receipt_warehouse,
             product=cargo_item.product,
             variant=cargo_item.variant,
-            quantity=int(quantity),
+            quantity=quantity,
             author=author,
-            comment=comment or f'Приемка по грузу {cargo_item.cargo.cargo_number}',
+            comment=comment or f'Приемка по грузу {cargo.cargo_number}',
             reference_type='cargo',
             reference_id=cargo_item.cargo_id,
             unit_cost=cargo_item.purchase_item.unit_cost if cargo_item.purchase_item_id else Decimal('0'),
             purchase_item=cargo_item.purchase_item if cargo_item.purchase_item_id else None,
+            received_at=effective_received_at,
         )
-        if cargo_item.purchase_item_id and cargo_item.purchase_item.order_item_id:
-            sync_order_item_planned_cost(cargo_item.purchase_item.order_item)
-        if all(item.remaining_quantity == 0 for item in cargo_item.cargo.items.all()):
-            cargo_item.cargo.status = Cargo.STATUS_RECEIVED
-            cargo_item.cargo.save(update_fields=['status', 'updated_at'])
+        order_item = cargo_item.purchase_item.order_item if cargo_item.purchase_item_id else None
+        if order_item is not None:
+            sync_order_item_planned_cost(order_item)
+            deal = ManagerDeal.objects.filter(order=order_item.order).first()
+            if deal and deal.stock_warehouse_id != receipt_warehouse.id:
+                deal.stock_warehouse = receipt_warehouse
+                deal.save(update_fields=['stock_warehouse', 'updated_at'])
+        has_remaining_items = cargo.items.filter(quantity__gt=models.F('received_quantity')).exists()
+        next_status = Cargo.STATUS_AWAITING_RECEIPT if has_remaining_items else Cargo.STATUS_RECEIVED
+        if cargo.status != next_status:
+            cargo.status = next_status
+            cargo.save(update_fields=['status', 'updated_at'])
     if cargo_item.purchase_item_id and cargo_item.purchase_item.order_item_id:
         sync_order_workflow_state(cargo_item.purchase_item.order_item.order, author=author)
 
@@ -4613,8 +5949,71 @@ def split_cargo(cargo, *, cargo_number, cargo_item, quantity):
     return new_cargo
 
 
+def _dashboard_bucket_rows(active_deals):
+    buckets = {
+        'needs_review': {'code': 'needs_review', 'label': 'Нужно разобрать', 'count': 0},
+        'needs_procurement': {'code': 'needs_procurement', 'label': 'Нужно закупить', 'count': 0},
+        'partially_covered': {'code': 'partially_covered', 'label': 'Частично обеспечено', 'count': 0},
+        'in_transit': {'code': 'in_transit', 'label': 'В пути', 'count': 0},
+        'partially_arrived': {'code': 'partially_arrived', 'label': 'Частично приехало', 'count': 0},
+        'ready_to_ship': {'code': 'ready_to_ship', 'label': 'Готово к отправке', 'count': 0},
+        'problems': {'code': 'problems', 'label': 'Проблемы', 'count': 0},
+    }
+    for deal in active_deals:
+        snapshot = order_supply_state_snapshot(deal.order)
+        lines = snapshot['lines']
+        covered_count = (
+            snapshot['covered_by_stock_count']
+            + snapshot['covered_by_incoming_count']
+            + snapshot['covered_by_procurement_count']
+        )
+        has_partial_coverage = snapshot['uncovered_count'] > 0 and covered_count > 0
+        has_in_transit = any(
+            int(line.get('cargo_quantity') or 0) > int(line.get('cargo_received_quantity') or 0)
+            for line in lines
+        )
+        has_partial_arrival = any(
+            (
+                0 < int(line.get('purchase_received_quantity') or 0) < int(line.get('purchase_quantity') or 0)
+            )
+            or (
+                0 < int(line.get('cargo_received_quantity') or 0) < int(line.get('cargo_quantity') or 0)
+            )
+            for line in lines
+        )
+
+        if deal.case_status == ManagerDeal.CASE_STATUS_NEW or deal.next_step_code in {
+            ManagerDeal.NEXT_STEP_NEEDS_CONFIRMATION,
+            ManagerDeal.NEXT_STEP_NEEDS_AVAILABILITY_CONFIRMATION,
+        }:
+            buckets['needs_review']['count'] += 1
+        if deal.next_step_code == ManagerDeal.NEXT_STEP_NEEDS_PROCUREMENT or snapshot['uncovered_count'] > 0:
+            buckets['needs_procurement']['count'] += 1
+        if has_partial_coverage:
+            buckets['partially_covered']['count'] += 1
+        if has_in_transit:
+            buckets['in_transit']['count'] += 1
+        if has_partial_arrival:
+            buckets['partially_arrived']['count'] += 1
+        if deal.case_status == ManagerDeal.CASE_STATUS_READY_TO_SHIP or deal.next_step_code == ManagerDeal.NEXT_STEP_READY_TO_SHIP:
+            buckets['ready_to_ship']['count'] += 1
+        if deal.problem_flags:
+            buckets['problems']['count'] += 1
+    return list(buckets.values())
+
+
 def dashboard_stats():
     inventory_rows = inventory_snapshot()
+    active_deals = list(
+        ManagerDeal.objects.select_related('order', 'responsible_manager')
+        .exclude(case_status__in=[ManagerDeal.CASE_STATUS_COMPLETED, ManagerDeal.CASE_STATUS_CANCELLED])
+        .order_by(
+            models.F('sla_due_at').asc(nulls_last=True),
+            models.F('last_activity_at').desc(nulls_last=True),
+            '-deal_created_at',
+            '-id',
+        )
+    )
     overdue_cargos = Cargo.objects.filter(
         status__in=INBOUND_CARGO_STATUSES,
         eta__lt=timezone.localdate(),
@@ -4634,6 +6033,13 @@ def dashboard_stats():
         'inventory_rows': inventory_rows[:8],
         'cargo_status_rows': cargo_status_rows,
         'order_status_rows': order_status_rows,
+        'operations_buckets': _dashboard_bucket_rows(active_deals),
+        'problem_deals': [deal for deal in active_deals if deal.problem_flags][:6],
+        'ready_deals': [
+            deal for deal in active_deals
+            if deal.case_status == ManagerDeal.CASE_STATUS_READY_TO_SHIP or deal.next_step_code == ManagerDeal.NEXT_STEP_READY_TO_SHIP
+        ][:6],
+        'active_deals_total': len(active_deals),
     }
 
 

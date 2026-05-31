@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     'orders',
     'payments',
     'manager_portal',
+    'operations',
     'warehouse_ui',
 ]
 MIDDLEWARE = [
@@ -223,6 +224,14 @@ PAYMENT_GATEWAY_API_BASE = config(
     'PAYMENT_GATEWAY_API_BASE',
     default=os.getenv(f'{_LEGACY_PAYMENT_ENV_PREFIX}_API_BASE', _LEGACY_PAYMENT_API_BASE),
 )
+BITRIX_WEBHOOK_URL = config('BITRIX_WEBHOOK_URL', default='').rstrip('/')
+BITRIX_INGEST_TOKEN = config('BITRIX_INGEST_TOKEN', default='').strip()
+BITRIX_SITE_PRODUCT_ID_PROPERTY_ID = config('BITRIX_SITE_PRODUCT_ID_PROPERTY_ID', default=107, cast=int)
+BITRIX_FIELD_CITY = config('BITRIX_FIELD_CITY', default='').strip()
+BITRIX_FIELD_CLIENT_REQUEST = config('BITRIX_FIELD_CLIENT_REQUEST', default='').strip()
+BITRIX_FIELD_DELIVERY_ADDRESS = config('BITRIX_FIELD_DELIVERY_ADDRESS', default='').strip()
+BITRIX_FIELD_RECIPIENT_NAME = config('BITRIX_FIELD_RECIPIENT_NAME', default='').strip()
+BITRIX_FIELD_RECIPIENT_PHONE = config('BITRIX_FIELD_RECIPIENT_PHONE', default='').strip()
 # Интеграция CDEK widget 3.x
 CDEK_WIDGET_ACCOUNT = config('CDEK_WIDGET_ACCOUNT', default='').strip()
 CDEK_WIDGET_PASSWORD = config('CDEK_WIDGET_PASSWORD', default='').strip()

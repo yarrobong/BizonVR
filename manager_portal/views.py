@@ -1,4 +1,5 @@
 import csv
+import secrets
 from collections import defaultdict
 from decimal import Decimal
 from urllib.parse import urlencode
@@ -68,6 +69,7 @@ from .forms import (
     FinancePeriodForm,
     GlobalSearchForm,
     InventoryReceiptForm,
+    LinkOrderItemProductForm,
     ManagerClientForm,
     ManagerDealStateForm,
     ManualOrderForm,
@@ -128,6 +130,7 @@ from .services import (
     apply_deal_next_step_override,
     autofill_reservation_items_from_deal,
     build_finance_report_zip,
+    BitrixImportError,
     clear_deal_next_step_override,
     contract_document_missing_fields,
     deal_manager_client,
@@ -180,6 +183,9 @@ from .services import (
     validate_reservation_availability,
     create_or_update_reservation_movements,
     ensure_manager_client_for_order,
+    dashboard_stats,
+    sync_bitrix_deal_into_operations,
+    link_manual_order_item_to_catalog_product,
 )
 from .status_system import deal_primary_status, deal_risk_summary, deal_secondary_status
 
@@ -293,11 +299,11 @@ def _nav_groups(user):
         groups.append(
             {
                 'key': 'deals',
-                'label': 'Заказы',
-                'url_name': 'manager_portal:deal_list',
+                'label': 'Операционка',
+                'url_name': 'manager_portal:dashboard',
                 'children': [
-                    ('deals', 'Очереди', 'manager_portal:deal_list'),
-                    ('clients', 'Клиенты', 'manager_portal:client_list'),
+                    ('dashboard', 'Дашборд', 'manager_portal:dashboard'),
+                    ('deals', 'Сделки в работе', 'manager_portal:deal_list'),
                     ('warehouses', 'Склады', 'manager_portal:warehouse_list'),
                     ('inventory', 'Остатки', 'manager_portal:inventory'),
                     ('purchases', 'Закупки', 'manager_portal:purchase_list'),
@@ -324,30 +330,6 @@ def _nav_groups(user):
                 'label': 'Финансы',
                 'url_name': 'manager_portal:finance',
                 'children': finance_children,
-            }
-        )
-    if _can_use_commercial_proposals(user):
-        groups.append(
-            {
-                'key': 'proposals',
-                'label': 'Генератор КП',
-                'url_name': 'manager_portal:commercial_proposals',
-                'children': [],
-            }
-        )
-    if has_manager_portal_access(user):
-        groups.append(
-            {
-                'key': 'contracts',
-                'label': 'Документы',
-                'url_name': 'manager_portal:contracts',
-                'children': [
-                    ('contracts_dashboard', 'Обзор', 'manager_portal:contracts'),
-                    ('contracts_documents', 'Реестр', 'manager_portal:contracts_documents'),
-                    ('contracts_create', 'Создать новый', 'manager_portal:contracts_create'),
-                    ('contracts_templates', 'Шаблоны', 'manager_portal:contracts_templates'),
-                    ('contracts_settings', 'Настройки', 'manager_portal:contracts_settings'),
-                ],
             }
         )
     return groups
@@ -433,43 +415,33 @@ def _sidebar_groups_with_state(user, active_tab):
 
     groups = []
 
-    sales_items = []
+    operations_items = []
     if has_manager_portal_access(user):
-        sales_items.extend(
+        operations_items.extend(
             [
                 _sidebar_item(
+                    key='dashboard',
+                    label='Операционный dashboard',
+                    url_name='manager_portal:dashboard',
+                    icon='deals',
+                    active=active_tab == 'dashboard',
+                ),
+                _sidebar_item(
                     key='deals',
-                    label='Сделки',
+                    label='Сделки в работе',
                     url_name='manager_portal:deal_list',
                     icon='deals',
                     active=active_module_key == 'deals',
                 ),
-                _sidebar_item(
-                    key='clients',
-                    label='Клиенты',
-                    url_name='manager_portal:client_list',
-                    icon='clients',
-                    active=active_tab == 'clients',
-                ),
             ]
         )
-        if _can_use_commercial_proposals(user):
-            sales_items.append(
-                _sidebar_item(
-                    key='proposals',
-                    label='Коммерческие предложения',
-                    url_name='manager_portal:commercial_proposals',
-                    icon='commercial_proposals',
-                    active=active_module_key == 'proposals',
-                )
-            )
-    if sales_items:
+    if operations_items:
         groups.append(
             {
-                'key': 'sales',
-                'label': 'Продажи',
-                'items': sales_items,
-                'has_enabled_items': any(item['enabled'] for item in sales_items),
+                'key': 'operations',
+                'label': 'Операционка',
+                'items': operations_items,
+                'has_enabled_items': any(item['enabled'] for item in operations_items),
             }
         )
 
@@ -524,9 +496,9 @@ def _sidebar_groups_with_state(user, active_tab):
             }
         )
 
-    finance_docs_items = []
+    finance_items = []
     if has_finance_portal_access(user):
-        finance_docs_items.append(
+        finance_items.append(
             _sidebar_item(
                 key='finance',
                 label='Финансы',
@@ -535,32 +507,13 @@ def _sidebar_groups_with_state(user, active_tab):
                 active=active_module_key == 'finance',
             )
         )
-    if has_manager_portal_access(user):
-        finance_docs_items.extend(
-            [
-                _sidebar_item(
-                    key='contracts',
-                    label='Договоры',
-                    url_name='manager_portal:contracts',
-                    icon='contracts',
-                    active=active_module_key == 'contracts',
-                ),
-                _sidebar_item(
-                    key='purchases',
-                    label='Закупки',
-                    url_name='manager_portal:purchase_list',
-                    icon='purchases',
-                    active=active_tab == 'purchases',
-                ),
-            ]
-        )
-    if finance_docs_items:
+    if finance_items:
         groups.append(
             {
-                'key': 'finance_docs',
-                'label': 'Финансы и документы',
-                'items': finance_docs_items,
-                'has_enabled_items': any(item['enabled'] for item in finance_docs_items),
+                'key': 'finance',
+                'label': 'Финансы',
+                'items': finance_items,
+                'has_enabled_items': any(item['enabled'] for item in finance_items),
             }
         )
 
@@ -630,6 +583,8 @@ def _deal_activity_title(activity):
         return 'Shipment развёрнут'
     if activity.event_type == 'replacement.recorded':
         return 'Замена позиции зафиксирована'
+    if activity.event_type == 'order_item.linked_to_catalog':
+        return 'Позиция связана с товаром сайта'
     if activity.event_type == 'finance.adjustment_posted':
         return 'Финансовые корректировки проведены'
     if activity.event_type == 'finance.created':
@@ -701,6 +656,12 @@ def _deal_activity_body(activity):
         return 'История shipment сохранена, финансовый и складской reverse-flow зафиксирован.'
     if activity.event_type == 'replacement.recorded':
         return 'Исходная строка сохранена в истории, замена проведена отдельным adjustment path.'
+    if activity.event_type == 'order_item.linked_to_catalog':
+        from_name = (payload.get('from_product_name') or '').strip()
+        to_name = (payload.get('to_product_name') or '').strip()
+        if from_name and to_name:
+            return f'{from_name} -> {to_name}.'
+        return 'Ручная строка теперь участвует в складском и закупочном контуре.'
     if activity.event_type == 'finance.adjustment_posted':
         return 'Корректировки прибыли и refundable direct expenses записаны в кейс.'
     if activity.event_type in {'reservation.created', 'shipment.created', 'finance.created', 'document.created'}:
@@ -2143,19 +2104,12 @@ def _entry_sections(request):
             modules.extend(
                 [
                     {
-                        'title': 'Логистика',
-                        'description': 'Основной рабочий модуль: заказы, клиенты, остатки, склады, грузы, брони и отгрузки.',
-                        'url': reverse('manager_portal:deal_list'),
+                        'title': 'Операционка',
+                        'description': 'Исполнение оплаченных сделок: обеспечение, закупки, грузы, склад, резервы и отгрузки.',
+                        'url': reverse('manager_portal:dashboard'),
                         'badge': 'Модуль',
                         'status': 'Готово',
                         'accent': 'primary',
-                    },
-                    {
-                        'title': 'Договоры',
-                        'description': 'Внутренний кабинет менеджеров для работы с договорами и счетами на общей базе с сайтом.',
-                        'url': reverse('manager_portal:contracts'),
-                        'badge': 'Модуль',
-                        'status': 'Готово',
                     },
                 ]
             )
@@ -2169,21 +2123,11 @@ def _entry_sections(request):
                     'status': 'Готово',
                 }
             )
-        if _can_use_commercial_proposals(request.user):
-            modules.append(
-                {
-                    'title': 'Генератор КП',
-                    'description': 'Формирование коммерческих предложений как отдельный модуль, без захода в общий admin-flow.',
-                    'url': reverse('manager_portal:commercial_proposals'),
-                    'badge': 'Модуль',
-                    'status': 'Готово',
-                }
-            )
         sections.insert(
             0,
             {
                 'title': 'Рабочие модули',
-                'description': 'Верхнеуровневые внутренние модули, через которые менеджер заходит в нужный контур.',
+                'description': 'Основные рабочие контуры после оплаты сделки.',
                 'items': modules,
             }
         )
@@ -2300,7 +2244,7 @@ def entry_view(request):
     has_staff_access = has_manager_portal_access(request.user)
     has_finance_access = has_finance_portal_access(request.user)
     if has_staff_access:
-        return redirect('manager_portal:deal_list')
+        return redirect('manager_portal:dashboard')
     role_pills = [
         ('Аккаунт', 'Авторизован'),
     ]
@@ -3323,8 +3267,55 @@ def commercial_proposals_view(request):
 
 @staff_required
 def dashboard_view(request):
-    target = reverse('manager_portal:deal_list')
-    return redirect(f'{target}?{urlencode({"only_problematic": "1"})}')
+    stats = dashboard_stats()
+    bucket_urls = {
+        'needs_review': f'{reverse("manager_portal:deal_list")}?{urlencode({"queue": ManagerDeal.NEXT_STEP_NEEDS_CONFIRMATION})}',
+        'needs_procurement': f'{reverse("manager_portal:deal_list")}?{urlencode({"queue": ManagerDeal.NEXT_STEP_NEEDS_PROCUREMENT})}',
+        'partially_covered': reverse('manager_portal:reservation_list'),
+        'in_transit': reverse('manager_portal:cargo_list'),
+        'partially_arrived': reverse('manager_portal:purchase_list'),
+        'ready_to_ship': f'{reverse("manager_portal:deal_list")}?{urlencode({"queue": ManagerDeal.NEXT_STEP_READY_TO_SHIP})}',
+        'problems': f'{reverse("manager_portal:deal_list")}?{urlencode({"only_problematic": "1"})}',
+    }
+    for bucket in stats['operations_buckets']:
+        bucket['url'] = bucket_urls.get(bucket['code'], reverse('manager_portal:deal_list'))
+    return _render(
+        request,
+        'manager_portal/dashboard.html',
+        active_tab='dashboard',
+        stats=stats,
+    )
+
+
+@csrf_exempt
+@require_POST
+def bitrix_deal_in_work_view(request):
+    expected_token = (getattr(settings, 'BITRIX_INGEST_TOKEN', '') or '').strip()
+    provided_token = (request.POST.get('token') or request.headers.get('X-Bizon-Bitrix-Token') or '').strip()
+    if not expected_token or not secrets.compare_digest(provided_token, expected_token):
+        return JsonResponse({'ok': False, 'error': 'Неверный token.'}, status=403)
+
+    deal_id = (request.POST.get('deal_id') or '').strip()
+    if not deal_id:
+        return JsonResponse({'ok': False, 'error': 'Не указан deal_id.'}, status=400)
+
+    try:
+        result = sync_bitrix_deal_into_operations(deal_id)
+    except BitrixImportError as exc:
+        return JsonResponse({'ok': False, 'error': str(exc)}, status=502)
+
+    return JsonResponse(
+        {
+            'ok': True,
+            'deal_id': result['manager_deal'].pk,
+            'order_id': result['order'].pk,
+            'manager_client_id': result['manager_client'].pk,
+            'bitrix_deal_id': result['manager_deal'].bitrix_deal_id,
+            'created_items': result['created_items'],
+            'updated_items': result['updated_items'],
+            'warnings': result.get('warnings', []),
+        }
+    )
 
 
 def _split_full_name(full_name):
@@ -5944,6 +5935,25 @@ def _deal_order_item_rows(order_items, *, deal, reservations, purchase_items, ca
         if supply_line is None:
             continue
         if not supply_line['is_supply_tracked']:
+            link_product_url = ''
+            quick_actions = []
+            next_step = 'Проверить вручную'
+            position_status_detail = 'Для этой строки нет каталожного товара, поэтому бронь, склад и закупка не создаются автоматически.'
+            if item.line_type == OrderItem.LINE_TYPE_CUSTOM:
+                link_product_url = reverse(
+                    'manager_portal:deal_order_item_link_product',
+                    kwargs={'pk': deal.pk, 'item_id': item.pk},
+                )
+                quick_actions.append(
+                    {
+                        'label': 'Связать с товаром сайта',
+                        'url': link_product_url,
+                        'tone': 'ready',
+                        'is_drawer': True,
+                    }
+                )
+                next_step = 'Связать с каталогом'
+                position_status_detail = 'Свяжите строку с товаром сайта, чтобы открыть складские, резервные и закупочные действия.'
             rows.append(
                 {
                     'item': item,
@@ -5959,10 +5969,10 @@ def _deal_order_item_rows(order_items, *, deal, reservations, purchase_items, ca
                     'coverage_label': supply_line['coverage_label'],
                     'coverage_tone': supply_line['coverage_tone'],
                     'position_status': 'Ручная',
-                    'position_status_detail': 'Для этой строки нет каталожного товара, поэтому бронь, склад и закупка не создаются автоматически.',
+                    'position_status_detail': position_status_detail,
                     'position_status_tone': 'neutral',
-                    'next_step': 'Проверить вручную',
-                    'quick_actions': [],
+                    'next_step': next_step,
+                    'quick_actions': quick_actions,
                     'linked_entities': [],
                     'reservation_links': [],
                     'purchase_links': [],
@@ -7030,6 +7040,57 @@ def deal_shipment_action_view(request, pk):
     else:
         messages.success(request, 'Отправление подготовлено и почти готово к отправке.')
     return redirect(f'{reverse("manager_portal:shipment_detail", kwargs={"pk": shipment.pk})}?deal={deal.pk}&return_anchor=shipment')
+
+
+@staff_required
+def deal_order_item_link_product_view(request, pk, item_id):
+    deal = get_object_or_404(ManagerDeal.objects.select_related('order'), pk=pk)
+    order_item = get_object_or_404(
+        OrderItem.objects.select_related('product', 'variant', 'order'),
+        pk=item_id,
+        order=deal.order,
+    )
+    if order_item.line_type != OrderItem.LINE_TYPE_CUSTOM:
+        messages.info(request, 'Эта строка уже связана с товаром сайта.')
+        target_url = f'{reverse("manager_portal:deal_detail", kwargs={"pk": deal.pk})}?tab=overview'
+        if _is_htmx_request(request):
+            response = HttpResponse(status=204)
+            response['HX-Redirect'] = target_url
+            return response
+        return redirect(target_url)
+
+    if request.method == 'POST':
+        form = LinkOrderItemProductForm(request.POST)
+        if form.is_valid():
+            try:
+                linked_item = link_manual_order_item_to_catalog_product(
+                    order_item,
+                    product=form.cleaned_data['product'],
+                    variant=form.cleaned_data.get('variant'),
+                    actor=request.user,
+                )
+            except ValueError as exc:
+                form.add_error(None, str(exc))
+            else:
+                messages.success(request, f'Позиция "{linked_item.display_name}" связана с товаром сайта.')
+                target_url = f'{reverse("manager_portal:deal_detail", kwargs={"pk": deal.pk})}?tab=overview'
+                if _is_htmx_request(request):
+                    response = HttpResponse(status=204)
+                    response['HX-Redirect'] = target_url
+                    return response
+                return redirect(target_url)
+    else:
+        form = LinkOrderItemProductForm()
+
+    return render(
+        request,
+        'manager_portal/_deal_link_product_drawer.html',
+        {
+            'deal': deal,
+            'order_item': order_item,
+            'form': form,
+        },
+    )
 
 
 @staff_required

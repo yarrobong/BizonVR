@@ -1,0 +1,44 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+  <div class="mx-auto max-w-6xl px-6 py-8">
+    <div class="mb-6 flex items-center justify-between">
+      <div>
+        <h1 class="text-2xl font-semibold">Складской список</h1>
+        <p class="mt-1 text-sm text-slate-500">Печатная выборка по текущим фильтрам и отмеченным строкам.</p>
+      </div>
+      <button type="button" onclick="window.print()" class="rounded-full border border-slate-300 px-4 py-2 text-sm">Печать</button>
+    </div>
+
+    <table class="min-w-full border-collapse border border-slate-300 text-sm">
+      <thead>
+        <tr class="bg-slate-100 text-left">
+          <th class="border border-slate-300 px-3 py-2">Товар</th>
+          <th class="border border-slate-300 px-3 py-2">Вариант</th>
+          <th class="border border-slate-300 px-3 py-2">SKU</th>
+          <th class="border border-slate-300 px-3 py-2">Итого</th>
+          <th class="border border-slate-300 px-3 py-2">Доступно</th>
+          <th class="border border-slate-300 px-3 py-2">Резерв</th>
+          <th class="border border-slate-300 px-3 py-2">В пути</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in print_payload.rows %}
+          <tr>
+            <td class="border border-slate-300 px-3 py-2">{{ row.product_name }}</td>
+            <td class="border border-slate-300 px-3 py-2">{{ row.variant_name|default:"—" }}</td>
+            <td class="border border-slate-300 px-3 py-2">{{ row.sku|default:"—" }}</td>
+            <td class="border border-slate-300 px-3 py-2">{{ row.totals.on_hand }}</td>
+            <td class="border border-slate-300 px-3 py-2">{{ row.totals.available }}</td>
+            <td class="border border-slate-300 px-3 py-2">{{ row.totals.reserved }}</td>
+            <td class="border border-slate-300 px-3 py-2">{{ row.totals.inbound }}</td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="7" class="border border-slate-300 px-3 py-6 text-center text-slate-500">Нет строк для печати.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}
