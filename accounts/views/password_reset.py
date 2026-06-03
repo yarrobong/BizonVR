@@ -1,3 +1,5 @@
+import logging
+
 from django.contrib.auth import get_user_model, login
 from django.contrib.auth.tokens import default_token_generator
 from django.shortcuts import redirect, render
@@ -14,6 +16,7 @@ from ..services import (
 )
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
 
 
 def _complete_password_setup(request, user):
@@ -31,6 +34,7 @@ def _password_reset_sent_redirect(request):
 def password_reset_request_view(request):
     success_channel = request.GET.get('sent', '')
     form = PasswordResetRequestForm()
+    delivery_error_message = 'Не удалось отправить письмо. Попробуйте позже или свяжитесь с поддержкой.'
 
     if request.method == 'POST':
         form = PasswordResetRequestForm(request.POST)
@@ -49,9 +53,15 @@ def password_reset_request_view(request):
                     ok, error = send_password_reset_email(user, request=request)
                     if ok:
                         mark_send_email_success(request, email, endpoint='password-reset-email')
+                        return _password_reset_sent_redirect(request)
+                    logger.error(
+                        'Password reset email delivery failed for user_id=%s',
+                        getattr(user, 'pk', None),
+                    )
+                    form.add_error(None, error or delivery_error_message)
                 else:
                     mark_send_email_success(request, email, endpoint='password-reset-email')
-                return _password_reset_sent_redirect(request)
+                    return _password_reset_sent_redirect(request)
 
     return render(request, 'accounts/password_reset_request.html', {
         'form': form,

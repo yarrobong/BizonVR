@@ -1,4 +1,5 @@
 from decimal import Decimal
+import logging
 import time
 from urllib.parse import urlencode
 
@@ -45,6 +46,14 @@ from config.crm_leads import send_crm_lead_email
 from config.legal_consent import build_legal_acceptance_payload
 from config.legal_consent import get_legal_bundle_version
 from config.utils.spam_protection import check_spam_submission, log_blocked_submission
+from integrations.bitrix_site_requests import (
+    BitrixSiteRequestSyncError,
+    build_order_cart_snapshot,
+    create_site_lead_request,
+    send_site_request_to_bitrix,
+    summarize_spam_check,
+)
+from integrations.models import SiteLeadRequest
 
 from ..forms import CheckoutForm, PurchaseRequestForm
 from ..models import Order, OrderItem, PromoCode, PurchaseRequest, resolve_order_item_image_url
@@ -52,6 +61,7 @@ from ..services import build_order_status_summary, issue_guest_access, send_orde
 from .utils import _discount_for_promo
 
 CHECKOUT_APPLIED_PROMOS_SESSION_KEY = 'checkout_applied_promos'
+logger = logging.getLogger(__name__)
 
 
 def _float_or_none(value):
@@ -604,6 +614,19 @@ def checkout_view(request):
     spam_result = check_spam_submission(request)
     if spam_result.is_spam:
         log_blocked_submission(request, source='checkout', result=spam_result)
+        spam_status, spam_reason = summarize_spam_check(spam_result)
+        create_site_lead_request(
+            request=request,
+            source_type=SiteLeadRequest.SOURCE_CHECKOUT,
+            name=request.POST.get('first_name', ''),
+            phone=request.POST.get('phone', ''),
+            email=request.POST.get('email', ''),
+            city=request.POST.get('city_text', ''),
+            message=request.POST.get('comment', ''),
+            cart_snapshot=cart_items,
+            spam_status=spam_status,
+            spam_reason=spam_reason,
+        )
         return render(request, 'orders/request_created.html')
 
     if not form.is_valid():
@@ -731,9 +754,6 @@ def checkout_view(request):
             )
             for line in lines
         ])
-        from manager_portal.services import ensure_website_order_workflow
-
-        ensure_website_order_workflow(order)
         if order.is_guest_order:
             issue_guest_access(order)
 
@@ -746,6 +766,25 @@ def checkout_view(request):
         _sync_profile_from_checkout(request.user, form.cleaned_data)
 
     order_items = list(order.items.all())
+    spam_status, spam_reason = summarize_spam_check(spam_result)
+    site_request = create_site_lead_request(
+        request=request,
+        source_type=SiteLeadRequest.SOURCE_CHECKOUT,
+        order=order,
+        name=' '.join(part for part in [order.first_name, order.last_name] if part),
+        phone=order.phone,
+        email=order.email,
+        city=order.city_text,
+        message=order.comment,
+        cart_snapshot=build_order_cart_snapshot(order),
+        spam_status=spam_status,
+        spam_reason=spam_reason,
+    )
+    try:
+        send_site_request_to_bitrix(site_request)
+    except BitrixSiteRequestSyncError:
+        logger.exception('Bitrix sync failed for checkout site request %s.', site_request.pk)
+
     send_crm_lead_email(
         request=request,
         form_type='Checkout',
@@ -880,6 +919,21 @@ def purchase_request_create_view(request):
     spam_result = check_spam_submission(request)
     if spam_result.is_spam:
         log_blocked_submission(request, source='purchase_request', result=spam_result)
+        spam_status, spam_reason = summarize_spam_check(spam_result)
+        create_site_lead_request(
+            request=request,
+            source_type=SiteLeadRequest.SOURCE_PURCHASE_REQUEST,
+            phone=request.POST.get('phone', ''),
+            message=request.POST.get('telegram', ''),
+            page_url=_build_purchase_request_source_path(product, variant),
+            cart_snapshot=[{
+                'product_id': product.pk,
+                'variant_id': variant.pk if variant else None,
+                'name': product.name,
+            }],
+            spam_status=spam_status,
+            spam_reason=spam_reason,
+        )
         return redirect('orders:request_created', request_id=0)
 
     if not form.is_valid():
@@ -909,6 +963,21 @@ def purchase_request_create_view(request):
         total=Decimal('0'),
         **build_legal_acceptance_payload(request),
     )
+    spam_status, spam_reason = summarize_spam_check(spam_result)
+    site_request = create_site_lead_request(
+        request=request,
+        source_type=SiteLeadRequest.SOURCE_PURCHASE_REQUEST,
+        phone=purchase_request.phone,
+        message=f'Telegram: {purchase_request.telegram}' if purchase_request.telegram else '',
+        page_url=source_path,
+        cart_snapshot=[item_snapshot],
+        spam_status=spam_status,
+        spam_reason=spam_reason,
+    )
+    try:
+        send_site_request_to_bitrix(site_request)
+    except BitrixSiteRequestSyncError:
+        logger.exception('Bitrix sync failed for purchase_request site request %s.', site_request.pk)
     send_crm_lead_email(
         request=request,
         form_type='Карточка товара',

@@ -1,6 +1,7 @@
 import mimetypes
 import os
 import time
+import logging
 from urllib.parse import quote
 
 from django.conf import settings
@@ -22,9 +23,18 @@ from config.crm_leads import send_crm_lead_email
 from config.solution_landings import get_solution_landing
 from config.utils.spam_protection import check_spam_submission, log_blocked_submission
 from config.views.solutions import build_solution_hub_cards
+from integrations.bitrix_site_requests import (
+    BitrixSiteRequestSyncError,
+    create_site_lead_request,
+    send_site_request_to_bitrix,
+    summarize_spam_check,
+)
+from integrations.models import SiteLeadRequest
 
 from ..forms import CallbackForm, CompactVRForm
 from ..legal_consent import build_legal_acceptance_payload
+
+logger = logging.getLogger(__name__)
 
 CONFERENCE_ATTRACTIONS_DIRNAME = 'Конференция (Аттракционы)'
 INVEST_DIRNAME = 'invest (sponsor) 2'
@@ -163,6 +173,18 @@ def compact_vr_view(request):
         spam_result = check_spam_submission(request)
         if spam_result.is_spam:
             log_blocked_submission(request, source='compact_vr', result=spam_result)
+            spam_status, spam_reason = summarize_spam_check(spam_result)
+            create_site_lead_request(
+                request=request,
+                source_type=SiteLeadRequest.SOURCE_COMPACT_VR,
+                name=request.POST.get('name', ''),
+                phone=request.POST.get('contact', ''),
+                email=request.POST.get('email', ''),
+                city=request.POST.get('city', ''),
+                message=request.POST.get('comment', ''),
+                spam_status=spam_status,
+                spam_reason=spam_reason,
+            )
             messages.success(request, 'Заявка отправлена! Мы свяжемся с вами в ближайшее время.')
             return redirect(reverse('compact_vr') + '#contact')
         lead_form = CompactVRForm(request.POST)
@@ -180,6 +202,23 @@ def compact_vr_view(request):
                 message='\n'.join(message_parts),
                 **build_legal_acceptance_payload(request),
             )
+            spam_status, spam_reason = summarize_spam_check(spam_result)
+            site_request = create_site_lead_request(
+                request=request,
+                source_type=SiteLeadRequest.SOURCE_COMPACT_VR,
+                name=contact_request.name,
+                phone=contact_request.phone,
+                email=contact_request.email,
+                city=d['city'],
+                message=contact_request.message,
+                spam_status=spam_status,
+                spam_reason=spam_reason,
+                page_url=reverse('compact_vr'),
+            )
+            try:
+                send_site_request_to_bitrix(site_request)
+            except BitrixSiteRequestSyncError:
+                logger.exception('Bitrix sync failed for compact_vr site request %s.', site_request.pk)
             send_crm_lead_email(
                 request=request,
                 form_type='Compact VR',
@@ -244,6 +283,16 @@ def arenda_view(request):
         spam_result = check_spam_submission(request)
         if spam_result.is_spam:
             log_blocked_submission(request, source='arenda_callback', result=spam_result)
+            spam_status, spam_reason = summarize_spam_check(spam_result)
+            create_site_lead_request(
+                request=request,
+                source_type=SiteLeadRequest.SOURCE_CALLBACK_ARENDA,
+                name=request.POST.get('name', ''),
+                phone=request.POST.get('phone', ''),
+                spam_status=spam_status,
+                spam_reason=spam_reason,
+                page_url=reverse('arenda'),
+            )
             messages.success(request, 'Заявка отправлена! Мы перезвоним в ближайшее время.')
             return redirect(reverse('arenda') + '#contacts')
         callback_form = CallbackForm(request.POST)
@@ -254,6 +303,20 @@ def arenda_view(request):
                 source='arenda',
                 **build_legal_acceptance_payload(request),
             )
+            spam_status, spam_reason = summarize_spam_check(spam_result)
+            site_request = create_site_lead_request(
+                request=request,
+                source_type=SiteLeadRequest.SOURCE_CALLBACK_ARENDA,
+                name=callback_request.name,
+                phone=callback_request.phone,
+                spam_status=spam_status,
+                spam_reason=spam_reason,
+                page_url=reverse('arenda'),
+            )
+            try:
+                send_site_request_to_bitrix(site_request)
+            except BitrixSiteRequestSyncError:
+                logger.exception('Bitrix sync failed for arenda site request %s.', site_request.pk)
             send_crm_lead_email(
                 request=request,
                 form_type='Аренда',
@@ -284,6 +347,16 @@ def uslugi_view(request):
         spam_result = check_spam_submission(request)
         if spam_result.is_spam:
             log_blocked_submission(request, source='uslugi_callback', result=spam_result)
+            spam_status, spam_reason = summarize_spam_check(spam_result)
+            create_site_lead_request(
+                request=request,
+                source_type=SiteLeadRequest.SOURCE_CALLBACK_USLUGI,
+                name=request.POST.get('name', ''),
+                phone=request.POST.get('phone', ''),
+                spam_status=spam_status,
+                spam_reason=spam_reason,
+                page_url=reverse('uslugi'),
+            )
             messages.success(request, 'Заявка отправлена! Мы перезвоним в ближайшее время.')
             return redirect(reverse('uslugi') + '#contacts')
         callback_form = CallbackForm(request.POST)
@@ -294,6 +367,20 @@ def uslugi_view(request):
                 source='uslugi',
                 **build_legal_acceptance_payload(request),
             )
+            spam_status, spam_reason = summarize_spam_check(spam_result)
+            site_request = create_site_lead_request(
+                request=request,
+                source_type=SiteLeadRequest.SOURCE_CALLBACK_USLUGI,
+                name=callback_request.name,
+                phone=callback_request.phone,
+                spam_status=spam_status,
+                spam_reason=spam_reason,
+                page_url=reverse('uslugi'),
+            )
+            try:
+                send_site_request_to_bitrix(site_request)
+            except BitrixSiteRequestSyncError:
+                logger.exception('Bitrix sync failed for uslugi site request %s.', site_request.pk)
             send_crm_lead_email(
                 request=request,
                 form_type='Услуги',

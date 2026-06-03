@@ -19,7 +19,13 @@ from manager_portal.models import (
     ReservationItem,
     Shipment,
 )
-from manager_portal.services import ensure_manager_deal_for_order, import_bitrix_deal_into_operations, receive_cargo_item
+from manager_portal.services import (
+    ensure_manager_deal_for_order,
+    import_bitrix_deal_into_operations,
+    receive_cargo_item,
+    receipt_inventory,
+    reserve_order_item_for_manager_deal,
+)
 from manager_portal.tests.test_manager_portal import ManagerPortalBaseTestCase
 from orders.models import Order, OrderItem
 
@@ -513,6 +519,33 @@ class OperationsPortalTests(ManagerPortalBaseTestCase):
         self.assertIn('2/3', checklist['catalog_links']['detail'])
         self.assertIn('1/3', checklist['secured']['detail'])
         self.assertIn('0/3', checklist['reservation']['detail'])
+
+    def test_goods_tab_hides_reserve_debug_without_explicit_debug_flag(self):
+        self.login_staff()
+        order = self.create_order(
+            phone='+7 999 123 45 67',
+            email='reserve-debug@example.com',
+            first_name='Debug',
+            status=Order.STATUS_CONFIRMED,
+            payment_status=Order.PAYMENT_STATUS_PAID,
+            delivery_type=Order.DELIVERY_PICKUP,
+            pickup_point=self.pickup_point,
+        )
+        order.items.create(
+            line_type=OrderItem.LINE_TYPE_CUSTOM,
+            product_name='Custom bundle',
+            quantity=1,
+            price=Decimal('25000.00'),
+        )
+        deal = ensure_manager_deal_for_order(order)
+
+        response = self.client.get(
+            reverse('operations:deal_detail', kwargs={'pk': deal.pk}),
+            {'tab': 'goods', 'mode': 'advanced'},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'Reserve debug:')
 
     def test_delivery_form_updates_order_and_clears_delivery_blockers(self):
         self.login_staff()
@@ -1122,6 +1155,92 @@ class OperationsPortalTests(ManagerPortalBaseTestCase):
         self.assertNotContains(detail_response, 'Создать закупку')
         self.assertNotContains(detail_response, 'Создать груз')
         self.assertNotContains(detail_response, 'Создать отгрузку')
+
+    def test_delivered_deal_does_not_show_reserve_attention_for_fully_shipped_positions(self):
+        self.login_staff()
+        order = self.create_order(
+            phone='+7 999 777 66 55',
+            email='delivered-reserve@example.com',
+            first_name='Доставлен',
+            status=Order.STATUS_CONFIRMED,
+            payment_status=Order.PAYMENT_STATUS_PAID,
+            delivery_type=Order.DELIVERY_PICKUP,
+            pickup_point=self.pickup_point,
+        )
+        order.items.create(
+            product=self.product_two,
+            quantity=1,
+            price=Decimal('5000.00'),
+        )
+        order.items.create(
+            product=self.product,
+            quantity=1,
+            price=Decimal('100000.00'),
+        )
+        deal = ensure_manager_deal_for_order(order)
+        deal.responsible_manager = self.staff_user
+        deal.prepayment_amount = order.total
+        deal.payment_state = ManagerDeal.PAYMENT_STATE_PAID
+        deal.save(update_fields=['responsible_manager', 'prepayment_amount', 'payment_state', 'updated_at'])
+
+        receipt_inventory(warehouse=self.warehouse, product=self.product, quantity=2, author=self.staff_user)
+        receipt_inventory(warehouse=self.warehouse, product=self.product_two, quantity=1, author=self.staff_user)
+
+        for order_item in order.items.order_by('id'):
+            reserve_order_item_for_manager_deal(
+                deal=deal,
+                order_item=order_item,
+                warehouse=self.warehouse,
+                quantity=1,
+                comment='Резервируем перед полной отгрузкой',
+                actor=self.staff_user,
+            )
+
+        create_response = self._create_shipment_via_ops(deal=deal)
+        self.assertRedirects(
+            create_response,
+            f'{reverse("operations:deal_detail", kwargs={"pk": deal.pk})}?tab=shipments',
+        )
+        shipment = Shipment.objects.get(manager_deal=deal)
+
+        dispatch_response = self.client.post(
+            reverse('operations:deal_shipment_dispatch', kwargs={'pk': deal.pk, 'shipment_pk': shipment.pk}),
+            {
+                'carrier': 'CDEK',
+                'tracking_number': 'OPS-TRACK-DELIVERED-RESERVE',
+                'shipped_at': '2026-06-01',
+                'comment': 'Полностью отгружено по всем строкам',
+            },
+        )
+        self.assertRedirects(
+            dispatch_response,
+            f'{reverse("operations:deal_detail", kwargs={"pk": deal.pk})}?tab=shipments',
+        )
+
+        deliver_response = self.client.post(
+            reverse('operations:deal_detail', kwargs={'pk': deal.pk}),
+            {'action': 'deliver_shipment', 'shipment_id': str(shipment.id)},
+        )
+        self.assertRedirects(
+            deliver_response,
+            f'{reverse("operations:deal_detail", kwargs={"pk": deal.pk})}?tab=shipments',
+        )
+
+        deal.refresh_from_db()
+        detail_response = self.client.get(reverse('operations:deal_detail', kwargs={'pk': deal.pk}), {'tab': 'shipments'})
+
+        self.assertEqual(detail_response.status_code, 200)
+        self.assertEqual(deal.case_status, ManagerDeal.CASE_STATUS_COMPLETED)
+        self.assertEqual(detail_response.context['operation_snapshot']['status_code'], 'completed')
+        checklist = {item['code']: item for item in detail_response.context['operation_snapshot']['checklist']}
+        self.assertFalse(checklist['reservation']['needs_attention'])
+        self.assertNotEqual(checklist['reservation']['status_label'], 'Требует внимания')
+        self.assertEqual(checklist['reservation']['status_label'], 'OK')
+        self.assertIn('3/3', checklist['reservation']['detail'])
+        self.assertNotIn(
+            'reserve_stock',
+            {action['code'] for action in detail_response.context['operation_snapshot']['next_actions']},
+        )
 
     def test_delivered_shipments_remove_deal_from_active_ops_dashboard(self):
         self.login_staff()

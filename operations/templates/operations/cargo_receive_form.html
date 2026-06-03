@@ -94,7 +94,7 @@
           </div>
         {% endif %}
         <div class="flex flex-wrap gap-3">
-          <button type="submit" {% if not pending_items %}disabled{% endif %} class="ops-button-primary disabled:cursor-not-allowed disabled:opacity-60">Сохранить приемку</button>
+          <button type="submit" {% if not pending_items %}disabled{% endif %} class="ops-button-primary">Сохранить приемку</button>
           <a href="{% url 'operations:deal_detail' pk=deal.pk %}" class="ops-button-secondary">Отмена</a>
         </div>
       </form>

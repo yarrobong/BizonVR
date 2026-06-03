@@ -2,8 +2,10 @@
 import json
 import os
 from decimal import Decimal
+from pathlib import Path
 from unittest.mock import Mock, patch
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.tokens import default_token_generator
 from django.core.cache import cache
@@ -78,11 +80,24 @@ class LoginViewsTest(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, 'Создать аккаунт с паролем')
         self.assertContains(resp, 'Этот email станет вашим логином и адресом сервисных писем.')
+        self.assertContains(resp, 'registrationOpen: true', html=False)
+
+    def test_login_page_opens_registration_form_for_mode_register(self):
+        resp = self.client.get(reverse('accounts:login'), {'mode': 'register'})
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'registrationOpen: true', html=False)
+
+    def test_cart_template_uses_register_route_for_account_creation(self):
+        template = (Path(settings.BASE_DIR) / 'templates/catalog/partials/cart_page_content.html').read_text(encoding='utf-8')
+
+        self.assertIn("{% url 'accounts:register' %}?next={% url 'orders:checkout' %}", template)
 
     @override_settings(
         EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
         DEFAULT_FROM_EMAIL='BizonVR <no-reply@bizonvr.ru>',
         EMAIL_VERIFICATION_SUBJECT='Код подтверждения BizonVR',
+        SITE_URL='https://bizonvr.ru',
     )
     @patch('accounts.services.generate_code', return_value='112233')
     def test_register_creates_unverified_account_and_redirects_to_email_confirmation(self, mocked_generate_code):
@@ -113,6 +128,7 @@ class LoginViewsTest(TestCase):
         self.assertIn('Код подтверждения: 112233', message.body)
         self.assertEqual(len(message.alternatives), 1)
         self.assertIn('Код подтверждения: 112233', message.alternatives[0].content)
+        self.assertIn('https://bizonvr.ru/accounts/register/confirm/', message.body)
         self.assertIn(reverse('accounts:register_confirm'), message.body)
 
     def test_register_confirm_template_supports_one_time_code_autofill(self):
@@ -233,6 +249,40 @@ class LoginViewsTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'Аккаунт с таким email уже существует.')
         self.assertEqual(User.objects.filter(email='client@example.com').count(), 1)
+
+    @override_settings(
+        EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
+        DEFAULT_FROM_EMAIL='BizonVR <no-reply@bizonvr.ru>',
+        SITE_URL='https://bizonvr.ru',
+        EMAIL_CODE_COOLDOWN_SECONDS=60,
+    )
+    @patch('accounts.services.generate_code', return_value='112233')
+    def test_register_throttling_blocks_repeated_attempts_without_sending_email(
+        self,
+        mocked_generate_code,
+    ):
+        first_response = self.client.post(reverse('accounts:register'), {
+            'contact_name': 'Иван Иванов',
+            'email': 'client@example.com',
+            'password1': 'StrongPass123!',
+            'password2': 'StrongPass123!',
+            'agree_privacy': 'on',
+        })
+
+        second_response = self.client.post(reverse('accounts:register'), {
+            'contact_name': 'Петр Петров',
+            'email': 'next@example.com',
+            'password1': 'StrongPass123!',
+            'password2': 'StrongPass123!',
+            'agree_privacy': 'on',
+        })
+
+        self.assertEqual(first_response.status_code, 302)
+        self.assertEqual(second_response.status_code, 200)
+        self.assertContains(second_response, 'Подождите 60 сек. перед новой регистрацией.')
+        self.assertTrue(User.objects.filter(email='client@example.com').exists())
+        self.assertFalse(User.objects.filter(email='next@example.com').exists())
+        self.assertEqual(len(mail.outbox), 1)
 
     def test_password_login_accepts_registered_email_without_phone(self):
         user = User.objects.create_user(
@@ -387,6 +437,7 @@ class PasswordAccessRecoveryTest(TestCase):
         EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
         PASSWORD_RESET_EMAIL_SUBJECT='Восстановление пароля BizonVR',
         PASSWORD_RESET_TIMEOUT=900,
+        SITE_URL='https://bizonvr.ru',
     )
     def test_email_password_reset_sends_mail_and_sets_new_password(self):
         request_response = self.client.post(reverse('accounts:password_reset_request'), {
@@ -398,6 +449,7 @@ class PasswordAccessRecoveryTest(TestCase):
         self.assertEqual(len(mail.outbox), 1)
         message = mail.outbox[0]
         self.assertEqual(message.subject, 'Восстановление пароля BizonVR')
+        self.assertIn('https://bizonvr.ru/accounts/password-reset/confirm/', message.body)
         self.assertIn('/accounts/password-reset/confirm/', message.body)
         self.assertIn('Ссылка действует 15 минут', message.body)
         self.assertEqual(len(message.alternatives), 1)
@@ -424,6 +476,17 @@ class PasswordAccessRecoveryTest(TestCase):
         )
         self.assertEqual(reused_response.status_code, 200)
         self.assertContains(reused_response, 'Ссылка недействительна или уже использована.')
+
+    @patch('accounts.views.password_reset.send_password_reset_email', return_value=(False, 'Не удалось отправить письмо. Попробуйте позже или свяжитесь с поддержкой.'))
+    def test_password_reset_send_failure_does_not_redirect_to_success(self, mocked_send_password_reset_email):
+        response = self.client.post(reverse('accounts:password_reset_request'), {
+            'email': 'verified@example.com',
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Не удалось отправить письмо. Попробуйте позже или свяжитесь с поддержкой.')
+        self.assertEqual(len(mail.outbox), 0)
+        mocked_send_password_reset_email.assert_called_once()
 
 
 @tag('slow')

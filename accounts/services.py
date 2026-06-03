@@ -87,6 +87,21 @@ def get_default_profile_phone(user) -> str | None:
     return username_phone if len(username_phone) == 10 else None
 
 
+def build_absolute_url(path: str, *, request=None) -> str:
+    path = (path or '').strip() or '/'
+    if path.startswith(('http://', 'https://')):
+        return path
+    if not path.startswith('/'):
+        path = f'/{path}'
+
+    site_url = getattr(settings, 'SITE_URL', '').rstrip('/')
+    if site_url:
+        return f'{site_url}{path}'
+    if request is not None:
+        return request.build_absolute_uri(path)
+    return path
+
+
 def get_user_phone(user, profile=None) -> str:
     phone = normalize_phone(getattr(profile, 'phone', '') or '')
     if len(phone) == 10:
@@ -322,7 +337,7 @@ def send_password_reset_email(user, *, request=None) -> tuple[bool, str]:
     uid = urlsafe_base64_encode(force_bytes(user.pk))
     token = default_token_generator.make_token(user)
     path = reverse('accounts:password_reset_confirm', kwargs={'uidb64': uid, 'token': token})
-    reset_url = request.build_absolute_uri(path) if request is not None else f'{settings.SITE_URL}{path}'
+    reset_url = build_absolute_url(path, request=request)
     subject = getattr(settings, 'PASSWORD_RESET_EMAIL_SUBJECT', 'Восстановление пароля BizonVR').strip()
     timeout_minutes = max(1, int(getattr(settings, 'PASSWORD_RESET_TIMEOUT', 15 * 60)) // 60)
     text_body = build_password_reset_plain_message(reset_url)
@@ -344,7 +359,7 @@ def send_password_reset_email(user, *, request=None) -> tuple[bool, str]:
         message.attach_alternative(html_body, 'text/html')
         message.send(fail_silently=False)
     except Exception:
-        logger.exception('Password reset email send failed for %s', email)
+        logger.exception('Password reset email send failed for user_id=%s', getattr(user, 'pk', None))
         return False, 'Не удалось отправить письмо. Попробуйте позже.'
     return True, ''
 

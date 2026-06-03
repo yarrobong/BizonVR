@@ -3,122 +3,122 @@
 {% block title %}Операционные сделки{% endblock %}
 
 {% block content %}
-  <section class="ops-panel rounded-[2rem] px-6 py-6">
-    <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+  <section class="ops-panel px-6 py-5">
+    <div class="ops-section-head">
       <div>
-        <p class="text-xs uppercase tracking-[0.22em] text-cyan-100/70">Сделки</p>
-        <h2 class="mt-2 text-2xl font-semibold">{{ page_title }}</h2>
-        <p class="mt-2 text-sm ops-muted">{{ page_subtitle }}</p>
+        <p class="ops-section-eyebrow">Очередь сделок</p>
+        <h2 class="mt-2 text-2xl font-semibold text-white">{{ page_title }}</h2>
+        <p class="mt-2 ops-section-copy">{{ page_subtitle }}</p>
       </div>
-      <div class="ops-badge">Найдено: {{ deals_total }}</div>
+      <div class="ops-badge">В очереди: {{ deals_total }}</div>
     </div>
-    <form method="get" class="mt-6 grid gap-4 xl:grid-cols-4">
-      <label class="block">
-        <span class="mb-2 block text-xs uppercase tracking-[0.16em] text-slate-500">{{ filter_form.q.label }}</span>
-        {{ filter_form.q }}
-      </label>
-      <label class="block">
-        <span class="mb-2 block text-xs uppercase tracking-[0.16em] text-slate-500">{{ filter_form.status.label }}</span>
-        {{ filter_form.status }}
-      </label>
-      <label class="block">
-        <span class="mb-2 block text-xs uppercase tracking-[0.16em] text-slate-500">{{ filter_form.problem.label }}</span>
-        {{ filter_form.problem }}
-      </label>
-      <label class="block">
-        <span class="mb-2 block text-xs uppercase tracking-[0.16em] text-slate-500">{{ filter_form.responsible_manager.label }}</span>
-        {{ filter_form.responsible_manager }}
-      </label>
-      <div class="xl:col-span-3 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-        <label class="flex items-center gap-2 rounded-2xl border border-slate-800 px-4 py-3 text-sm text-slate-200">{{ filter_form.needs_link_products }} {{ filter_form.needs_link_products.label }}</label>
-        <label class="flex items-center gap-2 rounded-2xl border border-slate-800 px-4 py-3 text-sm text-slate-200">{{ filter_form.needs_procurement }} {{ filter_form.needs_procurement.label }}</label>
-        <label class="flex items-center gap-2 rounded-2xl border border-slate-800 px-4 py-3 text-sm text-slate-200">{{ filter_form.ready_to_ship }} {{ filter_form.ready_to_ship.label }}</label>
-        <label class="flex items-center gap-2 rounded-2xl border border-slate-800 px-4 py-3 text-sm text-slate-200">{{ filter_form.in_transit }} {{ filter_form.in_transit.label }}</label>
-        <label class="flex items-center gap-2 rounded-2xl border border-slate-800 px-4 py-3 text-sm text-slate-200">{{ filter_form.missing_delivery_data }} {{ filter_form.missing_delivery_data.label }}</label>
+    <form method="get" class="ops-filter-form mt-6">
+      <div class="ops-filter-grid">
+        <label class="ops-filter-label">
+          <span>{{ filter_form.q.label }}</span>
+          {{ filter_form.q }}
+        </label>
+        <label class="ops-filter-label">
+          <span>{{ filter_form.status.label }}</span>
+          {{ filter_form.status }}
+        </label>
+        <label class="ops-filter-label">
+          <span>{{ filter_form.problem.label }}</span>
+          {{ filter_form.problem }}
+        </label>
+        <label class="ops-filter-label">
+          <span>{{ filter_form.responsible_manager.label }}</span>
+          {{ filter_form.responsible_manager }}
+        </label>
       </div>
-      <div class="xl:col-span-4 flex items-end gap-3">
-        <button type="submit" class="rounded-full bg-cyan-300 px-5 py-3 text-sm font-medium text-slate-950">Применить</button>
-        <a href="{% url 'operations:deal_list' %}" class="rounded-full border border-slate-700 px-5 py-3 text-sm text-slate-200 transition hover:bg-slate-900">Сбросить</a>
+      <div class="ops-filter-checks">
+        <label class="ops-filter-toggle">{{ filter_form.needs_link_products }} {{ filter_form.needs_link_products.label }}</label>
+        <label class="ops-filter-toggle">{{ filter_form.needs_procurement }} {{ filter_form.needs_procurement.label }}</label>
+        <label class="ops-filter-toggle">{{ filter_form.ready_to_ship }} {{ filter_form.ready_to_ship.label }}</label>
+        <label class="ops-filter-toggle">{{ filter_form.in_transit }} {{ filter_form.in_transit.label }}</label>
+        <label class="ops-filter-toggle">{{ filter_form.missing_delivery_data }} {{ filter_form.missing_delivery_data.label }}</label>
+      </div>
+      <div class="ops-filter-actions">
+        <button type="submit" class="ops-button-primary">Применить фильтры</button>
+        <a href="{% url 'operations:deal_list' %}" class="ops-button-secondary">Сбросить</a>
       </div>
     </form>
   </section>
 
-  <section class="ops-panel rounded-[2rem] px-4 py-4 lg:px-6">
-    <div class="overflow-x-auto">
-      <table class="ops-table min-w-full divide-y divide-slate-800">
-        <thead>
-          <tr>
-            <th class="px-3 py-3 text-left">Номер</th>
-            <th class="px-3 py-3 text-left">Bitrix</th>
-            <th class="px-3 py-3 text-left">Клиент</th>
-            <th class="px-3 py-3 text-left">Сумма</th>
-            <th class="px-3 py-3 text-left">Позиций</th>
-            <th class="px-3 py-3 text-left">Обеспечение</th>
-            <th class="px-3 py-3 text-left">Доставка</th>
-            <th class="px-3 py-3 text-left">Блокеры</th>
-            <th class="px-3 py-3 text-left">Обновлено</th>
-            <th class="px-3 py-3 text-left">Действие</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-slate-900">
-          {% for deal in deals %}
-            <tr class="hover:bg-slate-950/40">
-              <td class="px-3 py-4">
-                <a href="{% url 'operations:deal_detail' deal.pk %}" class="text-base font-semibold text-white hover:text-cyan-200">{{ deal.ops_summary.identity_code }}</a>
-                <p class="mt-1 text-xs ops-muted">{{ deal.operation_snapshot.status_label }}</p>
-              </td>
-              <td class="px-3 py-4">
-                {% if deal.bitrix_deal_id %}
-                  <p class="text-sm text-white">Bitrix #{{ deal.bitrix_deal_id }}</p>
-                  {% if deal.bitrix_deal_url %}
-                    <a href="{{ deal.bitrix_deal_url }}" target="_blank" rel="noreferrer" class="mt-2 inline-flex text-xs text-cyan-200 hover:text-cyan-100">Открыть Bitrix</a>
+  <section class="ops-panel ops-list-card">
+    {% if deals %}
+      <div class="ops-queue-list">
+        {% for deal in deals %}
+          <article class="ops-queue-item">
+            <div class="ops-queue-stack">
+              <div class="ops-queue-head">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="ops-chip ops-tone-{{ deal.ops_summary.status_tone|default:'neutral' }}">{{ deal.operation_snapshot.status_label }}</span>
+                  <span class="ops-chip ops-tone-{{ deal.ops_summary.fulfillment_tone|default:'neutral' }}">{{ deal.ops_summary.fulfillment_status_label }}</span>
+                  {% if deal.operation_snapshot.blockers %}
+                    <span class="ops-chip ops-tone-attention">Блокеров: {{ deal.operation_snapshot.blockers|length }}</span>
+                  {% else %}
+                    <span class="ops-chip ops-tone-success">Без блокеров</span>
                   {% endif %}
-                {% else %}
-                  <span class="text-sm ops-muted">Без Bitrix ID</span>
-                {% endif %}
-              </td>
-              <td class="px-3 py-4">
-                <p class="text-sm font-medium text-white">{{ deal.ops_summary.client_name }}</p>
-                <p class="mt-1 text-xs ops-muted">
+                </div>
+                <span class="ops-badge">{{ deal.ops_summary.amount }}</span>
+              </div>
+              <div>
+                <a href="{% url 'operations:deal_detail' deal.pk %}" class="ops-queue-title">{{ deal.ops_summary.identity_code }}</a>
+                <p class="mt-2 ops-queue-client">{{ deal.ops_summary.client_name }}</p>
+                <div class="mt-2 ops-inline-hint">
                   {% for item in deal.order.items.all %}
-                    {{ item.display_name }}{% if not forloop.last %}, {% endif %}
+                    {% if forloop.first %}
+                      <strong>Товар:</strong> {{ item.display_name }}{% if not forloop.last %} и ещё {{ forloop.revcounter0 }}{% endif %}
+                    {% endif %}
+                  {% empty %}
+                    <strong>Товар:</strong> —
                   {% endfor %}
-                </p>
-              </td>
-              <td class="px-3 py-4 text-sm text-white">{{ deal.ops_summary.amount }}</td>
-              <td class="px-3 py-4 text-sm text-white">{{ deal.ops_summary.items_count }}</td>
-              <td class="px-3 py-4">
-                <span class="ops-badge">{{ deal.ops_summary.fulfillment_status_label }}</span>
-                <p class="mt-2 text-xs ops-muted">{{ deal.operation_snapshot.reason }}</p>
-              </td>
-              <td class="px-3 py-4">
-                <span class="ops-badge">{{ deal.ops_summary.delivery_status_label }}</span>
-              </td>
-              <td class="px-3 py-4">
-                {% if deal.operation_snapshot.blockers %}
-                  <ul class="space-y-2 text-sm text-rose-100">
-                    {% for blocker in deal.operation_snapshot.blockers|slice:":3" %}
-                      <li>{{ blocker }}</li>
-                    {% endfor %}
-                  </ul>
+                </div>
+              </div>
+              <div class="ops-queue-meta">
+                <span>Позиций: {{ deal.ops_summary.items_count }}</span>
+                <span>Доставка: {{ deal.ops_summary.delivery_status_label }}</span>
+                <span>{% if deal.bitrix_deal_id %}Bitrix #{{ deal.bitrix_deal_id }}{% else %}Без Bitrix ID{% endif %}</span>
+              </div>
+            </div>
+
+            <div class="ops-queue-stack">
+              <div class="ops-queue-note">
+                <span class="ops-queue-note-title">Следующее действие</span>
+                <p class="ops-queue-next-copy"><strong>{{ deal.ops_summary.action_text }}</strong></p>
+                <p class="ops-inline-hint">{{ deal.operation_snapshot.reason }}</p>
+              </div>
+              <div class="ops-queue-note">
+                <span class="ops-queue-note-title">Главный блокер</span>
+                {% if deal.ops_summary.primary_blocker %}
+                  <p class="ops-queue-blocker-copy">{{ deal.ops_summary.primary_blocker }}</p>
+                {% elif deal.ops_summary.blockers_preview %}
+                  <p class="ops-queue-blocker-copy">{{ deal.ops_summary.blockers_preview|first }}</p>
                 {% else %}
-                  <p class="text-sm text-emerald-200">Без блокеров</p>
+                  <p class="ops-queue-blocker-copy">Критичных блокеров нет, можно двигаться по следующему шагу.</p>
                 {% endif %}
-              </td>
-              <td class="px-3 py-4">
-                <p class="text-sm text-white">{{ deal.ops_summary.last_updated_at|date:"d.m.Y H:i" }}</p>
-              </td>
-              <td class="px-3 py-4">
-                <a href="{% url 'operations:deal_detail' deal.pk %}" class="inline-flex rounded-full border border-slate-700 px-4 py-2 text-xs text-slate-100 transition hover:bg-slate-900">Открыть</a>
-              </td>
-            </tr>
-          {% empty %}
-            <tr>
-              <td colspan="10" class="px-3 py-10 text-center text-sm ops-muted">Сделки по выбранным фильтрам не найдены.</td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
+              </div>
+            </div>
+
+            <div class="ops-queue-stack">
+              <div class="ops-queue-footer">
+                <div class="ops-inline-hint"><strong>Ответственный:</strong> {{ deal.responsible_manager|default:"Не назначен" }}</div>
+                <div class="ops-inline-hint"><strong>Обновлено:</strong> {{ deal.ops_summary.last_updated_at|date:"d.m.Y H:i" }}</div>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <a href="{% url 'operations:deal_detail' deal.pk %}" class="ops-button-primary">Открыть сделку</a>
+                {% if deal.bitrix_deal_url %}
+                  <a href="{{ deal.bitrix_deal_url }}" target="_blank" rel="noreferrer" class="ops-button-secondary">Открыть Bitrix</a>
+                {% endif %}
+              </div>
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      {% url 'operations:deal_list' as ops_deal_list_url %}
+      {% include "manager_portal/_empty_state.html" with empty_state_title="Сделки не найдены" empty_state_description="Очередь по выбранным фильтрам пуста. Сбросьте фильтры или откройте полный список." empty_state_action_label="Сбросить фильтры" empty_state_action_url=ops_deal_list_url %}
+    {% endif %}
   </section>
 {% endblock %}

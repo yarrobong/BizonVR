@@ -15,13 +15,16 @@ from ..forms import (
 )
 from ..models import Profile
 from ..security import (
+    check_registration_rate_limits,
     check_send_email_rate_limits,
     check_verify_email_code_rate_limits,
+    mark_registration_success,
     mark_send_email_success,
 )
 from ..services import (
     authenticate_by_login_identifier,
     auto_claim_guest_orders_for_user,
+    build_absolute_url,
     confirm_email_verification,
     create_and_send_email_code,
     build_unique_email_username,
@@ -89,7 +92,11 @@ def _build_register_confirm_url(request, email, next_url=''):
     query = {'email': normalize_email(email)}
     if next_url:
         query['next'] = next_url
-    return request.build_absolute_uri(f"{reverse('accounts:register_confirm')}?{urlencode(query)}")
+    return build_absolute_url(f"{reverse('accounts:register_confirm')}?{urlencode(query)}", request=request)
+
+
+def _should_show_registration_form(request):
+    return (request.GET.get('mode') or '').strip().lower() == 'register'
 
 
 @require_http_methods(['GET'])
@@ -97,7 +104,11 @@ def login_view(request):
     """Публичный экран входа: только email + пароль и регистрация."""
     if request.user.is_authenticated:
         return redirect(_safe_redirect_url(request.GET.get('next'), 'accounts:profile'))
-    return _render_login_page(request, next_url=request.GET.get('next', ''))
+    return _render_login_page(
+        request,
+        next_url=request.GET.get('next', ''),
+        show_password_registration=_should_show_registration_form(request),
+    )
 
 
 @require_POST
@@ -142,35 +153,40 @@ def register_view(request):
     if request.method == 'POST':
         form = RegistrationForm(request.POST)
         if form.is_valid():
-            user = User.objects.create_user(
-                username=build_unique_email_username(),
-                email=form.cleaned_data['email'],
-                password=form.cleaned_data['password1'],
-                is_active=True,
-            )
-            Profile.objects.create(
-                user=user,
-                phone=get_default_profile_phone(user),
-                contact_name=form.cleaned_data['contact_name'],
-                privacy_agreed_at=timezone.now(),
-                privacy_policy_version=get_legal_bundle_version(),
-            )
             next_url = request.POST.get('next', '')
-            ok, error = create_and_send_email_code(
-                user,
-                form.cleaned_data['email'],
-                action_url=_build_register_confirm_url(request, form.cleaned_data['email'], next_url),
-            )
-            if not ok:
-                user.delete()
-                form.add_error('email', error)
+            ok_rate, rate_error = check_registration_rate_limits(request, form.cleaned_data['email'])
+            if not ok_rate:
+                form.add_error('email', rate_error)
             else:
-                confirm_url = reverse('accounts:register_confirm')
-                query = {'email': form.cleaned_data['email']}
-                if next_url:
-                    query['next'] = next_url
-                confirm_url = f'{confirm_url}?{urlencode(query)}'
-                return redirect(confirm_url)
+                user = User.objects.create_user(
+                    username=build_unique_email_username(),
+                    email=form.cleaned_data['email'],
+                    password=form.cleaned_data['password1'],
+                    is_active=True,
+                )
+                Profile.objects.create(
+                    user=user,
+                    phone=get_default_profile_phone(user),
+                    contact_name=form.cleaned_data['contact_name'],
+                    privacy_agreed_at=timezone.now(),
+                    privacy_policy_version=get_legal_bundle_version(),
+                )
+                ok, error = create_and_send_email_code(
+                    user,
+                    form.cleaned_data['email'],
+                    action_url=_build_register_confirm_url(request, form.cleaned_data['email'], next_url),
+                )
+                if not ok:
+                    user.delete()
+                    form.add_error('email', error)
+                else:
+                    mark_registration_success(request, form.cleaned_data['email'])
+                    confirm_url = reverse('accounts:register_confirm')
+                    query = {'email': form.cleaned_data['email']}
+                    if next_url:
+                        query['next'] = next_url
+                    confirm_url = f'{confirm_url}?{urlencode(query)}'
+                    return redirect(confirm_url)
     else:
         form = RegistrationForm()
 

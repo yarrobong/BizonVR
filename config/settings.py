@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
 import os
+import sys
 from pathlib import Path
 
 from decouple import Csv, config
@@ -29,8 +30,11 @@ SECRET_KEY = config('SECRET_KEY', default='django-insecure-change-me')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config_bool('DEBUG', default=True)
 ENABLE_ALFATRACK = config_bool('ENABLE_ALFATRACK', default=not DEBUG)
+OPS_SHOW_RESERVE_DEBUG = config_bool('OPS_SHOW_RESERVE_DEBUG', default=False)
 
+ALLOWED_HOSTS_RAW = config('ALLOWED_HOSTS', default='').strip()
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=Csv())
+ALLOWED_HOSTS_WAS_SET = bool(ALLOWED_HOSTS_RAW)
 
 # Для HTTPS в продакшене (форма логина, CSRF). Например: https://bizonvr.ru,https://www.bizonvr.ru
 CSRF_TRUSTED_ORIGINS = [x.strip() for x in config('CSRF_TRUSTED_ORIGINS', default='').split(',') if x.strip()]
@@ -52,6 +56,7 @@ INSTALLED_APPS = [
     'accounts',
     'orders',
     'payments',
+    'integrations.apps.IntegrationsConfig',
     'manager_portal',
     'operations',
     'warehouse_ui',
@@ -60,6 +65,7 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'config.middleware.MarketingContextMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -227,6 +233,13 @@ PAYMENT_GATEWAY_API_BASE = config(
 BITRIX_WEBHOOK_URL = config('BITRIX_WEBHOOK_URL', default='').rstrip('/')
 BITRIX_INGEST_TOKEN = config('BITRIX_INGEST_TOKEN', default='').strip()
 BITRIX_SITE_PRODUCT_ID_PROPERTY_ID = config('BITRIX_SITE_PRODUCT_ID_PROPERTY_ID', default=107, cast=int)
+BITRIX_SITE_REQUESTS_ENABLED = config_bool(
+    'BITRIX_SITE_REQUESTS_ENABLED',
+    default=bool(BITRIX_WEBHOOK_URL) and 'test' not in sys.argv,
+)
+BITRIX_ASSIGNED_BY_ID = config('BITRIX_ASSIGNED_BY_ID', default='').strip()
+BITRIX_FIELD_DEAL_TYPE = config('BITRIX_FIELD_DEAL_TYPE', default='').strip()
+BITRIX_FIELD_CLIENT_SOURCE = config('BITRIX_FIELD_CLIENT_SOURCE', default='').strip()
 BITRIX_FIELD_CITY = config('BITRIX_FIELD_CITY', default='').strip()
 BITRIX_FIELD_CLIENT_REQUEST = config('BITRIX_FIELD_CLIENT_REQUEST', default='').strip()
 BITRIX_FIELD_DELIVERY_ADDRESS = config('BITRIX_FIELD_DELIVERY_ADDRESS', default='').strip()
@@ -269,8 +282,20 @@ CATALOG_API_ALLOWED_ORIGINS = [
 CATALOG_API_DEFAULT_LIMIT = config('CATALOG_API_DEFAULT_LIMIT', default=20, cast=int)
 CATALOG_API_MAX_LIMIT = config('CATALOG_API_MAX_LIMIT', default=100, cast=int)
 
+
+def _config_int(name, *, default):
+    raw_value = config(name, default=None)
+    normalized = str(raw_value).strip() if raw_value is not None else ''
+    if not normalized:
+        return default, '', False
+    try:
+        return int(normalized), '', True
+    except (TypeError, ValueError):
+        return default, normalized, True
+
+
 EMAIL_HOST = config('EMAIL_HOST', default='').strip()
-EMAIL_PORT = config('EMAIL_PORT', default=587, cast=int)
+EMAIL_PORT, EMAIL_PORT_CONFIG_ERROR, EMAIL_PORT_WAS_SET = _config_int('EMAIL_PORT', default=587)
 EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='').strip()
 EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='').strip()
 EMAIL_USE_TLS = config_bool('EMAIL_USE_TLS', default=True)
@@ -361,7 +386,7 @@ WHITENOISE_MAX_AGE = 3600 if DEBUG else 31536000
 
 # Безопасность для продакшена (HTTPS, HSTS, cookies).
 # USE_HTTPS=False — локальный HTTP. USE_HTTPS=True — запуск за Nginx с SSL.
-_use_https = config_bool('USE_HTTPS', default=False)
+USE_HTTPS = config_bool('USE_HTTPS', default=False)
 
 # Cross-Origin-Opener-Policy (COOP) - работает только для HTTPS или localhost
 # Для разработки на localhost это нормально, для продакшена нужен HTTPS
@@ -369,12 +394,12 @@ _use_https = config_bool('USE_HTTPS', default=False)
 SECURE_CROSS_ORIGIN_OPENER_POLICY = 'same-origin-allow-popups'
 
 if not DEBUG:
-    SECURE_SSL_REDIRECT = _use_https
+    SECURE_SSL_REDIRECT = USE_HTTPS
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-    SESSION_COOKIE_SECURE = _use_https
-    CSRF_COOKIE_SECURE = _use_https
+    SESSION_COOKIE_SECURE = USE_HTTPS
+    CSRF_COOKIE_SECURE = USE_HTTPS
     SECURE_REFERRER_POLICY = 'same-origin'
-    SECURE_HSTS_SECONDS = 31536000 if _use_https else 0
+    SECURE_HSTS_SECONDS = 31536000 if USE_HTTPS else 0
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
     SECURE_CONTENT_TYPE_NOSNIFF = True

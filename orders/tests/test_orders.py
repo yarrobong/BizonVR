@@ -1,9 +1,12 @@
 """Базовые тесты заказов (Фаза 6)."""
 from decimal import Decimal
 import json
+from io import StringIO
 
+import requests
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
+from django.core.management import call_command
 from django.core import mail
 from django.test import Client, RequestFactory, TestCase, override_settings, tag
 from django.urls import reverse
@@ -19,6 +22,7 @@ from payments.models import Payment
 
 from accounts.tests.factories import create_user
 from catalog.tests.factories import create_category, create_game_pack, create_product
+from integrations.models import SiteLeadRequest
 from orders.forms import CheckoutForm, PurchaseRequestForm
 from orders.models import Order, OrderItem, OrderNotificationLog, PromoCode, PurchaseRequest
 from orders.services import send_order_event_notifications, sync_order_state_side_effects
@@ -145,6 +149,47 @@ class CheckoutTest(TestCase):
         }
         payload.update(overrides)
         return payload
+
+    def _bitrix_response(self, result):
+        response = Mock()
+        response.raise_for_status.return_value = None
+        response.json.return_value = {'result': result}
+        return response
+
+    def _mock_bitrix_site_intake(
+        self,
+        mock_post,
+        *,
+        duplicate_contact_id='',
+        contact_add_result='101',
+        deal_add_result='202',
+        catalog_product_id='',
+        fail_on=None,
+        captured=None,
+    ):
+        captured = captured if captured is not None else []
+
+        def side_effect(url, data=None, timeout=None):
+            if fail_on and fail_on in url:
+                raise requests.RequestException('bitrix down')
+            captured.append({'url': url, 'data': data})
+            if url.endswith('/crm.duplicate.findbycomm.json'):
+                result = {'CONTACT': [duplicate_contact_id]} if duplicate_contact_id else {'CONTACT': []}
+                return self._bitrix_response(result)
+            if url.endswith('/crm.contact.update.json'):
+                return self._bitrix_response(True)
+            if url.endswith('/crm.contact.add.json'):
+                return self._bitrix_response(contact_add_result)
+            if url.endswith('/crm.deal.add.json'):
+                return self._bitrix_response(deal_add_result)
+            if url.endswith('/crm.deal.productrows.set.json'):
+                return self._bitrix_response(True)
+            if url.endswith('/catalog.product.list.json'):
+                return self._bitrix_response([{'id': catalog_product_id}] if catalog_product_id else [])
+            raise AssertionError(f'Unexpected Bitrix URL: {url}')
+
+        mock_post.side_effect = side_effect
+        return captured
 
     def _set_buy_now_items(self, items):
         session = self.client.session
@@ -415,6 +460,8 @@ class CheckoutTest(TestCase):
         self.assertContains(response, 'Заявка отправлена')
         self.assertEqual(Order.objects.count(), 0)
         self.assertTrue(self.client.session.get('cart_items'))
+        self.assertEqual(SiteLeadRequest.objects.count(), 1)
+        self.assertEqual(SiteLeadRequest.objects.get().spam_status, SiteLeadRequest.SPAM_STATUS_SPAM)
 
     @override_settings(CRM_LEADS_EMAIL='crm@example.com')
     @tag('slow')
@@ -447,6 +494,71 @@ class CheckoutTest(TestCase):
         self.assertContains(response, 'Заявка отправлена')
         self.assertEqual(Order.objects.count(), 0)
         self.assertEqual(len(mail.outbox), 0)
+        self.assertEqual(SiteLeadRequest.objects.count(), 1)
+        self.assertEqual(SiteLeadRequest.objects.get().sync_status, SiteLeadRequest.SYNC_STATUS_SKIPPED)
+
+    @override_settings(BITRIX_WEBHOOK_URL='https://portal.example/rest/1/webhook', BITRIX_SITE_REQUESTS_ENABLED=True)
+    @patch('integrations.bitrix_site_requests.requests.post')
+    def test_checkout_keeps_failed_site_request_when_bitrix_is_unavailable(self, mock_post):
+        self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
+        self._mock_bitrix_site_intake(mock_post, fail_on='/crm.contact.add.json')
+
+        response = self.client.post(reverse('orders:checkout'), self._checkout_payload())
+
+        self.assertEqual(response.status_code, 302)
+        order = Order.objects.get()
+        site_request = SiteLeadRequest.objects.get(order=order)
+        self.assertEqual(site_request.sync_status, SiteLeadRequest.SYNC_STATUS_FAILED)
+        self.assertIn('Не удалось выполнить запрос Bitrix', site_request.sync_error)
+
+    @override_settings(BITRIX_WEBHOOK_URL='https://portal.example/rest/1/webhook', BITRIX_SITE_REQUESTS_ENABLED=True)
+    @patch('integrations.bitrix_site_requests.requests.post')
+    def test_retry_command_resends_failed_site_requests(self, mock_post):
+        site_request = SiteLeadRequest.objects.create(
+            source_type=SiteLeadRequest.SOURCE_CONTACTS,
+            name='Иван',
+            phone='+7 999 123 45 67',
+            email='client@example.com',
+            message='Нужна консультация',
+            page_url='http://testserver/contacts/',
+            spam_status=SiteLeadRequest.SPAM_STATUS_CLEAN,
+            sync_status=SiteLeadRequest.SYNC_STATUS_FAILED,
+            sync_error='timeout',
+        )
+        self._mock_bitrix_site_intake(mock_post, duplicate_contact_id='701', deal_add_result='702')
+
+        stdout = StringIO()
+        call_command('sync_site_requests_to_bitrix', stdout=stdout)
+
+        site_request.refresh_from_db()
+        self.assertEqual(site_request.sync_status, SiteLeadRequest.SYNC_STATUS_SYNCED)
+        self.assertEqual(site_request.bitrix_contact_id, '701')
+        self.assertEqual(site_request.bitrix_deal_id, '702')
+        self.assertIn('Processed: 1, synced: 1, failed: 0', stdout.getvalue())
+
+    @override_settings(BITRIX_WEBHOOK_URL='https://portal.example/rest/1/webhook', BITRIX_SITE_REQUESTS_ENABLED=True)
+    @patch('integrations.bitrix_site_requests.requests.post')
+    def test_duplicate_contact_lookup_reuses_existing_bitrix_contact(self, mock_post):
+        site_request = SiteLeadRequest.objects.create(
+            source_type=SiteLeadRequest.SOURCE_CONTACTS,
+            name='Иван',
+            phone='+7 999 123 45 67',
+            email='client@example.com',
+            message='Нужна консультация',
+            page_url='http://testserver/contacts/',
+            spam_status=SiteLeadRequest.SPAM_STATUS_CLEAN,
+            sync_status=SiteLeadRequest.SYNC_STATUS_PENDING,
+        )
+        captured = self._mock_bitrix_site_intake(mock_post, duplicate_contact_id='900', deal_add_result='901')
+
+        from integrations.bitrix_site_requests import send_site_request_to_bitrix
+
+        send_site_request_to_bitrix(site_request)
+
+        self.assertTrue(any(call['url'].endswith('/crm.contact.update.json') for call in captured))
+        self.assertFalse(any(call['url'].endswith('/crm.contact.add.json') for call in captured))
+        site_request.refresh_from_db()
+        self.assertEqual(site_request.bitrix_contact_id, '900')
 
     def test_guest_checkout_creates_guest_order_and_access_token(self):
         add_url = reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk})
@@ -645,7 +757,9 @@ class CheckoutTest(TestCase):
         self.assertContains(resp, 'В заявке не осталось доступных позиций для оформления.')
         self.assertEqual(Order.objects.count(), 0)
 
-    def test_checkout_creates_manager_portal_entities_for_website_order(self):
+    @override_settings(BITRIX_WEBHOOK_URL='https://portal.example/rest/1/webhook', BITRIX_SITE_REQUESTS_ENABLED=True)
+    @patch('integrations.bitrix_site_requests.requests.post')
+    def test_checkout_creates_site_lead_request_and_bitrix_deal(self, mock_post):
         self.product.price_on_request = Decimal('80.00')
         self.product.save(update_fields=['price_on_request'])
         self.client.force_login(self.user)
@@ -653,15 +767,24 @@ class CheckoutTest(TestCase):
             reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}),
             {'quantity': 1, 'purchase_mode': 'on_request'},
         )
+        captured = self._mock_bitrix_site_intake(mock_post, catalog_product_id='555')
 
         response = self.client.post(reverse('orders:checkout'), self._checkout_payload())
 
         self.assertEqual(response.status_code, 302)
         order = Order.objects.get()
-        self.assertTrue(ManagerClient.objects.filter(orders=order).exists())
-        self.assertTrue(hasattr(order, 'manager_deal'))
-        self.assertEqual(order.manager_deal.customer_source, ManagerDeal.SOURCE_WEBSITE)
-        self.assertEqual(order.manager_deal.deal_type, ManagerDeal.DEAL_SALE_ON_REQUEST)
+        site_request = SiteLeadRequest.objects.get(order=order)
+        self.assertEqual(site_request.source_type, SiteLeadRequest.SOURCE_CHECKOUT)
+        self.assertEqual(site_request.sync_status, SiteLeadRequest.SYNC_STATUS_SYNCED)
+        self.assertEqual(site_request.bitrix_deal_id, '202')
+        self.assertFalse(ManagerClient.objects.filter(orders=order).exists())
+        self.assertFalse(hasattr(order, 'manager_deal'))
+        product_rows_call = next(call for call in captured if call['url'].endswith('/crm.deal.productrows.set.json'))
+        rows = product_rows_call['data']['rows']
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['PRODUCT_ID'], '555')
+        self.assertEqual(rows[0]['QUANTITY'], 1)
+        self.assertEqual(rows[0]['PRICE'], '80.00')
 
     def test_checkout_forces_manager_contact_payment_method(self):
         self.client.force_login(self.user)
@@ -677,7 +800,7 @@ class CheckoutTest(TestCase):
         self.assertEqual(response.status_code, 302)
         order = Order.objects.get()
         self.assertEqual(order.payment_method, Order.PAYMENT_METHOD_MANAGER_CONTACT)
-        self.assertEqual(order.manager_deal.buyer_type, ManagerDeal.BUYER_INDIVIDUAL)
+        self.assertFalse(hasattr(order, 'manager_deal'))
 
     def test_checkout_test_mode_creates_paid_order(self):
         self.client.force_login(self.user)

@@ -11,6 +11,11 @@ PLACEHOLDER_MARKERS = (
 
 
 def _is_blank_or_placeholder(value):
+    if isinstance(value, (list, tuple, set)):
+        values = [str(item or '').strip() for item in value if str(item or '').strip()]
+        if not values:
+            return True
+        return all(_is_blank_or_placeholder(item) for item in values)
     normalized = str(value or '').strip()
     if not normalized:
         return True
@@ -21,30 +26,38 @@ def _is_blank_or_placeholder(value):
 @register(Tags.security, deploy=True)
 def production_launch_settings_check(app_configs, **kwargs):
     messages = []
+    production_mode = not getattr(settings, 'DEBUG', True)
+    require_https_site_url = bool(getattr(settings, 'USE_HTTPS', False)) or production_mode
 
-    required_values = {
-        'SITE_URL': getattr(settings, 'SITE_URL', ''),
-        'DEFAULT_FROM_EMAIL': getattr(settings, 'DEFAULT_FROM_EMAIL', ''),
-        'EMAIL_HOST': getattr(settings, 'EMAIL_HOST', ''),
-        'EMAIL_HOST_USER': getattr(settings, 'EMAIL_HOST_USER', ''),
-        'EMAIL_HOST_PASSWORD': getattr(settings, 'EMAIL_HOST_PASSWORD', ''),
-        'LEGAL_OPERATOR_FULL_NAME': getattr(settings, 'LEGAL_OPERATOR_FULL_NAME', ''),
-        'LEGAL_OPERATOR_INN': getattr(settings, 'LEGAL_OPERATOR_INN', ''),
-        'LEGAL_OPERATOR_OGRN': getattr(settings, 'LEGAL_OPERATOR_OGRN', ''),
-        'LEGAL_OPERATOR_PD_EMAIL': getattr(settings, 'LEGAL_OPERATOR_PD_EMAIL', ''),
-    }
-    missing = [name for name, value in required_values.items() if _is_blank_or_placeholder(value)]
-    if missing:
-        messages.append(Error(
-            'Production launch settings contain empty or placeholder values.',
-            hint='Fill these environment variables before restart: ' + ', '.join(sorted(missing)),
-            id='config.E001',
-        ))
+    if production_mode:
+        required_values = {
+            'SITE_URL': getattr(settings, 'SITE_URL', ''),
+            'SECRET_KEY': getattr(settings, 'SECRET_KEY', ''),
+            'DEFAULT_FROM_EMAIL': getattr(settings, 'DEFAULT_FROM_EMAIL', ''),
+            'EMAIL_HOST': getattr(settings, 'EMAIL_HOST', ''),
+            'EMAIL_HOST_USER': getattr(settings, 'EMAIL_HOST_USER', ''),
+            'EMAIL_HOST_PASSWORD': getattr(settings, 'EMAIL_HOST_PASSWORD', ''),
+            'LEGAL_OPERATOR_FULL_NAME': getattr(settings, 'LEGAL_OPERATOR_FULL_NAME', ''),
+            'LEGAL_OPERATOR_INN': getattr(settings, 'LEGAL_OPERATOR_INN', ''),
+            'LEGAL_OPERATOR_OGRN': getattr(settings, 'LEGAL_OPERATOR_OGRN', ''),
+            'LEGAL_OPERATOR_PD_EMAIL': getattr(settings, 'LEGAL_OPERATOR_PD_EMAIL', ''),
+        }
+        missing = [name for name, value in required_values.items() if _is_blank_or_placeholder(value)]
+        if not getattr(settings, 'ALLOWED_HOSTS_WAS_SET', bool(getattr(settings, 'ALLOWED_HOSTS', []))):
+            missing.append('ALLOWED_HOSTS')
+        if not getattr(settings, 'EMAIL_PORT_WAS_SET', False):
+            missing.append('EMAIL_PORT')
+        if missing:
+            messages.append(Error(
+                'Production launch settings contain empty or placeholder values.',
+                hint='Fill these environment variables before restart: ' + ', '.join(sorted(missing)),
+                id='config.E001',
+            ))
 
     site_url = str(getattr(settings, 'SITE_URL', '') or '')
-    if site_url and not site_url.startswith('https://'):
+    if require_https_site_url and not site_url.startswith('https://'):
         messages.append(Error(
-            'SITE_URL must use HTTPS in production.',
+            'SITE_URL must use HTTPS when DEBUG=False or USE_HTTPS=True.',
             hint='Set SITE_URL=https://bizonvr.ru in the production .env.',
             id='config.E002',
         ))
@@ -62,6 +75,21 @@ def production_launch_settings_check(app_configs, **kwargs):
             'EMAIL_USE_TLS and EMAIL_USE_SSL cannot both be enabled.',
             hint='Use STARTTLS on port 587 or SSL on port 465, not both.',
             id='config.E003',
+        ))
+
+    email_port_error = str(getattr(settings, 'EMAIL_PORT_CONFIG_ERROR', '') or '').strip()
+    email_port = getattr(settings, 'EMAIL_PORT', None)
+    if email_port_error:
+        messages.append(Error(
+            'EMAIL_PORT must be a number.',
+            hint='Set EMAIL_PORT to an integer SMTP port such as 587 or 465.',
+            id='config.E004',
+        ))
+    elif email_port is None or not isinstance(email_port, int) or email_port <= 0:
+        messages.append(Error(
+            'EMAIL_PORT must be a positive integer.',
+            hint='Set EMAIL_PORT to an integer SMTP port such as 587 or 465.',
+            id='config.E005',
         ))
 
     return messages
