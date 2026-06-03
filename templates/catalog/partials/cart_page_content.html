@@ -1038,7 +1038,7 @@
           <p>Способ доставки и оплаты можно выбрать при оформлении заказа.</p>
           <div class="flex flex-wrap gap-3 text-xs">
             <a href="{% url 'accounts:login' %}?next={% url 'orders:checkout' %}" class="text-accent hover:text-accent-hover">Войти в аккаунт</a>
-            <a href="{% url 'accounts:login' %}?next={% url 'orders:checkout' %}" class="text-accent hover:text-accent-hover">Создать аккаунт</a>
+            <a href="{% url 'accounts:register' %}?next={% url 'orders:checkout' %}" class="text-accent hover:text-accent-hover">Создать аккаунт</a>
           </div>
         </div>
 

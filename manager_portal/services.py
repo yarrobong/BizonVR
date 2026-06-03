@@ -5065,6 +5065,55 @@ def _apply_bitrix_payload_to_existing_order_item(order_item, payload, *, warning
     }
 
 
+def _site_lead_order_for_bitrix_deal(deal_id):
+    from integrations.models import SiteLeadRequest
+
+    site_request = (
+        SiteLeadRequest.objects
+        .select_related('order')
+        .exclude(order__isnull=True)
+        .filter(bitrix_deal_id=_bitrix_text(deal_id))
+        .order_by('-created_at', '-id')
+        .first()
+    )
+    if site_request is None:
+        return None, None
+    return site_request.order, site_request
+
+
+def _match_existing_site_order_item(unlinked_items, payload):
+    payload_variant_id = getattr(payload.get('variant'), 'id', None)
+    payload_product_id = getattr(payload.get('product'), 'id', None)
+    payload_name = _bitrix_text(payload.get('product_name')).casefold()
+    payload_variant_name = _bitrix_text(payload.get('variant_name')).casefold()
+    payload_display_name = payload_name
+    if payload_variant_name:
+        payload_display_name = f'{payload_name} ({payload_variant_name})'
+
+    for index, order_item in enumerate(unlinked_items):
+        if order_item.product_id and order_item.product_id == payload_product_id and order_item.variant_id == payload_variant_id:
+            return unlinked_items.pop(index)
+
+    for index, order_item in enumerate(unlinked_items):
+        if order_item.display_name.casefold() == payload_display_name:
+            return unlinked_items.pop(index)
+
+    for index, order_item in enumerate(unlinked_items):
+        if order_item.resolved_product_name.casefold() != payload_name:
+            continue
+        if payload_variant_name and order_item.resolved_variant_name.casefold() != payload_variant_name:
+            continue
+        return unlinked_items.pop(index)
+
+    for index, order_item in enumerate(unlinked_items):
+        if (
+            order_item.line_type == payload.get('line_type')
+            and int(order_item.quantity or 0) == int(payload.get('quantity') or 0)
+        ):
+            return unlinked_items.pop(index)
+    return None
+
+
 @transaction.atomic
 def sync_bitrix_deal_into_operations(deal_id, *, actor=None):
     normalized_deal_id, deal_data, product_rows = _load_bitrix_deal_payload(deal_id)
@@ -5158,6 +5207,10 @@ def sync_bitrix_deal_into_operations(deal_id, *, actor=None):
 
     manager_deal = ManagerDeal.objects.select_related('order').filter(bitrix_deal_id=normalized_deal_id).first()
     order = manager_deal.order if manager_deal is not None else None
+    linked_site_request = None
+    if order is None:
+        order, linked_site_request = _site_lead_order_for_bitrix_deal(normalized_deal_id)
+    preserve_existing_created_at = order is not None and linked_site_request is not None
     if order is None:
         order = Order.objects.create(
             user=None,
@@ -5221,7 +5274,7 @@ def sync_bitrix_deal_into_operations(deal_id, *, actor=None):
         if update_fields:
             order.save(update_fields=[*update_fields, 'updated_at'])
 
-    if order.created_at != created_at:
+    if not preserve_existing_created_at and order.created_at != created_at:
         Order.objects.filter(pk=order.pk).update(created_at=created_at)
         order.refresh_from_db()
 
@@ -5229,11 +5282,18 @@ def sync_bitrix_deal_into_operations(deal_id, *, actor=None):
         _bitrix_text((item.metadata or {}).get('bitrix_row_key')): item
         for item in order.items.select_related('product', 'variant').all()
     }
+    unlinked_existing_items = [
+        item
+        for item in order.items.select_related('product', 'variant').all()
+        if not _bitrix_text((item.metadata or {}).get('bitrix_row_key'))
+    ]
     created_items = 0
     updated_items = 0
     for payload in item_payloads:
         row_key = payload['row_key']
         order_item = existing_items.get(row_key)
+        if order_item is None and unlinked_existing_items:
+            order_item = _match_existing_site_order_item(unlinked_existing_items, payload)
         item_fields = {
             'line_type': payload['line_type'],
             'product': payload['product'],
@@ -5283,7 +5343,7 @@ def sync_bitrix_deal_into_operations(deal_id, *, actor=None):
     )
     imported_deal = ensure_manager_deal_for_order(
         order,
-        customer_source=ManagerDeal.SOURCE_OTHER,
+        customer_source=ManagerDeal.SOURCE_WEBSITE if linked_site_request is not None else ManagerDeal.SOURCE_OTHER,
     )
     deal_update_fields = []
     if imported_deal.bitrix_deal_id != normalized_deal_id:
@@ -5292,8 +5352,9 @@ def sync_bitrix_deal_into_operations(deal_id, *, actor=None):
     if imported_deal.bitrix_deal_url != deal_url:
         imported_deal.bitrix_deal_url = deal_url
         deal_update_fields.append('bitrix_deal_url')
-    if imported_deal.customer_source != ManagerDeal.SOURCE_OTHER:
-        imported_deal.customer_source = ManagerDeal.SOURCE_OTHER
+    target_customer_source = ManagerDeal.SOURCE_WEBSITE if linked_site_request is not None else ManagerDeal.SOURCE_OTHER
+    if imported_deal.customer_source != target_customer_source:
+        imported_deal.customer_source = target_customer_source
         deal_update_fields.append('customer_source')
     if imported_deal.deal_created_at != created_at:
         imported_deal.deal_created_at = created_at

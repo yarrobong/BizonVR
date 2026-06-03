@@ -1145,9 +1145,11 @@ class ProductDetailView(HtmxPartialResponseMixin, DetailView):
                 requested_variant_id = None
             if requested_variant_id and any(variant.pk == requested_variant_id for variant in variants):
                 initial_variant_id = requested_variant_id
-        purchase_request_source_path = self.object.get_absolute_url()
-        if initial_variant_id:
-            purchase_request_source_path = f'{purchase_request_source_path}?variant={initial_variant_id}'
+        purchase_request_source_path = self.request.get_full_path()
+        if not purchase_request_source_path:
+            purchase_request_source_path = self.object.get_absolute_url()
+            if initial_variant_id:
+                purchase_request_source_path = f'{purchase_request_source_path}?variant={initial_variant_id}'
         product_in_stock_price = resolve_in_stock_price(self.object)
         product_on_request_price = resolve_on_request_price(self.object)
         has_product_on_request_price = has_explicit_on_request_price(self.object)

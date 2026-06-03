@@ -1,4 +1,5 @@
 import re
+import logging
 
 from django.contrib import messages
 from django.db.models import Q
@@ -15,6 +16,13 @@ except ImportError:
 
 from config.legal_consent import build_legal_acceptance_payload
 from config.utils.spam_protection import check_spam_submission, log_blocked_submission
+from integrations.bitrix_site_requests import (
+    BitrixSiteRequestSyncError,
+    create_site_lead_request,
+    send_site_request_to_bitrix,
+    summarize_spam_check,
+)
+from integrations.models import SiteLeadRequest
 
 from ..cart_services import (
     _build_service_item_dict,
@@ -25,6 +33,8 @@ from ..cart_services import (
 )
 from ..forms import VRClubQuizForm
 from ..models import GamePack, Product, ProductGameMetadata, Service, VRClubQuizRequest
+
+logger = logging.getLogger(__name__)
 
 
 def _split_filter(value):
@@ -105,12 +115,24 @@ def vr_club_games_view(request):
         spam_result = check_spam_submission(request)
         if spam_result.is_spam:
             log_blocked_submission(request, source='vr_club_quiz', result=spam_result)
+            spam_status, spam_reason = summarize_spam_check(spam_result)
+            create_site_lead_request(
+                request=request,
+                source_type=SiteLeadRequest.SOURCE_VR_CLUB,
+                name=request.POST.get('name', ''),
+                phone=request.POST.get('phone', ''),
+                email=request.POST.get('email', ''),
+                city='',
+                message=request.POST.get('comment', ''),
+                spam_status=spam_status,
+                spam_reason=spam_reason,
+            )
             quiz_form = VRClubQuizForm()
             quiz_sent = True
         else:
             quiz_form = VRClubQuizForm(request.POST)
             if quiz_form.is_valid():
-                VRClubQuizRequest.objects.create(
+                quiz_request = VRClubQuizRequest.objects.create(
                     name=quiz_form.cleaned_data['name'].strip(),
                     phone=quiz_form.cleaned_data['phone'].strip(),
                     email=(quiz_form.cleaned_data.get('email') or '').strip(),
@@ -123,6 +145,32 @@ def vr_club_games_view(request):
                     comment=(quiz_form.cleaned_data.get('comment') or '').strip(),
                     **build_legal_acceptance_payload(request),
                 )
+                spam_status, spam_reason = summarize_spam_check(spam_result)
+                site_request = create_site_lead_request(
+                    request=request,
+                    source_type=SiteLeadRequest.SOURCE_VR_CLUB,
+                    name=quiz_request.name,
+                    phone=quiz_request.phone,
+                    email=quiz_request.email,
+                    city='',
+                    message='\n'.join(
+                        part for part in [
+                            quiz_request.comment,
+                            f'Формат клуба: {quiz_request.club_format}' if quiz_request.club_format else '',
+                            f'Устройства: {quiz_request.devices}' if quiz_request.devices else '',
+                            f'Количество шлемов: {quiz_request.headsets_count}' if quiz_request.headsets_count else '',
+                            f'Игровых мест: {quiz_request.play_places_count}' if quiz_request.play_places_count else '',
+                            f'Аудитория: {quiz_request.audience}' if quiz_request.audience else '',
+                            f'Бюджет: {quiz_request.budget}' if quiz_request.budget else '',
+                        ] if part
+                    ),
+                    spam_status=spam_status,
+                    spam_reason=spam_reason,
+                )
+                try:
+                    send_site_request_to_bitrix(site_request)
+                except BitrixSiteRequestSyncError:
+                    logger.exception('Bitrix sync failed for vr_club site request %s.', site_request.pk)
                 quiz_form = VRClubQuizForm()
                 quiz_sent = True
 

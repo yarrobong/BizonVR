@@ -77,7 +77,10 @@
             {% if manager_can_access_admin %}
               <a href="{% url 'admin:index' %}" class="rounded-lg border border-slate-700 px-3 py-2 text-xs hover:bg-slate-800">Админка</a>
             {% endif %}
-            <a href="{% url 'accounts:logout' %}" class="rounded-lg border border-slate-700 px-3 py-2 text-xs hover:bg-slate-800">Выход</a>
+            <form method="post" action="{% url 'accounts:logout' %}" class="inline" hx-boost="false">
+              {% csrf_token %}
+              <button type="submit" class="rounded-lg border border-slate-700 px-3 py-2 text-xs hover:bg-slate-800">Выход</button>
+            </form>
           </div>
         </div>
       </div>
@@ -146,7 +149,10 @@
             {% if manager_can_access_admin %}
               <a href="{% url 'admin:index' %}" class="manager-footer-action-btn">Админка</a>
             {% endif %}
-            <a href="{% url 'accounts:logout' %}" class="manager-footer-action-btn">Выход</a>
+            <form method="post" action="{% url 'accounts:logout' %}" class="inline" hx-boost="false">
+              {% csrf_token %}
+              <button type="submit" class="manager-footer-action-btn">Выход</button>
+            </form>
           </div>
         </div>
 
@@ -220,7 +226,10 @@
               {% if manager_can_access_admin %}
                 <a href="{% url 'admin:index' %}" class="manager-topbar-account-link">Админка</a>
               {% endif %}
-              <a href="{% url 'accounts:logout' %}" class="manager-topbar-account-link manager-topbar-account-link-danger">Выход</a>
+              <form method="post" action="{% url 'accounts:logout' %}" hx-boost="false">
+                {% csrf_token %}
+                <button type="submit" class="manager-topbar-account-link manager-topbar-account-link-danger w-full text-left">Выход</button>
+              </form>
             </div>
           </details>
         </div>

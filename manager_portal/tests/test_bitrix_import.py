@@ -8,6 +8,7 @@ from django.test import override_settings
 from django.urls import reverse
 
 from catalog.models import Product
+from integrations.models import SiteLeadRequest
 from orders.models import Order, OrderItem
 
 from manager_portal.models import Cargo, CargoItem, ManagerDeal, Purchase, PurchaseItem, Reservation, ReservationItem, Shipment, ShipmentItem
@@ -191,6 +192,63 @@ class BitrixDealImportTests(ManagerPortalBaseTestCase):
         deal = ManagerDeal.objects.get(bitrix_deal_id='6669')
         self.assertTrue(Order.objects.filter(pk=deal.order_id).exists())
         self.assertEqual(deal.order.items.count(), 1)
+
+    @patch('manager_portal.services.requests.get')
+    def test_import_reuses_existing_website_order_linked_by_site_request(self, mock_get):
+        self._mock_bitrix(
+            mock_get,
+            deal=self._base_deal_payload(),
+            contact=self._base_contact_payload(),
+            rows=[
+                {
+                    'ID': 'row-site-order',
+                    'PRODUCT_NAME': self.product.name,
+                    'SKU': self.product.sku,
+                    'PRICE': '1000',
+                    'QUANTITY': '1',
+                }
+            ],
+        )
+        initial_order_count = Order.objects.count()
+        order = Order.objects.create(
+            status=Order.STATUS_NEW,
+            total=Decimal('1000.00'),
+            payment_method=Order.PAYMENT_METHOD_MANAGER_CONTACT,
+            payment_status=Order.PAYMENT_STATUS_UNPAID,
+            phone='+7 912 000-10-10',
+            email='bitrix-client@example.com',
+            first_name='Иван',
+            recipient_name='Иван Покупатель',
+            recipient_phone='+7 912 000-10-10',
+            city_text='Екатеринбург',
+            address_line='ул. Ленина, 10',
+        )
+        existing_item = OrderItem.objects.create(
+            order=order,
+            line_type=OrderItem.LINE_TYPE_CATALOG,
+            product=self.product,
+            quantity=1,
+            price=Decimal('1000.00'),
+            product_name=self.product.name,
+        )
+        SiteLeadRequest.objects.create(
+            source_type=SiteLeadRequest.SOURCE_CHECKOUT,
+            order=order,
+            phone=order.phone,
+            email=order.email,
+            page_url='http://testserver/orders/checkout/',
+            spam_status=SiteLeadRequest.SPAM_STATUS_CLEAN,
+            sync_status=SiteLeadRequest.SYNC_STATUS_SYNCED,
+            bitrix_deal_id='6669',
+        )
+
+        result = sync_bitrix_deal_into_operations('6669')
+
+        self.assertEqual(result['order'].pk, order.pk)
+        self.assertEqual(Order.objects.count(), initial_order_count + 1)
+        self.assertEqual(order.items.count(), 1)
+        existing_item.refresh_from_db()
+        self.assertEqual(existing_item.metadata.get('bitrix_row_key'), 'row-site-order')
 
     @patch('manager_portal.services.requests.get')
     def test_repeat_import_preserves_manual_catalog_link_and_related_supply_entities(self, mock_get):

@@ -75,6 +75,82 @@ def mark_send_email_success(request, email, *, endpoint='send-email-code'):
     _set_cooldown(endpoint, 'session', get_rate_limit_session_key(request), cooldown)
 
 
+def check_registration_rate_limits(request, email):
+    email = normalize_email(email)
+    cooldown = getattr(
+        settings,
+        'REGISTRATION_COOLDOWN_SECONDS',
+        getattr(settings, 'EMAIL_CODE_COOLDOWN_SECONDS', 60),
+    )
+    window_seconds = getattr(settings, 'REGISTRATION_RATE_LIMIT_WINDOW_SECONDS', 15 * 60)
+    checks = (
+        (
+            'cooldown',
+            'registration',
+            'ip',
+            get_client_ip(request),
+            cooldown,
+            f'Подождите {cooldown} сек. перед новой регистрацией.',
+        ),
+        (
+            'cooldown',
+            'registration',
+            'email',
+            email,
+            cooldown,
+            f'Для этого email уже была недавняя попытка регистрации. Повторите через {cooldown} сек.',
+        ),
+        (
+            'cooldown',
+            'registration',
+            'session',
+            get_rate_limit_session_key(request),
+            cooldown,
+            f'Подождите {cooldown} сек. перед новой регистрацией.',
+        ),
+        (
+            'window',
+            'registration',
+            'ip',
+            get_client_ip(request),
+            getattr(settings, 'REGISTRATION_RATE_LIMIT_IP_MAX_ATTEMPTS', 10),
+            window_seconds,
+            'Слишком много попыток регистрации. Попробуйте позже.',
+        ),
+        (
+            'window',
+            'registration',
+            'email',
+            email,
+            getattr(settings, 'REGISTRATION_RATE_LIMIT_EMAIL_MAX_ATTEMPTS', 6),
+            window_seconds,
+            'Для этого email временно превышен лимит регистраций. Попробуйте позже.',
+        ),
+        (
+            'window',
+            'registration',
+            'session',
+            get_rate_limit_session_key(request),
+            getattr(settings, 'REGISTRATION_RATE_LIMIT_SESSION_MAX_ATTEMPTS', 10),
+            window_seconds,
+            'Слишком много попыток регистрации. Попробуйте позже.',
+        ),
+    )
+    return _run_rate_limit_checks(checks)
+
+
+def mark_registration_success(request, email):
+    email = normalize_email(email)
+    cooldown = getattr(
+        settings,
+        'REGISTRATION_COOLDOWN_SECONDS',
+        getattr(settings, 'EMAIL_CODE_COOLDOWN_SECONDS', 60),
+    )
+    _set_cooldown('registration', 'ip', get_client_ip(request), cooldown)
+    _set_cooldown('registration', 'email', email, cooldown)
+    _set_cooldown('registration', 'session', get_rate_limit_session_key(request), cooldown)
+
+
 def check_verify_code_rate_limits(request, phone, *, endpoint='verify-code'):
     phone = normalize_phone(phone)
     checks = (

@@ -380,13 +380,21 @@ def reservation_candidates_for_deal(deal):
         item = line['item']
         if not line['is_supply_tracked'] or not item.product_id:
             continue
-        missing_quantity = max(int(line['ordered_quantity'] or 0) - int(line['reserved_quantity'] or 0), 0)
+        missing_quantity = _line_reservation_outstanding_quantity(line)
         if missing_quantity <= 0:
             continue
         warehouses = list(rows_by_product.get((item.product_id, item.variant_id or 0), []))
-        if not warehouses and int(line['cargo_received_quantity'] or 0) > int(line['reserved_quantity'] or 0):
+        if not warehouses and int(line['cargo_received_quantity'] or 0) > 0:
             fallback_rows = received_warehouses_by_order_item.get(item.id, {})
-            fallback_total = max(int(line['cargo_received_quantity'] or 0) - int(line['reserved_quantity'] or 0), 0)
+            fallback_total = min(
+                max(
+                    int(line['cargo_received_quantity'] or 0)
+                    - int(line['reserved_quantity'] or 0)
+                    - int(line['shipment_quantity'] or 0),
+                    0,
+                ),
+                missing_quantity,
+            )
             normalized_fallback_rows = []
             remaining_fallback = fallback_total
             for (warehouse_id, warehouse_name), warehouse_available in fallback_rows.items():
@@ -557,6 +565,20 @@ def _line_supply_progress(line):
     )
 
 
+def _line_reservation_outstanding_quantity(line):
+    ordered_quantity = int(line['ordered_quantity'] or 0)
+    reserved_quantity = int(line['reserved_quantity'] or 0)
+    shipped_quantity = int(line['shipment_quantity'] or 0)
+    return max(ordered_quantity - shipped_quantity - reserved_quantity, 0)
+
+
+def _line_reservation_satisfied(line):
+    ordered_quantity = int(line['ordered_quantity'] or 0)
+    if ordered_quantity <= 0:
+        return True
+    return _line_reservation_outstanding_quantity(line) <= 0
+
+
 def _supply_flags(supply_snapshot):
     tracked_lines = [line for line in supply_snapshot['lines'] if line['is_supply_tracked']]
     custom_lines = [line for line in supply_snapshot['lines'] if not line['is_supply_tracked']]
@@ -720,7 +742,7 @@ def _operation_checklist(deal, *, relations, supply_flags, all_tracked_fully_cov
     )
     reserved_count = sum(
         1 for line in tracked_lines
-        if int(line['ordered_quantity'] or 0) <= 0 or int(line['reserved_quantity'] or 0) >= int(line['ordered_quantity'] or 0)
+        if _line_reservation_satisfied(line)
     )
     shipped_count = sum(
         1 for line in tracked_lines

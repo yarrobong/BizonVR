@@ -1,0 +1,177 @@
+- generic [active] [ref=e1]:
+  - banner [ref=e2]:
+    - generic [ref=e4]:
+      - generic [ref=e5]:
+        - link "Авито" [ref=e6] [cursor=pointer]:
+          - /url: https://www.avito.ru/user/f1ed2e6557f2db114bfbd682a1b02fbe/profile
+          - img [ref=e7]
+          - generic [ref=e11]: Авито
+        - link "Telegram" [ref=e12] [cursor=pointer]:
+          - /url: https://t.me/bizon_order_manager
+          - img [ref=e13]
+          - generic [ref=e16]: Telegram
+      - generic [ref=e17]:
+        - generic [ref=e18]:
+          - img [ref=e19]
+          - link "+7 (932) 491-04-82" [ref=e21] [cursor=pointer]:
+            - /url: tel:+79324910482
+          - link "ЗАКАЗАТЬ ЗВОНОК" [ref=e22] [cursor=pointer]:
+            - /url: /uslugi/#contacts
+        - link "ВОЙТИ" [ref=e23] [cursor=pointer]:
+          - /url: /accounts/login/
+          - generic [ref=e25]: ВОЙТИ
+    - generic [ref=e27]:
+      - link "BizonVR" [ref=e28] [cursor=pointer]:
+        - /url: /
+        - heading "BizonVR" [level=1] [ref=e29]
+      - button "КАТАЛОГ" [ref=e30] [cursor=pointer]:
+        - img [ref=e32]
+        - generic [ref=e37]: КАТАЛОГ
+      - generic [ref=e38]:
+        - searchbox "Поиск по товарам" [ref=e39]
+        - button [ref=e40] [cursor=pointer]:
+          - img [ref=e41]
+      - generic [ref=e44]:
+        - link "Избранное" [ref=e45] [cursor=pointer]:
+          - /url: /catalog/favorites/
+          - generic [ref=e46]:
+            - img
+        - link "Войти" [ref=e47] [cursor=pointer]:
+          - /url: /accounts/login/
+          - img
+        - link "Корзина" [ref=e49] [cursor=pointer]:
+          - /url: /catalog/cart/
+          - generic [ref=e50]:
+            - img
+            - generic [ref=e51]: "0"
+    - navigation [ref=e54]:
+      - list [ref=e56]:
+        - listitem [ref=e57]:
+          - link "Аренда" [ref=e58] [cursor=pointer]:
+            - /url: /arenda/
+        - listitem [ref=e59]:
+          - link "Услуги" [ref=e60] [cursor=pointer]:
+            - /url: /uslugi/
+        - listitem [ref=e61]:
+          - link "Контакты" [ref=e62] [cursor=pointer]:
+            - /url: /contacts/
+  - main [ref=e63]:
+    - generic [ref=e65]:
+      - generic [ref=e66]:
+        - paragraph [ref=e67]: BizonVR Account
+        - heading "Вход по email и паролю" [level=1] [ref=e68]
+        - paragraph [ref=e69]: В аккаунт можно войти только по email и паролю. Если аккаунта ещё нет, создайте его ниже и используйте этот же email как логин.
+        - generic [ref=e70]:
+          - generic [ref=e71]:
+            - paragraph [ref=e72]: Один способ входа
+            - paragraph [ref=e73]: Публичная авторизация теперь работает только по связке email и пароль, без одноразовых кодов.
+          - generic [ref=e74]:
+            - paragraph [ref=e75]: Email для восстановления
+            - paragraph [ref=e76]: Если пароль потерян, новая ссылка для установки пароля отправляется только на подтверждённый email аккаунта.
+          - generic [ref=e77]:
+            - paragraph [ref=e78]: Регистрация в два шага
+            - paragraph [ref=e79]: После создания аккаунта нужно подтвердить email кодом из письма. Только после этого вход и привязка гостевых заказов станут доступны.
+          - generic [ref=e80]:
+            - paragraph [ref=e81]: Покупка без регистрации
+            - paragraph [ref=e82]: Корзина и checkout работают для гостя, а аккаунт можно подключить позже без потери заказа.
+        - link "Восстановить доступ" [ref=e84] [cursor=pointer]:
+          - /url: /accounts/password-reset/
+      - generic [ref=e86]:
+        - generic [ref=e87]:
+          - generic [ref=e88]:
+            - generic [ref=e89]: Email
+            - textbox "Email" [ref=e90]:
+              - /placeholder: email@example.com
+            - paragraph [ref=e91]: Используйте email, указанный в аккаунте.
+          - generic [ref=e92]:
+            - generic [ref=e93]: Пароль
+            - generic [ref=e94]:
+              - textbox "Пароль" [ref=e95]:
+                - /placeholder: Введите пароль
+              - button "Показать или скрыть пароль" [ref=e96] [cursor=pointer]:
+                - generic [ref=e97]: Показать
+            - paragraph [ref=e98]: Если пароль потерян, используйте восстановление по email.
+          - button "Войти" [ref=e99] [cursor=pointer]
+        - generic [ref=e101]:
+          - generic [ref=e102]:
+            - paragraph [ref=e103]: Нужен новый аккаунт?
+            - paragraph [ref=e104]: Сначала создайте аккаунт, затем подтвердите email кодом из письма.
+          - button "Показать форму" [ref=e105] [cursor=pointer]
+  - contentinfo [ref=e106]:
+    - generic [ref=e107]:
+      - generic [ref=e108]:
+        - generic [ref=e109]:
+          - heading "BizonVR" [level=3] [ref=e110]
+          - paragraph [ref=e111]: Магазин VR оборудования и аттракционов
+          - paragraph [ref=e112]: "Пн-Пт: 10:00-19:00"
+        - generic [ref=e113]:
+          - heading "Каталог" [level=4] [ref=e114]
+          - list [ref=e115]:
+            - listitem [ref=e116]:
+              - link "Автоматизация" [ref=e117] [cursor=pointer]:
+                - /url: /catalog/?next=%2Fops%2F&section=automation-shell
+            - listitem [ref=e118]:
+              - link "Автоматизация" [ref=e119] [cursor=pointer]:
+                - /url: /catalog/?next=%2Fops%2F&section=automation
+            - listitem [ref=e120]:
+              - link "VR-аттракционы" [ref=e121] [cursor=pointer]:
+                - /url: /catalog/?next=%2Fops%2F&section=vr-attrakciony
+        - generic [ref=e122]:
+          - heading "Клиентам" [level=4] [ref=e123]
+          - list [ref=e124]:
+            - listitem [ref=e125]:
+              - link "Главная" [ref=e126] [cursor=pointer]:
+                - /url: /
+            - listitem [ref=e127]:
+              - link "Каталог" [ref=e128] [cursor=pointer]:
+                - /url: /catalog/
+            - listitem [ref=e129]:
+              - link "Политика конфиденциальности" [ref=e130] [cursor=pointer]:
+                - /url: /privacy/
+            - listitem [ref=e131]:
+              - link "Публичная оферта" [ref=e132] [cursor=pointer]:
+                - /url: /page/oferta/
+            - listitem [ref=e133]:
+              - link "Оплата / доставка / возврат" [ref=e134] [cursor=pointer]:
+                - /url: /page/sales-terms/
+            - listitem [ref=e135]:
+              - link "Пользовательское соглашение" [ref=e136] [cursor=pointer]:
+                - /url: /page/user-agreement/
+            - listitem [ref=e137]:
+              - link "Согласие на обработку ПД" [ref=e138] [cursor=pointer]:
+                - /url: /page/pd-consent/
+            - listitem [ref=e139]:
+              - link "Политика cookies" [ref=e140] [cursor=pointer]:
+                - /url: /page/cookies/
+            - listitem [ref=e141]:
+              - link "Условия обработки заявок" [ref=e142] [cursor=pointer]:
+                - /url: /page/service-request-terms/
+            - listitem [ref=e143]:
+              - link "Контакты" [ref=e144] [cursor=pointer]:
+                - /url: /contacts/
+        - generic [ref=e145]:
+          - heading "Контакты" [level=4] [ref=e146]
+          - list [ref=e147]:
+            - listitem [ref=e148]:
+              - link "+7 (932) 491-04-82" [ref=e149] [cursor=pointer]:
+                - /url: tel:+79324910482
+            - listitem [ref=e150]:
+              - link "korrypc@gmail.com" [ref=e151] [cursor=pointer]:
+                - /url: mailto:korrypc@gmail.com
+            - listitem [ref=e152]:
+              - link "@bizon_order_manager" [ref=e153] [cursor=pointer]:
+                - /url: https://t.me/bizon_order_manager
+            - listitem [ref=e154]:
+              - link "Avito" [ref=e155] [cursor=pointer]:
+                - /url: https://www.avito.ru/user/f1ed2e6557f2db114bfbd682a1b02fbe/profile
+      - generic [ref=e156]: © 2026 BizonVR. Все права защищены.
+  - region "Согласие с cookies" [ref=e157]:
+    - paragraph [ref=e158]:
+      - text: Продолжая пользоваться сайтом, вы подтверждаете согласие на использование cookies в соответствии с
+      - link "Политикой cookies" [ref=e159] [cursor=pointer]:
+        - /url: /page/cookies/
+      - text: и обработку персональных данных в соответствии с
+      - link "Политикой конфиденциальности" [ref=e160] [cursor=pointer]:
+        - /url: /privacy/
+      - text: .
+    - button "Ок" [ref=e161] [cursor=pointer]

@@ -111,7 +111,7 @@ def _ops_nav_groups(request, *, mode):
         {
             'label': 'Главное',
             'items': [
-                {'label': 'Dashboard', 'url': _url_with_query(request, route_name='operations:dashboard', updates={'mode': mode}), 'active': request.path == reverse('operations:dashboard')},
+                {'label': 'Обзор', 'url': _url_with_query(request, route_name='operations:dashboard', updates={'mode': mode}), 'active': request.path == reverse('operations:dashboard')},
                 {'label': 'Сделки', 'url': _url_with_query(request, route_name='operations:deal_list', updates={'mode': mode}), 'active': request.path.startswith(reverse('operations:deal_list')) and not request.path.startswith(reverse('operations:history'))},
             ],
         },
@@ -150,6 +150,7 @@ def _render(request, template_name, **context):
         'ops_mode_label': 'Расширенный' if mode == OPS_MODE_ADVANCED else 'Простой',
         'ops_mode_toggle_url': _url_with_query(request, updates={'mode': OPS_MODE_SIMPLE if mode == OPS_MODE_ADVANCED else OPS_MODE_ADVANCED}),
         'ops_nav_groups': _ops_nav_groups(request, mode=mode),
+        'show_ops_reserve_debug': settings.DEBUG and getattr(settings, 'OPS_SHOW_RESERVE_DEBUG', False),
     }
     base_context.update(context)
     return render(request, template_name, base_context)

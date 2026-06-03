@@ -117,6 +117,14 @@ make check-single-db
 .venv/bin/python manage.py check --deploy
 ```
 
+Перед выкладкой отдельно проверьте:
+
+- `DEBUG=False` в `.env`;
+- `SITE_URL` начинается с `https://`;
+- `USE_HTTPS=True`, если сайт реально стоит за HTTPS reverse proxy;
+- заполнены `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `DEFAULT_FROM_EMAIL`;
+- `EMAIL_USE_TLS` и `EMAIL_USE_SSL` не включены одновременно.
+
 ### 6. Миграции и статика
 
 ```bash

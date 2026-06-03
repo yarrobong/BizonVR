@@ -3,65 +3,62 @@
 {% block title %}Операторский портал{% endblock %}
 
 {% block content %}
-  <section class="ops-panel rounded-[2rem] px-6 py-6">
-    <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+  <section class="ops-panel px-6 py-5">
+    <div class="ops-section-head">
       <div>
-        <p class="text-xs uppercase tracking-[0.22em] text-cyan-100/70">Dashboard</p>
-        <h2 class="mt-2 text-2xl font-semibold">{{ page_title }}</h2>
-        <p class="mt-2 text-sm ops-muted">{{ page_subtitle }}</p>
+        <p class="ops-section-eyebrow">Обзор</p>
+        <h2 class="mt-2 text-2xl font-semibold text-white">{{ page_title }}</h2>
+        <p class="mt-2 ops-section-copy">{{ page_subtitle }}</p>
       </div>
       <div class="ops-badge">Активных сделок: {{ active_deals_total }}</div>
     </div>
   </section>
 
-  <section class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+  <section class="ops-kpi-grid">
     {% for kpi in dashboard_kpis %}
-      <article class="ops-panel ops-kpi rounded-[1.6rem] px-5 py-5">
+      <article class="ops-panel ops-kpi-card">
         <span class="ops-chip ops-tone-{{ kpi.tone }}">{{ kpi.label }}</span>
-        <p class="mt-4 text-4xl font-semibold text-white">{{ kpi.value }}</p>
+        <strong>{{ kpi.value }}</strong>
       </article>
     {% endfor %}
   </section>
 
-  <section class="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+  <section class="ops-kpi-grid">
     {% for group in dashboard_groups %}
-      <article class="ops-panel rounded-[1.75rem] px-5 py-5">
-        <div class="flex items-start justify-between gap-4">
+      <article class="ops-panel ops-dashboard-group-card">
+        <div class="ops-section-head">
           <div>
-            <p class="text-xs uppercase tracking-[0.18em] text-cyan-100/70">Группа</p>
-            <h3 class="mt-2 text-xl font-semibold">{{ group.label }}</h3>
+            <p class="ops-section-eyebrow">Очередь</p>
+            <h3 class="mt-2 text-xl font-semibold text-white">{{ group.label }}</h3>
           </div>
           <span class="ops-chip ops-tone-{{ group.tone }}">{{ group.count }}</span>
         </div>
-        <p class="mt-3 text-sm ops-muted">{{ group.description }}</p>
-        <div class="mt-4 space-y-3">
+        <p class="ops-section-copy">{{ group.description }}</p>
+        <div class="ops-dashboard-preview-list">
           {% for deal in group.preview_items %}
-            <a href="{% url 'operations:deal_detail' deal.pk %}" class="ops-card-link block rounded-2xl px-4 py-4">
-              <div class="flex items-start justify-between gap-3">
-                <div class="min-w-0">
-                  <div class="flex flex-wrap items-center gap-2">
-                    <p class="truncate text-sm font-medium text-white">{{ deal.ops_summary.identity_code }}</p>
-                    <span class="ops-chip ops-tone-{{ deal.ops_summary.status_tone|default:'neutral' }}">{{ deal.ops_summary.status_label }}</span>
-                  </div>
-                  <p class="mt-2 text-sm text-white">{{ deal.ops_summary.client_name }}</p>
-                  <p class="mt-1 text-xs ops-muted">Сумма {{ deal.ops_summary.amount }} · Позиций {{ deal.ops_summary.items_count }}</p>
-                  <p class="mt-3 truncate text-sm text-cyan-100">{{ deal.ops_summary.action_text }}</p>
-                  {% if deal.ops_summary.primary_blocker %}
-                    <p class="mt-2 truncate text-xs text-rose-200">Главный блокер: {{ deal.ops_summary.primary_blocker }}</p>
-                  {% elif deal.ops_summary.blockers_preview %}
-                    <p class="mt-2 truncate text-xs text-rose-200">Главный блокер: {{ deal.ops_summary.blockers_preview|first }}</p>
-                  {% endif %}
-                </div>
-                <div class="text-right">
-                  <span class="text-xs ops-muted">Bitrix #{{ deal.ops_summary.bitrix_id|default:"—" }}</span>
-                </div>
+            <a href="{% url 'operations:deal_detail' deal.pk %}" class="ops-dashboard-preview-item">
+              <div class="ops-dashboard-preview-title">
+                <p class="text-sm font-semibold text-white">{{ deal.ops_summary.identity_code }}</p>
+                <span class="ops-chip ops-tone-{{ deal.ops_summary.status_tone|default:'neutral' }}">{{ deal.ops_summary.status_label }}</span>
               </div>
+              <p class="text-sm text-white">{{ deal.ops_summary.client_name }}</p>
+              <div class="ops-dashboard-preview-meta">
+                <span>Сумма {{ deal.ops_summary.amount }}</span>
+                <span>Позиций {{ deal.ops_summary.items_count }}</span>
+                <span>Bitrix #{{ deal.ops_summary.bitrix_id|default:"—" }}</span>
+              </div>
+              <p class="text-sm text-cyan-100">{{ deal.ops_summary.action_text }}</p>
+              {% if deal.ops_summary.primary_blocker %}
+                <p class="text-xs text-rose-200">Главный блокер: {{ deal.ops_summary.primary_blocker }}</p>
+              {% elif deal.ops_summary.blockers_preview %}
+                <p class="text-xs text-rose-200">Главный блокер: {{ deal.ops_summary.blockers_preview|first }}</p>
+              {% endif %}
             </a>
           {% empty %}
-            <div class="rounded-2xl border border-dashed border-slate-800 px-4 py-4 text-sm ops-muted">Пока пусто.</div>
+            {% include "manager_portal/_empty_state.html" with empty_state_title="Очередь пока пуста" empty_state_description="Когда сделки попадут в этот статус, они появятся здесь." empty_state_action_label="Открыть список сделок" empty_state_action_url=group.url %}
           {% endfor %}
         </div>
-        <a href="{{ group.url }}" class="mt-4 inline-flex rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-200 transition hover:bg-slate-900">Открыть список</a>
+        <a href="{{ group.url }}" class="ops-button-secondary">Открыть очередь</a>
       </article>
     {% endfor %}
   </section>

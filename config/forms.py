@@ -59,6 +59,14 @@ class ContactForm(forms.Form):
                 raise forms.ValidationError('Введите корректный номер телефона.')
         return value
 
+    def clean(self):
+        cleaned_data = super().clean()
+        phone = (cleaned_data.get('phone') or '').strip()
+        email = (cleaned_data.get('email') or '').strip()
+        if not phone and not email:
+            raise forms.ValidationError('Оставьте телефон или email, чтобы мы могли связаться с вами.')
+        return cleaned_data
+
 
 class CallbackForm(forms.Form):
     """Форма заявки на обратный звонок (страница аренды)."""

@@ -3,185 +3,108 @@
 {% block title %}{{ deal.code|default:deal.order_id }}{% endblock %}
 
 {% block content %}
-  <section id="deal-summary" class="ops-panel rounded-[2rem] px-6 py-6">
-    <div class="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-      <div class="min-w-0">
-        <div class="flex flex-wrap items-center gap-3">
-          <span class="ops-chip ops-tone-{{ operation_snapshot.status_tone }}">{{ operation_snapshot.status_label }}</span>
-          <span class="ops-chip ops-tone-{{ deal.ops_summary.fulfillment_tone|default:'neutral' }}">{{ deal.ops_summary.fulfillment_status_label }}</span>
-          <span class="ops-chip ops-tone-{{ deal.ops_summary.delivery_tone|default:'neutral' }}">{{ deal.ops_summary.delivery_status_label }}</span>
-          {% if source_bitrix.deal_id and ops_mode == 'advanced' %}
-            <span class="ops-chip ops-tone-info">Bitrix #{{ source_bitrix.deal_id }}</span>
-          {% endif %}
-        </div>
-        <h2 class="mt-4 text-3xl font-semibold">{{ deal.code|default:deal.order_id }} · {{ client_summary.display_name }}</h2>
-        <p class="mt-3 max-w-3xl text-sm ops-muted">{{ operation_snapshot.reason }}</p>
-        <dl class="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <div>
-            <dt class="text-xs uppercase tracking-[0.16em] text-slate-500">Сумма</dt>
-            <dd class="mt-1 text-sm text-white">{{ deal.grand_total }}</dd>
-          </div>
-          <div>
-            <dt class="text-xs uppercase tracking-[0.16em] text-slate-500">Позиций</dt>
-            <dd class="mt-1 text-sm text-white">{{ position_rows|length }}</dd>
-          </div>
-          <div>
-            <dt class="text-xs uppercase tracking-[0.16em] text-slate-500">Ответственный</dt>
-            <dd class="mt-1 text-sm text-white">{{ deal.responsible_manager|default:"Не назначен" }}</dd>
-          </div>
-          <div>
-            <dt class="text-xs uppercase tracking-[0.16em] text-slate-500">Следующее действие</dt>
-            <dd class="mt-1 text-sm text-cyan-100">{{ operation_snapshot.action_text }}</dd>
-          </div>
-        </dl>
-        {% if ops_mode == 'advanced' %}
-          <div class="mt-4 flex flex-wrap gap-2">
-            <span class="ops-chip ops-tone-neutral">Заказ #{{ deal.order_id }}</span>
-            {% if source_bitrix.synced_at %}
-              <span class="ops-chip ops-tone-neutral">Синхронизация {{ source_bitrix.synced_at|date:"d.m.Y H:i" }}</span>
+  <section id="deal-summary" class="ops-panel ops-control-band">
+    <div>
+      <div class="ops-control-band-head">
+        <div class="min-w-0">
+          <div class="ops-control-statuses">
+            <span class="ops-chip ops-tone-{{ operation_snapshot.status_tone }}">{{ operation_snapshot.status_label }}</span>
+            <span class="ops-chip ops-tone-{{ deal.ops_summary.fulfillment_tone|default:'neutral' }}">{{ deal.ops_summary.fulfillment_status_label }}</span>
+            <span class="ops-chip ops-tone-{{ deal.ops_summary.delivery_tone|default:'neutral' }}">{{ deal.ops_summary.delivery_status_label }}</span>
+            {% if source_bitrix.deal_id %}
+              <span class="ops-chip ops-tone-info">Bitrix #{{ source_bitrix.deal_id }}</span>
             {% endif %}
           </div>
-        {% endif %}
-      </div>
-      <div class="rounded-[1.5rem] border border-slate-800 bg-slate-950/35 px-5 py-4 xl:max-w-sm">
-        <p class="text-xs uppercase tracking-[0.16em] text-cyan-100/70">Клиент и доставка</p>
-        <dl class="mt-4 grid gap-3">
-          <div>
-            <dt class="text-xs uppercase tracking-[0.16em] text-slate-500">Клиент</dt>
-            <dd class="mt-1 text-sm text-white">{{ client_summary.display_name|default:"—" }}</dd>
+          <h2 class="ops-control-title mt-4">{{ deal.code|default:deal.order_id }}</h2>
+          <p class="ops-control-client">{{ client_summary.display_name|default:"Клиент не указан" }}</p>
+          <div class="ops-control-summary mt-4">
+            <span><strong>Сумма:</strong> {{ deal.grand_total }}</span>
+            <span><strong>Позиций:</strong> {{ position_rows|length }}</span>
+            <span><strong>Ответственный:</strong> {{ deal.responsible_manager|default:"Не назначен" }}</span>
+            <span><strong>Обновлено:</strong> {{ source_bitrix.synced_at|date:"d.m.Y H:i"|default:"Нет синхронизации" }}</span>
           </div>
-          <div>
-            <dt class="text-xs uppercase tracking-[0.16em] text-slate-500">Получатель</dt>
-            <dd class="mt-1 text-sm text-white">{{ delivery_summary.recipient_name|default:client_summary.display_name|default:"—" }}</dd>
+          <div class="ops-control-meta mt-3">
+            <span class="ops-chip ops-tone-neutral">Заказ #{{ deal.order_id }}</span>
+            {% if source_bitrix.deal_id %}
+              <span class="ops-chip ops-tone-neutral">Bitrix ID {{ source_bitrix.deal_id }}</span>
+            {% endif %}
+            <span class="ops-chip ops-tone-neutral">Источник {{ client_summary.data_source|default:"не указан" }}</span>
           </div>
-          <div>
-            <dt class="text-xs uppercase tracking-[0.16em] text-slate-500">Телефон</dt>
-            <dd class="mt-1 text-sm text-white">{{ delivery_summary.recipient_phone|default:client_summary.phone|default:"—" }}</dd>
-          </div>
-          <div>
-            <dt class="text-xs uppercase tracking-[0.16em] text-slate-500">Город</dt>
-            <dd class="mt-1 text-sm text-white">{{ delivery_summary.city|default:client_summary.city|default:"—" }}</dd>
-          </div>
-          <div>
-            <dt class="text-xs uppercase tracking-[0.16em] text-slate-500">Доставка</dt>
-            <dd class="mt-1 text-sm text-white">{{ delivery_summary.delivery_type_label|default:"—" }}</dd>
-          </div>
-          <div>
-            <dt class="text-xs uppercase tracking-[0.16em] text-slate-500">Адрес</dt>
-            <dd class="mt-1 text-sm text-white">{{ delivery_summary.address|default:"—" }}</dd>
-          </div>
-          <div>
-            <dt class="text-xs uppercase tracking-[0.16em] text-slate-500">Комментарий доставки</dt>
-            <dd class="mt-1 text-sm text-white">{{ delivery_summary.comment|default:client_summary.delivery_comment|default:"—" }}</dd>
-          </div>
-          <div>
-            <dt class="text-xs uppercase tracking-[0.16em] text-slate-500">Служба доставки</dt>
-            <dd class="mt-1 text-sm text-white">{% if headline_shipment %}{{ headline_shipment.delivery_provider_name|default:headline_shipment.delivery_method|default:"—" }}{% else %}—{% endif %}</dd>
-          </div>
-          <div>
-            <dt class="text-xs uppercase tracking-[0.16em] text-slate-500">Трек-номер</dt>
-            <dd class="mt-1 text-sm text-white">{% if headline_shipment %}{{ headline_shipment.tracking_number|default:"—" }}{% else %}—{% endif %}</dd>
-          </div>
-          <div>
-            <dt class="text-xs uppercase tracking-[0.16em] text-slate-500">Источник данных</dt>
-            <dd class="mt-1 text-sm text-white">{{ client_summary.data_source|default:"—" }}</dd>
-          </div>
-        </dl>
-      </div>
-    </div>
-  </section>
-
-  <section class="ops-panel sticky top-3 z-20 rounded-[1.75rem] px-5 py-4">
-    <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-      <div class="min-w-0">
-        <div class="flex flex-wrap items-center gap-3">
-          <span class="text-lg font-semibold text-white">{{ deal.code|default:deal.order_id }}</span>
-          <span class="ops-chip ops-tone-{{ operation_snapshot.status_tone }}">{{ operation_snapshot.status_label }}</span>
+          <p class="ops-control-next mt-4">{{ operation_snapshot.action_text }}</p>
+          {% if operation_snapshot.reason %}
+            <p class="mt-2 text-sm ops-muted">{{ operation_snapshot.reason }}</p>
+          {% endif %}
         </div>
-        <p class="mt-2 text-sm text-cyan-100">{{ primary_action.text }}</p>
-      </div>
-      <div class="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
-        {% if primary_action.kind == 'post' %}
-          <form method="post">
-            {% csrf_token %}
-            <input type="hidden" name="action" value="{{ primary_action.post_action }}">
-            {% for field in primary_action.hidden_fields %}
-              <input type="hidden" name="{{ field.name }}" value="{{ field.value }}">
-            {% endfor %}
-            <button type="submit" class="ops-button-primary w-full">{{ primary_action.label }}</button>
-          </form>
-        {% else %}
-          <a href="{{ primary_action.url }}" class="ops-button-primary w-full">{{ primary_action.label }}</a>
-        {% endif %}
-
-        {% if source_bitrix.deal_url %}
-          <a href="{{ source_bitrix.deal_url }}" target="_blank" rel="noreferrer" class="ops-button-secondary w-full">Открыть в Bitrix</a>
-        {% else %}
-          <span class="ops-button-secondary w-full opacity-60">Bitrix не привязан</span>
-        {% endif %}
-
-        {% if operation_snapshot.status_code != 'completed' %}
-          {% if purchase_target_item %}
-            <a href="{% url 'operations:purchase_form' pk=deal.pk item_pk=purchase_target_item.pk %}" class="ops-button-secondary w-full">Создать закупку</a>
-          {% else %}
-            <span class="ops-button-secondary w-full opacity-60" title="{{ purchase_target_blocked_reason|default:'Нет доступной позиции' }}">Создать закупку</span>
-          {% endif %}
-
-          {% if cargo_target_purchase_item %}
-            <a href="{% url 'operations:deal_cargo_create' pk=deal.pk %}?purchase={{ cargo_target_purchase_item.purchase_id }}&purchase_item={{ cargo_target_purchase_item.id }}" class="ops-button-secondary w-full">Создать груз</a>
-          {% else %}
-            <span class="ops-button-secondary w-full opacity-60">Создать груз</span>
-          {% endif %}
-
-          {% if shipment_action_enabled %}
+        <div class="ops-control-rail xl:max-w-xs">
+          {% if primary_action.kind == 'post' %}
             <form method="post">
               {% csrf_token %}
-              <input type="hidden" name="action" value="create_shipment">
-              <button type="submit" class="ops-button-secondary w-full">Создать отгрузку</button>
+              <input type="hidden" name="action" value="{{ primary_action.post_action }}">
+              {% for field in primary_action.hidden_fields %}
+                <input type="hidden" name="{{ field.name }}" value="{{ field.value }}">
+              {% endfor %}
+              <button type="submit" class="ops-button-primary w-full">{{ primary_action.label }}</button>
             </form>
           {% else %}
-            <span class="ops-button-secondary w-full opacity-60">Создать отгрузку</span>
+            <a href="{{ primary_action.url }}" class="ops-button-primary w-full">{{ primary_action.label }}</a>
           {% endif %}
-        {% endif %}
-      </div>
-    </div>
-  </section>
 
-  <section class="ops-panel rounded-[1.5rem] px-4 py-4">
-    <div class="flex flex-wrap gap-2">
-      {% for tab in detail_tabs %}
-        <a href="{{ tab.url }}" class="rounded-full px-4 py-2 text-sm transition {% if tab.active %}bg-cyan-300 text-slate-950{% else %}border border-slate-700 text-slate-200 hover:bg-slate-900{% endif %}">
-          {{ tab.label }}
-        </a>
-      {% endfor %}
-    </div>
-  </section>
+          {% if primary_action.text %}
+            <p class="ops-inline-hint">{{ primary_action.text }}</p>
+          {% endif %}
 
-  {% if active_tab == 'overview' %}
-    <section class="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-      {% for card in overview_cards %}
-        <article class="ops-panel ops-kpi rounded-[1.5rem] px-5 py-5">
-          <p class="text-xs uppercase tracking-[0.18em] text-cyan-100/70">{{ card.title }}</p>
-          <p class="mt-3 text-xl font-semibold text-white">{{ card.summary }}</p>
-          <p class="mt-2 text-sm ops-muted">{{ card.detail }}</p>
-        </article>
-      {% endfor %}
-    </section>
+          {% if source_bitrix.deal_url %}
+            <a href="{{ source_bitrix.deal_url }}" target="_blank" rel="noreferrer" class="ops-button-secondary w-full">Открыть в Bitrix</a>
+          {% else %}
+            <div class="ops-disabled-action">
+              <strong>Bitrix не привязан</strong>
+              <span>Ссылка появится после привязки сделки к CRM.</span>
+            </div>
+          {% endif %}
 
-    <section class="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,0.75fr)]">
-      <article id="blockers" class="ops-panel rounded-[1.75rem] px-6 py-6">
-        <div class="flex items-end justify-between gap-4">
-          <div>
-            <p class="text-xs uppercase tracking-[0.18em] text-cyan-100/70">Блокеры</p>
-            <h3 class="mt-2 text-2xl font-semibold">Что мешает двинуть сделку дальше</h3>
-          </div>
-          <span class="ops-chip {% if blocker_rows %}ops-tone-attention{% else %}ops-tone-success{% endif %}">{{ blocker_rows|length }}</span>
+          {% if operation_snapshot.status_code != 'completed' %}
+            <div class="ops-quick-actions">
+              {% if purchase_target_item %}
+                <a href="{% url 'operations:purchase_form' pk=deal.pk item_pk=purchase_target_item.pk %}" class="ops-button-secondary w-full">Создать закупку</a>
+              {% else %}
+                <div class="ops-disabled-action">
+                  <strong>Создать закупку</strong>
+                  <span>{{ purchase_target_blocked_reason|default:"Нет позиции, которую нужно обеспечивать закупкой." }}</span>
+                </div>
+              {% endif %}
+
+              {% if cargo_target_purchase_item %}
+                <a href="{% url 'operations:deal_cargo_create' pk=deal.pk %}?purchase={{ cargo_target_purchase_item.purchase_id }}&purchase_item={{ cargo_target_purchase_item.id }}" class="ops-button-secondary w-full">Создать груз</a>
+              {% else %}
+                <div class="ops-disabled-action">
+                  <strong>Создать груз</strong>
+                  <span>Сначала нужна закупка с позицией, которую можно отправить в inbound.</span>
+                </div>
+              {% endif %}
+
+              {% if shipment_action_enabled %}
+                <form method="post">
+                  {% csrf_token %}
+                  <input type="hidden" name="action" value="create_shipment">
+                  <button type="submit" class="ops-button-secondary w-full">Создать отгрузку</button>
+                </form>
+              {% else %}
+                <div class="ops-disabled-action">
+                  <strong>Создать отгрузку</strong>
+                  <span>Отгрузка станет доступна, когда по сделке появится что отправлять клиенту.</span>
+                </div>
+              {% endif %}
+            </div>
+          {% endif %}
         </div>
-        <div class="mt-5 space-y-3">
-          {% for blocker in blocker_rows %}
-            <div class="rounded-[1.35rem] border border-slate-800 bg-slate-950/35 px-4 py-4">
-              <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <p class="text-sm font-medium text-white">{{ blocker.label }}</p>
+      </div>
+
+      {% if blocker_rows %}
+        <div class="ops-control-blockers mt-4">
+          {% for blocker in blocker_rows|slice:":3" %}
+            <div class="ops-blocker-card">
+              <div class="ops-blocker-card-head">
+                <span class="ops-chip ops-tone-attention">Блокер</span>
                 {% if blocker.action.kind == 'post' %}
                   <form method="post">
                     {% csrf_token %}
@@ -192,81 +115,180 @@
                   <a href="{{ blocker.action.url }}" class="ops-button-attention">{{ blocker.action.label }}</a>
                 {% endif %}
               </div>
+              <p class="text-sm text-white">{{ blocker.label }}</p>
             </div>
-          {% empty %}
-            <div class="rounded-[1.35rem] border border-emerald-400/20 bg-emerald-400/10 px-4 py-4 text-sm text-emerald-100">Критичных блокеров сейчас нет.</div>
           {% endfor %}
         </div>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="ops-panel ops-tabs">
+    {% for tab in detail_tabs %}
+      <a href="{{ tab.url }}" class="ops-tab{% if tab.active %} is-active{% endif %}">
+        {{ tab.label }}
+      </a>
+    {% endfor %}
+  </section>
+
+  {% if active_tab == 'overview' %}
+    <section class="ops-kpi-grid">
+      {% for card in overview_cards %}
+        <article class="ops-panel ops-kpi-card">
+          <p class="ops-section-eyebrow">{{ card.title }}</p>
+          <strong>{{ card.summary }}</strong>
+          <p class="mt-2 text-sm ops-muted">{{ card.detail }}</p>
+        </article>
+      {% endfor %}
+    </section>
+
+    <section class="ops-detail-grid">
+      <article class="ops-panel ops-detail-card">
+        <div class="ops-section-head">
+          <div>
+            <p class="ops-section-eyebrow">Клиент и доставка</p>
+            <h3 class="mt-2 text-xl font-semibold text-white">Контекст исполнения</h3>
+          </div>
+          <span class="ops-chip ops-tone-neutral">{{ delivery_summary.delivery_type_label|default:"Без типа доставки" }}</span>
+        </div>
+        <dl class="ops-data-grid mt-5">
+          <div>
+            <dt>Клиент</dt>
+            <dd>{{ client_summary.display_name|default:"—" }}</dd>
+          </div>
+          <div>
+            <dt>Получатель</dt>
+            <dd>{{ delivery_summary.recipient_name|default:client_summary.display_name|default:"—" }}</dd>
+          </div>
+          <div>
+            <dt>Телефон</dt>
+            <dd>{{ delivery_summary.recipient_phone|default:client_summary.phone|default:"—" }}</dd>
+          </div>
+          <div>
+            <dt>Город</dt>
+            <dd>{{ delivery_summary.city|default:client_summary.city|default:"—" }}</dd>
+          </div>
+          <div>
+            <dt>Адрес</dt>
+            <dd>{{ delivery_summary.address|default:"—" }}</dd>
+          </div>
+          <div>
+            <dt>Комментарий</dt>
+            <dd>{{ delivery_summary.comment|default:client_summary.delivery_comment|default:"—" }}</dd>
+          </div>
+          <div>
+            <dt>Служба доставки</dt>
+            <dd>{% if headline_shipment %}{{ headline_shipment.delivery_provider_name|default:headline_shipment.delivery_method|default:"—" }}{% else %}—{% endif %}</dd>
+          </div>
+          <div>
+            <dt>Трек-номер</dt>
+            <dd>{% if headline_shipment %}{{ headline_shipment.tracking_number|default:"—" }}{% else %}—{% endif %}</dd>
+          </div>
+        </dl>
       </article>
 
-      <article class="ops-panel rounded-[1.75rem] px-6 py-6">
-        <p class="text-xs uppercase tracking-[0.18em] text-cyan-100/70">Чек-лист</p>
-        <div class="mt-4 space-y-3">
+      <article class="ops-panel ops-detail-card">
+        <div class="ops-section-head">
+          <div>
+            <p class="ops-section-eyebrow">Чек-лист</p>
+            <h3 class="mt-2 text-xl font-semibold text-white">Что уже закрыто</h3>
+          </div>
+        </div>
+        <div class="ops-tab-stack mt-4">
           {% for item in operation_snapshot.checklist %}
-            <div class="rounded-[1.35rem] border border-slate-800 bg-slate-950/35 px-4 py-4">
-              <div class="flex items-start justify-between gap-3">
+            <div class="ops-row-card">
+              <div class="ops-row-card-head">
                 <p class="text-sm font-medium text-white">{{ item.label }}</p>
                 <span class="ops-chip ops-tone-{{ item.tone }}">{{ item.status_label }}</span>
               </div>
-              <p class="mt-2 text-sm ops-muted">{{ item.detail }}</p>
+              <p class="ops-row-card-copy">{{ item.detail }}</p>
             </div>
           {% endfor %}
         </div>
       </article>
     </section>
 
-    <section class="grid gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,0.7fr)]">
-      <article class="ops-panel rounded-[1.75rem] px-6 py-6">
-        <div class="flex flex-wrap items-center gap-2">
-          <p class="text-xs uppercase tracking-[0.18em] text-cyan-100/70">История</p>
+    <section class="ops-detail-grid">
+      <article class="ops-panel ops-detail-card">
+        <div class="ops-section-head">
+          <p class="ops-section-eyebrow">История</p>
           <span class="ops-chip ops-tone-neutral">{{ history_rows_total }}</span>
         </div>
-        <div class="mt-4 flex flex-wrap gap-2">
+        <div class="ops-tabs mt-4 px-0 py-0">
           {% for link in history_filter_links %}
-            <a href="{{ link.url }}" class="rounded-full px-3 py-2 text-sm transition {% if link.active %}bg-cyan-300 text-slate-950{% else %}border border-slate-700 text-slate-200 hover:bg-slate-900{% endif %}">
+            <a href="{{ link.url }}" class="ops-tab{% if link.active %} is-active{% endif %}">
               {{ link.label }}
             </a>
           {% endfor %}
         </div>
-        <div class="mt-5 space-y-3">
+        <div class="ops-tab-stack mt-5">
           {% for event in history_rows %}
-            <div class="rounded-[1.35rem] border border-slate-800 bg-slate-950/35 px-4 py-4">
-              <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div class="ops-row-card">
+              <div class="ops-history-row">
                 <div class="min-w-0">
                   <div class="flex flex-wrap items-center gap-2">
                     <span class="text-sm font-medium text-white">{{ event.created_at|date:"d.m H:i" }}</span>
                     <span class="ops-chip ops-tone-{{ event.tone }}">{{ event.category_label }}</span>
+                    <span class="text-xs ops-muted">{{ event.who_label }}</span>
                   </div>
                   <p class="mt-2 text-sm text-white">{{ event.summary }}</p>
-                  <p class="mt-1 text-xs ops-muted">{{ event.who_label }}</p>
                 </div>
               </div>
             </div>
           {% empty %}
-            <p class="text-sm ops-muted">История по сделке пока пустая.</p>
+            {% include "manager_portal/_empty_state.html" with empty_state_title="История пока пуста" empty_state_description="По этой сделке ещё не было операций, которые нужно показать в ленте." empty_state_action_label="Открыть все события" empty_state_action_url=history_toggle_url %}
           {% endfor %}
         </div>
         {% if history_rows_total > history_rows|length or history_show_all %}
-          <a href="{{ history_toggle_url }}" class="mt-4 inline-flex rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-200 transition hover:bg-slate-900">{{ history_toggle_label }}</a>
+          <a href="{{ history_toggle_url }}" class="mt-4 ops-button-secondary">{{ history_toggle_label }}</a>
         {% endif %}
       </article>
 
-      <article class="ops-panel rounded-[1.75rem] px-6 py-6">
-        <p class="text-xs uppercase tracking-[0.18em] text-cyan-100/70">Источник</p>
-        {% if source_bitrix.deal_id %}
-          <p class="mt-3 text-lg font-medium text-white">Bitrix #{{ source_bitrix.deal_id }}</p>
-          <p class="mt-2 text-sm ops-muted">{{ source_bitrix.title|default:"Без названия" }}</p>
-          <p class="mt-2 text-sm ops-muted">Сумма: {{ source_bitrix.amount }}</p>
-          {% if source_bitrix.synced_at %}
-            <p class="mt-2 text-xs ops-muted">Обновлено {{ source_bitrix.synced_at|date:"d.m.Y H:i" }}</p>
+      <div class="ops-card-stack">
+        <article class="ops-panel ops-detail-card">
+          <p class="ops-section-eyebrow">Источник</p>
+          {% if source_bitrix.deal_id %}
+            <p class="mt-3 text-lg font-medium text-white">Bitrix #{{ source_bitrix.deal_id }}</p>
+            <p class="mt-2 text-sm ops-muted">{{ source_bitrix.title|default:"Без названия" }}</p>
+            <p class="mt-2 text-sm ops-muted">Сумма: {{ source_bitrix.amount }}</p>
+            {% if source_bitrix.synced_at %}
+              <p class="mt-2 text-xs ops-muted">Обновлено {{ source_bitrix.synced_at|date:"d.m.Y H:i" }}</p>
+            {% endif %}
+            {% if source_bitrix.deal_url %}
+              <a href="{{ source_bitrix.deal_url }}" target="_blank" rel="noreferrer" class="mt-4 ops-button-secondary">Открыть в Bitrix</a>
+            {% endif %}
+          {% else %}
+            {% include "manager_portal/_empty_state.html" with empty_state_title="Нет связи с Bitrix" empty_state_description="CRM-ссылка пока не привязана к этой сделке." empty_state_action_label="Остаться в карточке" empty_state_action_url=request.path %}
           {% endif %}
-          {% if source_bitrix.deal_url %}
-            <a href="{{ source_bitrix.deal_url }}" target="_blank" rel="noreferrer" class="mt-4 ops-button-secondary">Открыть в Bitrix</a>
+        </article>
+
+        <article class="ops-panel ops-detail-card">
+          <p class="ops-section-eyebrow">Финансы</p>
+          {% if finance_summary.exists %}
+            <dl class="ops-data-grid mt-4">
+              <div>
+                <dt>Выручка</dt>
+                <dd>{{ finance_summary.revenue }}</dd>
+              </div>
+              <div>
+                <dt>Себестоимость</dt>
+                <dd>{{ finance_summary.cost_of_goods }}</dd>
+              </div>
+              <div>
+                <dt>Расходы</dt>
+                <dd>{{ finance_summary.direct_expenses }}</dd>
+              </div>
+              <div>
+                <dt>Оценка прибыли</dt>
+                <dd>{{ finance_summary.estimated_profit }}</dd>
+              </div>
+            </dl>
+            <p class="mt-4 text-sm ops-muted">{{ finance_summary.cost_status_label }}</p>
+          {% else %}
+            {% include "manager_portal/_empty_state.html" with empty_state_title="Финансовый кейс не создан" empty_state_description="Финансовые показатели появятся после создания и расчёта кейса по сделке." empty_state_action_label="Открыть вкладку финансов" empty_state_action_url="?tab=finance" %}
           {% endif %}
-        {% else %}
-          <p class="mt-3 text-sm ops-muted">Сделка пока не связана с Bitrix.</p>
-        {% endif %}
-      </article>
+        </article>
+      </div>
     </section>
   {% elif active_tab == 'goods' %}
     <section class="space-y-4">
@@ -328,7 +350,7 @@
                   </div>
                   <p class="mt-2 text-sm ops-muted">Нужно {{ line.ordered }} · Принято {{ line.received }} · Доступно к резерву {{ line.available_to_reserve }} · В резерве {{ line.reserved }} · Не хватает {{ line.reserve_missing }} · Свободно {{ line.free_stock }} · Заказано {{ line.purchased }} · В пути {{ line.in_transit }} · Отгружено {{ line.shipped }}</p>
                   <p class="mt-1 text-xs ops-muted">{{ line.coverage_summary }}</p>
-                  {% if ops_mode == 'advanced' and line.reserve_debug_reason %}
+                  {% if ops_mode == 'advanced' and show_ops_reserve_debug and line.reserve_debug_reason %}
                     <p class="mt-1 text-xs text-slate-500">Reserve debug: {{ line.reserve_debug_reason }}</p>
                   {% endif %}
                 </div>
@@ -386,7 +408,7 @@
           </article>
         {% endwith %}
       {% empty %}
-        <div class="ops-panel rounded-[1.75rem] px-6 py-6 text-sm ops-muted">Связанных закупок пока нет.</div>
+        {% include "manager_portal/_empty_state.html" with empty_state_title="Закупок пока нет" empty_state_description="По этой сделке ещё не создавали закупки. Они появятся здесь после запуска обеспечения." empty_state_action_label="Вернуться к обзору" empty_state_action_url=request.path %}
       {% endfor %}
     </section>
   {% elif active_tab == 'cargos' %}
@@ -417,7 +439,7 @@
           </article>
         {% endwith %}
       {% empty %}
-        <div class="ops-panel rounded-[1.75rem] px-6 py-6 text-sm ops-muted">Связанных грузов пока нет.</div>
+        {% include "manager_portal/_empty_state.html" with empty_state_title="Грузов пока нет" empty_state_description="Inbound ещё не создан. После привязки закупки сюда попадут связанные грузы." empty_state_action_label="Вернуться к обзору" empty_state_action_url=request.path %}
       {% endfor %}
     </section>
   {% elif active_tab == 'reservations' %}
@@ -431,7 +453,7 @@
           <p class="mt-2 text-sm ops-muted">{{ row.reservation.get_source_type_display }} · {{ row.reservation.target_warehouse.name|default:"—" }}</p>
         </article>
       {% empty %}
-        <div class="ops-panel rounded-[1.75rem] px-6 py-6 text-sm ops-muted">Резервов по сделке пока нет.</div>
+        {% include "manager_portal/_empty_state.html" with empty_state_title="Резервов пока нет" empty_state_description="Под эту сделку ещё не закрепляли складской остаток." empty_state_action_label="Открыть обзор" empty_state_action_url=request.path %}
       {% endfor %}
     </section>
   {% elif active_tab == 'shipments' %}
@@ -463,7 +485,10 @@
                 {% endif %}
               {% endfor %}
               {% if not row.actions and row.shipment.status == row.shipment.STATUS_DELIVERED %}
-                <span class="ops-button-secondary opacity-60">Доставлено</span>
+                <div class="ops-disabled-action">
+                  <strong>Доставлено</strong>
+                  <span>По этой отгрузке больше не требуется действий.</span>
+                </div>
               {% endif %}
             </div>
           </div>
@@ -497,7 +522,7 @@
           </div>
         </article>
       {% empty %}
-        <div class="ops-panel rounded-[1.75rem] px-6 py-6 text-sm ops-muted">Отгрузок по сделке пока нет.</div>
+        {% include "manager_portal/_empty_state.html" with empty_state_title="Отгрузок пока нет" empty_state_description="Отправка клиенту ещё не создана. Когда сделка будет готова к отгрузке, записи появятся здесь." empty_state_action_label="Открыть обзор" empty_state_action_url=request.path %}
       {% endfor %}
     </section>
   {% elif active_tab == 'finance' %}
@@ -524,38 +549,38 @@
         </div>
         <p class="mt-4 text-sm ops-muted">{{ finance_summary.cost_status_label }}</p>
       {% else %}
-        <p class="mt-4 text-sm ops-muted">Финансовый кейс по сделке пока не создан.</p>
+        {% include "manager_portal/_empty_state.html" with empty_state_title="Финансовый кейс не создан" empty_state_description="Финансовые показатели появятся после создания кейса по сделке." empty_state_action_label="Вернуться к обзору" empty_state_action_url=request.path %}
       {% endif %}
     </section>
   {% else %}
     <section class="ops-panel rounded-[1.75rem] px-6 py-6">
-      <div class="flex flex-wrap items-center gap-2">
-        <p class="text-xs uppercase tracking-[0.18em] text-cyan-100/70">История</p>
+      <div class="ops-section-head">
+        <p class="ops-section-eyebrow">История</p>
         <span class="ops-chip ops-tone-neutral">{{ history_rows_total }}</span>
       </div>
-      <div class="mt-4 flex flex-wrap gap-2">
+      <div class="ops-tabs mt-4 px-0 py-0">
         {% for link in history_filter_links %}
-          <a href="{{ link.url }}" class="rounded-full px-3 py-2 text-sm transition {% if link.active %}bg-cyan-300 text-slate-950{% else %}border border-slate-700 text-slate-200 hover:bg-slate-900{% endif %}">
+          <a href="{{ link.url }}" class="ops-tab{% if link.active %} is-active{% endif %}">
             {{ link.label }}
           </a>
         {% endfor %}
       </div>
-      <div class="mt-5 space-y-3">
+      <div class="ops-tab-stack mt-5">
         {% for event in history_rows %}
-          <div class="rounded-[1.35rem] border border-slate-800 bg-slate-950/35 px-4 py-4">
+          <div class="ops-row-card">
             <div class="flex flex-wrap items-center gap-2">
               <span class="text-sm font-medium text-white">{{ event.created_at|date:"d.m H:i" }}</span>
               <span class="ops-chip ops-tone-{{ event.tone }}">{{ event.category_label }}</span>
+              <span class="text-xs ops-muted">{{ event.who_label }}</span>
             </div>
             <p class="mt-2 text-sm text-white">{{ event.summary }}</p>
-            <p class="mt-1 text-xs ops-muted">{{ event.who_label }}</p>
           </div>
         {% empty %}
-          <p class="text-sm ops-muted">История по сделке пока пустая.</p>
+          {% include "manager_portal/_empty_state.html" with empty_state_title="История пока пуста" empty_state_description="По этой сделке ещё не было операций, которые нужно показать в ленте." empty_state_action_label="Открыть обзор" empty_state_action_url=request.path %}
         {% endfor %}
       </div>
       {% if history_rows_total > history_rows|length or history_show_all %}
-        <a href="{{ history_toggle_url }}" class="mt-4 inline-flex rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-200 transition hover:bg-slate-900">{{ history_toggle_label }}</a>
+        <a href="{{ history_toggle_url }}" class="mt-4 ops-button-secondary">{{ history_toggle_label }}</a>
       {% endif %}
     </section>
   {% endif %}

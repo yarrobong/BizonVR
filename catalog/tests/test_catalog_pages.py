@@ -2,6 +2,7 @@ from ._shared import *  # noqa: F401,F403
 from accounts.tests.factories import create_user
 from catalog.cart_services import build_cart_item_share_key
 from .factories import create_category, create_product
+from integrations.models import SiteLeadRequest
 
 class CatalogSearchTest(TestCase):
     """Поиск по товарам (параметр q=)."""
@@ -484,6 +485,43 @@ class ServicesPageTest(TestCase):
         self.assertEqual(callback.name, 'Иван')
         self.assertIsNotNone(callback.legal_accepted_at)
         self.assertEqual(callback.legal_docs_version, LEGAL_BUNDLE_VERSION)
+        site_request = SiteLeadRequest.objects.get()
+        self.assertEqual(site_request.source_type, SiteLeadRequest.SOURCE_CALLBACK_USLUGI)
+        self.assertEqual(site_request.phone, '+7 (999) 111-22-33')
+
+    @override_settings(BITRIX_WEBHOOK_URL='https://portal.example/rest/1/webhook', BITRIX_SITE_REQUESTS_ENABLED=True)
+    @patch('integrations.bitrix_site_requests.requests.post')
+    def test_services_callback_creates_site_request_and_bitrix_deal(self, mock_post):
+        def side_effect(url, data=None, timeout=None):
+            response = Mock()
+            response.raise_for_status.return_value = None
+            if url.endswith('/crm.duplicate.findbycomm.json'):
+                response.json.return_value = {'result': {'CONTACT': []}}
+            elif url.endswith('/crm.contact.add.json'):
+                response.json.return_value = {'result': '501'}
+            elif url.endswith('/crm.deal.add.json'):
+                response.json.return_value = {'result': '601'}
+            else:
+                raise AssertionError(f'Unexpected Bitrix URL: {url}')
+            return response
+
+        mock_post.side_effect = side_effect
+
+        resp = self.client.post(
+            reverse('uslugi'),
+            {
+                'form_type': 'callback',
+                'name': 'Иван',
+                'phone': '+7 (999) 111-22-33',
+                'agree_personal_data': 'on',
+            },
+        )
+
+        self.assertEqual(resp.status_code, 302)
+        site_request = SiteLeadRequest.objects.get()
+        self.assertEqual(site_request.sync_status, SiteLeadRequest.SYNC_STATUS_SYNCED)
+        self.assertEqual(site_request.bitrix_contact_id, '501')
+        self.assertEqual(site_request.bitrix_deal_id, '601')
 
     @override_settings(CRM_LEADS_EMAIL='crm@example.com')
     def test_services_callback_sends_crm_email(self):
@@ -518,6 +556,9 @@ class ServicesPageTest(TestCase):
         self.assertEqual(resp.status_code, 302)
         self.assertTrue(resp['Location'].endswith(reverse('uslugi') + '#contacts'))
         self.assertEqual(CallbackRequest.objects.count(), 0)
+        site_request = SiteLeadRequest.objects.get()
+        self.assertEqual(site_request.spam_status, SiteLeadRequest.SPAM_STATUS_SPAM)
+        self.assertEqual(site_request.sync_status, SiteLeadRequest.SYNC_STATUS_SKIPPED)
 
 
 

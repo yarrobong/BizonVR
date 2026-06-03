@@ -321,6 +321,10 @@ def sync_order_state_side_effects(order, *, previous_status=None, previous_payme
     except Exception:
         sync_order_workflow_state = None
     if sync_order_workflow_state:
+        try:
+            order.manager_deal
+        except Exception:
+            return
         sync_order_workflow_state(order, previous_status=previous_status)
 
 
