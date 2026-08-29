@@ -55,8 +55,7 @@ the active PostgreSQL database.
 6. Integration adapters are called at explicit boundaries and record failures without exposing credentials or raw secrets.
 
 The frontend is server-rendered Django HTML with Tailwind CSS and small JavaScript
-enhancements. The frontend is server-rendered Django HTML with Tailwind CSS and small
-JavaScript enhancements. Some endpoints return partial HTML or JSON for
+enhancements. Some endpoints return partial HTML or JSON for
 interactive UI updates without introducing a separate frontend application.
 
 ## Checkout Flow

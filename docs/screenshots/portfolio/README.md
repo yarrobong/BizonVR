@@ -1,9 +1,10 @@
-# Portfolio Screenshot Plan
+# Portfolio Screenshots
 
-There are no verified UI screenshots in the repository that can be reused as
-portfolio captures. Do not add generated or fabricated screenshots. Capture the
-real local application after loading safe demo data, then place only approved
-images in this directory and reference them from the root README.
+Verified portfolio screenshots are captured from the real local application and
+stored in this directory. The current set covers the storefront main page,
+catalog, product detail, cart, and checkout; these files are referenced from the
+root README. Do not add generated or fabricated screenshots. Use synthetic demo
+data for any future captures and place only approved images in this directory.
 
 ## Capture Rules
 
@@ -66,6 +67,6 @@ images in this directory and reference them from the root README.
 
 1. Review each image for personal or production data.
 2. Optimize dimensions and file size without making text unreadable.
-3. Add approved images to this directory.
-4. Add relative image links to the root README under a new `Screenshots` section.
-5. Recheck the links from GitHub's rendered README before considering the portfolio presentation complete.
+3. Keep approved images in this directory.
+4. Keep relative image links in the root README limited to files that actually exist here.
+5. Recheck the links from GitHub's rendered README when adding or replacing a screenshot.
