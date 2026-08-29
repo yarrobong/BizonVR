@@ -145,7 +145,7 @@ def apply_partner_bonus_for_order(order):
     from accounts.services import ensure_profile
 
     with transaction.atomic():
-        locked_order = Order.objects.select_for_update().select_related('promo_code').get(pk=order.pk)
+        locked_order = Order.objects.select_for_update(of=('self',)).select_related('promo_code').get(pk=order.pk)
         if locked_order.payment_status != locked_order.PAYMENT_STATUS_PAID:
             return
         if locked_order.partner_bonus_applied:
