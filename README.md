@@ -1,26 +1,128 @@
 # BizonVR
 
-BizonVR is an e-commerce platform for VR equipment, accessories, and VR attractions. The system combines a product catalog, session and user cart, account area, manager-only order placement, order history, email-only account verification, and internal manager workflows.
+Production-oriented Django e-commerce platform for VR equipment, accessories,
+services, inventory operations, and manager-led payment workflows.
 
-The project is aimed at a VR store team: customers browse and order products, managers process requests and orders, and administrators maintain catalog data, stock, payments, and site content through Django admin.
+[![CI](https://github.com/yarrobong/BizonVR/actions/workflows/ci.yml/badge.svg)](https://github.com/yarrobong/BizonVR/actions/workflows/ci.yml)
+[![Python 3.12](https://img.shields.io/badge/python-3.12+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Django 6.0](https://img.shields.io/badge/django-6.0-092E20?logo=django&logoColor=white)](https://www.djangoproject.com/)
+[![PostgreSQL](https://img.shields.io/badge/database-PostgreSQL-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 
-## Documentation Map
+## Overview
 
-Use these files as the current entry points:
+BizonVR is a monolithic Django commerce platform for selling VR headsets,
+accessories, bundles, game packs, attractions, and related services. It serves
+both individual customers and the team that validates, fulfills, and follows up
+their orders.
 
-- [docs/LOCAL_DEVELOPMENT.md](docs/LOCAL_DEVELOPMENT.md) - local setup, run commands, CSS build, and validation commands.
-- [docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md) - public-site Django admin workflow.
-- [docs/VR_CLUB_GAMES_ADMIN.md](docs/VR_CLUB_GAMES_ADMIN.md) - games and game-pack admin workflow.
-- [docs/SITE_CHECKLIST.md](docs/SITE_CHECKLIST.md) - public-site smoke test and release checklist.
-- [docs/archive/DOCS_CLEANUP_REPORT.md](docs/archive/DOCS_CLEANUP_REPORT.md) - documentation inventory and deletion/archive recommendations.
+The public site covers catalog browsing, guest and authenticated carts, guest
+checkout, customer accounts, order history, and lead forms. A manager portal in
+the same Django application handles deals, clients, warehouses, reservations,
+shipments, finance, and documents.
 
-Manager portal documentation exists, but manager portal code, templates, routes, JavaScript, CSS, and API endpoints must not be changed as part of public-site documentation cleanup.
+## Highlights
 
-## Быстрый локальный запуск
+- Catalog with products, variants, categories, characteristics, bundles, and game packs.
+- Guest and authenticated carts with variant-aware line items.
+- Guest checkout that creates an order request without requiring registration.
+- Customer accounts with email verification, password login, profile data, and order history.
+- Order lifecycle with manager confirmation, payment state, delivery state, and email events.
+- Inventory across warehouses, incoming cargo, reservations, lot allocations, and public stock sync.
+- Manager operations for clients, deals, procurement, reservations, shipments, finance, and documents.
+- Lead capture from checkout, product requests, contacts, service pages, and VR club flows.
+- Optional integrations for Bitrix, CDEK delivery selection, Cloudflare Turnstile, SMTP, and a signed payment webhook.
 
-Текущий минимальный сценарий для локального запуска:
+## Engineering Highlights
+
+- PostgreSQL is the only active persistent database, keeping public commerce and manager operations in one transactional boundary.
+- Critical payment, order, reservation, shipment, and balance updates use `transaction.atomic()` and targeted `select_for_update()` row locks.
+- Reservation creation checks available stock, allocates order lines, records inventory movements, and synchronizes public stock.
+- Strict reservation failures raise inside the transaction, so partial reservation writes roll back together.
+- Shipment dispatch is guarded against duplicate inventory consumption and validates reservation and shippable quantities.
+- Payment webhooks verify HMAC signatures, validate status transitions, and prevent duplicate or regressive state changes.
+- Guest orders use expiring access tokens; verified email can later claim matching guest orders.
+- Login and redirect flows validate local destinations, while account code endpoints apply IP, email, phone, and session rate limits.
+- External Bitrix, CDEK, SMTP, Turnstile, and payment failures are handled at integration boundaries and covered by regression tests.
+- Production configuration checks require explicit secrets, HTTPS-aware settings, email configuration, and valid deployment prerequisites.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    Browser[Browser]
+    Public[Public site<br/>catalog, accounts, checkout]
+    Manager[Manager portal<br/>deals, inventory, finance]
+    Services[Domain services<br/>orders, reservations, shipments]
+    DB[(PostgreSQL)]
+    Integrations[Integration adapters<br/>Bitrix, CDEK, SMTP, Turnstile, payment provider]
+
+    Browser --> Public
+    Browser --> Manager
+    Public --> Services
+    Manager --> Services
+    Services --> DB
+    Services --> Integrations
+```
+
+This is a modular monolith, not a microservice system. See the detailed
+[architecture document](docs/ARCHITECTURE.md) for request, checkout, inventory,
+payment, concurrency, and deployment flows.
+
+## Screenshots
+
+A curated screenshot set is being prepared from the local demo environment.
+See the [portfolio screenshot plan](docs/screenshots/portfolio/README.md)
+for the selected flows and capture requirements.
+
+## Tech Stack
+
+| Area | Technology |
+| --- | --- |
+| Backend | Python 3.12+, Django 6.0.1 |
+| Database | PostgreSQL, one active `default` database |
+| Frontend | Django templates, Tailwind CSS, JavaScript |
+| Authentication | Django auth, email verification, password reset |
+| Integrations | SMTP, Bitrix, CDEK API, Cloudflare Turnstile, signed payment webhook |
+| Runtime | Gunicorn, WhiteNoise, Nginx deployment configuration |
+| Testing | Django test suite with PostgreSQL-backed settings |
+| CI | GitHub Actions, PostgreSQL 17, Node.js 22 |
+| Optional runtime support | Redis cache backend through `CACHE_REDIS_URL` |
+
+## Testing & Quality
+
+The current suite contains **778 automated tests**. The tests cover:
+
+- Django checks and production configuration validation;
+- PostgreSQL-backed application behavior;
+- checkout, guest access, authentication, email verification, and security regressions;
+- inventory, reservation, shipment, and concurrency-sensitive workflows;
+- payment webhook signature, duplicate, and regression behavior;
+- external integration failure isolation;
+- isolated temporary `MEDIA_ROOT` for test runs.
+
+The CI workflow has three jobs:
+
+1. `Backend (PostgreSQL)`: installs Python dependencies, runs `check`, migration drift validation, the single-database contract, and the full Django suite.
+2. `Frontend assets`: runs `npm ci`, builds Tailwind CSS, and audits production npm dependencies.
+3. `Production configuration`: runs `check --deploy` and `collectstatic` with production-like settings.
+
+## Project Status
+
+Portfolio-ready and actively maintained.
+
+- Core commerce workflow implemented.
+- Manager workflow implemented in the same Django application.
+- PostgreSQL-backed test suite with 778 passing tests.
+- Automated CI with backend, frontend asset, and production configuration checks.
+- Local development and production deployment documentation available.
+
+Public demo is not currently hosted.
+
+## Quick Start
 
 ```bash
+git clone https://github.com/yarrobong/BizonVR.git
+cd BizonVR
 createdb bizon
 cp .env.example .env
 make install-local
@@ -29,658 +131,33 @@ make superuser-local
 make run-local
 ```
 
-Сайт будет доступен по адресу `http://127.0.0.1:8000/`, админка — `http://127.0.0.1:8000/admin/`.
-
-Если нужен не пустой каталог, после миграций можно загрузить демо-данные:
+Open the public site at `http://127.0.0.1:8000/` and Django admin at
+`http://127.0.0.1:8000/admin/`. To load catalog data locally, run:
 
 ```bash
 make load-data-local
 ```
 
-Минимальные локальные переменные в `.env`:
-
-```env
-DEBUG=True
-SITE_URL=http://127.0.0.1:8000
-ALLOWED_HOSTS=127.0.0.1,localhost
-CSRF_TRUSTED_ORIGINS=http://127.0.0.1:8000,http://localhost:8000
-
-DB_NAME=bizon
-DB_USER=postgres
-DB_PASSWORD=replace-with-local-password
-DB_HOST=localhost
-DB_PORT=5432
-```
-
-Подробная инструкция остаётся в [docs/LOCAL_DEVELOPMENT.md](docs/LOCAL_DEVELOPMENT.md).
-
-## Active Runtime And Single DB
-
-- BizonVR runs only as one Django application with the internal `manager_portal` module.
-- The only active persistent database is PostgreSQL from `DATABASES["default"]` in `config/settings.py`.
-- `legacy` stores archived import sources only. They are not active runtimes, not deployment targets, and not an allowed reason to add extra Django DB aliases.
-- Legacy data is imported into PostgreSQL through management commands:
-  - `manage.py import_legacy_docuflow --source <sqlite-path> --dry-run|--apply`
-  - `manage.py import_legacy_business_finance --source-dsn <postgres-dsn> --dry-run|--apply`
-  - `manage.py import_legacy_site_sqlite --source <sqlite-path> --dry-run|--apply`
-  - `manage.py check_single_db_contract`
-
-## Назначение проекта
-
-Проект создан как интернет-магазин VR-техники и связанных услуг с серверным рендерингом на Django.
-
-Основные бизнес-задачи:
-
-- продавать VR-шлемы, аксессуары, комплекты и VR-аттракционы через каталог и карточки товара;
-- собирать корзину как у гостя, так и у авторизованного пользователя;
-- оформлять заказ-заявку с контактами, доставкой и согласием с юридическими документами;
-- поддерживать личный кабинет с профилем, адресами, балансом и историей заказов;
-- согласовывать оплату через менеджера после подтверждения заказа;
-- обрабатывать обращения с лендингов, формы контактов и обратного звонка;
-- поддерживать регистрацию и вход по email + пароль с обязательным подтверждением email.
-
-Отличия от обычного магазина:
-
-- есть каталог не только товаров, но и VR-услуг, аттракционов и товарных наборов;
-- остатки считаются по точкам выдачи и агрегируются по городам;
-- публичная онлайн-оплата отключена: checkout создает заявку, а оплату согласует менеджер;
-- основной вход в аккаунт реализован по email и паролю после подтверждения email;
-- юридические согласия и служебные контакты встроены в формы заказа и аккаунта.
-
-## Основной функционал
-
-- Каталог товаров. Иерархия разделов, категорий, товаров, вариантов, тегов, характеристик и наборов.
-- Карточка товара. Галерея, варианты товара, остатки, характеристики, рекомендации и добавление в корзину.
-- Корзина. Работает в сессии для гостя и в БД для авторизованного пользователя, умеет хранить количество и вариант товара.
-- Избранное. Для гостя состояние хранится в сессии, для пользователя в БД.
-- Оформление заказа (`checkout`). Создаёт заказ из корзины, валидирует остатки, записывает контакты, доставку, промокод и юридические согласия.
-- Заказы. История, детали заказа, расчёт суммы к оплате, статусы и связка с платежами.
-- Оплата. В публичном checkout не создается `Payment`; менеджер отправляет реквизиты или счет после подтверждения заказа.
-- Авторизация и аккаунт. Email + пароль, подтверждение email, профиль, сохранённые адреса, баланс.
-- Восстановление доступа. По подтверждённому email через письмо со ссылкой.
-- Уведомления аккаунта. Email-коды для подтверждения и восстановления доступа.
-- Админка. Управление каталогом, остатками, заказами, промокодами, платежами, заявками и профилями.
-
-## Бизнес-логика
-
-### Как оформляется заказ
-
-Текущее состояние системы:
-
-- заказать без регистрации можно как на уровне модели, так и в публичном UI, потому что `Order.user` допускает `NULL`, а `/orders/checkout/` открыт для гостя;
-- гостевой заказ после оформления получает защищённый токен доступа к странице заказа;
-- вход или создание аккаунта остаются вторичными действиями рядом с checkout, а не блокирующим шагом;
-- после успешного оформления заказа создаются `Order` и `OrderItem`, а корзина очищается.
-
-### Обязательные поля заказа
-
-В текущей форме оформления заказа обязательны:
-
-- `email`;
-- `phone`;
-- `first_name`;
-- `city_text`;
-- `address_line`;
-- `agree_personal_data`;
-- `agree_offer`.
-
-Поля `last_name`, `comment`, `promo_code` необязательны. Поля `recipient_name` и `recipient_phone` обязательны только если получатель не совпадает с покупателем.
-
-### Как работает авторизация
-
-- основной публичный entrypoint реализован через `email + пароль`;
-- регистрация завершается только после подтверждения email-кода из письма;
-- телефон хранится как контактное поле, но не используется как фактор входа или привязки заказа;
-- `username` у новых пользователей генерируется технически и не является публичным логином;
-- профиль `Profile` создаётся при регистрации, первом успешном входе или при обращении к профилю;
-- email является основным логином и подтверждается письмом.
-
-### Что подтверждается, а что нет
-
-- email подтверждается отдельным кодом через письмо;
-- для текущего оформления заказа подтверждение email не требуется;
-- для текущего оформления заказа телефон нужен только как контакт для менеджера и доставки.
-
-### Как создаётся аккаунт
-
-- пользователь регистрируется по email и паролю;
-- аккаунт не получает сессию входа до успешного подтверждения email;
-- при гостевом заказе пользователь может сначала оформить покупку, а затем сохранить заказ в кабинете через email из заказа;
-- если профиль неполный, пользователь направляется в личный кабинет для заполнения ФИО и согласия на обработку ПД.
-
-### Как гостевой заказ привязывается к аккаунту
-
-В кодовой базе это реализовано как рабочий пользовательский сценарий:
-
-- модель заказа допускает `user=None`;
-- новый guest-заказ получает защищённый URL по токену и может быть открыт без логина;
-- после подтверждения email guest order автоматически привязывается к подходящему аккаунту;
-- целевое поведение и UX-правила зафиксированы в [docs/ORDER_PLACEMENT_AND_ACCOUNT_FLOW.md](docs/ORDER_PLACEMENT_AND_ACCOUNT_FLOW.md).
-
-### Как работают скидки и бонусы
-
-- заказ может использовать активный `PromoCode`;
-- скидка хранится в `Order.promo_discount`;
-- итог к оплате считается как `total - promo_discount`;
-- при ручной отметке оплаты могут быть начислены партнёрские бонусы через `apply_partner_bonus_for_order(order)`.
-
-### Как работают остатки
-
-- источник истины по остаткам: `catalog.ProductStock`;
-- остатки хранятся на уровне товара, варианта и точки выдачи;
-- при оформлении заказа наличие перепроверяется, но резерв еще не создается;
-- если товара недостаточно, но `allow_order_on_request=True`, позиция создаётся как `is_on_request=True`;
-- при переводе заказа менеджером в `confirmed` создается резерв и уменьшается публичный доступный остаток;
-- фактическое списание физического inventory остается в shipment/dispatch контуре.
-
-## Сценарий пользователя
-
-Текущий основной путь пользователя выглядит так:
-
-1. Пользователь заходит на сайт и открывает каталог или карточку товара.
-2. Добавляет товар в корзину. Для гостя корзина хранится в сессии, для авторизованного пользователя в БД.
-3. Переходит в корзину и нажимает оформление заказа как гость или авторизованный пользователь.
-4. Заполняет контакты, email, доставку, получателя, комментарий и подтверждает юридические согласия.
-5. Система создаёт заказ-заявку без `Payment` и переводит пользователя на страницу заказа.
-6. Менеджер проверяет наличие, доставку и итоговую сумму, затем подтверждает заказ.
-7. При подтверждении создается резерв, публичный доступный остаток уменьшается.
-8. Менеджер отправляет реквизиты или счет на email/контакт покупателя и вручную отмечает оплату.
-9. Гость может открыть заказ по защищённой ссылке и сохранить его в кабинете после подтверждения email.
-
-## Авторизация и безопасность
-
-### Способы входа
-
-- Email + пароль: основной публичный способ входа.
-- Регистрация: email + пароль, затем подтверждение email-кодом из письма.
-- Восстановление доступа: по подтверждённому email через письмо со ссылкой.
-
-### Какие контакты используются
-
-- для входа по умолчанию используется email;
-- для восстановления используется подтверждённый email;
-- для писем аккаунта и восстановления email должен быть подтверждён;
-- для оформления заказа email обязателен.
-
-### Когда нужен пароль
-
-- пароль нужен для публичного входа;
-- email должен быть подтвержден до входа в аккаунт.
-
-### Защитные меры
-
-- rate limiting на отправку email-кодов по IP, email и сессии;
-- rate limiting на проверку email-кодов по IP, email и сессии;
-- cooldown между повторными отправками кодов;
-- Cloudflare Turnstile для публичных форм, если настроены ключи;
-- безопасный redirect после логина без открытых внешних URL;
-- одинаковая ошибка для неверного email/пароля;
-- подтверждённый email должен быть уникален;
-- поддержка trusted proxy IP для корректного определения клиентского IP за Nginx.
-
-## Уведомления
-
-В проекте нет отдельного универсального notification center. Сейчас уведомления разделяются на уже реализованные и целевые.
-
-### Реализовано сейчас
-
-- Email:
-  - код подтверждения email при регистрации и в профиле;
-  - письмо для восстановления пароля;
-  - сервисные письма по событиям заказа.
-
-### Основные каналы
-
-- основной канал для аккаунта и заказов: SMTP email с `DEFAULT_FROM_EMAIL`;
-- SMS не используется в публичном пользовательском контуре.
-
-### События, которые уже вызывают уведомления
-
-- запрос email-кода подтверждения;
-- запрос восстановления доступа по email;
-- заказ создан;
-- заказ подтверждён менеджером;
-- оплата получена;
-- заказ передан в доставку;
-- заказ готов к выдаче;
-- заказ отменён.
-
-## Структура проекта
-
-```text
-BizonVR/
-├── accounts/      # аккаунт, email-подтверждение, профиль, адреса, безопасность
-├── catalog/       # каталог, остатки, корзина, избранное, обращения
-├── config/        # settings, root urls, home/legal/support views
-├── docs/          # локальная документация по бизнес-логике и данным
-├── manager_portal/# внутренний портал, финансы, логистика, договоры, импорт legacy-данных
-├── legacy/        # архивные источники данных для одноразового импорта в PostgreSQL
-├── orders/        # оформление заказа, заказы, промокоды, purchase requests
-├── payments/      # legacy платёжные данные и webhook, публичный checkout не создаёт Payment
-├── scripts/       # repo guard и служебные сценарии
-├── templates/     # Django templates
-├── static/        # редактируемая статика
-├── static_src/    # исходник Tailwind CSS
-├── staticfiles/   # collectstatic output, generated artifacts
-├── media/         # пользовательские и маркетинговые медиа
-├── deploy/        # Nginx и cloud-init для сервера
-├── Makefile       # локальные команды разработки
-├── requirements.txt
-└── package.json
-```
-
-Где что находится:
-
-- backend: `accounts/`, `catalog/`, `orders/`, `payments/`, `config/`;
-- internal backoffice: `manager_portal/`;
-- archived import sources: `legacy/`;
-- frontend templates: `templates/`;
-- исходная статика: `static/`;
-- Tailwind source: `static_src/input.css`;
-- собранная статика: `staticfiles/`;
-- конфигурация проекта: `config/settings.py`, `config/urls.py`, `.env.example`;
-- миграции: внутри `*/migrations/`;
-- документы по логике и инфраструктуре: `docs/`, `DEPLOY.md`.
-
-## Стек технологий
-
-- Язык: Python 3.12+.
-- Framework: Django 6.0.1.
-- База данных: одна активная PostgreSQL БД.
-- Frontend: Django Templates, Tailwind CSS, небольшой JS.
-- Статика: WhiteNoise `CompressedManifestStaticFilesStorage`.
-- Кэш:
-  - локально `LocMemCache`;
-  - в production опционально Redis через `CACHE_REDIS_URL`.
-- Очередь задач: отсутствует.
-- Email service: SMTP через Django email backend, в debug возможен console backend.
-- SMS service: legacy-интеграция сохранена в коде для совместимости, но не используется в публичном пользовательском контуре.
-- CAPTCHA: Cloudflare Turnstile.
-- Платежи: публичный checkout без онлайн-оплаты; реквизиты или счет отправляет менеджер после подтверждения заказа.
-- Генерация документов: WeasyPrint.
-- Сервер и деплой: `venv` + Gunicorn + systemd + Nginx.
-- Контейнеризация: Docker-сценарий в текущей версии не используется.
-
-## Требования для запуска
-
-Для локального старта нужны:
-
-- Python 3.12+;
-- PostgreSQL 16+ или совместимая версия PostgreSQL;
-- Node.js и npm для сборки Tailwind CSS;
-- доступ к `.env` с обязательными переменными окружения;
-- локальная БД PostgreSQL;
-- при тестировании интеграций опционально ключи платёжного провайдера, Exolve, SMTP и Turnstile.
-
-Docker для текущего сценария запуска не нужен.
-
-Перед миграциями и деплоем можно проверить контракт одной активной БД:
-
-```bash
-make check-single-db
-```
-
-## Установка и запуск
-
-Сценарий запуска с нуля:
-
-1. Создайте БД и файл окружения.
-
-```bash
-createdb bizon
-cp .env.example .env
-```
-
-2. Заполните минимум в `.env`:
-
-```env
-DB_NAME=bizon
-DB_USER=postgres
-DB_PASSWORD=postgres
-DB_HOST=localhost
-DB_PORT=5432
-DEBUG=True
-SITE_URL=http://localhost:8000
-```
-
-3. Установите зависимости.
-
-```bash
-make install-local
-```
-
-Команда создаст `.venv`, установит Python-зависимости и `npm install`.
-
-4. Примените миграции.
-
-```bash
-make migrate-local
-```
-
-5. При необходимости загрузите тестовые данные каталога.
-
-```bash
-make load-data-clear-local
-```
-
-6. Создайте администратора.
-
-```bash
-make superuser-local
-```
-
-7. Запустите проект.
-
-```bash
-make run-local
-```
-
-8. Откройте в браузере:
-
-- сайт: `http://127.0.0.1:8000/`
-- админка: `http://127.0.0.1:8000/admin/`
-
-Дополнительные команды:
-
-```bash
-make shell
-make collectstatic
-npm run build:css
-```
-
-## Переменные окружения
-
-Полный пример смотрите в [.env.example](.env.example). Ключевые переменные:
-
-### Базовые
-
-| Переменная | Назначение |
-| --- | --- |
-| `SECRET_KEY` | Секрет Django. Обязателен для production. |
-| `DEBUG` | Режим разработки. |
-| `ALLOWED_HOSTS` | Разрешённые хосты Django. |
-| `SITE_URL` | Базовый абсолютный URL сайта для ссылок и webhook. |
-| `CSRF_TRUSTED_ORIGINS` | Trusted origins для HTTPS-форм и логина. |
-| `USE_HTTPS` | Включает HTTPS-ориентированные security settings. |
-| `PORT` | Порт Gunicorn или runserver. |
-| `GUNICORN_WORKERS` | Количество воркеров Gunicorn. |
-
-### База данных и кэш
-
-| Переменная | Назначение |
-| --- | --- |
-| `DATABASE_URL` | Альтернативный способ задать подключение к PostgreSQL. |
-| `DB_NAME` | Имя БД PostgreSQL. |
-| `DB_USER` | Пользователь БД. |
-| `DB_PASSWORD` | Пароль БД. |
-| `DB_HOST` | Хост БД. |
-| `DB_PORT` | Порт БД. |
-| `CACHE_REDIS_URL` | Redis cache backend для production throttling и кэша. |
-| `TRUSTED_PROXY_IPS` | IP или CIDR доверенных прокси для `X-Forwarded-For`. |
-
-### Оформление заказа и legacy-платежи
-
-| Переменная | Назначение |
-| --- | --- |
-| `TEST_ORDER_NO_PAYMENT` | Тестовый режим: заказ сразу получает статус `paid`. |
-| `PAYMENT_GATEWAY_API_KEY` | Legacy API-ключ платёжного провайдера, публичный checkout его не использует. |
-| `PAYMENT_GATEWAY_IPN_SECRET` | Legacy секрет проверки подписи webhook. |
-| `PAYMENT_GATEWAY_API_BASE` | Legacy базовый URL API платёжного провайдера. |
-
-### Legacy SMS
-
-| Переменная | Назначение |
-| --- | --- |
-| `SMS_PROVIDER` | Legacy выбор SMS-провайдера. Не нужен для публичной регистрации и checkout. |
-| `EXOLVE_API_KEY` | Legacy API-ключ Exolve. |
-| `EXOLVE_SENDER` | Legacy sender name или номер отправителя Exolve. |
-| `EXOLVE_API_BASE` | Legacy базовый URL Exolve API. |
-| `SMS_API_KEY` | Legacy fallback для SMS.ru. |
-| `SMS_MESSAGE_TEMPLATE` | Legacy шаблон SMS с кодом. |
-
-### Email
-
-| Переменная | Назначение |
-| --- | --- |
-| `EMAIL_HOST` | SMTP host. |
-| `EMAIL_PORT` | SMTP port. |
-| `EMAIL_HOST_USER` | SMTP user. |
-| `EMAIL_HOST_PASSWORD` | SMTP password. |
-| `EMAIL_USE_TLS` | Использовать STARTTLS. |
-| `EMAIL_USE_SSL` | Использовать SSL. |
-| `EMAIL_TIMEOUT` | Таймаут SMTP. |
-| `DEFAULT_FROM_EMAIL` | Адрес отправителя по умолчанию. |
-| `CRM_LEADS_EMAIL` | Отдельный email Bitrix24/CRM для plain text копий публичных заявок. |
-| `EMAIL_VERIFICATION_SUBJECT` | Тема письма подтверждения email. |
-| `PASSWORD_RESET_EMAIL_SUBJECT` | Тема письма восстановления доступа. |
-| `PASSWORD_RESET_TIMEOUT` | Срок действия ссылки восстановления пароля в секундах. |
-| `EMAIL_CODE_COOLDOWN_SECONDS` | Пауза между отправками email-кода. |
-| `EMAIL_CODE_TTL_MINUTES` | Время жизни email-кода. |
-
-### Защита форм
-
-| Переменная | Назначение |
-| --- | --- |
-| `TURNSTILE_SITE_KEY` | Публичный ключ Cloudflare Turnstile. |
-| `TURNSTILE_SECRET_KEY` | Секретный ключ Turnstile. |
-| `TURNSTILE_VERIFY_URL` | URL проверки токена Turnstile. |
-
-### Статика, медиа и публичные данные
-
-| Переменная | Назначение |
-| --- | --- |
-| `SERVE_MEDIA` | Раздача `media/` через Django при выключенном Nginx. |
-| `SITE_BRAND` | Название бренда в шаблонах и письмах. |
-| `SITE_DESCRIPTION` | Краткое описание сайта. |
-| `SITE_CONTACT_PHONE` | Телефон в шапке, футере и письмах. |
-| `SITE_CONTACT_EMAIL` | Email поддержки. |
-| `SITE_CONTACT_ADDRESS` | Адрес компании на сайте. |
-| `SITE_CONTACT_TELEGRAM` | Telegram-ссылка. |
-| `SITE_WORK_HOURS` | Часы работы. |
-| `SITE_BLOG_URL`, `SITE_CLUBS_URL`, `SITE_INSTRUCTIONS_URL`, `SITE_YOUTUBE_URL`, `SITE_TIKTOK_URL` | Внешние ссылки меню и футера. |
-
-### Юридические данные
-
-| Переменная | Назначение |
-| --- | --- |
-| `LEGAL_OPERATOR_*` | Данные оператора персональных данных и реквизиты для legal pages. |
-| `LEGAL_BANK_*` | Банковские реквизиты для юридических страниц. |
-| `LEGAL_SIGNATORY_BASIS` | Основание полномочий подписанта. |
-
-## Роли и доступы
-
-- Гость:
-  - может смотреть каталог, карточки, услуги, контакты, legal pages;
-  - может пользоваться корзиной и избранным в рамках сессии;
-  - может отправлять формы контактов и обратного звонка;
-  - может оформить guest-заказ и открыть его по защищённой ссылке.
-- Пользователь:
-  - всё, что доступно гостю;
-  - доступ к профилю, истории заказов, сохранённым адресам и балансу;
-  - доступ к своим заказам и сервисным письмам по ним;
-  - доступ только к собственным заказам.
-- Менеджер:
-  - отдельная роль в Django admin через группу `Менеджеры админ-панели`;
-  - может просматривать и частично редактировать заказы и заявки;
-  - может смотреть платежи, промокоды, обращения и товары;
-  - не получает полный superuser-доступ.
-- Администратор:
-  - полный доступ к Django admin;
-  - управление каталогом, остатками, заказами, пользователями, платежами и настройками данных.
-
-## Статусы заказов
-
-В проекте используются следующие статусы `Order`:
-
-| Статус | Что означает | Когда устанавливается | Автоуведомление |
-| --- | --- | --- | --- |
-| `new` | Новая заявка, ожидает проверки менеджером | Сразу после checkout | Email |
-| `confirmed` | Заказ подтвержден менеджером, товар зарезервирован | Менеджер подтверждает заказ в админке или manager portal | Email |
-| `shipping` | Заказ передан в доставку | Обычно вручную менеджером или админом | Email |
-| `ready_for_pickup` | Заказ готов к выдаче | Обычно вручную менеджером или админом | Email |
-| `done` | Заказ завершён | Обычно вручную менеджером или админом | Нет |
-| `cancelled` | Заказ отменён, активный резерв снят | Обычно вручную менеджером или админом | Email |
-
-Важные side effects:
-
-- переход в `payment_status=paid` запускает начисление бонуса партнёру и email `payment_received`, но не списывает склад;
-- переход `status -> confirmed` создает резерв в `manager_portal` и синхронизирует публичный доступный остаток;
-- переход `status -> cancelled` снимает активный резерв и возвращает товар в публичную доступность;
-- фактическое списание inventory выполняется в shipment/dispatch контуре.
-
-Статусы платежа `Payment` ведутся отдельно для legacy-интеграции: `pending`, `waiting`, `confirming`, `sent`, `finished`, `failed`, `refunded`, `expired`. Публичный checkout новые `Payment` не создает.
-
-## API и внутренние модули
-
-Публичного REST API или DRF в проекте нет. Это серверный Django-сайт, в котором модули взаимодействуют через views, forms, services и models.
-
-Основные сущности:
-
-- `catalog`: `CatalogSection`, `Category`, `Product`, `ProductVariant`, `ProductStock`, `CartItem`, `Favorite`, `ProductBundle`;
-- `orders`: `Order`, `OrderItem`, `PromoCode`, `PurchaseRequest`;
-- `payments`: `Payment`;
-- `accounts`: `Profile`, `SavedAddress`, `PhoneVerificationCode`, `EmailVerificationCode`.
-
-Ключевые маршруты:
-
-- `/` — главная;
-- `/catalog/` — каталог;
-- `/catalog/cart/` — корзина;
-- `/orders/checkout/` — оформление заказа (`checkout`);
-- `/orders/` — история заказов;
-- `/payments/order/<id>/create/` — legacy entrypoint, в публичном flow редиректит обратно к заказу;
-- `/payments/webhook/` — webhook платёжного провайдера;
-- `/accounts/login/` — email + пароль и регистрация;
-- `/accounts/register/confirm/` — подтверждение email после регистрации;
-- `/accounts/profile/` — личный кабинет.
-
-Ключевые внутренние сервисы:
-
-- `catalog/cart_services.py` — корзина и избранное для сессии и БД;
-- `orders/services.py` — бонусы, email-уведомления и side effects статусов;
-- `payments/services.py` — создание платежей и валидация webhook;
-- `accounts/services.py` — email-коды, legacy SMS helpers, верификация, восстановление доступа;
-- `accounts/security.py` — rate limiting и работа с клиентским IP.
-
-## Работа с админкой
-
-Административная панель есть и доступна по `/admin/`.
-
-Через админку можно:
-
-- управлять разделами каталога, категориями, тегами, товарами, вариантами, фотографиями и характеристиками;
-- редактировать города, точки выдачи и складские остатки;
-- вести наборы товаров;
-- просматривать и обрабатывать `Order`, `OrderItem`, `PromoCode`, `PurchaseRequest`;
-- просматривать `Payment` и payload webhook;
-- работать с профилями пользователей, кодами подтверждения и менеджерской ролью;
-- просматривать обращения из форм контактов и обратного звонка.
-
-Роль менеджера ограничена и не равна суперпользователю. Набор прав задаётся в `accounts/admin_roles.py`.
-
-## Тестирование
-
-Тесты есть, основное покрытие сейчас сосредоточено в `catalog`, `orders` и `accounts`.
-
-Запуск:
-
-```bash
-make test
-# или напрямую:
-DJANGO_SETTINGS_MODULE=config.settings_test .venv/bin/python manage.py test config catalog orders accounts payments manager_portal
-```
-
-`--keepdb --noinput` можно использовать для быстрых повторных локальных прогонов, но финальную проверку лучше делать на чистой тестовой базе без `--keepdb`.
-
-Для быстрого повседневного прогона без `manager_portal`:
-
-```bash
-make test-shop
-```
-
-Для лёгкой проверки менеджерского контура без полного долгого набора:
-
-```bash
-make test-manager-smoke
-```
-
-Что покрыто тестами:
-
-- email-only вход, регистрация, resend и rate limit;
-- Turnstile-логика;
-- восстановление доступа;
-- оформление заказа, юридические согласия и очистка корзины;
-- поведение промокодов;
-- ограничения гостевого доступа к заказам;
-- каталог, поиск, варианты товаров, корзина, избранное;
-- часть логики профиля и email verification.
-
-Что стоит покрывать дальше:
-
-- автоматические переходы статусов заказа;
-- дополнительные сценарии manager portal;
-- расширенные проверки email-only claim для guest-заказов.
-
-## Деплой
-
-Текущий деплой рассчитан на обычный Linux-сервер без Docker:
-
-- Python virtualenv;
-- Gunicorn;
-- systemd;
-- Nginx;
-- PostgreSQL;
-- опционально Redis для кэша и throttling;
-- Certbot для HTTPS.
-- `legacy` хранится рядом с кодом только как архив и не запускается как отдельный сервис.
-
-Подробный сценарий: [DEPLOY.md](DEPLOY.md).
-
-Типовой порядок:
-
-1. Клонировать репозиторий на сервер.
-2. Создать и заполнить `.env`.
-3. Создать `.venv` и установить зависимости.
-4. Выполнить `make check-single-db`.
-5. Выполнить `npm run build:css`.
-6. Выполнить `manage.py migrate`.
-7. Выполнить `manage.py collectstatic --noinput`.
-8. Настроить и запустить Gunicorn unit.
-9. Настроить Nginx и HTTPS.
-10. Проверить главную, каталог, оформление заказа, админку и webhook path.
-
-После деплоя обязательно проверить:
-
-- что сайт открывается по HTTPS;
-- что `ALLOWED_HOSTS`, `CSRF_TRUSTED_ORIGINS` и `SITE_URL` совпадают с доменом;
-- что `collectstatic` выполнен;
-- что формы логина, оформления заказа и админка работают без 500 ошибок.
-
-## Известные ограничения
-
-- Публичный checkout не принимает онлайн-оплату и не создает `Payment`; оплату согласует менеджер.
-- Email обязателен в checkout и используется для сервисных писем.
-- Guest-заказ можно привязать к аккаунту только после подтверждения email.
-- Автоматическое подтверждение оплаты не используется в публичном сайте; менеджер вручную фиксирует оплату.
-- Очередей задач и фоновых worker-ов нет, все операции выполняются синхронно.
-- Хранилище файлов локальное, S3-совместимое хранилище не подключено.
-- `staticfiles/` хранит собранные артефакты и обычно не должен редактироваться вручную.
-
-## Контакты и дополнительная документация
-
-Поддержка проекта в кодовой базе не формализована по персоналиям. Для внутренних owner-ов backend, frontend и infra команда должна назначать ответственных отдельно от репозитория.
-
-Что использовать как source of truth:
-
-- [docs/LOCAL_DEVELOPMENT.md](docs/LOCAL_DEVELOPMENT.md) — локальный запуск, команды разработки и проверки;
-- [docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md) — работа с публичной Django admin без manager portal;
-- [docs/VR_CLUB_GAMES_ADMIN.md](docs/VR_CLUB_GAMES_ADMIN.md) — игры для VR-клубов и игровые паки;
-- [docs/SITE_CHECKLIST.md](docs/SITE_CHECKLIST.md) — smoke-check публичного сайта;
-- [docs/archive/DOCS_CLEANUP_REPORT.md](docs/archive/DOCS_CLEANUP_REPORT.md) — рекомендации по чистке документации без удаления файлов;
-- [docs/CITIES_AND_PRODUCTS.md](docs/CITIES_AND_PRODUCTS.md) — города, точки выдачи и остатки;
-- [docs/MANAGER_PORTAL.md](docs/MANAGER_PORTAL.md) — устройство менеджерского портала: сделки, клиенты, склады, остатки, брони, закупки, грузы, отгрузки и финансы;
-- [docs/ORDER_PLACEMENT_AND_ACCOUNT_FLOW.md](docs/ORDER_PLACEMENT_AND_ACCOUNT_FLOW.md) — целевой сценарий оформления заказа и аккаунта;
-- [legacy/README.md](legacy/README.md) — правила для архивных источников и импорта;
-- [DEPLOY.md](DEPLOY.md) — выкладка на сервер;
-- [.env.example](.env.example) — актуальный набор переменных окружения;
-- `config/settings.py`, `config/urls.py`, `catalog/models.py`, `orders/models.py`, `payments/models.py`, `accounts/models.py` — технический source of truth по текущей реализации.
+See [docs/LOCAL_DEVELOPMENT.md](docs/LOCAL_DEVELOPMENT.md) for the complete
+local setup, environment contract, Windows equivalents, and validation commands.
+
+## Documentation
+
+- [Architecture](docs/ARCHITECTURE.md), system boundaries and transactional flows.
+- [Local development](docs/LOCAL_DEVELOPMENT.md), setup and validation.
+- [Manager portal](docs/MANAGER_PORTAL.md), operational, logistics, finance, and document workflows.
+- [Order and account flow](docs/ORDER_PLACEMENT_AND_ACCOUNT_FLOW.md), guest checkout and account behavior.
+- [Admin guide](docs/ADMIN_GUIDE.md), catalog and public-site administration.
+- [VR club games admin](docs/VR_CLUB_GAMES_ADMIN.md), game and pack authoring.
+- [Deployment](DEPLOY.md), Gunicorn, Nginx, HTTPS, and PostgreSQL deployment.
+- [Deployment updates](DEPLOY_UPDATE.md), repeat deployment procedure.
+- [Portfolio screenshot plan](docs/screenshots/portfolio/README.md), real capture routes and redaction requirements.
+
+## Repository Boundaries
+
+The active runtime is the Django application. `legacy/` contains archived import
+sources and is not a separate deployment target. Database migrations are part of
+the application history and must be preserved.
+
+The manager portal is an internal surface and is documented here for inspection;
+public-site documentation work does not change its runtime code.
