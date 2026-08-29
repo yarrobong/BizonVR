@@ -16,6 +16,7 @@ from pathlib import Path
 
 from decouple import Csv, config
 from config.env import config_bool
+from django.core.exceptions import ImproperlyConfigured
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -25,10 +26,19 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = config('SECRET_KEY', default='django-insecure-change-me')
+DEFAULT_INSECURE_SECRET_KEY = 'django-insecure-change-me'
+SECRET_KEY = config('SECRET_KEY', default=DEFAULT_INSECURE_SECRET_KEY)
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config_bool('DEBUG', default=True)
+if not DEBUG and SECRET_KEY.strip().lower() in {
+    '',
+    DEFAULT_INSECURE_SECRET_KEY,
+    'your-secret-key-here',
+    'replace-me',
+    'change-me',
+}:
+    raise ImproperlyConfigured('SECRET_KEY must be explicitly configured when DEBUG=False.')
 ENABLE_ALFATRACK = config_bool('ENABLE_ALFATRACK', default=not DEBUG)
 OPS_SHOW_RESERVE_DEBUG = config_bool('OPS_SHOW_RESERVE_DEBUG', default=False)
 

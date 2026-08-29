@@ -786,6 +786,16 @@ class CheckoutTest(TestCase):
         self.assertEqual(rows[0]['QUANTITY'], 1)
         self.assertEqual(rows[0]['PRICE'], '80.00')
 
+    @patch('orders.views.checkout.sync_order_state_side_effects', side_effect=RuntimeError('manager workflow unavailable'))
+    def test_checkout_succeeds_when_manager_workflow_fails(self, sync_side_effects):
+        self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
+
+        response = self.client.post(reverse('orders:checkout'), self._checkout_payload())
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(Order.objects.count(), 1)
+        sync_side_effects.assert_called_once()
+
     def test_checkout_forces_manager_contact_payment_method(self):
         self.client.force_login(self.user)
         self.client.post(reverse('catalog:add_to_cart', kwargs={'product_id': self.product.pk}), {'quantity': 1})
@@ -1430,6 +1440,23 @@ class OrderNotificationPolicyTest(TestCase):
         self.assertEqual(OrderNotificationLog.objects.filter(order=order, channel='email').count(), 1)
         self.assertEqual(OrderNotificationLog.objects.filter(order=order, channel='sms').count(), 0)
         self.assertEqual(len(mail.outbox), 1)
+
+    @patch('orders.services._send_order_event_email', side_effect=RuntimeError('smtp unavailable'))
+    def test_failed_order_notification_does_not_leave_stale_delivery_log(self, send_email):
+        order = Order.objects.create(
+            user=self.user,
+            status=Order.STATUS_CONFIRMED,
+            payment_status=Order.PAYMENT_STATUS_UNPAID,
+            total=Decimal('100.00'),
+            phone='+7 999 123 45 67',
+            email='client@example.com',
+            first_name='Иван',
+        )
+
+        send_order_event_notifications(order, 'order_confirmed')
+
+        self.assertFalse(OrderNotificationLog.objects.filter(order=order).exists())
+        send_email.assert_called_once()
 
 
 class OrderPaymentSideEffectsTest(TestCase):
