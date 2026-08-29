@@ -58,13 +58,13 @@
 
 По состоянию на 2026-03-13 в проекте уже реализовано следующее:
 
-- экран оформления заказа в [orders/views/checkout.py](/Users/Yaroslav/Documents/dev/BizonVR/orders/views/checkout.py) открыт и для гостя, и для авторизованного пользователя;
+- экран оформления заказа в [orders/views/checkout.py](../orders/views/checkout.py) открыт и для гостя, и для авторизованного пользователя;
 - заказ можно оформить без регистрации, а guest-заказ получает защищённый URL по токену;
-- вход в [accounts/views/auth.py](/Users/Yaroslav/Documents/dev/BizonVR/accounts/views/auth.py) поддерживает три сценария: телефон + SMS, email + пароль, email + одноразовый код;
+- вход в [accounts/views/auth.py](../accounts/views/auth.py) поддерживает три сценария: телефон + SMS, email + пароль, email + одноразовый код;
 - подтверждённые логины и подтверждение email в профиле автоматически привязывают подходящие guest-заказы к аккаунту;
-- lifecycle заказа и статус оплаты разделены в [orders/models.py](/Users/Yaroslav/Documents/dev/BizonVR/orders/models.py);
+- lifecycle заказа и статус оплаты разделены в [orders/models.py](../orders/models.py);
 - сервисные уведомления по заказам отправляются через email всегда, а SMS фильтруются по пользовательской настройке;
-- в [accounts/views/profile.py](/Users/Yaroslav/Documents/dev/BizonVR/accounts/views/profile.py) есть раздел уведомлений с persistent-настройками каналов.
+- в [accounts/views/profile.py](../accounts/views/profile.py) есть раздел уведомлений с persistent-настройками каналов.
 - checkout остаётся одной серверной страницей, но уже разбит на шаги `Контакты -> Доставка -> Получатель -> Оплата -> Проверка`;
 - публичный auth entrypoint уже переключён на два таба `Email` и `Телефон`, где `Email` открыт по умолчанию.
 
@@ -486,11 +486,11 @@ SMS используется только для важных событий и 
 
 Нужно переработать:
 
-- [orders/views/checkout.py](/Users/Yaroslav/Documents/dev/BizonVR/orders/views/checkout.py);
-- [orders/forms.py](/Users/Yaroslav/Documents/dev/BizonVR/orders/forms.py);
-- [templates/orders/checkout.html](/Users/Yaroslav/Documents/dev/BizonVR/templates/orders/checkout.html);
-- [payments/views/checkout.py](/Users/Yaroslav/Documents/dev/BizonVR/payments/views/checkout.py);
-- [accounts/views/auth.py](/Users/Yaroslav/Documents/dev/BizonVR/accounts/views/auth.py).
+- [orders/views/checkout.py](../orders/views/checkout.py);
+- [orders/forms.py](../orders/forms.py);
+- [templates/orders/checkout.html](../templates/orders/checkout.html);
+- [payments/views/checkout.py](../payments/views/checkout.py);
+- [accounts/views/auth.py](../accounts/views/auth.py).
 
 Нужно добавить:
 
