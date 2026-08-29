@@ -21,6 +21,13 @@ class SingleDatabaseContractTests(SimpleTestCase):
         self.assertIn('postgresql', settings.DATABASES['default']['ENGINE'].lower())
         self.assertFalse(getattr(settings, 'DATABASE_ROUTERS', []))
 
+    def test_test_media_root_is_outside_production_media_directory(self):
+        test_media_root = Path(settings.MEDIA_ROOT).resolve()
+        production_media_root = (Path(settings.BASE_DIR) / 'media').resolve()
+
+        self.assertNotEqual(test_media_root, production_media_root)
+        self.assertTrue(test_media_root.name.startswith('.test-media-'))
+
     def test_repo_single_db_contract_has_no_violations(self):
         self.assertEqual(collect_single_db_contract_violations(), [])
 

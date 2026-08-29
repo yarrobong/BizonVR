@@ -1,3 +1,8 @@
+import atexit
+import shutil
+import tempfile
+from pathlib import Path
+
 from .settings import *  # noqa: F401,F403
 
 DEBUG = True
@@ -39,7 +44,9 @@ MIDDLEWARE = [
     if middleware != 'whitenoise.middleware.WhiteNoiseMiddleware'
 ]
 
-MEDIA_ROOT = BASE_DIR / '.test-media'
+_TEST_MEDIA_ROOT = Path(tempfile.mkdtemp(prefix='.test-media-', dir=BASE_DIR))
+atexit.register(shutil.rmtree, _TEST_MEDIA_ROOT, ignore_errors=True)
+MEDIA_ROOT = _TEST_MEDIA_ROOT
 STATIC_ROOT = BASE_DIR / '.test-static'
 WHITENOISE_MAX_AGE = 0
 
