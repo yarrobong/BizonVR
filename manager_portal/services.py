@@ -4276,16 +4276,25 @@ def _ensure_lot_coverage_from_balance(*, warehouse, product_id, variant_id):
     )
 
 
+@transaction.atomic
 def allocate_inventory_to_order_item(*, order_item, warehouse, quantity, mode):
     if not order_item.product_id or quantity <= 0:
         return []
+    # Serialize the balance-to-lot backfill as well as the lot allocation.  Without
+    # this lock two concurrent reservations can both observe missing lots and
+    # create duplicate coverage from the same cached balance.
+    InventoryBalance.objects.select_for_update().filter(
+        warehouse=warehouse,
+        product_id=order_item.product_id,
+        variant_id=order_item.variant_id,
+    ).first()
     _ensure_lot_coverage_from_balance(
         warehouse=warehouse,
         product_id=order_item.product_id,
         variant_id=order_item.variant_id,
     )
     lots = list(
-        InventoryLot.objects.filter(
+        InventoryLot.objects.select_for_update().filter(
             warehouse=warehouse,
             product_id=order_item.product_id,
             variant_id=order_item.variant_id,
@@ -4834,6 +4843,7 @@ def _get_or_create_order_reservation(*, order, client, warehouse, comment, manag
     )
 
 
+@transaction.atomic
 def ensure_order_reservations(order, client, *, warehouse=None, author=None, strict=False, comment=''):
     try:
         deal = order.manager_deal

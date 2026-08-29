@@ -801,7 +801,12 @@ def checkout_view(request):
     )
 
     send_order_event_notifications(order, 'order_created', request=request)
-    sync_order_state_side_effects(order, previous_status='', previous_payment_status='', request=request)
+    try:
+        sync_order_state_side_effects(order, previous_status='', previous_payment_status='', request=request)
+    except Exception:
+        # Manager workflow is a secondary integration boundary: its outage must
+        # not turn a committed public order into a retryable 500 response.
+        logger.exception('Manager workflow sync failed for checkout order %s.', order.pk)
 
     params = {}
     if order.is_guest_order:

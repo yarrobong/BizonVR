@@ -7,6 +7,8 @@ PLACEHOLDER_MARKERS = (
     'УКАЖИТЕ',
     'CHANGE-ME',
     'EXAMPLE.COM',
+    'YOUR-SECRET-KEY-HERE',
+    'DJANGO-INSECURE',
 )
 
 
@@ -30,6 +32,12 @@ def production_launch_settings_check(app_configs, **kwargs):
     require_https_site_url = bool(getattr(settings, 'USE_HTTPS', False)) or production_mode
 
     if production_mode:
+        if not getattr(settings, 'USE_HTTPS', False):
+            messages.append(Error(
+                'USE_HTTPS must be enabled in production.',
+                hint='Set USE_HTTPS=True before starting with DEBUG=False.',
+                id='config.E006',
+            ))
         required_values = {
             'SITE_URL': getattr(settings, 'SITE_URL', ''),
             'SECRET_KEY': getattr(settings, 'SECRET_KEY', ''),
