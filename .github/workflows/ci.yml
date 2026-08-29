@@ -1,0 +1,173 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+      - portfolio-ci
+      - portfolio-hardening
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bizonvr-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (PostgreSQL)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      DB_NAME: bizon_test
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      SECRET_KEY: ci-only-secret-key-do-not-use-in-production
+      DEBUG: 'True'
+      USE_HTTPS: 'False'
+      ALLOWED_HOSTS: localhost,127.0.0.1
+      BITRIX_WEBHOOK_URL: ''
+      BITRIX_SITE_REQUESTS_ENABLED: 'False'
+      CDEK_WIDGET_ACCOUNT: ''
+      CDEK_WIDGET_PASSWORD: ''
+      EXOLVE_API_KEY: ''
+      TURNSTILE_SECRET_KEY: ''
+      PAYMENT_GATEWAY_API_KEY: ''
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: bizon_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d bizon_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install WeasyPrint system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            libcairo2 \
+            libffi-dev \
+            libgdk-pixbuf-2.0-0 \
+            libharfbuzz-subset0 \
+            libpango-1.0-0 \
+            libpangoft2-1.0-0 \
+            shared-mime-info
+
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Django checks
+        run: |
+          python manage.py check
+          python manage.py makemigrations --check --dry-run
+          python scripts/check_single_db_contract.py
+
+      - name: Django test suite
+        run: python manage.py test
+
+  frontend:
+    name: Frontend assets
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build CSS
+        run: npm run build:css
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+  production-config:
+    name: Production configuration
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DJANGO_SETTINGS_MODULE: config.settings
+      SECRET_KEY: ci-only-strong-secret-key-for-deploy-check-0123456789-abcdef
+      DEBUG: 'False'
+      USE_HTTPS: 'True'
+      ALLOWED_HOSTS: ci.example.test
+      CSRF_TRUSTED_ORIGINS: https://ci.example.test
+      SITE_URL: https://ci.example.test
+      EMAIL_HOST: smtp.ci.example.test
+      EMAIL_PORT: '2525'
+      EMAIL_HOST_USER: ci-user
+      EMAIL_HOST_PASSWORD: ci-only-dummy-password
+      EMAIL_USE_TLS: 'False'
+      EMAIL_USE_SSL: 'False'
+      DEFAULT_FROM_EMAIL: ci@example.test
+      LEGAL_OPERATOR_FULL_NAME: CI Test Operator
+      LEGAL_OPERATOR_INN: '000000000000'
+      LEGAL_OPERATOR_OGRN: '000000000000000'
+      LEGAL_OPERATOR_PD_EMAIL: ci@example.test
+      LEGAL_OPERATOR_LEGAL_ADDRESS: CI test address
+      LEGAL_OPERATOR_POSTAL_ADDRESS: CI test address
+      DB_NAME: bizon_test
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      BITRIX_WEBHOOK_URL: ''
+      BITRIX_SITE_REQUESTS_ENABLED: 'False'
+      CDEK_WIDGET_ACCOUNT: ''
+      CDEK_WIDGET_PASSWORD: ''
+      EXOLVE_API_KEY: ''
+      TURNSTILE_SECRET_KEY: ''
+      PAYMENT_GATEWAY_API_KEY: ''
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Check deploy settings
+        run: |
+          python manage.py check --deploy
+          python manage.py collectstatic --noinput

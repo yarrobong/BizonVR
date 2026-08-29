@@ -4,9 +4,22 @@ import os
 import sys
 
 
+def _use_test_settings_by_default():
+    """Use isolated settings for plain ``manage.py test`` invocations only."""
+    if sys.argv[1:2] != ['test'] or 'DJANGO_SETTINGS_MODULE' in os.environ:
+        return False
+    return not any(
+        argument == '--settings' or argument.startswith('--settings=')
+        for argument in sys.argv[1:]
+    )
+
+
 def main():
     """Run administrative tasks."""
-    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
+    if _use_test_settings_by_default():
+        os.environ['DJANGO_SETTINGS_MODULE'] = 'config.settings_test'
+    else:
+        os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'config.settings')
     try:
         from django.core.management import execute_from_command_line
     except ImportError as exc:
