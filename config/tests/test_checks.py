@@ -56,6 +56,20 @@ class ProductionLaunchSettingsCheckTests(SimpleTestCase):
         self.assertIn('EMAIL_HOST_USER', error.hint)
         self.assertIn('EMAIL_PORT', error.hint)
 
+    @override_settings(**(PRODUCTION_SETTINGS | {'SECRET_KEY': 'django-insecure-change-me'}))
+    def test_insecure_secret_key_fails_in_production(self):
+        messages = production_launch_settings_check(None)
+
+        error = next(message for message in messages if message.id == 'config.E001')
+        self.assertIn('SECRET_KEY', error.hint)
+
+    @override_settings(**(PRODUCTION_SETTINGS | {'USE_HTTPS': False}))
+    def test_https_must_be_enabled_in_production(self):
+        messages = production_launch_settings_check(None)
+
+        error = next(message for message in messages if message.id == 'config.E006')
+        self.assertIn('USE_HTTPS', error.hint)
+
     @override_settings(**(PRODUCTION_SETTINGS | {
         'EMAIL_PORT': 587,
         'EMAIL_PORT_WAS_SET': True,

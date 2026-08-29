@@ -1,4 +1,5 @@
 """Сервисы заказов: бонусы, уведомления и side effects жизненного цикла заказа."""
+import logging
 from decimal import Decimal
 from urllib.parse import quote
 
@@ -8,6 +9,8 @@ from django.db import transaction
 from django.db.models import F, Q
 from django.template.loader import render_to_string
 from django.urls import reverse
+
+logger = logging.getLogger(__name__)
 
 from accounts.services import normalize_email, normalize_phone
 
@@ -136,30 +139,32 @@ def apply_partner_bonus_for_order(order):
     """
     if order.payment_status != 'paid':
         return
-    if order.partner_bonus_applied:
-        return
-    promo = order.promo_code
-    if not promo or not promo.partner_user_id or not promo.partner_bonus or promo.partner_bonus <= 0:
-        return
 
-    from accounts.models import BalanceTransaction
+    from accounts.models import BalanceTransaction, Profile
+    from .models import Order
     from accounts.services import ensure_profile
 
     with transaction.atomic():
-        order.refresh_from_db()
-        if order.partner_bonus_applied:
+        locked_order = Order.objects.select_for_update(of=('self',)).select_related('promo_code').get(pk=order.pk)
+        if locked_order.payment_status != locked_order.PAYMENT_STATUS_PAID:
+            return
+        if locked_order.partner_bonus_applied:
+            return
+        promo = locked_order.promo_code
+        if not promo or not promo.partner_user_id or not promo.partner_bonus or promo.partner_bonus <= 0:
             return
         profile = ensure_profile(promo.partner_user)
+        profile = Profile.objects.select_for_update().get(pk=profile.pk)
         BalanceTransaction.objects.create(
             user=promo.partner_user,
             kind=BalanceTransaction.TYPE_PROMO_BONUS,
             amount=promo.partner_bonus,
-            order=order,
+            order=locked_order,
         )
         profile.balance += promo.partner_bonus
         profile.save(update_fields=['balance'])
-        order.partner_bonus_applied = True
-        order.save(update_fields=['partner_bonus_applied'])
+        locked_order.partner_bonus_applied = True
+        locked_order.save(update_fields=['partner_bonus_applied'])
 
 
 def decrease_stock_for_order(order):
@@ -264,13 +269,21 @@ def send_order_event_notifications(order, event, *, request=None):
     if not event_meta:
         return
     if order.email:
-        _, created = OrderNotificationLog.objects.get_or_create(
+        log, created = OrderNotificationLog.objects.get_or_create(
             order=order,
             event=event,
             channel=OrderNotificationLog.CHANNEL_EMAIL,
         )
         if created:
-            _send_order_event_email(order, event, request=request)
+            try:
+                _send_order_event_email(order, event, request=request)
+            except Exception:
+                OrderNotificationLog.objects.filter(pk=log.pk).delete()
+                logger.exception(
+                    'Order notification delivery failed for order %s, event %s.',
+                    order.pk,
+                    event,
+                )
 
 
 def sync_order_state_side_effects(order, *, previous_status=None, previous_payment_status=None, request=None):

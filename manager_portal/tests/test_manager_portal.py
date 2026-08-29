@@ -65,6 +65,7 @@ from manager_portal.services import (
     dashboard_stats,
     ensure_finance_deal_for_manager_deal,
     ensure_manager_deal_for_order,
+    ensure_order_reservations,
     ensure_website_order_workflow,
     clone_finance_distribution_scheme,
     finance_dashboard_data,
@@ -993,6 +994,38 @@ class FinanceDistributionTests(ManagerPortalBaseTestCase):
         self.assertContains(response, 'Строки сделки')
         self.assertContains(response, 'Как устроены расчёты')
         self.assertContains(response, 'Ярослав П')
+
+
+class ReservationAtomicityTests(ManagerPortalBaseTestCase):
+    def test_strict_reservation_rolls_back_when_a_later_line_has_no_stock(self):
+        first_item = OrderItem.objects.create(
+            order=self.order,
+            product=self.product,
+            quantity=1,
+            price=Decimal('100000.00'),
+        )
+        OrderItem.objects.create(
+            order=self.order,
+            product=self.product_two,
+            quantity=1,
+            price=Decimal('5000.00'),
+        )
+        InventoryBalance.objects.create(
+            warehouse=self.warehouse,
+            product=self.product,
+            quantity=1,
+        )
+
+        with self.assertRaises(ValueError):
+            ensure_order_reservations(
+                self.order,
+                self.manager_client,
+                warehouse=self.warehouse,
+                strict=True,
+            )
+
+        self.assertFalse(Reservation.objects.filter(linked_order=self.order).exists())
+        self.assertFalse(ReservationItem.objects.filter(order_item=first_item).exists())
 
 
 class ManagerPortalServiceTests(ManagerPortalBaseTestCase):

@@ -87,6 +87,21 @@ def normalize_np_status(np_status):
     return NP_STATUS_MAP.get((np_status or '').lower(), 'pending')
 
 
+def is_valid_payment_status_transition(current_status, target_status):
+    """Allow provider progress while preventing signed callbacks from regressing state."""
+    allowed_targets = {
+        'pending': {'pending', 'waiting', 'confirming', 'sent', 'finished', 'failed', 'expired'},
+        'waiting': {'waiting', 'confirming', 'sent', 'finished', 'failed', 'expired'},
+        'confirming': {'confirming', 'sent', 'finished', 'failed', 'expired'},
+        'sent': {'sent', 'finished', 'failed', 'expired'},
+        'finished': {'finished', 'refunded'},
+        'failed': {'failed', 'waiting', 'confirming', 'sent', 'finished', 'expired'},
+        'refunded': {'refunded'},
+        'expired': {'expired'},
+    }
+    return target_status in allowed_targets.get(current_status, {current_status})
+
+
 def verify_ipn_signature(body_raw, signature):
     """
     Проверить подпись webhook.
