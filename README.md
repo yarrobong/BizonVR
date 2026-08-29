@@ -70,9 +70,25 @@ payment, concurrency, and deployment flows.
 
 ## Screenshots
 
-A curated screenshot set is being prepared from the local demo environment.
-See the [portfolio screenshot plan](docs/screenshots/portfolio/README.md)
-for the selected flows and capture requirements.
+### Main page
+
+![BizonVR manager deal workflow](docs/screenshots/portfolio/main.png)
+
+### Storefront catalog
+
+![BizonVR storefront catalog](docs/screenshots/portfolio/storefront-catalog.png)
+
+### Product detail
+
+![BizonVR product detail](docs/screenshots/portfolio/product-detail.png)
+
+### Checkout
+
+![BizonVR checkout](docs/screenshots/portfolio/checkout.png)
+
+### Cart
+
+![BizonVR inventory management](docs/screenshots/portfolio/cart.png)
 
 ## Tech Stack
 
