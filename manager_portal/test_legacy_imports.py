@@ -2,6 +2,7 @@ import os
 import sqlite3
 import tempfile
 from decimal import Decimal
+from io import StringIO
 
 import psycopg2
 from django.contrib.auth import get_user_model
@@ -29,6 +30,7 @@ from .models import (
     LegacyImportRecord,
 )
 from .single_db_contract import collect_single_db_contract_violations
+from .legacy_imports import redact_postgresql_dsn
 
 
 User = get_user_model()
@@ -350,6 +352,27 @@ class LegacyImportCommandTests(TestCase):
         self.assertEqual(FinancePayout.objects.filter(comment='legacy payout').count(), 1)
         self.assertTrue(Profile.objects.filter(user=imported_user).exists())
         self.assertTrue(LegacyImportRecord.objects.filter(source_system='business_finance', source_model='users', source_pk='1').exists())
+
+    def test_import_legacy_business_finance_report_redacts_source_password(self):
+        self.create_business_finance_source_tables()
+        output = StringIO()
+        source_dsn = self.business_finance_dsn()
+
+        call_command(
+            'import_legacy_business_finance',
+            '--source-dsn',
+            source_dsn,
+            '--dry-run',
+            stdout=output,
+        )
+
+        report = output.getvalue()
+        self.assertNotIn('password=password', report)
+        self.assertIn('password=[REDACTED]', report)
+        self.assertEqual(
+            LegacyImportBatch.objects.get(source_system='business_finance').source_ref,
+            redact_postgresql_dsn(source_dsn),
+        )
 
     def test_import_legacy_site_sqlite_apply_imports_domain_rows(self):
         path = self.make_sqlite_db()

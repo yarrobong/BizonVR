@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import psycopg2
+from psycopg2.extensions import parse_dsn
 from psycopg2.extras import RealDictCursor
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
@@ -62,6 +63,23 @@ from .services import (
 
 
 User = get_user_model()
+
+
+def redact_postgresql_dsn(source_dsn: str) -> str:
+    """Return a safe, human-readable PostgreSQL DSN for reports and logs."""
+    try:
+        parameters = parse_dsn(str(source_dsn or ''))
+    except psycopg2.Error:
+        return '[unparseable PostgreSQL DSN]'
+
+    safe_parts = []
+    for key in ('dbname', 'user', 'host', 'port', 'sslmode'):
+        value = parameters.get(key)
+        if value:
+            safe_parts.append(f'{key}={value}')
+    if parameters.get('password') is not None:
+        safe_parts.append('password=[REDACTED]')
+    return ' '.join(safe_parts) or '[empty PostgreSQL DSN]'
 
 
 LEGACY_CONTRACT_TYPE_MAP = {
@@ -805,7 +823,7 @@ def _finance_user_defaults(source_row: dict[str, Any], group_map: dict[str, Grou
 def import_legacy_business_finance(source_dsn: str, *, dry_run: bool):
     tracker = LegacyImportTracker(
         source_system=LegacyImportBatch.SOURCE_BUSINESS_FINANCE,
-        source_ref=source_dsn,
+        source_ref=redact_postgresql_dsn(source_dsn),
         dry_run=dry_run,
     )
     groups = _ensure_finance_groups()
