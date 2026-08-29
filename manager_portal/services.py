@@ -4283,7 +4283,7 @@ def allocate_inventory_to_order_item(*, order_item, warehouse, quantity, mode):
     # Serialize the balance-to-lot backfill as well as the lot allocation.  Without
     # this lock two concurrent reservations can both observe missing lots and
     # create duplicate coverage from the same cached balance.
-    InventoryBalance.objects.select_for_update().filter(
+    InventoryBalance.objects.select_for_update(of=('self',)).filter(
         warehouse=warehouse,
         product_id=order_item.product_id,
         variant_id=order_item.variant_id,
@@ -4294,7 +4294,7 @@ def allocate_inventory_to_order_item(*, order_item, warehouse, quantity, mode):
         variant_id=order_item.variant_id,
     )
     lots = list(
-        InventoryLot.objects.select_for_update().filter(
+        InventoryLot.objects.select_for_update(of=('self',)).filter(
             warehouse=warehouse,
             product_id=order_item.product_id,
             variant_id=order_item.variant_id,

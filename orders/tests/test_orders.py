@@ -25,7 +25,7 @@ from catalog.tests.factories import create_category, create_game_pack, create_pr
 from integrations.models import SiteLeadRequest
 from orders.forms import CheckoutForm, PurchaseRequestForm
 from orders.models import Order, OrderItem, OrderNotificationLog, PromoCode, PurchaseRequest
-from orders.services import send_order_event_notifications, sync_order_state_side_effects
+from orders.services import apply_partner_bonus_for_order, send_order_event_notifications, sync_order_state_side_effects
 from orders.tests.factories import create_order, create_promocode
 
 User = get_user_model()
@@ -1460,6 +1460,23 @@ class OrderNotificationPolicyTest(TestCase):
 
 
 class OrderPaymentSideEffectsTest(TestCase):
+    def test_paid_order_without_promo_code_can_be_locked_for_partner_bonus(self):
+        order = Order.objects.create(
+            user=None,
+            status=Order.STATUS_CONFIRMED,
+            payment_status=Order.PAYMENT_STATUS_PAID,
+            total=Decimal('100.00'),
+            phone='+7 999 123 45 67',
+            email='client@example.com',
+            first_name='Иван',
+        )
+
+        apply_partner_bonus_for_order(order)
+
+        order.refresh_from_db()
+        self.assertIsNone(order.promo_code)
+        self.assertFalse(order.partner_bonus_applied)
+
     def test_paid_transition_does_not_decrease_stock_or_create_shipped_allocations(self):
         city = City.objects.create(name='Екатеринбург', slug='ekb-orders-stock')
         pickup_point = PickupPoint.objects.create(city=city, name='Основной ПВЗ')
