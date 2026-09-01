@@ -1374,14 +1374,6 @@ img {
   background: linear-gradient(180deg, transparent 0%, rgba(11, 14, 18, 0.08) 38%, rgba(11, 14, 18, 0.78) 100%);
 }
 
-.game-modal-video-slide::before {
-  display: none;
-}
-
-.game-modal-video-slide {
-  background: #000;
-}
-
 .game-modal-media {
   display: block;
   width: 100%;
@@ -1811,6 +1803,10 @@ img {
 
   .game-card-multiplayer {
     min-height: 0;
+  }
+
+  .game-modal-content {
+    grid-template-columns: 1fr;
   }
 }
 
