@@ -109,17 +109,6 @@ function setupGameModal() {
     prev.hidden = currentSlides.length < 2;
     next.hidden = currentSlides.length < 2;
 
-    if (slide.type === "video") {
-      stage.innerHTML = `
-        <div class="game-modal-slide game-modal-media-slide game-modal-video-slide">
-          <video class="game-modal-media" controls autoplay muted loop playsinline preload="metadata">
-            <source src="${slide.src}" type="video/mp4">
-          </video>
-        </div>
-      `;
-      return;
-    }
-
     if (slide.type === "cover") {
       stage.innerHTML = `
         <div class="game-modal-slide game-modal-media-slide">
@@ -145,7 +134,6 @@ function setupGameModal() {
     const metaNodes = Array.from(card.querySelectorAll(".game-meta span"));
     const imageNode = card.querySelector(".game-cover img");
     const coverNode = card.querySelector(".game-cover");
-    const trailer = card.dataset.trailer?.trim();
     const image = imageNode?.getAttribute("src");
 
     const gameTitle = titleNode?.textContent.trim() || "Игра";
@@ -154,10 +142,6 @@ function setupGameModal() {
     const gameDescription = descriptionNode?.textContent.trim() || "";
 
     currentSlides = [];
-
-    if (trailer) {
-      currentSlides.push({ type: "video", src: trailer, title: gameTitle });
-    }
 
     if (image) {
       currentSlides.push({ type: "image", src: image, title: gameTitle });

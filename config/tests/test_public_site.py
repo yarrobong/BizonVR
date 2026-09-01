@@ -249,19 +249,24 @@ class SolutionLandingTests(SimpleTestCase):
         self.assertIn('name="site_comment"', html)
         self.assertIn('info@bizon-business.ru', html)
         self.assertIn('https://bizonvr.ru/solutions/vr-dlya-kluba/', html)
-        self.assertIn('img/games/Lasertag/Lasertag for Meta Quest - v2 update trailer [get.gt].mp4', html)
-        self.assertIn(
-            'data-trailer="img/trailers/Online/Pavlov Shack/Pavlov_Shack_｜_Launch_Trailer_｜_Meta_Quest_Platform_Meta_Quest_1080p.mp4"',
-            html,
-        )
-        self.assertIn(
-            'data-trailer="img/trailers/Online/Zero Caliber 2/Zero_Caliber_2_｜_Gameplay_Trailer_｜_Meta_Quest_2_+_Meta_Quest_3.mp4"',
-            html,
-        )
-        self.assertIn(
-            'data-trailer="img/trailers/Online/Warhammer 40,000 Battle Sister/Warhammer_40,000：_Battle_Sister_Official_Steam_Release_Trailer_IGN.mp4"',
-            html,
-        )
+        for image_path in (
+            'img/multiplayer/pavlov-shack.webp',
+            'img/multiplayer/breachers.webp',
+            'img/multiplayer/zero-caliber-2.webp',
+            'img/multiplayer/bow-bots.webp',
+            'img/multiplayer/gorilla-tag.webp',
+            'img/multiplayer/elven-assassin.webp',
+            'img/multiplayer/green-hell-vr.webp',
+            'img/multiplayer/arizona-sunshine-2.webp',
+            'img/multiplayer/drunkn-bar-fight.webp',
+            'img/multiplayer/windlands-2.webp',
+            'img/multiplayer/loco-dojo.webp',
+            'img/multiplayer/warhammer-40000-battle-sister.webp',
+        ):
+            self.assertIn(image_path, html)
+        self.assertIn('img/games/Lasertag/1.jpg', html)
+        self.assertNotIn('data-trailer=', html)
+        self.assertNotIn('.mp4', html)
 
     def test_vr_club_solution_landing_css_asset_is_served(self):
         response = self.client.get('/solutions/vr-dlya-kluba/styles.css')
@@ -275,26 +280,13 @@ class SolutionLandingTests(SimpleTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response['Content-Type'], 'image/webp')
 
-    def test_vr_club_solution_landing_online_trailer_assets_are_served(self):
-        simple_response = self.client.get(
-            '/solutions/vr-dlya-kluba/img/trailers/Online/Pavlov%20Shack/'
-            'Pavlov_Shack_%EF%BD%9C_Launch_Trailer_%EF%BD%9C_Meta_Quest_Platform_Meta_Quest_1080p.mp4'
-        )
-        unicode_response = self.client.get(
-            '/solutions/vr-dlya-kluba/img/trailers/Online/Warhammer%2040%2C000%20Battle%20Sister/'
-            'Warhammer_40%2C000%EF%BC%9A_Battle_Sister_Official_Steam_Release_Trailer_IGN.mp4'
-        )
-        zero_caliber_response = self.client.get(
-            '/solutions/vr-dlya-kluba/img/trailers/Online/Zero%20Caliber%202/'
-            'Zero_Caliber_2_%EF%BD%9C_Gameplay_Trailer_%EF%BD%9C_Meta_Quest_2_%2B_Meta_Quest_3.mp4'
+    def test_vr_club_solution_landing_game_image_asset_is_served(self):
+        response = self.client.get(
+            '/solutions/vr-dlya-kluba/img/games/Lasertag/1.jpg'
         )
 
-        self.assertEqual(simple_response.status_code, 200)
-        self.assertEqual(simple_response['Content-Type'], 'video/mp4')
-        self.assertEqual(unicode_response.status_code, 200)
-        self.assertEqual(unicode_response['Content-Type'], 'video/mp4')
-        self.assertEqual(zero_caliber_response.status_code, 200)
-        self.assertEqual(zero_caliber_response['Content-Type'], 'video/mp4')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'image/jpeg')
 
     def test_vr_club_solution_landing_boosted_request_forces_full_redirect(self):
         response = self.client.get(
