@@ -249,11 +249,24 @@ class SolutionLandingTests(SimpleTestCase):
         self.assertIn('name="site_comment"', html)
         self.assertIn('info@bizon-business.ru', html)
         self.assertIn('https://bizonvr.ru/solutions/vr-dlya-kluba/', html)
+        for image_path in (
+            'img/multiplayer/pavlov-shack.webp',
+            'img/multiplayer/breachers.webp',
+            'img/multiplayer/zero-caliber-2.webp',
+            'img/multiplayer/bow-bots.webp',
+            'img/multiplayer/gorilla-tag.webp',
+            'img/multiplayer/elven-assassin.webp',
+            'img/multiplayer/green-hell-vr.webp',
+            'img/multiplayer/arizona-sunshine-2.webp',
+            'img/multiplayer/drunkn-bar-fight.webp',
+            'img/multiplayer/windlands-2.webp',
+            'img/multiplayer/loco-dojo.webp',
+            'img/multiplayer/warhammer-40000-battle-sister.webp',
+        ):
+            self.assertIn(image_path, html)
         self.assertIn('img/games/Lasertag/1.jpg', html)
-        self.assertIn('img/trailers/Online/Pavlov Shack/Pavlov Shack.png', html)
-        self.assertIn('img/trailers/Online/Zero Caliber 2/Zero Caliber 2.jpg', html)
-        self.assertIn('img/trailers/Online/Warhammer 40,000 Battle Sister/Warhammer 40,000 Battle Sister.jpg', html)
         self.assertNotIn('data-trailer=', html)
+        self.assertNotIn('.mp4', html)
 
     def test_vr_club_solution_landing_css_asset_is_served(self):
         response = self.client.get('/solutions/vr-dlya-kluba/styles.css')
@@ -267,13 +280,13 @@ class SolutionLandingTests(SimpleTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response['Content-Type'], 'image/webp')
 
-    def test_vr_club_solution_landing_game_poster_assets_are_served(self):
+    def test_vr_club_solution_landing_game_image_asset_is_served(self):
         response = self.client.get(
-            '/solutions/vr-dlya-kluba/img/trailers/Online/Pavlov%20Shack/Pavlov%20Shack.png'
+            '/solutions/vr-dlya-kluba/img/games/Lasertag/1.jpg'
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response['Content-Type'], 'image/png')
+        self.assertEqual(response['Content-Type'], 'image/jpeg')
 
     def test_vr_club_solution_landing_boosted_request_forces_full_redirect(self):
         response = self.client.get(
