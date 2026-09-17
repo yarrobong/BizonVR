@@ -1,48 +1,100 @@
 # BizonVR
 
-Production-oriented Django e-commerce platform for VR equipment, accessories,
-services, inventory operations, and manager-led payment workflows.
-
 [![CI](https://github.com/yarrobong/BizonVR/actions/workflows/ci.yml/badge.svg)](https://github.com/yarrobong/BizonVR/actions/workflows/ci.yml)
 [![Python 3.12](https://img.shields.io/badge/python-3.12+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Django 6.0](https://img.shields.io/badge/django-6.0-092E20?logo=django&logoColor=white)](https://www.djangoproject.com/)
 [![PostgreSQL](https://img.shields.io/badge/database-PostgreSQL-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 
-## Overview
+Production-oriented Django commerce and operations platform built around real BizonVR workflows for VR equipment, accessories, services, inventory, orders, and manager-led fulfillment.
 
-BizonVR is a monolithic Django commerce platform for selling VR headsets,
-accessories, bundles, game packs, attractions, and related services. It serves
-both individual customers and the team that validates, fulfills, and follows up
-their orders.
+It combines a public storefront with an internal operations surface in one transactional application: customers can browse and place orders, while managers can work with deals, stock, reservations, shipments, payments, documents, and external integrations.
 
-The public site covers catalog browsing, guest and authenticated carts, guest
-checkout, customer accounts, order history, and lead forms. A manager portal in
-the same Django application handles deals, clients, warehouses, reservations,
-shipments, finance, and documents.
+> **Portfolio focus:** backend development, business-process automation, integrations, transactional workflows, testing, and production-minded engineering.
 
-## Highlights
+## At a glance
 
-- Catalog with products, variants, categories, characteristics, bundles, and game packs.
-- Guest and authenticated carts with variant-aware line items.
-- Guest checkout that creates an order request without requiring registration.
-- Customer accounts with email verification, password login, profile data, and order history.
-- Order lifecycle with manager confirmation, payment state, delivery state, and email events.
-- Inventory across warehouses, incoming cargo, reservations, lot allocations, and public stock sync.
-- Manager operations for clients, deals, procurement, reservations, shipments, finance, and documents.
-- Lead capture from checkout, product requests, contacts, service pages, and VR club flows.
-- Optional integrations for Bitrix, CDEK delivery selection, Cloudflare Turnstile, SMTP, and a signed payment webhook.
+| Area | What is implemented |
+| --- | --- |
+| Public commerce | Catalog, product variants, carts, guest checkout, accounts, order history, lead forms |
+| Manager operations | Clients, deals, warehouses, reservations, procurement, shipments, finance, documents |
+| Integrations | Bitrix, CDEK, SMTP, Cloudflare Turnstile, signed payment webhook |
+| Data & consistency | PostgreSQL, transactions, row locking, inventory movements, reservation and shipment safeguards |
+| Quality | 778 automated tests, PostgreSQL-backed CI, frontend asset checks, production configuration checks |
 
-## Engineering Highlights
+## Screenshots
 
-- PostgreSQL is the only active persistent database, keeping public commerce and manager operations in one transactional boundary.
-- Critical payment, order, reservation, shipment, and balance updates use `transaction.atomic()` and targeted `select_for_update()` row locks.
+### Main page
+
+![BizonVR main page](docs/screenshots/portfolio/main.png)
+
+### Storefront catalog
+
+![BizonVR storefront catalog](docs/screenshots/portfolio/storefront-catalog.png)
+
+### Product detail
+
+![BizonVR product detail](docs/screenshots/portfolio/product-detail.png)
+
+### Checkout
+
+![BizonVR checkout](docs/screenshots/portfolio/checkout.png)
+
+### Cart
+
+![BizonVR cart](docs/screenshots/portfolio/cart.png)
+
+## My role
+
+I developed and evolved this repository as part of my work around BizonVR's web and operational tooling.
+
+My work in this codebase spans:
+
+- Django backend and domain logic;
+- public storefront and customer flows;
+- manager-facing operational workflows;
+- inventory, reservation, shipment, and order processing;
+- external-service integrations and failure handling;
+- authentication and security hardening;
+- PostgreSQL-backed tests and CI;
+- deployment and technical documentation.
+
+The project is presented here as a portfolio case around solving real commerce and internal-operations problems, not as a generic demo shop.
+
+## What it does
+
+BizonVR is a modular Django monolith for selling and operating around VR equipment, accessories, bundles, game packs, attractions, and related services.
+
+The public side covers:
+
+- product and category browsing;
+- product variants and characteristics;
+- guest and authenticated carts;
+- guest checkout without forced registration;
+- customer accounts, email verification, and password recovery;
+- order history and guest-order claiming;
+- contact, service, product-request, and VR-club lead flows.
+
+The manager side covers:
+
+- client and deal management;
+- warehouses and inventory;
+- incoming cargo and procurement;
+- stock reservations and lot allocation;
+- shipment workflows;
+- payment and finance state;
+- documents and operational follow-up.
+
+## Engineering highlights
+
+- PostgreSQL is the single active persistent database for both public commerce and manager operations.
+- Critical payment, order, reservation, shipment, and balance updates use `transaction.atomic()` and targeted `select_for_update()` locking.
 - Reservation creation checks available stock, allocates order lines, records inventory movements, and synchronizes public stock.
-- Strict reservation failures raise inside the transaction, so partial reservation writes roll back together.
+- Strict reservation failures roll back the whole transaction instead of leaving partial inventory state.
 - Shipment dispatch is guarded against duplicate inventory consumption and validates reservation and shippable quantities.
-- Payment webhooks verify HMAC signatures, validate status transitions, and prevent duplicate or regressive state changes.
+- Payment webhooks verify HMAC signatures, validate allowed status transitions, and reject duplicate or regressive updates.
 - Guest orders use expiring access tokens; verified email can later claim matching guest orders.
-- Login and redirect flows validate local destinations, while account code endpoints apply IP, email, phone, and session rate limits.
-- External Bitrix, CDEK, SMTP, Turnstile, and payment failures are handled at integration boundaries and covered by regression tests.
+- Authentication and redirect flows validate local destinations, while account-code endpoints apply IP, email, phone, and session rate limits.
+- Bitrix, CDEK, SMTP, Turnstile, and payment failures are isolated at integration boundaries and covered by regression tests.
 - Production configuration checks require explicit secrets, HTTPS-aware settings, email configuration, and valid deployment prerequisites.
 
 ## Architecture
@@ -64,33 +116,46 @@ flowchart LR
     Services --> Integrations
 ```
 
-This is a modular monolith, not a microservice system. See the detailed
-[architecture document](docs/ARCHITECTURE.md) for request, checkout, inventory,
-payment, concurrency, and deployment flows.
+The system is intentionally a modular monolith rather than a microservice architecture. Public commerce and manager operations share one transactional boundary, which keeps order, stock, reservation, payment, and shipment state consistent without distributed transactions.
 
-## Screenshots
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the detailed request, checkout, inventory, concurrency, integration, and deployment flows.
 
-### Main page
+## Core capabilities
 
-![BizonVR manager deal workflow](docs/screenshots/portfolio/main.png)
+### Commerce
 
-### Storefront catalog
+- products, variants, categories, characteristics, bundles, and game packs;
+- variant-aware cart line items;
+- guest checkout and authenticated checkout;
+- customer profiles and order history;
+- lead capture across public-site flows.
 
-![BizonVR storefront catalog](docs/screenshots/portfolio/storefront-catalog.png)
+### Inventory and fulfillment
 
-### Product detail
+- warehouses and stock balances;
+- incoming cargo;
+- reservations and lot allocation;
+- inventory movements;
+- shipment lifecycle;
+- public stock synchronization.
 
-![BizonVR product detail](docs/screenshots/portfolio/product-detail.png)
+### Manager operations
 
-### Checkout
+- clients and deals;
+- procurement and reservations;
+- shipment workflows;
+- finance and payment-state handling;
+- document workflows.
 
-![BizonVR checkout](docs/screenshots/portfolio/checkout.png)
+### Integrations
 
-### Cart
+- Bitrix;
+- CDEK delivery selection;
+- SMTP email;
+- Cloudflare Turnstile;
+- signed payment webhook.
 
-![BizonVR inventory management](docs/screenshots/portfolio/cart.png)
-
-## Tech Stack
+## Tech stack
 
 | Area | Technology |
 | --- | --- |
@@ -104,37 +169,56 @@ payment, concurrency, and deployment flows.
 | CI | GitHub Actions, PostgreSQL 17, Node.js 22 |
 | Optional runtime support | Redis cache backend through `CACHE_REDIS_URL` |
 
-## Testing & Quality
+## Testing and CI
 
-The current suite contains **778 automated tests**. The tests cover:
+The current suite contains **778 automated tests** covering:
 
-- Django checks and production configuration validation;
+- Django system and production configuration checks;
 - PostgreSQL-backed application behavior;
 - checkout, guest access, authentication, email verification, and security regressions;
 - inventory, reservation, shipment, and concurrency-sensitive workflows;
 - payment webhook signature, duplicate, and regression behavior;
 - external integration failure isolation;
-- isolated temporary `MEDIA_ROOT` for test runs.
+- isolated temporary `MEDIA_ROOT` behavior during test runs.
 
 The CI workflow has three jobs:
 
-1. `Backend (PostgreSQL)`: installs Python dependencies, runs `check`, migration drift validation, the single-database contract, and the full Django suite.
-2. `Frontend assets`: runs `npm ci`, builds Tailwind CSS, and audits production npm dependencies.
-3. `Production configuration`: runs `check --deploy` and `collectstatic` with production-like settings.
+1. **Backend (PostgreSQL)** — installs Python dependencies, runs Django checks, validates migration drift and the single-database contract, then runs the full Django test suite.
+2. **Frontend assets** — runs `npm ci`, builds Tailwind CSS, and audits production npm dependencies.
+3. **Production configuration** — runs `check --deploy` and `collectstatic` with production-like settings.
 
-## Project Status
+## Security and consistency notes
 
-Portfolio-ready and actively maintained.
+The application treats checkout, payment, reservation, and shipment changes as consistency-sensitive workflows.
 
-- Core commerce workflow implemented.
-- Manager workflow implemented in the same Django application.
-- PostgreSQL-backed test suite with 778 passing tests.
-- Automated CI with backend, frontend asset, and production configuration checks.
-- Local development and production deployment documentation available.
+Key safeguards include:
 
-Public demo is not currently hosted.
+- database transactions around multi-step state changes;
+- targeted PostgreSQL row locking for concurrency-sensitive paths;
+- duplicate and regressive payment-webhook protection;
+- HMAC webhook verification;
+- local redirect validation;
+- throttling for sensitive account-code endpoints;
+- failure isolation around external services;
+- explicit production-secret and deployment validation.
 
-## Quick Start
+This repository is not presented as independently security-certified; these are code-level controls implemented and tested in the project.
+
+## Project status
+
+The repository is portfolio-ready and actively maintained.
+
+Verified in the current project baseline:
+
+- core commerce workflows;
+- manager workflows in the same Django application;
+- PostgreSQL-backed automated test suite with 778 tests;
+- automated CI for backend, frontend assets, and production configuration;
+- local development and deployment documentation.
+
+Public demo hosting is not currently available.
+
+## Quick start
 
 ```bash
 git clone https://github.com/yarrobong/BizonVR.git
@@ -147,33 +231,38 @@ make superuser-local
 make run-local
 ```
 
-Open the public site at `http://127.0.0.1:8000/` and Django admin at
-`http://127.0.0.1:8000/admin/`. To load catalog data locally, run:
+Open the public site at `http://127.0.0.1:8000/` and Django admin at `http://127.0.0.1:8000/admin/`.
+
+To load catalog data locally:
 
 ```bash
 make load-data-local
 ```
 
-See [docs/LOCAL_DEVELOPMENT.md](docs/LOCAL_DEVELOPMENT.md) for the complete
-local setup, environment contract, Windows equivalents, and validation commands.
+See [docs/LOCAL_DEVELOPMENT.md](docs/LOCAL_DEVELOPMENT.md) for the complete setup, environment contract, Windows equivalents, and validation commands.
+
+## Project structure
+
+The active runtime is the Django application. The repository also contains deployment, data-loading, frontend asset, documentation, and archived migration/import support files.
+
+`legacy/` contains archived import sources and is not a separate deployment target. Database migrations are part of the application's history and must be preserved.
 
 ## Documentation
 
-- [Architecture](docs/ARCHITECTURE.md), system boundaries and transactional flows.
-- [Local development](docs/LOCAL_DEVELOPMENT.md), setup and validation.
-- [Manager portal](docs/MANAGER_PORTAL.md), operational, logistics, finance, and document workflows.
-- [Order and account flow](docs/ORDER_PLACEMENT_AND_ACCOUNT_FLOW.md), guest checkout and account behavior.
-- [Admin guide](docs/ADMIN_GUIDE.md), catalog and public-site administration.
-- [VR club games admin](docs/VR_CLUB_GAMES_ADMIN.md), game and pack authoring.
-- [Deployment](DEPLOY.md), Gunicorn, Nginx, HTTPS, and PostgreSQL deployment.
-- [Deployment updates](DEPLOY_UPDATE.md), repeat deployment procedure.
-- [Portfolio screenshot plan](docs/screenshots/portfolio/README.md), real capture routes and redaction requirements.
+- [Architecture](docs/ARCHITECTURE.md) — system boundaries and transactional flows.
+- [Local development](docs/LOCAL_DEVELOPMENT.md) — setup and validation.
+- [Manager portal](docs/MANAGER_PORTAL.md) — operations, logistics, finance, and document workflows.
+- [Order and account flow](docs/ORDER_PLACEMENT_AND_ACCOUNT_FLOW.md) — guest checkout and account behavior.
+- [Admin guide](docs/ADMIN_GUIDE.md) — catalog and public-site administration.
+- [VR club games admin](docs/VR_CLUB_GAMES_ADMIN.md) — game and pack authoring.
+- [Deployment](DEPLOY.md) — Gunicorn, Nginx, HTTPS, and PostgreSQL deployment.
+- [Deployment updates](DEPLOY_UPDATE.md) — repeat deployment procedure.
+- [Portfolio screenshot plan](docs/screenshots/portfolio/README.md) — capture routes and redaction requirements.
 
-## Repository Boundaries
+## Repository boundaries
 
-The active runtime is the Django application. `legacy/` contains archived import
-sources and is not a separate deployment target. Database migrations are part of
-the application history and must be preserved.
-
-The manager portal is an internal surface and is documented here for inspection;
-public-site documentation work does not change its runtime code.
+- The active runtime is the Django application.
+- `legacy/` contains archived import sources only.
+- PostgreSQL is the active persistent database contract.
+- The manager portal is an internal surface documented here for inspection.
+- Public-site documentation changes do not alter manager runtime behavior.
